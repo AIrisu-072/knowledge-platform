@@ -3,6 +3,8 @@
 //! Validation is catalog driven and reports the first violation in a fixed
 //! order (size, attributes, path/origin, catalog entry, payload members,
 //! details, bindings, subject, reason, correlation, extensions, provenance).
+//! The provenance contract and the `correlation.trace_id` capability come
+//! from the catalog adapter of the envelope's source.
 
 use std::fmt;
 
@@ -10,14 +12,14 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use crate::catalog::{
-    AUDIT_RELAY_SOURCE, AUDIT_STORE_RESOURCE_ID, AUDIT_STORE_SOURCE, BindingTarget,
-    CONTROL_TYPE_PREFIX, Catalog, EventSpec, Origin, ReasonPolicy, ResourceType,
+    AUDIT_RELAY_SOURCE, AUDIT_STORE_RESOURCE_ID, AUDIT_STORE_SOURCE, AdapterSpec, BindingTarget,
+    CONTROL_TYPE_PREFIX, Catalog, EventSpec, Origin, ReasonPolicy, Requirement, ResourceType,
     VersionRequirement,
 };
 use crate::codes::{Rejection, RejectionCode as C};
-use crate::json::{canonicalize, parse_unique};
+use crate::json::{canonicalize, jsonb_text_len, parse_unique};
 use crate::kinds::{
-    MAX_STRING_BYTES, NIL_UUID, is_bounded_text, is_hex_digest, is_principal_part,
+    Kind, MAX_STRING_BYTES, NIL_UUID, is_bounded_text, is_hex_digest, is_principal_part,
     is_utc_timestamp, is_uuid, is_w3c_trace_id,
 };
 
@@ -25,15 +27,19 @@ pub const SPECVERSION: &str = "1.0";
 pub const DATACONTENTTYPE: &str = "application/json";
 pub const DATASCHEMA: &str = "urn:knowledge-platform:audit:payload:v1";
 pub const SCHEMA_VERSION: i64 = 1;
-/// Rust-side bound on the compact serialization. The Store bounds the
-/// PostgreSQL `jsonb::text` at 32 KiB, so anything accepted here fits there.
-pub const MAX_ENVELOPE_BYTES: usize = 24 * 1024;
-/// Provenance format of the Document legacy adapter.
+/// Upper bound on the PostgreSQL `jsonb::text` rendering of an envelope, in
+/// bytes (design §4.1). Rust measures the same rendering
+/// ([`jsonb_text_len`]) that the Store bounds, so the two limits agree
+/// exactly. There is no separate compact-size bound: the compact rendering is
+/// never longer than the jsonb rendering.
+pub const JSONB_TEXT_LIMIT: usize = 32 * 1024;
+/// Provenance format of the Document legacy adapter (catalog adapter of
+/// `urn:knowledge-platform:document-platform`).
 pub const LEGACY_SOURCE_FORMAT: &str = "document-audit-outbox-v0";
-pub const STORE_CONTROL_SOURCE_FORMAT: &str = "audit-store-control-v1";
-pub const RELAY_CONTROL_SOURCE_FORMAT: &str = "audit-relay-control-v1";
 /// Where caller reason text stays (it is never copied to the Store).
 pub const REASON_TEXT_RETAINED: &str = "source_systems";
+/// Upper bound on `reason.utf8_bytes`: the Document HTTP body limit.
+pub const MAX_REASON_UTF8_BYTES: i64 = 1_048_576;
 pub const REGISTRATION_KINDS: [&str; 3] = ["trigger", "backfill", "repair"];
 
 /// The closed CloudEvents attribute set.
@@ -70,15 +76,6 @@ const CORRELATION_KEYS: [&str; 4] = [
     "trace_id",
 ];
 
-/// The provenance format each origin must declare.
-pub const fn source_format_for(origin: Origin) -> &'static str {
-    match origin {
-        Origin::Relay => LEGACY_SOURCE_FORMAT,
-        Origin::Store => STORE_CONTROL_SOURCE_FORMAT,
-        Origin::RelayControl => RELAY_CONTROL_SOURCE_FORMAT,
-    }
-}
-
 /// A validated envelope. It can only be constructed through validation, and
 /// its members are stored in byte order so serialization is deterministic.
 #[derive(Clone, PartialEq)]
@@ -91,7 +88,7 @@ pub struct AuditEnvelope {
 impl AuditEnvelope {
     /// Validates `value` for the given submission path.
     pub fn from_value(value: Value, path: Origin) -> Result<Self, Rejection> {
-        let spec = validate(&value, path)?;
+        let spec = validate_with(Catalog::embedded(), &value, path)?;
         let id = value["id"]
             .as_str()
             .and_then(|id| Uuid::parse_str(id).ok())
@@ -173,7 +170,7 @@ impl fmt::Debug for AuditEnvelope {
 /// catalog for the given submission path. `Origin::Relay` refuses control
 /// types, control sources and `AuditStore` resources.
 pub fn validate_envelope(value: &Value, path: Origin) -> Result<(), Rejection> {
-    validate(value, path).map(|_| ())
+    validate_with(Catalog::embedded(), value, path).map(|_| ())
 }
 
 enum Keys {
@@ -199,8 +196,12 @@ fn reject<T>(code: C, field: &'static str) -> Result<T, Rejection> {
     Err(Rejection::at(code, field))
 }
 
-fn validate(value: &Value, path: Origin) -> Result<&'static EventSpec, Rejection> {
-    if value.to_string().len() > MAX_ENVELOPE_BYTES {
+pub(crate) fn validate_with(
+    catalog: &'static Catalog,
+    value: &Value,
+    path: Origin,
+) -> Result<&'static EventSpec, Rejection> {
+    if jsonb_text_len(value) > JSONB_TEXT_LIMIT {
         return Err(Rejection::new(C::EnvelopeTooLarge));
     }
     let Some(envelope) = value.as_object() else {
@@ -236,20 +237,22 @@ fn validate(value: &Value, path: Origin) -> Result<&'static EventSpec, Rejection
         return reject(C::InvalidEnvelope, "data");
     };
     if path == Origin::Relay {
+        if event_type.starts_with(CONTROL_TYPE_PREFIX) {
+            return reject(C::ControlTypeForbidden, "type");
+        }
+        if source == AUDIT_STORE_SOURCE || source == AUDIT_RELAY_SOURCE {
+            return reject(C::ControlTypeForbidden, "source");
+        }
         let control_resource = data
             .get("resource")
             .and_then(|resource| resource.get("type"))
             .and_then(Value::as_str)
             == Some(ResourceType::AuditStore.as_str());
-        if event_type.starts_with(CONTROL_TYPE_PREFIX)
-            || source == AUDIT_STORE_SOURCE
-            || source == AUDIT_RELAY_SOURCE
-            || control_resource
-        {
-            return reject(C::ControlTypeForbidden, "type");
+        if control_resource {
+            return reject(C::ControlTypeForbidden, "data.resource.type");
         }
     }
-    let Some(spec) = Catalog::embedded().get(event_type) else {
+    let Some(spec) = catalog.get(event_type) else {
         return reject(C::UnknownEventType, "type");
     };
     if spec.origin != path {
@@ -258,6 +261,9 @@ fn validate(value: &Value, path: Origin) -> Result<&'static EventSpec, Rejection
     if source != spec.source {
         return reject(C::InvalidSource, "source");
     }
+    let Some(adapter) = catalog.adapter(&spec.source) else {
+        return reject(C::InvalidSource, "source");
+    };
     match check_keys(data, &DATA_REQUIRED, &DATA_OPTIONAL) {
         Keys::Exact => {}
         Keys::Unknown => return reject(C::UnknownField, "data"),
@@ -323,11 +329,11 @@ fn validate(value: &Value, path: Origin) -> Result<&'static EventSpec, Rejection
     if !reason_ok {
         return reject(C::InvalidReason, "data.reason");
     }
-    check_correlation(spec, details, &data["correlation"])?;
+    check_correlation(spec, adapter, details, &data["correlation"])?;
     if !data["extensions"].as_object().is_some_and(Map::is_empty) {
         return reject(C::InvalidExtensions, "data.extensions");
     }
-    if !is_provenance(spec.origin, &data["provenance"]) {
+    if !is_provenance(adapter, &data["provenance"]) {
         return reject(C::InvalidProvenance, "data.provenance");
     }
     if !strings_are_bounded(value) {
@@ -357,6 +363,9 @@ fn check_resource<'a>(spec: &EventSpec, value: &'a Value) -> Result<ResourceView
         .filter(|kind| spec.allows_resource(*kind))
         .ok_or(invalid)?;
     let id = object["id"].as_str().ok_or(invalid)?;
+    if kind != ResourceType::AuditStore && id == NIL_UUID && !spec.nil_resource_allowed {
+        return reject(C::NilClientId, "data.resource.id");
+    }
     let id_ok = match kind {
         ResourceType::AuditStore => id == AUDIT_STORE_RESOURCE_ID,
         _ => is_uuid(id) || (spec.nil_resource_allowed && id == NIL_UUID),
@@ -365,6 +374,9 @@ fn check_resource<'a>(spec: &EventSpec, value: &'a Value) -> Result<ResourceView
         return Err(invalid);
     }
     let version_id = match object.get("version_id") {
+        Some(version) if version == NIL_UUID => {
+            return reject(C::NilClientId, "data.resource.version_id");
+        }
         Some(version) => Some(version.as_str().filter(|v| is_uuid(v)).ok_or(invalid)?),
         None => None,
     };
@@ -400,15 +412,33 @@ fn check_details<'a>(
         return reject(C::MissingField, missing);
     }
     for (name, field) in spec.detail_fields() {
-        if details.get(name).is_some_and(|v| !field.accepts(v)) {
+        let Some(value) = details.get(name) else {
+            continue;
+        };
+        if is_nil_client_id(field.kind, value) {
+            return reject(C::NilClientId, name);
+        }
+        if !field.accepts(value) {
             return reject(C::InvalidField, name);
         }
     }
     Ok(details)
 }
 
+/// A uuid-kind value that is (or, for lists, contains) the nil UUID.
+fn is_nil_client_id(kind: Kind, value: &Value) -> bool {
+    match kind {
+        Kind::Uuid | Kind::NullableUuid => value == NIL_UUID,
+        Kind::UuidList => value
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item == NIL_UUID)),
+        _ => false,
+    }
+}
+
 fn check_correlation(
     spec: &EventSpec,
+    adapter: &AdapterSpec,
     details: &Map<String, Value>,
     value: &Value,
 ) -> Result<(), Rejection> {
@@ -436,9 +466,8 @@ fn check_correlation(
             "data.correlation.source_correlation_id",
         );
     }
-    if correlation
-        .get("trace_id")
-        .is_some_and(|id| !id.as_str().is_some_and(is_w3c_trace_id))
+    if let Some(trace) = correlation.get("trace_id")
+        && (!adapter.trace_id || !trace.as_str().is_some_and(is_w3c_trace_id))
     {
         return reject(C::InvalidCorrelation, "data.correlation.trace_id");
     }
@@ -459,44 +488,39 @@ fn is_reason_summary(value: &Value) -> bool {
         matches!(check_keys(object, &REASON_KEYS, &[]), Keys::Exact)
             && object["provided"] == Value::Bool(true)
             && object["text_retained"] == REASON_TEXT_RETAINED
-            && object["utf8_bytes"].as_i64().is_some_and(|n| n >= 0)
+            && object["utf8_bytes"]
+                .as_i64()
+                .is_some_and(|n| (0..=MAX_REASON_UTF8_BYTES).contains(&n))
     })
 }
 
-fn is_provenance(origin: Origin, value: &Value) -> bool {
+fn is_provenance(adapter: &AdapterSpec, value: &Value) -> bool {
     let Some(object) = value.as_object() else {
         return false;
     };
-    let keys_ok = match origin {
-        Origin::Relay => matches!(
-            check_keys(
-                object,
-                &[
-                    "adapter_version",
-                    "registration",
-                    "source_commitment",
-                    "source_format"
-                ],
-                &[],
-            ),
-            Keys::Exact
-        ),
-        Origin::Store | Origin::RelayControl => matches!(
-            check_keys(object, &["adapter_version", "source_format"], &[]),
-            Keys::Exact
-        ),
+    let member_ok = |name: &str, requirement: Requirement, valid: &dyn Fn(&Value) -> bool| match (
+        requirement,
+        object.get(name),
+    ) {
+        (Requirement::Required | Requirement::Optional, Some(member)) => valid(member),
+        (Requirement::Optional | Requirement::Forbidden, None) => true,
+        (Requirement::Required, None) | (Requirement::Forbidden, Some(_)) => false,
     };
-    keys_ok
-        && object["source_format"] == source_format_for(origin)
-        && object["adapter_version"]
-            .as_i64()
-            .is_some_and(|v| (1..=i64::from(i32::MAX)).contains(&v))
-        && object
-            .get("source_commitment")
-            .is_none_or(|c| c.as_str().is_some_and(is_hex_digest))
-        && object
-            .get("registration")
-            .is_none_or(|r| r.as_str().is_some_and(|r| REGISTRATION_KINDS.contains(&r)))
+    object.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "adapter_version" | "registration" | "source_commitment" | "source_format"
+        )
+    }) && object.get("source_format").and_then(Value::as_str)
+        == Some(adapter.source_format.as_str())
+        && object.get("adapter_version").and_then(Value::as_i64)
+            == Some(i64::from(adapter.adapter_version))
+        && member_ok("source_commitment", adapter.commitment, &|c| {
+            c.as_str().is_some_and(is_hex_digest)
+        })
+        && member_ok("registration", adapter.registration, &|r| {
+            r.as_str().is_some_and(|r| REGISTRATION_KINDS.contains(&r))
+        })
 }
 
 /// Defense in depth: every string anywhere is bounded and control-free.

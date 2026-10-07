@@ -16,6 +16,10 @@ pub enum RejectionCode {
     InvalidSource,
     InvalidSubject,
     InvalidResource,
+    /// A client-chosen identifier (uuid-kind field, `resource.id` or
+    /// `resource.version_id`) is the nil UUID. The producer accepts it, so
+    /// this is a producer-reachable quarantine (handoff to Document).
+    NilClientId,
     InvalidResult,
     InvalidActor,
     InvalidServiceExecutor,
@@ -35,7 +39,7 @@ pub enum RejectionCode {
 
 impl RejectionCode {
     /// Every code, in declaration order.
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::EnvelopeTooLarge,
         Self::InvalidJson,
         Self::DuplicateKey,
@@ -45,6 +49,7 @@ impl RejectionCode {
         Self::InvalidSource,
         Self::InvalidSubject,
         Self::InvalidResource,
+        Self::NilClientId,
         Self::InvalidResult,
         Self::InvalidActor,
         Self::InvalidServiceExecutor,
@@ -74,6 +79,7 @@ impl RejectionCode {
             Self::InvalidSource => "invalid_source",
             Self::InvalidSubject => "invalid_subject",
             Self::InvalidResource => "invalid_resource",
+            Self::NilClientId => "nil_client_id",
             Self::InvalidResult => "invalid_result",
             Self::InvalidActor => "invalid_actor",
             Self::InvalidServiceExecutor => "invalid_service_executor",

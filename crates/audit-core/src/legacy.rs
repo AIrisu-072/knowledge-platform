@@ -15,12 +15,15 @@ use crate::catalog::{
 };
 use crate::codes::{Rejection, RejectionCode as C};
 use crate::envelope::{
-    AuditEnvelope, DATACONTENTTYPE, DATASCHEMA, LEGACY_SOURCE_FORMAT, REASON_TEXT_RETAINED,
-    SCHEMA_VERSION, SPECVERSION,
+    AuditEnvelope, DATACONTENTTYPE, DATASCHEMA, LEGACY_SOURCE_FORMAT, MAX_REASON_UTF8_BYTES,
+    REASON_TEXT_RETAINED, SCHEMA_VERSION, SPECVERSION,
 };
 use crate::kinds::{Kind, is_uuid};
 
-/// Adapter version of [`project`].
+/// Adapter version of [`project`]. It must equal the catalog adapter's
+/// `adapter_version` for the Document source, and every change of the
+/// projected output needs a bump plus a new section in
+/// `spec/telemetry/audit-adapter-golden.json` (design §7.2).
 pub const LEGACY_ADAPTER_VERSION: i32 = 1;
 
 /// The claim projection of one staging row (design §5.4). The SQL claim
@@ -28,7 +31,9 @@ pub const LEGACY_ADAPTER_VERSION: i32 = 1;
 /// reports only its JSON type (`reason_kind`, from `jsonb_typeof`) and UTF-8
 /// length (`reason_bytes`). When `oversize` is true the other text members may
 /// be empty and `data` null. `occurred_at` is the UTC microsecond rendering
-/// `YYYY-MM-DDTHH:MM:SS.ffffffZ`.
+/// `YYYY-MM-DDTHH:MM:SS.ffffffZ`. `data_kind` (`jsonb_typeof` of the source
+/// `data`) is part of the claim contract for quarantine reports only;
+/// validation looks at `data` itself.
 #[derive(Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentStagingProjection {
@@ -54,12 +59,45 @@ pub struct DocumentStagingProjection {
     pub registration_kind: String,
 }
 
+/// Debug rendering that prints `event_id` only when it is a UUID and
+/// `event_type` only when it is a catalog type; anything else (the columns of
+/// a malformed, quarantined row) is shown as `<invalid len=N>`.
 impl fmt::Debug for DocumentStagingProjection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let event_id = Shown::new(&self.event_id, is_uuid(&self.event_id));
+        let event_type = Shown::new(
+            &self.event_type,
+            Catalog::embedded().get(&self.event_type).is_some(),
+        );
         f.debug_struct("DocumentStagingProjection")
-            .field("event_id", &self.event_id)
-            .field("event_type", &self.event_type)
+            .field("event_id", &event_id)
+            .field("event_type", &event_type)
             .finish_non_exhaustive()
+    }
+}
+
+/// A column value that is printed only when it passed a closed-form check.
+enum Shown<'a> {
+    Valid(&'a str),
+    Invalid(usize),
+}
+
+impl<'a> Shown<'a> {
+    fn new(text: &'a str, valid: bool) -> Self {
+        if valid {
+            Self::Valid(text)
+        } else {
+            Self::Invalid(text.len())
+        }
+    }
+}
+
+impl fmt::Debug for Shown<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Valid(text) => fmt::Debug::fmt(text, f),
+            Self::Invalid(len) => write!(f, "<invalid len={len}>"),
+        }
     }
 }
 
@@ -69,26 +107,29 @@ fn reject<T>(code: C, field: &'static str) -> Result<T, Rejection> {
 
 /// Projects a claim row into a validated envelope or a quarantine code.
 ///
-/// Order: oversize, source digest, data shape, control/catalog admission,
+/// Order: source digest, oversize, data shape, control/catalog admission,
 /// reason summary, data members, duplicated actor, service executor, then the
-/// full envelope validation.
+/// full envelope validation. A failed integrity check always wins: an honest
+/// row cannot be both oversize and tampered, so `oversize` together with
+/// `!source_intact` is tampering (`source_digest_mismatch`, design §5.4).
 pub fn project(row: &DocumentStagingProjection) -> Result<AuditEnvelope, Rejection> {
-    if row.oversize {
-        return Err(Rejection::new(C::SourceRowTooLarge));
-    }
     if !row.source_intact {
         return Err(Rejection::new(C::SourceDigestMismatch));
     }
-    let data = match (&row.data, row.data_kind.as_str()) {
-        (Some(Value::Object(data)), "object") => data,
-        _ => return reject(C::InvalidField, "data"),
+    if row.oversize {
+        return Err(Rejection::new(C::SourceRowTooLarge));
+    }
+    let Some(Value::Object(data)) = &row.data else {
+        return reject(C::InvalidField, "data");
     };
-    if row.event_type.starts_with(CONTROL_TYPE_PREFIX)
-        || row.source == AUDIT_STORE_SOURCE
-        || row.source == AUDIT_RELAY_SOURCE
-        || row.resource_type == ResourceType::AuditStore.as_str()
-    {
+    if row.event_type.starts_with(CONTROL_TYPE_PREFIX) {
         return reject(C::ControlTypeForbidden, "event_type");
+    }
+    if row.source == AUDIT_STORE_SOURCE || row.source == AUDIT_RELAY_SOURCE {
+        return reject(C::ControlTypeForbidden, "source");
+    }
+    if row.resource_type == ResourceType::AuditStore.as_str() {
+        return reject(C::ControlTypeForbidden, "resource_type");
     }
     let Some(spec) = Catalog::embedded().get(&row.event_type) else {
         return reject(C::UnknownEventType, "event_type");
@@ -102,11 +143,13 @@ pub fn project(row: &DocumentStagingProjection) -> Result<AuditEnvelope, Rejecti
     }
     let reason = match spec.reason {
         ReasonPolicy::CallerText => match (row.reason_kind.as_deref(), row.reason_bytes) {
-            (Some("string"), Some(bytes)) if bytes >= 0 => Some(json!({
-                "provided": true,
-                "utf8_bytes": bytes,
-                "text_retained": REASON_TEXT_RETAINED,
-            })),
+            (Some("string"), Some(bytes)) if (0..=MAX_REASON_UTF8_BYTES).contains(&bytes) => {
+                Some(json!({
+                    "provided": true,
+                    "utf8_bytes": bytes,
+                    "text_retained": REASON_TEXT_RETAINED,
+                }))
+            }
             (Some("string") | None, _) => return reject(C::InvalidReason, "reason"),
             (Some(_), _) => return reject(C::ReasonNotString, "reason"),
         },

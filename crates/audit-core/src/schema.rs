@@ -2,20 +2,20 @@
 //!
 //! Relation: every envelope the Rust validator accepts is valid under the
 //! generated schema. Constraints standard JSON Schema cannot express (UTF-8
-//! byte limits, the 24 KiB envelope bound, subject/resource and detail/resource
-//! equality, correlation and reason-code equality, calendar validity, float
-//! versus integer, duplicate keys, the submission path) are enforced only in
-//! Rust.
+//! byte limits, the 32 KiB jsonb text bound, subject/resource and
+//! detail/resource equality, correlation and reason-code equality, calendar
+//! validity, float versus integer, duplicate keys, the submission path, the
+//! principal character set) are enforced only in Rust.
 
 use serde_json::{Map, Value, json};
 
 use crate::catalog::{
-    AUDIT_STORE_RESOURCE_ID, Catalog, EventSpec, FieldSpec, Origin, ReasonPolicy, ResourceType,
-    Segment, SubjectSpec, VersionRequirement,
+    AUDIT_STORE_RESOURCE_ID, AdapterSpec, Catalog, EventSpec, FieldSpec, ReasonPolicy, Requirement,
+    ResourceType, Segment, SubjectSpec, VersionRequirement,
 };
 use crate::envelope::{
-    ATTRIBUTES, DATACONTENTTYPE, DATASCHEMA, REASON_TEXT_RETAINED, REGISTRATION_KINDS,
-    SCHEMA_VERSION, SPECVERSION, source_format_for,
+    ATTRIBUTES, DATACONTENTTYPE, DATASCHEMA, MAX_REASON_UTF8_BYTES, REASON_TEXT_RETAINED,
+    REGISTRATION_KINDS, SCHEMA_VERSION, SPECVERSION,
 };
 use crate::json::canonicalize;
 use crate::kinds::{
@@ -113,6 +113,8 @@ fn shared_definitions() -> Map<String, Value> {
         "hex_digest",
         json!({"type": "string", "pattern": "^[0-9a-f]{64}$"}),
     );
+    put("nullable_hex_digest", nullable("hex_digest"));
+    put("nullable_utc_timestamp", nullable("utc_timestamp"));
     put(
         "identifier",
         json!({
@@ -123,6 +125,7 @@ fn shared_definitions() -> Map<String, Value> {
             "pattern": NO_CONTROL_PATTERN
         }),
     );
+    put("nullable_identifier", nullable("identifier"));
     put(
         "identifier_list",
         json!({
@@ -162,42 +165,60 @@ fn shared_definitions() -> Map<String, Value> {
             "required": ["provided", "utf8_bytes", "text_retained"],
             "properties": {
                 "provided": {"const": true},
-                "utf8_bytes": int(0, i64::MAX),
+                "utf8_bytes": int(0, MAX_REASON_UTF8_BYTES),
                 "text_retained": {"const": REASON_TEXT_RETAINED}
             }
         }),
     );
     put("extensions", json!({"type": "object", "maxProperties": 0}));
-    let adapter_version = int(1, i64::from(i32::MAX));
-    put(
-        "provenance_relay",
-        json!({
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["source_format", "adapter_version", "source_commitment", "registration"],
-            "properties": {
-                "source_format": {"const": source_format_for(Origin::Relay)},
-                "adapter_version": adapter_version,
-                "source_commitment": reference("hex_digest"),
-                "registration": {"enum": REGISTRATION_KINDS}
-            }
-        }),
-    );
-    for origin in [Origin::Store, Origin::RelayControl] {
-        put(
-            &format!("provenance_{}", origin.as_str()),
-            json!({
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["source_format", "adapter_version"],
-                "properties": {
-                    "source_format": {"const": source_format_for(origin)},
-                    "adapter_version": adapter_version
-                }
-            }),
-        );
-    }
     defs
+}
+
+/// `$defs` name of an adapter's provenance schema.
+fn provenance_name(adapter: &AdapterSpec) -> String {
+    format!("provenance.{}", adapter.source_format)
+}
+
+fn provenance_schema(adapter: &AdapterSpec) -> Value {
+    let mut properties = Map::new();
+    let mut required = vec!["source_format", "adapter_version"];
+    properties.insert(
+        "source_format".to_owned(),
+        json!({"const": adapter.source_format}),
+    );
+    properties.insert(
+        "adapter_version".to_owned(),
+        json!({"const": adapter.adapter_version}),
+    );
+    for (name, requirement, schema) in [
+        (
+            "source_commitment",
+            adapter.commitment,
+            reference("hex_digest"),
+        ),
+        (
+            "registration",
+            adapter.registration,
+            json!({"enum": REGISTRATION_KINDS}),
+        ),
+    ] {
+        match requirement {
+            Requirement::Required => {
+                properties.insert(name.to_owned(), schema);
+                required.push(name);
+            }
+            Requirement::Optional => {
+                properties.insert(name.to_owned(), schema);
+            }
+            Requirement::Forbidden => {}
+        }
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": required,
+        "properties": properties
+    })
 }
 
 fn kind_schema(field: &FieldSpec) -> Value {
@@ -281,7 +302,7 @@ fn resource_schema(spec: &EventSpec) -> Value {
     })
 }
 
-fn correlation_schema(spec: &EventSpec) -> Value {
+fn correlation_schema(spec: &EventSpec, adapter: &AdapterSpec) -> Value {
     let mut properties = Map::new();
     let mut required = Vec::new();
     for (member, field) in [
@@ -296,7 +317,9 @@ fn correlation_schema(spec: &EventSpec) -> Value {
         }
     }
     properties.insert("source_correlation_id".to_owned(), reference("uuid"));
-    properties.insert("trace_id".to_owned(), reference("w3c_trace_id"));
+    if adapter.trace_id {
+        properties.insert("trace_id".to_owned(), reference("w3c_trace_id"));
+    }
     json!({
         "type": "object",
         "additionalProperties": false,
@@ -319,7 +342,7 @@ fn details_schema(spec: &EventSpec) -> Value {
     })
 }
 
-fn event_schema(spec: &EventSpec) -> Value {
+fn event_schema(spec: &EventSpec, adapter: &AdapterSpec) -> Value {
     let mut properties = Map::new();
     let mut required = vec![
         "schema_version",
@@ -357,13 +380,10 @@ fn event_schema(spec: &EventSpec) -> Value {
         put("reason", reference("reason_summary"));
         required.push("reason");
     }
-    put("correlation", correlation_schema(spec));
+    put("correlation", correlation_schema(spec, adapter));
     put("details", details_schema(spec));
     put("extensions", reference("extensions"));
-    put(
-        "provenance",
-        reference(&format!("provenance_{}", spec.origin.as_str())),
-    );
+    put("provenance", reference(&provenance_name(adapter)));
     let subjects: Vec<Value> = spec
         .subjects
         .iter()
@@ -396,16 +416,22 @@ fn event_schema(spec: &EventSpec) -> Value {
 /// Generates the envelope schema (members in byte order).
 pub fn generate_json_schema(catalog: &Catalog) -> Value {
     let mut defs = shared_definitions();
+    for adapter in catalog.adapters() {
+        defs.insert(provenance_name(adapter), provenance_schema(adapter));
+    }
     let mut branches = Vec::new();
     let mut types = Vec::new();
     for spec in catalog.events() {
+        let Some(adapter) = catalog.adapter(&spec.source) else {
+            unreachable!("the loader guarantees an adapter per source");
+        };
         let name = format!("event.{}", spec.event_type);
         branches.push(json!({
             "if": {"properties": {"type": {"const": spec.event_type}}, "required": ["type"]},
             "then": reference(&name)
         }));
         types.push(spec.event_type.as_str());
-        defs.insert(name, event_schema(spec));
+        defs.insert(name, event_schema(spec, adapter));
     }
     let text = json!({"type": "string", "minLength": 1, "maxLength": MAX_STRING_BYTES});
     canonicalize(json!({

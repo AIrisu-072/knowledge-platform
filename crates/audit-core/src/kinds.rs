@@ -12,8 +12,10 @@ pub const MAX_PRINCIPAL_PART_BYTES: usize = 256;
 pub const MAX_UUID_LIST: usize = 100;
 /// Upper bound for `identifier` values (control events), in UTF-8 bytes.
 pub const MAX_IDENTIFIER_BYTES: usize = 256;
-/// Upper bound for `identifier_list` values (control events).
-pub const MAX_IDENTIFIER_LIST: usize = 32;
+/// Upper bound for `identifier_list` values (control events). With 16 items
+/// every catalog entry's maximal envelope stays under the 32 KiB jsonb limit
+/// (design §10.3 also caps intent filter event types at 16).
+pub const MAX_IDENTIFIER_LIST: usize = 16;
 /// Upper bound for `code` values (`[a-z0-9_]{1,64}`).
 pub const MAX_CODE_BYTES: usize = 64;
 /// The nil UUID in canonical form.
@@ -39,39 +41,21 @@ pub enum Kind {
     UtcTimestamp,
     UuidList,
     HexDigest,
+    NullableHexDigest,
+    NullableUtcTimestamp,
     /// Control events only: a bounded name chosen by the Store (database role,
     /// event type, source URN, issuer). Non-empty, at most 256 bytes, no
     /// control characters.
     Identifier,
-    /// Control events only: 1 to 32 distinct `identifier` values.
+    /// Control events only: `identifier` or null.
+    NullableIdentifier,
+    /// Control events only: 1 to 16 distinct `identifier` values.
     IdentifierList,
     /// Control events only: a machine code `[a-z0-9_]{1,64}`.
     Code,
 }
 
 impl Kind {
-    pub const ALL: [Self; 19] = [
-        Self::Uuid,
-        Self::NullableUuid,
-        Self::Counter,
-        Self::NullableCounter,
-        Self::PositiveCounter,
-        Self::Boolean,
-        Self::Enum,
-        Self::NullableEnum,
-        Self::EnumList,
-        Self::Digest,
-        Self::NullableDigest,
-        Self::Principal,
-        Self::LegacyTime,
-        Self::UtcTimestamp,
-        Self::UuidList,
-        Self::HexDigest,
-        Self::Identifier,
-        Self::IdentifierList,
-        Self::Code,
-    ];
-
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Uuid => "uuid",
@@ -90,7 +74,10 @@ impl Kind {
             Self::UtcTimestamp => "utc_timestamp",
             Self::UuidList => "uuid_list",
             Self::HexDigest => "hex_digest",
+            Self::NullableHexDigest => "nullable_hex_digest",
+            Self::NullableUtcTimestamp => "nullable_utc_timestamp",
             Self::Identifier => "identifier",
+            Self::NullableIdentifier => "nullable_identifier",
             Self::IdentifierList => "identifier_list",
             Self::Code => "code",
         }
@@ -105,7 +92,10 @@ impl Kind {
     /// carry Store-chosen names, never source payload text, so relay-origin
     /// entries must not use them.
     pub const fn is_control_only(self) -> bool {
-        matches!(self, Self::Identifier | Self::IdentifierList | Self::Code)
+        matches!(
+            self,
+            Self::Identifier | Self::NullableIdentifier | Self::IdentifierList | Self::Code
+        )
     }
 
     /// Checks `value` against this kind. `values` is the closed set for enum kinds.
@@ -143,7 +133,14 @@ impl Kind {
                         .all(|(i, item)| !items[..i].contains(item))
             }),
             Self::HexDigest => value.as_str().is_some_and(is_hex_digest),
+            Self::NullableHexDigest => value.is_null() || value.as_str().is_some_and(is_hex_digest),
+            Self::NullableUtcTimestamp => {
+                value.is_null() || value.as_str().is_some_and(is_utc_timestamp)
+            }
             Self::Identifier => value.as_str().is_some_and(is_identifier),
+            Self::NullableIdentifier => {
+                value.is_null() || value.as_str().is_some_and(is_identifier)
+            }
             Self::IdentifierList => value.as_array().is_some_and(|items| {
                 !items.is_empty()
                     && items.len() <= MAX_IDENTIFIER_LIST
@@ -222,9 +219,44 @@ pub fn is_bounded_text(text: &str, max: usize) -> bool {
     text.len() <= max && !text.chars().any(char::is_control)
 }
 
-/// A principal part: non-empty bounded text without control characters.
+/// A principal part (issuer or principal id): at most 256 UTF-8 bytes, not
+/// empty, no leading or trailing Unicode `White_Space` (so not whitespace
+/// only), and none of:
+///
+/// - `General_Category=Cc` (U+0000–001F, U+007F–009F);
+/// - `Bidi_Control` (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069);
+/// - U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR;
+/// - U+FEFF (BOM / zero width no-break space);
+/// - the TAG block U+E0000–E007F;
+/// - noncharacters (U+FDD0–FDEF and U+xxFFFE / U+xxFFFF on every plane).
+///
+/// Other format characters (e.g. ZWJ) stay allowed: identifiers may need
+/// them and a rejected staging row is quarantined forever.
 pub fn is_principal_part(text: &str) -> bool {
-    !text.is_empty() && is_bounded_text(text, MAX_PRINCIPAL_PART_BYTES)
+    text.len() <= MAX_PRINCIPAL_PART_BYTES
+        && !text.starts_with(char::is_whitespace)
+        && !text.ends_with(char::is_whitespace)
+        && !text.is_empty()
+        && !text.chars().any(is_forbidden_in_principal)
+}
+
+fn is_forbidden_in_principal(c: char) -> bool {
+    let code = u32::from(c);
+    c.is_control()
+        || matches!(
+            code,
+            0x061C
+                | 0x200E
+                | 0x200F
+                | 0x202A..=0x202E
+                | 0x2066..=0x2069
+                | 0x2028
+                | 0x2029
+                | 0xFEFF
+                | 0xE0000..=0xE007F
+                | 0xFDD0..=0xFDEF
+        )
+        || code & 0xFFFE == 0xFFFE
 }
 
 /// Legacy `{identityProvider, principalId}` object with exactly these keys.
@@ -428,6 +460,62 @@ mod tests {
         assert!(!Kind::Code.accepts(&[], &json!("Upper")));
         assert!(!Kind::Code.accepts(&[], &json!("has space")));
         assert!(!Kind::Code.accepts(&[], &json!("a".repeat(65))));
-        assert!(Kind::ALL.iter().filter(|k| k.is_control_only()).count() == 3);
+        assert!(Kind::NullableIdentifier.accepts(&[], &Value::Null));
+        assert!(Kind::NullableIdentifier.is_control_only());
+        assert!(!Kind::NullableHexDigest.is_control_only());
+        assert!(Kind::NullableHexDigest.accepts(&[], &Value::Null));
+        assert!(!Kind::NullableHexDigest.accepts(&[], &json!("ab")));
+        assert!(Kind::NullableUtcTimestamp.accepts(&[], &json!("2026-10-07T01:02:03.000000Z")));
+        assert!(!Kind::NullableUtcTimestamp.accepts(&[], &json!("2026-10-07")));
+    }
+
+    #[test]
+    fn principal_parts_refuse_invisible_and_spoofing_characters() {
+        for ok in [
+            "poc-human",
+            "service",
+            "a b",
+            "名前",
+            "e\u{301}",
+            "a\u{200d}b",
+            "\"quoted\"",
+        ] {
+            assert!(is_principal_part(ok), "{ok:?}");
+        }
+        for bad in [
+            "",
+            " ",
+            "\u{3000}",
+            " poc-human",
+            "poc-human ",
+            "poc-human\u{a0}",
+            "\u{85}x",
+            "poc\u{7}human",
+            "poc\u{9f}",
+            "\u{61c}x",
+            "a\u{200e}",
+            "a\u{200f}",
+            "\u{202a}a",
+            "admin\u{202e}nimda",
+            "\u{2066}a",
+            "\u{2069}a",
+            "a\u{2028}b",
+            "a\u{2029}b",
+            "\u{feff}poc",
+            "poc\u{e0041}",
+            "\u{e007f}x",
+            "\u{fdd0}x",
+            "x\u{fdef}",
+            "x\u{fffe}",
+            "x\u{ffff}",
+            "x\u{1fffe}",
+            "x\u{10ffff}",
+        ] {
+            assert!(!is_principal_part(bad), "{bad:?}");
+        }
+        assert!(is_principal_part(&"p".repeat(MAX_PRINCIPAL_PART_BYTES)));
+        assert!(!is_principal_part(
+            &"p".repeat(MAX_PRINCIPAL_PART_BYTES + 1)
+        ));
     }
 }

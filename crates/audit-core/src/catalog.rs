@@ -1,7 +1,9 @@
 //! The audit event catalog (`spec/telemetry/audit-event-catalog.json`): one
-//! entry per event type with its source, origin, class, resources, results,
-//! subject shapes, typed fields and mapping rules. The catalog is the single
-//! source for validation and for the generated JSON Schema.
+//! adapter per source (provenance format, adapter version, commitment and
+//! registration requirements, trace id capability) and one entry per event
+//! type with its source, origin, class, resources, results, subject shapes,
+//! typed fields and mapping rules. The catalog is the single source for
+//! validation, the generated JSON Schema and the Store's `registered_types`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -9,6 +11,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use crate::codes::Rejection;
 use crate::json::parse_bounded;
 use crate::kinds::{Kind, MAX_STRING_BYTES};
 
@@ -113,6 +116,36 @@ impl ResourceType {
     pub fn parse(value: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|kind| kind.as_str() == value)
     }
+}
+
+/// Whether an optional provenance member must, may or must not be present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Requirement {
+    Required,
+    Optional,
+    Forbidden,
+}
+
+/// How one source submits events: its provenance contract.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdapterSpec {
+    pub source: String,
+    pub origin: Origin,
+    /// `provenance.source_format` of every event of this source.
+    pub source_format: String,
+    /// `provenance.adapter_version` of every event of this source: the
+    /// current projection version (design §7.2). Bumped whenever the
+    /// projection output of an existing type changes.
+    pub adapter_version: i32,
+    /// `provenance.source_commitment`.
+    pub commitment: Requirement,
+    /// `provenance.registration`.
+    pub registration: Requirement,
+    /// Whether `correlation.trace_id` may be set. Reserved: only an adapter
+    /// with a dedicated W3C trace column may set it.
+    pub trace_id: bool,
 }
 
 /// Fixed resource id used by `AuditStore` resources.
@@ -305,6 +338,7 @@ impl EventSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
     version: u32,
+    adapters: Vec<AdapterSpec>,
     events: Vec<EventSpec>,
     index: BTreeMap<String, usize>,
 }
@@ -327,6 +361,7 @@ pub enum CatalogError {
 #[serde(deny_unknown_fields)]
 struct RawCatalog {
     version: u32,
+    adapters: Vec<AdapterSpec>,
     events: Vec<RawEvent>,
 }
 
@@ -405,10 +440,21 @@ impl Catalog {
         if raw.version != CATALOG_VERSION {
             return Err(CatalogError::Version);
         }
+        check_adapters(&raw.adapters)?;
         let mut events = Vec::with_capacity(raw.events.len());
         let mut index = BTreeMap::new();
         for raw_event in raw.events {
             let event = check_event(raw_event)?;
+            if !raw
+                .adapters
+                .iter()
+                .any(|a| a.source == event.source && a.origin == event.origin)
+            {
+                return Err(entry_error(
+                    &event.event_type,
+                    "no adapter with this source and origin",
+                ));
+            }
             if index
                 .insert(event.event_type.clone(), events.len())
                 .is_some()
@@ -417,8 +463,19 @@ impl Catalog {
             }
             events.push(event);
         }
+        if let Some(unused) = raw
+            .adapters
+            .iter()
+            .find(|a| !events.iter().any(|e| e.source == a.source))
+        {
+            return Err(CatalogError::Shape(format!(
+                "adapter {} has no event types",
+                unused.source
+            )));
+        }
         Ok(Self {
             version: raw.version,
+            adapters: raw.adapters,
             events,
             index,
         })
@@ -437,6 +494,98 @@ impl Catalog {
     pub fn get(&self, event_type: &str) -> Option<&EventSpec> {
         self.index.get(event_type).map(|&i| &self.events[i])
     }
+
+    /// Adapters in catalog order.
+    pub fn adapters(&self) -> &[AdapterSpec] {
+        &self.adapters
+    }
+
+    /// The adapter of a source. Every event's source has exactly one.
+    pub fn adapter(&self, source: &str) -> Option<&AdapterSpec> {
+        self.adapters.iter().find(|a| a.source == source)
+    }
+
+    /// `(source, type, adapter_version)` of every relay-origin type, in
+    /// catalog order: the rows of the Store's `registered_types` (design
+    /// §7.1). Control types are not ingested and are not listed.
+    pub fn registered_types(&self) -> Vec<(&str, &str, i32)> {
+        self.events
+            .iter()
+            .filter(|e| e.origin == Origin::Relay)
+            .filter_map(|e| {
+                self.adapter(&e.source)
+                    .map(|a| (e.source.as_str(), e.event_type.as_str(), a.adapter_version))
+            })
+            .collect()
+    }
+
+    /// Validates an envelope value for a submission path against this
+    /// catalog (the embedded one is [`crate::validate_envelope`]). The
+    /// catalog must be `'static` (embedded or leaked) because rejections name
+    /// catalog fields as static strings.
+    pub fn validate(
+        &'static self,
+        value: &Value,
+        path: Origin,
+    ) -> Result<&'static EventSpec, Rejection> {
+        crate::envelope::validate_with(self, value, path)
+    }
+}
+
+fn is_source_format(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 64
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn check_adapters(adapters: &[AdapterSpec]) -> Result<(), CatalogError> {
+    let shape = |message: String| Err(CatalogError::Shape(message));
+    if adapters.is_empty() {
+        return shape("adapters must be non-empty".to_owned());
+    }
+    if !unique(adapters.iter().map(|a| &a.source))
+        || !unique(adapters.iter().map(|a| &a.source_format))
+    {
+        return shape("adapter sources and source formats must be unique".to_owned());
+    }
+    for adapter in adapters {
+        let source = adapter.source.as_str();
+        let source_ok = match adapter.origin {
+            Origin::Store => source == AUDIT_STORE_SOURCE,
+            Origin::RelayControl => source == AUDIT_RELAY_SOURCE,
+            Origin::Relay => {
+                source != AUDIT_STORE_SOURCE
+                    && source != AUDIT_RELAY_SOURCE
+                    && source.starts_with("urn:")
+                    && source.len() <= MAX_STRING_BYTES
+            }
+        };
+        if !source_ok {
+            return shape(format!("adapter {source}: source does not fit its origin"));
+        }
+        if !is_source_format(&adapter.source_format) {
+            return shape(format!(
+                "adapter {source}: source_format must be [a-z0-9-]{{1,64}}"
+            ));
+        }
+        if adapter.adapter_version < 1 {
+            return shape(format!(
+                "adapter {source}: adapter_version must be at least 1"
+            ));
+        }
+        if adapter.origin != Origin::Relay
+            && (adapter.commitment != Requirement::Forbidden
+                || adapter.registration != Requirement::Forbidden
+                || adapter.trace_id)
+        {
+            return shape(format!(
+                "adapter {source}: control adapters carry no commitment, registration or trace id"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn entry_error(event_type: &str, problem: impl Into<String>) -> CatalogError {
@@ -534,7 +683,7 @@ fn check_event(mut raw: RawEvent) -> Result<EventSpec, CatalogError> {
             {
                 return Err(entry_error(
                     t,
-                    format!("{name}: enum values must be non-empty"),
+                    format!("{name}: enum values must be a non-empty set of [A-Za-z0-9_-]{{1,64}}"),
                 ));
             }
         } else if !field.values.is_empty() {

@@ -99,9 +99,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -154,7 +151,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -228,9 +225,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -271,7 +265,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -344,9 +338,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -360,7 +351,8 @@
                     "unbound",
                     "insufficient_capability",
                     "invalid_input",
-                    "self_grant"
+                    "self_grant",
+                    "not_source_service"
                   ]
                 },
                 "operation": {
@@ -377,8 +369,10 @@
                     "expire",
                     "purge_body",
                     "begin_recovery_epoch",
-                    "rebind_fingerprint",
-                    "record_relay_control"
+                    "declare_recovery_pending",
+                    "record_relay_control",
+                    "report_regression",
+                    "ingest"
                   ]
                 },
                 "required_capability": {
@@ -408,7 +402,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -481,9 +475,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -529,6 +520,9 @@
                 },
                 "filter_seq_after": {
                   "$ref": "#/$defs/counter"
+                },
+                "filter_seq_through": {
+                  "$ref": "#/$defs/positive_counter"
                 },
                 "filter_source": {
                   "$ref": "#/$defs/identifier"
@@ -580,7 +574,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -653,9 +647,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -679,7 +670,8 @@
                     "revoked",
                     "bound",
                     "unbound",
-                    "bootstrap"
+                    "bootstrap",
+                    "reapplied"
                   ]
                 },
                 "db_role": {
@@ -710,7 +702,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -783,9 +775,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -826,7 +815,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -899,9 +888,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -934,7 +920,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay_control"
+              "$ref": "#/$defs/provenance.audit-relay-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1007,9 +993,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1071,7 +1054,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1144,9 +1127,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1182,7 +1162,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay_control"
+              "$ref": "#/$defs/provenance.audit-relay-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1255,9 +1235,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1372,7 +1349,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1446,9 +1423,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1476,6 +1450,9 @@
                   "$ref": "#/$defs/counter"
                 },
                 "count_quarantined_stored": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_replay_record_lost": {
                   "$ref": "#/$defs/counter"
                 },
                 "count_source_tampered": {
@@ -1535,6 +1512,7 @@
                 "count_source_tampered",
                 "count_store_only",
                 "count_unaudited_replay",
+                "count_replay_record_lost",
                 "repaired_delivered_missing",
                 "repaired_quarantined_stored",
                 "repaired_unregistered"
@@ -1548,7 +1526,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay_control"
+              "$ref": "#/$defs/provenance.audit-relay-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1621,9 +1599,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1633,26 +1608,40 @@
               "additionalProperties": false,
               "properties": {
                 "checkpoint_chain": {
-                  "$ref": "#/$defs/hex_digest"
+                  "$ref": "#/$defs/nullable_hex_digest"
                 },
                 "checkpoint_classification": {
                   "enum": [
                     "match",
                     "ahead",
                     "store_behind",
-                    "mismatch"
+                    "mismatch",
+                    null
                   ]
                 },
                 "checkpoint_epoch": {
-                  "$ref": "#/$defs/positive_counter"
+                  "$ref": "#/$defs/nullable_counter"
                 },
                 "checkpoint_seq": {
-                  "$ref": "#/$defs/counter"
+                  "$ref": "#/$defs/nullable_counter"
                 },
-                "lost_after_seq": {
-                  "$ref": "#/$defs/counter"
+                "classification": {
+                  "enum": [
+                    "restore",
+                    "planned_move",
+                    "regression"
+                  ]
                 },
-                "lost_to_seq_claimed": {
+                "identity_range_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "lost_from_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "lost_upper_known": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "lost_upper_seq": {
                   "$ref": "#/$defs/counter"
                 },
                 "new_database_oid": {
@@ -1679,24 +1668,32 @@
                 "old_timeline": {
                   "$ref": "#/$defs/identifier"
                 },
-                "reason_kind": {
-                  "enum": [
-                    "fingerprint_mismatch",
-                    "recovery_pending",
-                    "regressed"
-                  ]
+                "regression_head_seq": {
+                  "$ref": "#/$defs/nullable_counter"
                 },
-                "recovery_identity_digest": {
-                  "$ref": "#/$defs/hex_digest"
+                "regression_reported_at": {
+                  "$ref": "#/$defs/nullable_utc_timestamp"
+                },
+                "regression_reported_by": {
+                  "$ref": "#/$defs/nullable_identifier"
+                },
+                "regression_reported_digest": {
+                  "$ref": "#/$defs/nullable_hex_digest"
+                },
+                "regression_reported_event_id": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "regression_reported_seq": {
+                  "$ref": "#/$defs/nullable_counter"
                 },
                 "relay_max_seq": {
-                  "$ref": "#/$defs/counter"
-                },
-                "restored_head": {
-                  "$ref": "#/$defs/counter"
+                  "$ref": "#/$defs/nullable_counter"
                 },
                 "restored_head_chain": {
                   "$ref": "#/$defs/hex_digest"
+                },
+                "restored_head_seq": {
+                  "$ref": "#/$defs/counter"
                 },
                 "session_role": {
                   "$ref": "#/$defs/identifier"
@@ -1704,19 +1701,26 @@
               },
               "required": [
                 "session_role",
-                "reason_kind",
+                "classification",
                 "old_epoch",
                 "new_epoch",
-                "restored_head",
+                "restored_head_seq",
                 "restored_head_chain",
-                "recovery_identity_digest",
                 "checkpoint_epoch",
                 "checkpoint_seq",
                 "checkpoint_chain",
                 "checkpoint_classification",
+                "identity_range_digest",
                 "relay_max_seq",
-                "lost_after_seq",
-                "lost_to_seq_claimed",
+                "lost_from_seq",
+                "lost_upper_seq",
+                "lost_upper_known",
+                "regression_reported_seq",
+                "regression_reported_event_id",
+                "regression_reported_digest",
+                "regression_reported_by",
+                "regression_reported_at",
+                "regression_head_seq",
                 "old_system_identifier",
                 "old_database_oid",
                 "old_timeline",
@@ -1733,7 +1737,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1781,7 +1785,7 @@
         }
       }
     },
-    "event.audit.recovery.fingerprint_rebound": {
+    "event.audit.retention.expire_refused": {
       "anyOf": [
         {
           "properties": {
@@ -1796,7 +1800,7 @@
           "additionalProperties": false,
           "properties": {
             "action": {
-              "const": "audit.recovery.fingerprint_rebound"
+              "const": "audit.retention.expire_refused"
             },
             "actor": {
               "$ref": "#/$defs/actor"
@@ -1806,9 +1810,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1817,55 +1818,55 @@
             "details": {
               "additionalProperties": false,
               "properties": {
-                "epoch": {
+                "current_revision": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "expected_revision": {
                   "$ref": "#/$defs/positive_counter"
                 },
-                "head_seq": {
-                  "$ref": "#/$defs/counter"
+                "policy_id": {
+                  "$ref": "#/$defs/code"
                 },
-                "new_database_oid": {
-                  "$ref": "#/$defs/identifier"
+                "refusal": {
+                  "enum": [
+                    "stale_revision",
+                    "not_expirable",
+                    "held"
+                  ]
                 },
-                "new_system_identifier": {
-                  "$ref": "#/$defs/identifier"
-                },
-                "new_timeline": {
-                  "$ref": "#/$defs/identifier"
-                },
-                "old_database_oid": {
-                  "$ref": "#/$defs/identifier"
-                },
-                "old_system_identifier": {
-                  "$ref": "#/$defs/identifier"
-                },
-                "old_timeline": {
-                  "$ref": "#/$defs/identifier"
+                "retain_days": {
+                  "$ref": "#/$defs/nullable_counter"
                 },
                 "session_role": {
                   "$ref": "#/$defs/identifier"
+                },
+                "tx_time": {
+                  "$ref": "#/$defs/utc_timestamp"
                 }
               },
               "required": [
                 "session_role",
-                "epoch",
-                "head_seq",
-                "old_system_identifier",
-                "old_database_oid",
-                "old_timeline",
-                "new_system_identifier",
-                "new_database_oid",
-                "new_timeline"
+                "policy_id",
+                "expected_revision",
+                "current_revision",
+                "refusal",
+                "retain_days",
+                "cutoff",
+                "tx_time"
               ],
               "type": "object"
             },
             "event_class": {
-              "const": "SYSTEM_AUDIT"
+              "const": "PRIVILEGED_OPERATION"
             },
             "extensions": {
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -1887,7 +1888,7 @@
             },
             "result": {
               "enum": [
-                "success"
+                "failure"
               ]
             },
             "schema_version": {
@@ -1938,9 +1939,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -1952,43 +1950,32 @@
                 "count": {
                   "$ref": "#/$defs/counter"
                 },
-                "current_revision": {
-                  "$ref": "#/$defs/nullable_counter"
+                "cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
                 },
                 "effective_cutoff": {
                   "$ref": "#/$defs/utc_timestamp"
-                },
-                "expected_revision": {
-                  "$ref": "#/$defs/positive_counter"
                 },
                 "expired_set_digest": {
                   "$ref": "#/$defs/hex_digest"
                 },
                 "first_seq": {
-                  "$ref": "#/$defs/positive_counter"
+                  "$ref": "#/$defs/nullable_counter"
                 },
                 "last_seq": {
-                  "$ref": "#/$defs/positive_counter"
+                  "$ref": "#/$defs/nullable_counter"
                 },
                 "limit": {
                   "$ref": "#/$defs/positive_counter"
                 },
-                "outcome": {
-                  "enum": [
-                    "expired",
-                    "stale_revision",
-                    "not_expirable",
-                    "held"
-                  ]
-                },
                 "policy_id": {
                   "$ref": "#/$defs/code"
                 },
-                "requested_cutoff": {
-                  "$ref": "#/$defs/utc_timestamp"
-                },
                 "retain_days": {
-                  "$ref": "#/$defs/nullable_counter"
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "revision": {
+                  "$ref": "#/$defs/positive_counter"
                 },
                 "selector_digest": {
                   "$ref": "#/$defs/hex_digest"
@@ -2020,20 +2007,23 @@
                 "session_role": {
                   "$ref": "#/$defs/identifier"
                 },
-                "transaction_time": {
+                "tx_time": {
                   "$ref": "#/$defs/utc_timestamp"
                 }
               },
               "required": [
                 "session_role",
-                "outcome",
                 "policy_id",
-                "expected_revision",
-                "current_revision",
-                "requested_cutoff",
-                "transaction_time",
+                "revision",
+                "selector_digest",
+                "retain_days",
+                "cutoff",
+                "effective_cutoff",
+                "tx_time",
                 "limit",
                 "count",
+                "first_seq",
+                "last_seq",
                 "expired_set_digest"
               ],
               "type": "object"
@@ -2045,7 +2035,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -2067,8 +2057,7 @@
             },
             "result": {
               "enum": [
-                "success",
-                "failure"
+                "success"
               ]
             },
             "schema_version": {
@@ -2119,9 +2108,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -2186,7 +2172,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_store"
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
             },
             "resource": {
               "additionalProperties": false,
@@ -2259,9 +2245,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -2301,7 +2284,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason_code": {
               "enum": [
@@ -2380,9 +2363,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -2407,7 +2387,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -2480,9 +2460,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -2555,7 +2532,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -2632,9 +2609,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -2671,7 +2645,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -2751,9 +2725,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -2803,7 +2774,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -2883,9 +2854,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -2936,7 +2904,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -3016,9 +2984,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -3069,7 +3034,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -3150,9 +3115,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -3212,7 +3174,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -3296,9 +3258,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -3336,7 +3295,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -3416,9 +3375,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -3457,7 +3413,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -3540,9 +3496,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -3586,7 +3539,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -3669,9 +3622,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -3724,7 +3674,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason_code": {
               "enum": [
@@ -3823,9 +3773,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -3871,7 +3818,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -3951,9 +3898,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -3978,7 +3922,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -4055,9 +3999,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -4098,7 +4039,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -4175,9 +4116,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -4218,7 +4156,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "resource": {
               "additionalProperties": false,
@@ -4295,9 +4233,6 @@
               "properties": {
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [],
@@ -4353,7 +4288,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -4437,9 +4372,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -4478,7 +4410,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -4558,9 +4490,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -4611,7 +4540,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -4691,9 +4620,6 @@
                 },
                 "source_correlation_id": {
                   "$ref": "#/$defs/uuid"
-                },
-                "trace_id": {
-                  "$ref": "#/$defs/w3c_trace_id"
                 }
               },
               "required": [
@@ -4728,7 +4654,7 @@
               "$ref": "#/$defs/extensions"
             },
             "provenance": {
-              "$ref": "#/$defs/provenance_relay"
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
             },
             "reason": {
               "$ref": "#/$defs/reason_summary"
@@ -4799,7 +4725,7 @@
       "items": {
         "$ref": "#/$defs/identifier"
       },
-      "maxItems": 32,
+      "maxItems": 16,
       "minItems": 1,
       "type": "array",
       "uniqueItems": true
@@ -4878,6 +4804,36 @@
         }
       ]
     },
+    "nullable_hex_digest": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/hex_digest"
+        }
+      ]
+    },
+    "nullable_identifier": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/identifier"
+        }
+      ]
+    },
+    "nullable_utc_timestamp": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/utc_timestamp"
+        }
+      ]
+    },
     "nullable_uuid": {
       "anyOf": [
         {
@@ -4915,13 +4871,43 @@
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$",
       "type": "string"
     },
-    "provenance_relay": {
+    "provenance.audit-relay-control-v1": {
       "additionalProperties": false,
       "properties": {
         "adapter_version": {
-          "maximum": 2147483647,
-          "minimum": 1,
-          "type": "integer"
+          "const": 1
+        },
+        "source_format": {
+          "const": "audit-relay-control-v1"
+        }
+      },
+      "required": [
+        "source_format",
+        "adapter_version"
+      ],
+      "type": "object"
+    },
+    "provenance.audit-store-control-v1": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_version": {
+          "const": 1
+        },
+        "source_format": {
+          "const": "audit-store-control-v1"
+        }
+      },
+      "required": [
+        "source_format",
+        "adapter_version"
+      ],
+      "type": "object"
+    },
+    "provenance.document-audit-outbox-v0": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_version": {
+          "const": 1
         },
         "registration": {
           "enum": [
@@ -4945,42 +4931,6 @@
       ],
       "type": "object"
     },
-    "provenance_relay_control": {
-      "additionalProperties": false,
-      "properties": {
-        "adapter_version": {
-          "maximum": 2147483647,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "source_format": {
-          "const": "audit-relay-control-v1"
-        }
-      },
-      "required": [
-        "source_format",
-        "adapter_version"
-      ],
-      "type": "object"
-    },
-    "provenance_store": {
-      "additionalProperties": false,
-      "properties": {
-        "adapter_version": {
-          "maximum": 2147483647,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "source_format": {
-          "const": "audit-store-control-v1"
-        }
-      },
-      "required": [
-        "source_format",
-        "adapter_version"
-      ],
-      "type": "object"
-    },
     "reason_summary": {
       "additionalProperties": false,
       "description": "Caller reason text is never copied; only its presence and UTF-8 length",
@@ -4992,7 +4942,7 @@
           "const": "source_systems"
         },
         "utf8_bytes": {
-          "maximum": 9223372036854775807,
+          "maximum": 1048576,
           "minimum": 0,
           "type": "integer"
         }
@@ -5443,6 +5393,21 @@
       "if": {
         "properties": {
           "type": {
+            "const": "audit.retention.expire_refused"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.retention.expire_refused"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "audit.body.purged"
           }
         },
@@ -5497,21 +5462,6 @@
       },
       "then": {
         "$ref": "#/$defs/event.audit.recovery.epoch_started"
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "type": {
-            "const": "audit.recovery.fingerprint_rebound"
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      "then": {
-        "$ref": "#/$defs/event.audit.recovery.fingerprint_rebound"
       }
     },
     {
@@ -5619,11 +5569,11 @@
         "audit.access_policy.changed",
         "audit.retention.policy_changed",
         "audit.retention.expired",
+        "audit.retention.expire_refused",
         "audit.body.purged",
         "audit.integrity.verified",
         "audit.integrity.conflict_detected",
         "audit.recovery.epoch_started",
-        "audit.recovery.fingerprint_rebound",
         "audit.delivery.replay_requested",
         "audit.reconciliation.completed",
         "audit.integrity.source_mismatch_detected"

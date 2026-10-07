@@ -6,6 +6,9 @@
 //! - `chain(seq) = sha256("kp-audit-chain-v1" || prev_chain || int8be(seq) ||
 //!   uuid bytes(event_id) || envelope_digest)`.
 //! - `GENESIS = sha256("kp-audit-chain-genesis-v1")` is `prev_chain` of seq 1.
+//! - `expired_set_digest = sha256("kp-audit-expired-set-v1" || int8be(seq_1)
+//!   || ... || int8be(seq_n))` over the expired seqs in ascending order
+//!   (`audit.retention.expired`; the empty set hashes the prefix alone).
 
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -14,6 +17,8 @@ use uuid::Uuid;
 pub const GENESIS_PREIMAGE: &[u8] = b"kp-audit-chain-genesis-v1";
 /// Domain separator prefixed to every chain step.
 pub const CHAIN_DOMAIN: &[u8] = b"kp-audit-chain-v1";
+/// Domain separator of [`expired_set_digest`].
+pub const EXPIRED_SET_DOMAIN: &[u8] = b"kp-audit-expired-set-v1";
 /// Name of the envelope digest algorithm recorded by the Store.
 pub const DIGEST_ALGORITHM: &str = "kp-audit-jsonb-sha256-v1";
 
@@ -42,6 +47,22 @@ pub fn chain_next(
     hasher.update(seq.to_be_bytes());
     hasher.update(event_id.as_bytes());
     hasher.update(envelope_digest);
+    hasher.finalize().into()
+}
+
+/// Digest of a set of expired seqs, as recorded in
+/// `audit.retention.expired.details.expired_set_digest`. The seqs are hashed
+/// in ascending order whatever order they are given in. The Store computes
+/// `sha256('kp-audit-expired-set-v1'::bytea || coalesce(string_agg(int8send(seq),
+/// ''::bytea ORDER BY seq), ''::bytea))`.
+pub fn expired_set_digest(seqs: &[i64]) -> [u8; 32] {
+    let mut sorted = seqs.to_vec();
+    sorted.sort_unstable();
+    let mut hasher = Sha256::new();
+    hasher.update(EXPIRED_SET_DOMAIN);
+    for seq in sorted {
+        hasher.update(seq.to_be_bytes());
+    }
     hasher.finalize().into()
 }
 

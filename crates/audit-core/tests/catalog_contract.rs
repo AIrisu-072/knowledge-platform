@@ -4,8 +4,12 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use audit_core::catalog::{CatalogError, ReasonPolicy, VersionRequirement};
-use audit_core::{Catalog, EventClass, Origin};
+use audit_core::catalog::{
+    AUDIT_RELAY_SOURCE, AUDIT_STORE_SOURCE, CatalogError, DOCUMENT_SOURCE, ReasonPolicy,
+    VersionRequirement,
+};
+use audit_core::envelope::LEGACY_SOURCE_FORMAT;
+use audit_core::{Catalog, EventClass, LEGACY_ADAPTER_VERSION, Origin, Requirement};
 use common::accepted_fixtures;
 use serde_json::{Value, json};
 
@@ -33,9 +37,10 @@ const DOCUMENT_TYPES: [&str; 21] = [
     "authorization.denied",
 ];
 
-/// Design §4.5 control events, plus `audit.access.closed` (§10.3 close_access)
-/// and `audit.recovery.fingerprint_rebound` (§11 rebind_fingerprint), which
-/// the design requires to be recorded but §4.5 does not list.
+/// Design §4.5 control events. `checkpoint` is recorded as
+/// `audit.integrity.verified` with `trigger: "checkpoint"` (explicit reuse);
+/// planned moves are `audit.recovery.epoch_started` with
+/// `classification: "planned_move"` and an empty lost range.
 const STORE_CONTROL_TYPES: [&str; 11] = [
     "audit.access.intent_opened",
     "audit.access.denied",
@@ -43,11 +48,11 @@ const STORE_CONTROL_TYPES: [&str; 11] = [
     "audit.access_policy.changed",
     "audit.retention.policy_changed",
     "audit.retention.expired",
+    "audit.retention.expire_refused",
     "audit.body.purged",
     "audit.integrity.verified",
     "audit.integrity.conflict_detected",
     "audit.recovery.epoch_started",
-    "audit.recovery.fingerprint_rebound",
 ];
 const RELAY_CONTROL_TYPES: [&str; 3] = [
     "audit.delivery.replay_requested",
@@ -127,7 +132,12 @@ fn control_types_are_registered_with_their_origin_source_and_resource() {
 
 #[test]
 fn control_only_kinds_are_refused_on_relay_entries() {
-    for kind in ["identifier", "identifier_list", "code"] {
+    for kind in [
+        "identifier",
+        "nullable_identifier",
+        "identifier_list",
+        "code",
+    ] {
         let result = edited(|e| e["fields"]["name"] = json!({"kind": kind}));
         assert!(result.is_err(), "{kind} must be control-only");
     }
@@ -150,12 +160,12 @@ fn event_classes_follow_the_design_assignment() {
             | "audit.access.intent_opened"
             | "audit.access.closed" => EventClass::DataAccess,
             "audit.retention.policy_changed" => EventClass::Configuration,
-            "audit.retention.expired" | "audit.body.purged" | "audit.delivery.replay_requested" => {
-                EventClass::PrivilegedOperation
-            }
+            "audit.retention.expired"
+            | "audit.retention.expire_refused"
+            | "audit.body.purged"
+            | "audit.delivery.replay_requested" => EventClass::PrivilegedOperation,
             "audit.integrity.verified"
             | "audit.recovery.epoch_started"
-            | "audit.recovery.fingerprint_rebound"
             | "audit.reconciliation.completed" => EventClass::SystemAudit,
             _ => EventClass::ContentLifecycle,
         };
@@ -315,8 +325,37 @@ fn minimal_entry() -> Value {
     })
 }
 
+/// An adapter for every (source, origin) the entries use.
+fn adapters_for(entries: &[Value]) -> Vec<Value> {
+    let mut seen = BTreeSet::new();
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let source = entry["source"].as_str()?.to_owned();
+            let origin = entry["origin"].as_str()?.to_owned();
+            seen.insert(source.clone()).then(|| {
+                let relay = origin == "relay";
+                json!({
+                    "source": source,
+                    "origin": origin,
+                    "source_format": format!("format-{}", seen.len()),
+                    "adapter_version": 1,
+                    "commitment": if relay { "required" } else { "forbidden" },
+                    "registration": if relay { "required" } else { "forbidden" },
+                    "trace_id": false
+                })
+            })
+        })
+        .collect()
+}
+
 fn load(entries: Vec<Value>) -> Result<Catalog, CatalogError> {
-    Catalog::from_json(&json!({"version": 1, "events": entries}).to_string())
+    let adapters = adapters_for(&entries);
+    load_with(adapters, entries)
+}
+
+fn load_with(adapters: Vec<Value>, entries: Vec<Value>) -> Result<Catalog, CatalogError> {
+    Catalog::from_json(&json!({"version": 1, "adapters": adapters, "events": entries}).to_string())
 }
 
 fn edited(edit: impl FnOnce(&mut Value)) -> Result<Catalog, CatalogError> {
@@ -390,11 +429,11 @@ fn loader_accepts_minimal_and_reserved_control_entries() {
 #[test]
 fn loader_rejects_inconsistent_catalogs() {
     assert_eq!(
-        Catalog::from_json(&json!({"version": 2, "events": []}).to_string()),
+        Catalog::from_json(&json!({"version": 2, "adapters": [], "events": []}).to_string()),
         Err(CatalogError::Version)
     );
     assert!(matches!(
-        Catalog::from_json(r#"{"version":1,"version":1,"events":[]}"#),
+        Catalog::from_json(r#"{"version":1,"version":1,"adapters":[],"events":[]}"#),
         Err(CatalogError::Json("duplicate_key"))
     ));
     assert!(matches!(
@@ -505,6 +544,188 @@ fn loader_rejects_inconsistent_catalogs() {
     ];
     for (label, edit) in bad {
         assert!(edited(edit).is_err(), "{label} must be refused");
+    }
+}
+
+#[test]
+fn every_source_has_one_adapter_matching_the_legacy_projection() {
+    let catalog = Catalog::embedded();
+    assert_eq!(catalog.adapters().len(), 3);
+    let document = catalog.adapter(DOCUMENT_SOURCE).expect("document adapter");
+    assert_eq!(document.origin, Origin::Relay);
+    assert_eq!(document.source_format, LEGACY_SOURCE_FORMAT);
+    assert_eq!(
+        document.adapter_version, LEGACY_ADAPTER_VERSION,
+        "bump the catalog adapter_version together with LEGACY_ADAPTER_VERSION"
+    );
+    assert_eq!(document.commitment, Requirement::Required);
+    assert_eq!(document.registration, Requirement::Required);
+    assert!(
+        !document.trace_id,
+        "trace_id is reserved on the legacy path"
+    );
+    for (source, origin, format) in [
+        (AUDIT_STORE_SOURCE, Origin::Store, "audit-store-control-v1"),
+        (
+            AUDIT_RELAY_SOURCE,
+            Origin::RelayControl,
+            "audit-relay-control-v1",
+        ),
+    ] {
+        let adapter = catalog.adapter(source).expect("control adapter");
+        assert_eq!(adapter.origin, origin);
+        assert_eq!(adapter.source_format, format);
+        assert_eq!(adapter.adapter_version, 1);
+        assert_eq!(adapter.commitment, Requirement::Forbidden);
+        assert_eq!(adapter.registration, Requirement::Forbidden);
+        assert!(!adapter.trace_id);
+    }
+    for spec in catalog.events() {
+        assert_eq!(
+            catalog.adapter(&spec.source).map(|a| a.origin),
+            Some(spec.origin),
+            "{}",
+            spec.event_type
+        );
+    }
+}
+
+#[test]
+fn registered_types_are_the_relay_types_with_their_adapter_version() {
+    let registered = Catalog::embedded().registered_types();
+    assert_eq!(registered.len(), DOCUMENT_TYPES.len());
+    for (source, event_type, version) in &registered {
+        assert_eq!(*source, DOCUMENT_SOURCE);
+        assert_eq!(*version, LEGACY_ADAPTER_VERSION);
+        assert!(DOCUMENT_TYPES.contains(event_type), "{event_type}");
+    }
+    assert!(
+        registered.iter().all(|(_, t, _)| !t.starts_with("audit.")),
+        "control types are never ingested"
+    );
+}
+
+#[test]
+fn loader_rejects_inconsistent_adapters() {
+    let relay = || {
+        json!({
+            "source": "urn:knowledge-platform:document-platform",
+            "origin": "relay",
+            "source_format": "document-audit-outbox-v0",
+            "adapter_version": 1,
+            "commitment": "required",
+            "registration": "required",
+            "trace_id": false
+        })
+    };
+    load_with(vec![relay()], vec![minimal_entry()]).expect("baseline loads");
+    let store_entry = json!({
+        "type": "audit.thing.done",
+        "source": "urn:knowledge-platform:audit-store",
+        "origin": "store",
+        "event_class": "SYSTEM_AUDIT",
+        "resources": ["AuditStore"],
+        "version_required": false,
+        "results": ["success"],
+        "subjects": ["audit-store"],
+        "fields": {"session_role": {"kind": "identifier"}},
+        "required": ["session_role"],
+        "reason": "absent"
+    });
+    let store = |edit: &dyn Fn(&mut Value)| {
+        let mut adapter = json!({
+            "source": "urn:knowledge-platform:audit-store",
+            "origin": "store",
+            "source_format": "audit-store-control-v1",
+            "adapter_version": 1,
+            "commitment": "forbidden",
+            "registration": "forbidden",
+            "trace_id": false
+        });
+        edit(&mut adapter);
+        adapter
+    };
+    load_with(
+        vec![relay(), store(&|_| {})],
+        vec![minimal_entry(), store_entry.clone()],
+    )
+    .expect("store adapter loads");
+    let edited_relay = |edit: &dyn Fn(&mut Value)| {
+        let mut adapter = relay();
+        edit(&mut adapter);
+        vec![adapter]
+    };
+    let bad: Vec<(&str, Vec<Value>, Vec<Value>)> = vec![
+        ("no adapters", vec![], vec![minimal_entry()]),
+        (
+            "duplicate source",
+            vec![relay(), relay()],
+            vec![minimal_entry()],
+        ),
+        (
+            "unused adapter",
+            vec![relay(), store(&|_| {})],
+            vec![minimal_entry()],
+        ),
+        (
+            "event without adapter",
+            vec![relay()],
+            vec![minimal_entry(), store_entry.clone()],
+        ),
+        (
+            "adapter version zero",
+            edited_relay(&|a| a["adapter_version"] = json!(0)),
+            vec![minimal_entry()],
+        ),
+        (
+            "source format charset",
+            edited_relay(&|a| a["source_format"] = json!("Document Outbox")),
+            vec![minimal_entry()],
+        ),
+        (
+            "unknown requirement",
+            edited_relay(&|a| a["commitment"] = json!("sometimes")),
+            vec![minimal_entry()],
+        ),
+        (
+            "unknown adapter member",
+            edited_relay(&|a| a["extra"] = json!(true)),
+            vec![minimal_entry()],
+        ),
+        (
+            "relay adapter with control source",
+            edited_relay(&|a| a["source"] = json!("urn:knowledge-platform:audit-relay")),
+            vec![minimal_entry()],
+        ),
+        (
+            "origin differs from the event",
+            edited_relay(&|a| a["origin"] = json!("store")),
+            vec![minimal_entry()],
+        ),
+        (
+            "control adapter with commitment",
+            vec![relay(), store(&|a| a["commitment"] = json!("optional"))],
+            vec![minimal_entry(), store_entry.clone()],
+        ),
+        (
+            "control adapter with trace id",
+            vec![relay(), store(&|a| a["trace_id"] = json!(true))],
+            vec![minimal_entry(), store_entry.clone()],
+        ),
+        (
+            "duplicate source format",
+            vec![
+                relay(),
+                store(&|a| a["source_format"] = json!("document-audit-outbox-v0")),
+            ],
+            vec![minimal_entry(), store_entry.clone()],
+        ),
+    ];
+    for (label, adapters, entries) in bad {
+        assert!(
+            load_with(adapters, entries).is_err(),
+            "{label} must be refused"
+        );
     }
 }
 

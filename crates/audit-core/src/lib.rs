@@ -13,20 +13,22 @@ pub mod legacy;
 pub mod port;
 pub mod schema;
 
-pub use catalog::{Catalog, EventClass, EventSpec, Origin, ResourceType};
-pub use chain::{GENESIS, chain_next, envelope_digest};
+pub use catalog::{AdapterSpec, Catalog, EventClass, EventSpec, Origin, Requirement, ResourceType};
+pub use chain::{GENESIS, chain_next, envelope_digest, expired_set_digest};
 pub use codes::{Rejection, RejectionCode};
-pub use envelope::{AuditEnvelope, validate_envelope};
+pub use envelope::{AuditEnvelope, JSONB_TEXT_LIMIT, validate_envelope};
 pub use export::{
     Anchor, ChainVerdict, Checkpoint, CheckpointComparison, CheckpointFinding, EpochReview,
     EpochTransition, ExportError, ExportReport, RecoveryAssessment, RecoveryRecord,
     assess_recovery, compare_checkpoint, verify_export, verify_export_subset,
     verify_identity_chain,
 };
-pub use json::parse_unique;
-pub use legacy::{DocumentStagingProjection, project};
+pub use json::{jsonb_text_len, parse_unique};
+pub use legacy::{DocumentStagingProjection, LEGACY_ADAPTER_VERSION, project};
 pub use port::{
-    AuditStore, IngestOutcome, IngestReceipt, OutageCode, StoreError, StoreStatus,
-    classify_sqlstate,
+    AuditStore, BoundedCode, ControlReceipt, ControlReceiptRow, IngestOutcome, IngestReceipt,
+    IngestRow, OutageCode, ProbeExpectation, ReceiptIdentity, ReceiptRow, ReconcileCounts,
+    ReconcileMode, RelayControl, RelayControlKind, SourceMismatchCode, StoreError, StoreState,
+    StoreStatus, classify_sqlstate,
 };
 pub use schema::generate_json_schema;

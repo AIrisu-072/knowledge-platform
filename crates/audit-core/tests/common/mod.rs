@@ -705,8 +705,9 @@ pub fn kind_sample(field: &audit_core::catalog::FieldSpec) -> Value {
         Kind::LegacyTime => legacy_time(),
         Kind::UtcTimestamp => json!(OCCURRED),
         Kind::UuidList => json!([EVENT_ID, DOC]),
-        Kind::HexDigest => json!(commitment()),
-        Kind::Identifier => json!("audit_store_reader"),
+        Kind::HexDigest | Kind::NullableHexDigest => json!(commitment()),
+        Kind::NullableUtcTimestamp => json!(OCCURRED),
+        Kind::Identifier | Kind::NullableIdentifier => json!("audit_store_reader"),
         Kind::IdentifierList => json!(["document.created", "folder.moved"]),
         Kind::Code => json!("delivery_unknown_at_limit"),
     }
@@ -740,11 +741,18 @@ pub fn control_envelope(spec: &audit_core::EventSpec, full: bool) -> Value {
             "details": details,
             "extensions": {},
             "provenance": {
-                "source_format": audit_core::envelope::source_format_for(spec.origin),
-                "adapter_version": 1
+                "source_format": adapter_of(spec).source_format,
+                "adapter_version": adapter_of(spec).adapter_version
             }
         }
     })
+}
+
+/// The catalog adapter of an entry's source.
+pub fn adapter_of(spec: &audit_core::EventSpec) -> &'static audit_core::AdapterSpec {
+    audit_core::Catalog::embedded()
+        .adapter(&spec.source)
+        .expect("every source has an adapter")
 }
 
 /// Every control entry, minimal and fully populated.
@@ -782,8 +790,18 @@ pub struct EnvelopeCase {
     pub name: &'static str,
     pub input: Input,
     pub path: Origin,
-    pub code: audit_core::RejectionCode,
+    pub expected: audit_core::Rejection,
     pub rust_only: Option<&'static str>,
+}
+
+/// `Rejection::at(code, field)`.
+pub fn at(code: audit_core::RejectionCode, field: &'static str) -> audit_core::Rejection {
+    audit_core::Rejection::at(code, field)
+}
+
+/// `Rejection::new(code)` (no location).
+pub fn bare(code: audit_core::RejectionCode) -> audit_core::Rejection {
+    audit_core::Rejection::new(code)
 }
 
 fn set(mut value: Value, pointer: &str, new: Value) -> Value {
@@ -822,86 +840,94 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
     let metadata = || envelope_of("document.metadata.changed");
     let diff = || envelope_of("document.diff.result_access_granted/compare");
     let doc_created = || envelope_of("document.created");
-    let case = |name, value: Value, code, rust_only| EnvelopeCase {
+    let folder_created = || envelope_of("folder.created");
+    let case = |name, value: Value, expected, rust_only| EnvelopeCase {
         name,
         input: Input::Value(value),
         path: Origin::Relay,
-        code,
+        expected,
         rust_only,
     };
-    let text_case = |name, text: String, code, rust_only| EnvelopeCase {
+    let text_case = |name, text: String, expected, rust_only| EnvelopeCase {
         name,
         input: Input::Text(text),
         path: Origin::Relay,
-        code,
+        expected,
         rust_only,
     };
     let compact = |value: &Value| serde_json::to_string(value).expect("serialize");
+    let details = "data.details";
+    let actor = "data.actor";
+    let executor = "data.service_executor";
+    let resource = "data.resource";
+    let correlation = "data.correlation";
+    let provenance = "data.provenance";
+    let charset = Some("principal_charset");
     let mut cases = vec![
         case(
             "free_text_note",
             set(created(), "/data/details/note", json!("x")),
-            C::UnknownField,
+            at(C::UnknownField, details),
             None,
         ),
         case(
             "free_text_body",
             set(created(), "/data/details/body", json!("x")),
-            C::UnknownField,
+            at(C::UnknownField, details),
             None,
         ),
         case(
             "free_text_query",
             set(diff(), "/data/details/query", json!("q")),
-            C::UnknownField,
+            at(C::UnknownField, details),
             None,
         ),
         case(
             "credential_token",
             set(published(), "/data/details/token", json!("t")),
-            C::UnknownField,
+            at(C::UnknownField, details),
             None,
         ),
         case(
             "reason_text_in_details",
             set(withdrawn(), "/data/details/reason", json!("why")),
-            C::UnknownField,
+            at(C::UnknownField, details),
             None,
         ),
         case(
             "unknown_payload_member",
             set(created(), "/data/note", json!("x")),
-            C::UnknownField,
+            at(C::UnknownField, "data"),
             None,
         ),
         case(
             "unknown_attribute",
             set(created(), "/traceparent", json!("00-x")),
-            C::InvalidEnvelope,
+            bare(C::InvalidEnvelope),
             None,
         ),
         case(
             "missing_attribute",
             remove(created(), "/dataschema"),
-            C::InvalidEnvelope,
+            bare(C::InvalidEnvelope),
             None,
         ),
         case(
             "specversion",
             set(created(), "/specversion", json!("1.1")),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "specversion"),
             None,
         ),
         case(
             "datacontenttype",
             set(created(), "/datacontenttype", json!("text/plain")),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "datacontenttype"),
             None,
         ),
         case(
             "id_uppercase",
             set(created(), "/id", json!(EVENT_ID.to_uppercase())),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "id"),
             None,
         ),
         case(
@@ -911,43 +937,43 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/time",
                 json!("2026-10-07T01:02:03.456789+00:00"),
             ),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "time"),
             None,
         ),
         case(
             "time_calendar",
             set(created(), "/time", json!("2026-02-30T00:00:00.000000Z")),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "time"),
             Some("calendar"),
         ),
         case(
             "schema_version",
             set(created(), "/data/schema_version", json!(2)),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "data.schema_version"),
             None,
         ),
         case(
             "action_mismatch",
             set(created(), "/data/action", json!("document.created")),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "data.action"),
             None,
         ),
         case(
             "event_class",
             set(created(), "/data/event_class", json!("SECURITY")),
-            C::InvalidEnvelope,
+            at(C::InvalidEnvelope, "data.event_class"),
             None,
         ),
         case(
             "wrong_type_counter",
             set(created(), "/data/details/versionNo", json!("2")),
-            C::InvalidField,
+            at(C::InvalidField, "versionNo"),
             None,
         ),
         case(
             "float_counter",
             set(created(), "/data/details/versionNo", json!(2.0)),
-            C::InvalidField,
+            at(C::InvalidField, "versionNo"),
             Some("float_integer"),
         ),
         case(
@@ -957,7 +983,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/details/resultingDocumentRevision",
                 json!(-1),
             ),
-            C::InvalidField,
+            at(C::InvalidField, "resultingDocumentRevision"),
             None,
         ),
         case(
@@ -967,25 +993,25 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/details/baseDocumentVersionId",
                 json!(BASE_VER.to_uppercase()),
             ),
-            C::InvalidField,
+            at(C::InvalidField, "baseDocumentVersionId"),
             None,
         ),
         case(
             "missing_required_detail",
             remove(created(), "/data/details/documentVersionId"),
-            C::MissingField,
+            at(C::MissingField, "documentVersionId"),
             None,
         ),
         case(
             "digest_byte_range",
             set(diff(), "/data/details/result_digest/0", json!(256)),
-            C::InvalidField,
+            at(C::InvalidField, "result_digest"),
             None,
         ),
         case(
             "enum_value",
             set(diff(), "/data/details/verdict", json!("maybe")),
-            C::InvalidField,
+            at(C::InvalidField, "verdict"),
             None,
         ),
         case(
@@ -995,7 +1021,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/details/changed_keys",
                 json!(["category", "category"]),
             ),
-            C::InvalidField,
+            at(C::InvalidField, "changed_keys"),
             None,
         ),
         case(
@@ -1005,7 +1031,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/details/publishedAt",
                 json!([2026, 280, 1, 2, 3, 0, 0, -30, 15]),
             ),
-            C::InvalidField,
+            at(C::InvalidField, "publishedAt"),
             Some("calendar"),
         ),
         case(
@@ -1015,7 +1041,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/details/publishedAt",
                 json!([2026, 366, 1, 2, 3, 0, 0, 0, 0]),
             ),
-            C::InvalidField,
+            at(C::InvalidField, "publishedAt"),
             Some("calendar"),
         ),
         case(
@@ -1025,13 +1051,13 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/details/publishedAt",
                 json!([2026, 280, 1, 2, 3, 0.5, 0, 0, 0]),
             ),
-            C::InvalidField,
+            at(C::InvalidField, "publishedAt"),
             None,
         ),
         case(
             "actor_extra_key",
             set(created(), "/data/actor/kind", json!("human")),
-            C::InvalidActor,
+            at(C::InvalidActor, actor),
             None,
         ),
         case(
@@ -1041,7 +1067,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/actor/principal_id",
                 json!("p".repeat(300)),
             ),
-            C::InvalidActor,
+            at(C::InvalidActor, actor),
             None,
         ),
         case(
@@ -1051,7 +1077,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/actor/principal_id",
                 json!("é".repeat(200)),
             ),
-            C::InvalidActor,
+            at(C::InvalidActor, actor),
             Some("utf8_bytes"),
         ),
         case(
@@ -1061,14 +1087,68 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/actor/principal_id",
                 json!("poc\u{7}human"),
             ),
-            C::InvalidActor,
+            at(C::InvalidActor, actor),
             None,
         ),
         case(
             "actor_empty",
             set(created(), "/data/actor/issuer", json!("")),
-            C::InvalidActor,
+            at(C::InvalidActor, actor),
             None,
+        ),
+        case(
+            "actor_bidi_override",
+            set(
+                created(),
+                "/data/actor/principal_id",
+                json!("admin\u{202e}nimda"),
+            ),
+            at(C::InvalidActor, actor),
+            charset,
+        ),
+        case(
+            "actor_line_separator",
+            set(
+                created(),
+                "/data/actor/principal_id",
+                json!("poc\u{2028}human"),
+            ),
+            at(C::InvalidActor, actor),
+            charset,
+        ),
+        case(
+            "actor_tag_characters",
+            set(
+                created(),
+                "/data/actor/issuer",
+                json!("poc\u{e0041}\u{e0042}"),
+            ),
+            at(C::InvalidActor, actor),
+            charset,
+        ),
+        case(
+            "actor_bom",
+            set(created(), "/data/actor/issuer", json!("\u{feff}poc")),
+            at(C::InvalidActor, actor),
+            charset,
+        ),
+        case(
+            "actor_whitespace_only",
+            set(created(), "/data/actor/principal_id", json!(" ")),
+            at(C::InvalidActor, actor),
+            charset,
+        ),
+        case(
+            "actor_padded",
+            set(created(), "/data/actor/principal_id", json!(" poc-human ")),
+            at(C::InvalidActor, actor),
+            charset,
+        ),
+        case(
+            "actor_noncharacter",
+            set(created(), "/data/actor/issuer", json!("poc\u{fdd0}")),
+            at(C::InvalidActor, actor),
+            charset,
         ),
         case(
             "service_executor_on_created",
@@ -1077,7 +1157,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/service_executor",
                 json!({"issuer": "service", "principal_id": "scheduler"}),
             ),
-            C::InvalidServiceExecutor,
+            at(C::InvalidServiceExecutor, executor),
             None,
         ),
         case(
@@ -1087,43 +1167,85 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/service_executor/principal_id",
                 json!("sched\u{0}uler"),
             ),
-            C::InvalidServiceExecutor,
+            at(C::InvalidServiceExecutor, executor),
             None,
+        ),
+        case(
+            "service_executor_bidi",
+            set(
+                published(),
+                "/data/service_executor/principal_id",
+                json!("\u{2066}scheduler"),
+            ),
+            at(C::InvalidServiceExecutor, executor),
+            charset,
+        ),
+        case(
+            "service_executor_bom",
+            set(
+                published(),
+                "/data/service_executor/issuer",
+                json!("service\u{feff}"),
+            ),
+            at(C::InvalidServiceExecutor, executor),
+            charset,
         ),
         case(
             "resource_nil_id",
             set(doc_created(), "/data/resource/id", json!(NIL)),
-            C::InvalidResource,
+            at(C::NilClientId, "data.resource.id"),
+            None,
+        ),
+        case(
+            "resource_nil_version_id",
+            set(created(), "/data/resource/version_id", json!(NIL)),
+            at(C::NilClientId, "data.resource.version_id"),
+            None,
+        ),
+        case(
+            "nil_parent_folder",
+            set(
+                folder_created(),
+                "/data/details/parent_folder_id",
+                json!(NIL),
+            ),
+            at(C::NilClientId, "parent_folder_id"),
+            None,
+        ),
+        case(
+            "nil_nullable_base_version",
+            set(created(), "/data/details/baseDocumentVersionId", json!(NIL)),
+            at(C::NilClientId, "baseDocumentVersionId"),
             None,
         ),
         case(
             "resource_version_forbidden",
             set(doc_created(), "/data/resource/version_id", json!(VER)),
-            C::InvalidResource,
+            at(C::InvalidResource, resource),
             None,
         ),
         case(
             "resource_version_missing",
             remove(created(), "/data/resource/version_id"),
-            C::InvalidResource,
+            at(C::InvalidResource, resource),
             None,
         ),
         case(
             "resource_type_not_allowed",
             set(created(), "/data/resource/type", json!("Folder")),
-            C::InvalidResource,
+            at(C::InvalidResource, resource),
             None,
         ),
         case(
             "audit_store_resource",
             set(created(), "/data/resource/type", json!("AuditStore")),
-            C::ControlTypeForbidden,
+            at(C::ControlTypeForbidden, "data.resource.type"),
             None,
         ),
         case(
             "result",
             set(created(), "/data/result", json!("failure")),
-            C::InvalidResult,
+            at(C::InvalidResult, "data.result"),
             None,
         ),
         case(
@@ -1133,13 +1255,13 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/subject",
                 json!(format!("document/{OTHER_DOC}/version/{VER}")),
             ),
-            C::InvalidSubject,
+            at(C::InvalidSubject, "subject"),
             Some("subject_binding"),
         ),
         case(
             "subject_shape",
             set(created(), "/subject", json!(format!("folder/{DOC}"))),
-            C::InvalidSubject,
+            at(C::InvalidSubject, "subject"),
             None,
         ),
         case(
@@ -1149,31 +1271,31 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/subject",
                 json!(format!("document/{FOLDER}")),
             ),
-            C::InvalidSubject,
+            at(C::InvalidSubject, "subject"),
             None,
         ),
         case(
             "detail_resource_binding",
             set(created(), "/data/details/documentId", json!(OTHER_DOC)),
-            C::InvalidField,
+            at(C::InvalidField, "documentId"),
             Some("resource_binding"),
         ),
         case(
             "detail_type_binding",
             set(acl_folder(), "/data/details/target_type", json!("Document")),
-            C::InvalidField,
+            at(C::InvalidField, "target_type"),
             Some("resource_binding"),
         ),
         case(
             "correlation_binding",
             set(published(), "/data/correlation/operation_id", json!(OP)),
-            C::InvalidCorrelation,
+            at(C::InvalidCorrelation, correlation),
             Some("correlation_binding"),
         ),
         case(
             "correlation_unexpected",
             set(created(), "/data/correlation/operation_id", json!(OP)),
-            C::InvalidCorrelation,
+            at(C::InvalidCorrelation, correlation),
             None,
         ),
         case(
@@ -1183,7 +1305,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/correlation/legacy_correlation_id",
                 json!(CORR),
             ),
-            C::InvalidCorrelation,
+            at(C::InvalidCorrelation, correlation),
             None,
         ),
         case(
@@ -1193,7 +1315,10 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/correlation/source_correlation_id",
                 json!("req-123"),
             ),
-            C::InvalidSourceCorrelation,
+            at(
+                C::InvalidSourceCorrelation,
+                "data.correlation.source_correlation_id",
+            ),
             None,
         ),
         case(
@@ -1203,7 +1328,10 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/correlation/source_correlation_id",
                 json!("4bf92f3577b34da6a3ce929d0e0e4736"),
             ),
-            C::InvalidSourceCorrelation,
+            at(
+                C::InvalidSourceCorrelation,
+                "data.correlation.source_correlation_id",
+            ),
             None,
         ),
         case(
@@ -1213,37 +1341,53 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/correlation/trace_id",
                 json!("0".repeat(32)),
             ),
-            C::InvalidCorrelation,
+            at(C::InvalidCorrelation, "data.correlation.trace_id"),
+            None,
+        ),
+        case(
+            "trace_id_on_legacy_adapter",
+            set(
+                created(),
+                "/data/correlation/trace_id",
+                json!("4bf92f3577b34da6a3ce929d0e0e4736"),
+            ),
+            at(C::InvalidCorrelation, "data.correlation.trace_id"),
             None,
         ),
         case(
             "reason_code_binding",
             set(terminal(), "/data/reason_code", json!("identity_invalid")),
-            C::InvalidField,
+            at(C::InvalidField, "data.reason_code"),
             Some("reason_code_binding"),
         ),
         case(
             "reason_code_unexpected",
             set(created(), "/data/reason_code", json!("forbidden")),
-            C::InvalidField,
+            at(C::InvalidField, "data.reason_code"),
             None,
         ),
         case(
             "reason_summary_with_text",
             set(withdrawn(), "/data/reason/text", json!("why")),
-            C::InvalidReason,
+            at(C::InvalidReason, "data.reason"),
             None,
         ),
         case(
             "reason_summary_missing",
             remove(withdrawn(), "/data/reason"),
-            C::InvalidReason,
+            at(C::InvalidReason, "data.reason"),
             None,
         ),
         case(
             "reason_summary_negative",
             set(withdrawn(), "/data/reason/utf8_bytes", json!(-1)),
-            C::InvalidReason,
+            at(C::InvalidReason, "data.reason"),
+            None,
+        ),
+        case(
+            "reason_summary_over_body_limit",
+            set(withdrawn(), "/data/reason/utf8_bytes", json!(1_048_577)),
+            at(C::InvalidReason, "data.reason"),
             None,
         ),
         case(
@@ -1253,19 +1397,25 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/reason",
                 json!({"provided": true, "utf8_bytes": 3, "text_retained": "source_systems"}),
             ),
-            C::InvalidReason,
+            at(C::InvalidReason, "data.reason"),
             None,
         ),
         case(
             "extensions_non_empty",
             set(created(), "/data/extensions/org.work.v1", json!({})),
-            C::InvalidExtensions,
+            at(C::InvalidExtensions, "data.extensions"),
             None,
         ),
         case(
             "provenance_registration",
             set(created(), "/data/provenance/registration", json!("manual")),
-            C::InvalidProvenance,
+            at(C::InvalidProvenance, provenance),
+            None,
+        ),
+        case(
+            "provenance_registration_missing",
+            remove(created(), "/data/provenance/registration"),
+            at(C::InvalidProvenance, provenance),
             None,
         ),
         case(
@@ -1275,7 +1425,13 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/provenance/source_commitment",
                 json!("AB".repeat(32)),
             ),
-            C::InvalidProvenance,
+            at(C::InvalidProvenance, provenance),
+            None,
+        ),
+        case(
+            "provenance_commitment_missing",
+            remove(created(), "/data/provenance/source_commitment"),
+            at(C::InvalidProvenance, provenance),
             None,
         ),
         case(
@@ -1285,7 +1441,13 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/data/provenance/source_format",
                 json!("audit-store-control-v1"),
             ),
-            C::InvalidProvenance,
+            at(C::InvalidProvenance, provenance),
+            None,
+        ),
+        case(
+            "provenance_future_adapter_version",
+            set(created(), "/data/provenance/adapter_version", json!(2)),
+            at(C::InvalidProvenance, provenance),
             None,
         ),
         case(
@@ -1295,7 +1457,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/source",
                 json!("urn:knowledge-platform:search-platform"),
             ),
-            C::InvalidSource,
+            at(C::InvalidSource, "source"),
             None,
         ),
         case(
@@ -1305,25 +1467,36 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 "/source",
                 json!("urn:knowledge-platform:audit-store"),
             ),
-            C::ControlTypeForbidden,
+            at(C::ControlTypeForbidden, "source"),
             None,
         ),
         case(
             "control_type",
             set(created(), "/type", json!("audit.access.denied")),
-            C::ControlTypeForbidden,
+            at(C::ControlTypeForbidden, "type"),
             None,
         ),
         case(
             "unknown_type",
             set(created(), "/type", json!("document.version.deleted")),
-            C::UnknownEventType,
+            at(C::UnknownEventType, "type"),
             None,
         ),
         case(
             "envelope_too_large",
-            set(created(), "/subject", json!("d".repeat(25 * 1024))),
-            C::EnvelopeTooLarge,
+            set(created(), "/subject", json!("d".repeat(33 * 1024))),
+            bare(C::EnvelopeTooLarge),
+            None,
+        ),
+        case(
+            // Compact rendering under 32 KiB, jsonb rendering over it.
+            "jsonb_rendering_over_limit",
+            set(
+                created(),
+                "/data/details/padding",
+                Value::Array(vec![json!(0); 12_000]),
+            ),
+            bare(C::EnvelopeTooLarge),
             None,
         ),
     ];
@@ -1335,7 +1508,7 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
             "\"specversion\":\"1.0\",\"specversion\":\"1.0\"",
             1,
         ),
-        C::DuplicateKey,
+        bare(C::DuplicateKey),
         Some("duplicate_key"),
     ));
     cases.push(text_case(
@@ -1345,26 +1518,26 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
             "\"specversion\":\"1.0\",\"spec\\u0076ersion\":\"1.0\"",
             1,
         ),
-        C::DuplicateKey,
+        bare(C::DuplicateKey),
         Some("duplicate_key"),
     ));
     cases.push(text_case(
         "exponent_counter",
         base.replacen("\"versionNo\":2", "\"versionNo\":2e0", 1),
-        C::InvalidField,
+        at(C::InvalidField, "versionNo"),
         Some("float_integer"),
     ));
     cases.push(text_case(
         "trailing_data",
         format!("{base} {{}}"),
-        C::InvalidJson,
+        bare(C::InvalidJson),
         None,
     ));
     cases.push(EnvelopeCase {
         name: "relay_type_on_store_path",
         input: Input::Value(created()),
         path: Origin::Store,
-        code: C::ControlTypeForbidden,
+        expected: at(C::ControlTypeForbidden, "type"),
         rust_only: Some("origin_path"),
     });
     cases

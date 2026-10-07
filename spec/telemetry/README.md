@@ -4,13 +4,41 @@ Audit Infrastructure v1（[設計](../../docs/superpowers/specs/2026-10-07-audit
 
 | ファイル | 位置付け |
 |---|---|
-| `audit-event-catalog.json` | 正本（手で編集する）。event typeごとの形・写像規則 |
+| `audit-event-catalog.json` | 正本（手で編集する）。sourceごとのadapter契約と、event typeごとの形・写像規則 |
 | `audit-event.schema.json` | catalogから `crates/audit-core` が生成する。手で編集しない |
-| `crates/audit-core` | catalogを `include_str!` で埋め込み、runtime検証・legacy投影・chain計算・export検証を行う |
+| `audit-adapter-golden.json` | (source_format, adapter_version) ごとの投影結果のdigest。version sectionは追加のみ |
+| `crates/audit-core` | catalogを `include_str!` で埋め込み、runtime検証・legacy投影・chain計算・export検証・Store portを提供する |
 
 ## catalog
 
-`version` は1。`events` の各entryは次を持つ。未知のmemberと重複keyは読込時に拒否する。
+`version` は1。トップレベルは `version`、`adapters`、`events` の3つである。未知のmemberと重複keyは読込時に拒否する。
+
+### adapters
+
+sourceごとに1件。envelopeの `provenance` と `correlation.trace_id` の検証は、ここから読む（Rustにsourceごとの値を直書きしない）。
+
+| member | 意味 |
+|---|---|
+| `source` | 対象のsource。各eventの `source` は、同じoriginのadapterをちょうど1件持つ |
+| `origin` | `relay` / `store` / `relay_control` |
+| `source_format` | `provenance.source_format` の値（`[a-z0-9-]{1,64}`、adapter間で一意） |
+| `adapter_version` | `provenance.adapter_version` の値。現在の投影版で、envelopeはこの値と一致しなければならない |
+| `commitment` / `registration` | `provenance.source_commitment` / `provenance.registration` の要否（`required` / `optional` / `forbidden`） |
+| `trace_id` | `correlation.trace_id` を設定できるか。予約fieldであり、専用のW3C trace列を持つadapterだけが `true` にできる |
+
+現在のadapter：
+
+| source | origin | source_format | adapter_version | commitment | registration | trace_id |
+|---|---|---|---|---|---|---|
+| `urn:knowledge-platform:document-platform` | relay | `document-audit-outbox-v0` | 1 | required | required | false |
+| `urn:knowledge-platform:audit-store` | store | `audit-store-control-v1` | 1 | forbidden | forbidden | false |
+| `urn:knowledge-platform:audit-relay` | relay_control | `audit-relay-control-v1` | 1 | forbidden | forbidden | false |
+
+読込時の検査：adapterが1件以上、sourceとsource_formatが一意、`adapter_version ≥ 1`、control originのadapterはcommitment・registrationが `forbidden` で `trace_id: false`、どのeventにも使われないadapterは拒否、eventのsourceにadapterが無ければ拒否。
+
+`Catalog::registered_types()` は、origin=relayのtypeについて `(source, type, adapter_version)` を返す。Storeの `registered_types` 表はこれから投入し、試験で一致を確認する。control typeはingestされないので含めない。relayの `probe(expected)` も同じ一覧（`ProbeExpectation::from_catalog`）を送る。
+
+### events
 
 | member | 意味 |
 |---|---|
@@ -30,7 +58,9 @@ Audit Infrastructure v1（[設計](../../docs/superpowers/specs/2026-10-07-audit
 | `nil_resource_allowed` | nil UUIDの `resource.id` を許す（`authorization.denied` だけ） |
 | `bindings` | `details[field]` が `resource.id` / `resource.version_id` / `resource.type` と一致すること。producerが同じ値を書くと確認できたものだけを登録する |
 
-読込時の検査：version、type一意、`required ⊆ fields`、kindが既知、enum系の値が空でない、subjectが空でなくplaceholderが解決できる、bindingが解決できる、control originは `audit.*` typeと専用sourceを持つ。
+読込時の検査：version、type一意、`required ⊆ fields`、kindが既知、enum系の値が空でなく一意で `[A-Za-z0-9_-]{1,64}`、subjectが空でなくplaceholderが解決できる、bindingが解決できる、control originは `audit.*` typeと専用sourceを持つ。
+
+`Catalog::validate(&'static self, value, origin)` は、埋め込み以外のcatalog（試験用。`Box::leak` で `'static` にする）でenvelopeを検証する。拒否はcatalogのfield名を `&'static str` で持つので、catalogは `'static` でなければならない。
 
 ### kind
 
@@ -38,23 +68,23 @@ Audit Infrastructure v1（[設計](../../docs/superpowers/specs/2026-10-07-audit
 
 | kind | 内容 |
 |---|---|
-| `uuid` / `nullable_uuid` | 小文字・hyphen付きのcanonical UUID。nil UUIDは拒否 |
+| `uuid` / `nullable_uuid` | 小文字・hyphen付きのcanonical UUID。nil UUIDは `nil_client_id`（下記） |
 | `counter` / `nullable_counter` | 0以上 `i64::MAX` 以下 |
 | `positive_counter` | 1以上 `i64::MAX` 以下 |
 | `boolean` | 真偽値 |
 | `enum` / `nullable_enum` | `values` のいずれか（nullable はnullも可） |
 | `enum_list` | `values` の要素を1個以上、重複なし |
 | `digest` / `nullable_digest` | 0–255の整数ちょうど32個 |
-| `principal` | `{identityProvider, principalId}` のみ。各部は空でなく256 byte以下、制御文字なし |
+| `principal` | `{identityProvider, principalId}` のみ。各部はprincipal文字規則（下記）に従う |
 | `legacy_time` | 下記 |
-| `utc_timestamp` | `YYYY-MM-DDTHH:MM:SS.ffffffZ`（control用） |
+| `utc_timestamp` / `nullable_utc_timestamp` | `YYYY-MM-DDTHH:MM:SS.ffffffZ`（control用） |
 | `uuid_list` | `uuid` を最大100件、重複なし |
-| `hex_digest` | 小文字hex 64桁 |
-| `identifier` | control event専用。Storeが選ぶ名前（DB role、event type、source URN、issuer）。空でなく256 byte以下、制御文字なし |
-| `identifier_list` | control event専用。`identifier` を1–32件、重複なし |
+| `hex_digest` / `nullable_hex_digest` | 小文字hex 64桁 |
+| `identifier` / `nullable_identifier` | control event専用。Storeが選ぶ名前（DB role、event type、source URN、issuer）。空でなく256 byte以下、制御文字（Cc）なし |
+| `identifier_list` | control event専用。`identifier` を1–16件、重複なし |
 | `code` | control event専用。`[a-z0-9_]{1,64}` |
 
-`identifier` / `identifier_list` / `code` はsource payloadの値を運ばないので、`origin: relay` のentryでは読込時に拒否する（relay eventに自由文字列のkindは無いという規則を保つ）。
+`identifier` / `nullable_identifier` / `identifier_list` / `code` はsource payloadの値を運ばないので、`origin: relay` のentryでは読込時に拒否する（relay eventに自由文字列のkindは無いという規則を保つ）。`identifier_list` の上限16は、各entryの最大envelopeを32 KiB以内に収めるための値である（設計§10.3のfilter event_types≤16と同じ）。
 
 ### legacy_time
 
@@ -66,36 +96,90 @@ Documentのpayload時刻（`publishedAt`、`scheduledPublishAt`、`endedAt`）�
 
 payload v1（`data`）は `schema_version`、`event_class`、`action`（= `type`）、`actor {issuer, principal_id}`、`service_executor`（任意）、`resource {type, id, version_id?}`、`result`、`reason_code`（任意）、`reason`（任意）、`correlation`、`details`、`extensions`（v1では `{}` のみ）、`provenance` である。
 
-- 大きさ：Rustはcompactなserializeで24 KiB以下を要求する。StoreはPostgreSQLの `jsonb::text` で32 KiB以下を要求する。したがってRustが受理したものはStoreでも受理される。
-- 文字列：すべて512 byte以下、制御文字なし。principalの各部は256 byte以下。
-- `correlation`：`operation_id` と `publish_operation_id` はcatalogの写像元fieldと一致しなければならない（`document.version.publication.cancelled` は `publish_operation_id` だけ）。`source_correlation_id` はstagingの `trace_id` 列で、canonicalな小文字UUIDに限る（それ以外は `invalid_source_correlation`）。`trace_id`（W3C、32桁hex、非ゼロ）は予約であり、legacy投影は設定しない。
-- `provenance`：Document adapterは `{source_format: "document-audit-outbox-v0", adapter_version, source_commitment, registration}` を必須とする。control eventは `{source_format: "audit-store-control-v1" | "audit-relay-control-v1", adapter_version}` だけを持つ。
+- 大きさ：上限はPostgreSQLの `jsonb::text` の長さで32 KiB（`JSONB_TEXT_LIMIT` = 32768 byte）である。jsonbは `{"a": 1, "b": [1, 2]}` のように、memberの `:` とすべての `,` の後に空白を1つ入れる。文字列のescapeはcompactなserdeと同じ（`"` `\` `\b` `\f` `\n` `\r` `\t` は2 byte、他のC0制御文字は `\u00xx`、それ以外はそのまま）である。したがってjsonb長 = compact長 + 構造上の `:` と `,` の数である。Rustは `jsonb_text_len` でこの長さを計算し、Storeと同じ32 KiBで判定する。compact長の別上限は置かない（compact長は常にjsonb長以下）。試験は、各catalog entryの最大envelope（全field、最長値、escapeで2倍になる文字）が上限内に収まることを確認する（2026-10時点でrelay最大は約3.6 KB、control最大は `audit.retention.expired` の約19.5 KB）。
+- 文字列：すべて512 byte以下、制御文字（Cc）なし。
+- principal（`actor`、`service_executor` の各部、legacyの `principal` kind）：下記の文字規則に従う。
+- `resource.id` / `resource.version_id` / uuid系のdetails：nil UUIDは `nil_client_id`（下記）。
+- `correlation`：`operation_id` と `publish_operation_id` はcatalogの写像元fieldと一致しなければならない（`document.version.publication.cancelled` は `publish_operation_id` だけ）。`source_correlation_id` はstagingの `trace_id` 列で、canonicalな小文字UUIDに限る（それ以外は `invalid_source_correlation`）。`trace_id`（W3C、32桁hex、非ゼロ）は予約であり、adapterの `trace_id: true` の場合だけ許す。現在のadapterはすべて `false` なので、legacy relay経路（`document-audit-outbox-v0`）では `trace_id` を `invalid_correlation` で拒否する。
+- `reason.utf8_bytes`：0以上1,048,576（DocumentのHTTP body上限）以下。legacy投影の `reason_bytes` とraw envelopeの両方で検査する。
+- `provenance`：sourceのadapterに従う。`source_format` と `adapter_version` はadapterの値と一致し、`source_commitment`（小文字hex 64桁）と `registration`（`trigger` / `backfill` / `repair`）はadapterの要否に従う。Document adapterは4 memberすべて必須、control eventは `{source_format, adapter_version}` だけである。
+
+### principalの文字規則（`rust_only:principal_charset`）
+
+principalの各部（issuer、principal id）は、次をすべて満たす。
+
+- 256 byte以下（UTF-8）、空でない。
+- 先頭と末尾がUnicodeの `White_Space` でない（したがって空白だけの値も拒否する。Documentの `PrincipalRef::new` のtrimに合わせる）。
+- 次の文字を含まない。
+  - 制御文字：Unicode General_Category `Cc`（U+0000–001F、U+007F–009F）。READMEとコードで「制御文字」はこの範囲を指す。
+  - `Bidi_Control`：U+061C、U+200E、U+200F、U+202A–202E、U+2066–2069。
+  - U+2028 LINE SEPARATOR、U+2029 PARAGRAPH SEPARATOR。
+  - U+FEFF（BOM）。
+  - TAG block U+E0000–E007F。
+  - noncharacter：U+FDD0–FDEF と、各planeの U+xxFFFE / U+xxFFFF。
+
+それ以外の書式文字（ZWJ等）は許す。識別子として正当な用途があり、拒否されたstaging行は永久にquarantineされるためである。生成schemaは `minLength`・`maxLength` とCcの除外だけを表す（より緩い）ので、上の追加規則による拒否は `rust_only:principal_charset` に分類する。principal文字集合の方針（OIDC `sub`、PRECIS等）はidentity adapter／IdPへの引継ぎ事項である。
+
+### nil UUIDのclient指定ID（`nil_client_id`）
+
+Documentのproducerは、clientが選ぶID（folderId、targetVersionId、移動元・移動先・親folderの参照等）にnil UUIDを受け付ける。audit-coreは、uuid系kindのfield（`uuid`、`nullable_uuid`、`uuid_list` の要素）と `resource.id` / `resource.version_id` がnil UUIDの場合、専用の `nil_client_id` で拒否する（`resource.id` は `authorization.denied` だけ例外）。
+
+- これはproducerから到達できるquarantineである。replayでは解消しない。改ざんと区別するため、`invalid_field` / `invalid_resource` とは別codeにしている。
+- Documentへの引継ぎ：client指定IDのnil拒否（可能ならOperationIdと同じUUIDv7の検査）、`spec/api/schemas/document/commands.yaml` の該当schema、必要ならDBのCHECK制約。
+- 生成schemaもnil UUIDを拒否する（`$defs/uuid`）ので、`rust_only` ではない。
 
 ## 自由記述reasonを複製しない規則
 
 `caller_text` のtype（`document.version.withdrawn`、`document.publication.ended`、`document.metadata.changed`、`document.moved`、`folder.created`、`folder.renamed`、`folder.moved`）では、claim関数（SQL）が `data - 'reason'` を返し、`reason_kind`（`jsonb_typeof`）と `reason_bytes` だけを渡す。投影は `reason: {provided: true, utf8_bytes, text_retained: "source_systems"}` だけを作る。
 
 - `data` に `reason` が残っていれば `unknown_field` で拒否する（理由文はどこにも複製しない）。
-- 理由が文字列でなければ `reason_not_string`、`caller_text` なのに理由が無ければ `invalid_reason`。
+- 理由が文字列でなければ `reason_not_string`、`caller_text` なのに理由が無い、または `reason_bytes` が0–1,048,576の範囲外なら `invalid_reason`。
 - `absent` のtype（通常の `access_policy.changed` を含む）は `reason` を出さない。`provided: false` とも書かない。
 - withdrawn・endedの `data.actor` は列のactorと一致を検証し（不一致は `actor_mismatch`）、detailsから除く。
 - `serviceExecutor`（published・terminal）は `service_executor {issuer, principal_id}` へ持ち上げ、detailsから除く。
 
+## legacy投影の順序
+
+`project(row)` の判定順は、source digest（`source_digest_mismatch`）、oversize（`source_row_too_large`）、`data` がobjectであること、control・catalogの受付、reason要約、data member、重複actor、service executor、envelope全体の検証である。整合性検査の失敗が常に優先する。正直な行がoversizeかつ改変済みになることは無いので、`oversize` と `!source_intact` が同時なら改変（`source_digest_mismatch`）として扱い、`audit.integrity.source_mismatch_detected` の対象にする。`data_kind` はquarantine報告のためのclaim契約の列であり、検証は `data` そのものを見る。
+
+`DocumentStagingProjection` のDebug表示は、`event_id` がUUIDの場合と `event_type` がcatalogのtypeの場合だけ値を出し、それ以外は `<invalid len=N>` と表示する（quarantineされた不正行の列をlogに出さない）。
+
+## adapter_versionの規律とgolden pin
+
+`audit-adapter-golden.json` は次の形である。
+
+```json
+{"algorithm": "rust-compact-sorted-sha256", "source_format": "document-audit-outbox-v0",
+ "versions": {"1": {"<fixture名>": "<sha256 hex>"}}}
+```
+
+- digestは `sha256(AuditEnvelope::to_json_string())`（compact、keyはbyte順）である。Rust投影の固定であり、Storeの `kp-audit-jsonb-sha256-v1`（jsonb textのdigest）ではない。Store側の固定はunit Bの試験が行う。
+- 試験（`tests/golden_projection.rs`）は、現在の `LEGACY_ADAPTER_VERSION` のsectionがあること、全acceptance fixtureをちょうど1回ずつ固定していること、digestが一致すること、現在より新しいversionのsectionが無いことを確認する。
+- 投影の出力（adapterのcodeと、出力に影響するcatalog属性：event_class、details allowlistとkind、持ち上げるfield、reason扱い、subject形、correlation写像）を変えたら、`LEGACY_ADAPTER_VERSION` とcatalogのDocument adapterの `adapter_version` を同時に上げ、新しいversion sectionを追加する。既存sectionのentryは編集・削除しない。失敗messageは「projection output changed: bump LEGACY_ADAPTER_VERSION and add a new version section; never edit an existing version's entries」である。
+- `LEGACY_ADAPTER_VERSION` とcatalogのadapter_versionの一致も試験で確認する。
+
 ## schema生成とRust⊂schema
 
 ```
-AUDIT_SCHEMA_BLESS=1 cargo test -p audit-core --test schema_contract   # 再生成
+AUDIT_SCHEMA_BLESS=1 cargo test -p audit-core --test schema_contract   # 再生成（書いた後に必ず失敗する）
 cargo test -p audit-core --test schema_contract                        # byte一致の確認
 ```
 
-生成schemaはJSON Schema 2020-12で、共有部分を `$defs` に1回だけ定義し、typeごとに `if`/`then` で `$defs/event.<type>` を適用する。
+`AUDIT_SCHEMA_BLESS=1` はschemaを書き出してから「blessed; rerun without AUDIT_SCHEMA_BLESS」で失敗する（blessした実行が成功扱いにならない）。環境変数 `CI` が設定されている場合はblessを拒否する。
 
-関係は「Rustが受理するものはschemaも受理する」である。試験は、全acceptance fixtureがschemaに適合すること、拒否表のうちschemaも拒否するものには分類を付けず、schemaが受理してしまうものには必ず `rust_only:<category>` を付けることを確認する。
+生成schemaはJSON Schema 2020-12で、共有部分を `$defs` に1回だけ定義し、typeごとに `if`/`then` で `$defs/event.<type>` を適用する。provenanceはadapterごとに `$defs/provenance.<source_format>`（`adapter_version` は `const`）である。`correlation.trace_id` は、adapterが許す場合だけpropertyに現れる。
+
+関係は「Rustが受理するものはschemaも受理する」である。試験は次を確認する。
+
+- 全acceptance fixtureと全control fixtureがschemaに適合すること。
+- 拒否表のうちschemaも拒否するものには分類を付けず、schemaが受理してしまうものには必ず `rust_only:<category>` を付けること。拒否表はcodeとfield（位置名）の組で比較する。
+- 変異試験：accepted fixture（relay・control）の全member・全配列要素について、削除、固定の置換値（null、真偽、0、±1、`i64::MAX`、256、1.5、空文字列、空白付き、Bidi文字、513 byte文字列、nil UUID、別UUID、hex、時刻、`[]`、`[1]`、`{}`）、objectごとの未知member追加を1つずつ適用し、Rustが受理した変異体はすべてschemaも受理すること。
 
 | `rust_only` 分類 | Rustだけが検査する制約 |
 |---|---|
 | `float_integer` | `2.0`・`2e0` の拒否（JSON Schemaでは整数とみなされる） |
 | `utf8_bytes` | byte単位の上限（schemaの `maxLength` は文字数） |
+| `principal_charset` | principalの文字規則（Bidi制御、U+2028/2029、BOM、TAG、noncharacter、前後の空白） |
 | `subject_binding` | subjectのplaceholderと `resource` / `details` の一致 |
 | `resource_binding` | `bindings` の一致 |
 | `correlation_binding` | `correlation` と写像元fieldの一致 |
@@ -104,53 +188,89 @@ cargo test -p audit-core --test schema_contract                        # byte一
 | `duplicate_key` | 重複key（schemaは解析後の値しか見ない） |
 | `origin_path` | 提出経路（relay/store/relay_control）とcatalogのoriginの一致 |
 
-envelope全体の24 KiB上限もRustだけが検査する。
+envelope全体の32 KiB（jsonb text）上限もRustだけが検査する。
 
 ## control event
 
-`origin: "store"`（source `urn:knowledge-platform:audit-store`）と `origin: "relay_control"`（source `urn:knowledge-platform:audit-relay`）のentryである。type名は `audit.` で始め、resourceは `{"type": "AuditStore", "id": "audit-store"}`、subjectは `audit-store`、`version_id` は持たない。envelopeは `crates/audit-store-postgres` のSQLが組み立て、`provenance` は `{source_format: "audit-store-control-v1" | "audit-relay-control-v1", adapter_version: 1}`（commitmentなし）である。detailsは必ず `session_role`（呼出元の `session_user`）を持つ。
+`origin: "store"`（source `urn:knowledge-platform:audit-store`）と `origin: "relay_control"`（source `urn:knowledge-platform:audit-relay`）のentryである。type名は `audit.` で始め、resourceは `{"type": "AuditStore", "id": "audit-store"}`、subjectは `audit-store`、`version_id` は持たない。envelopeは `crates/audit-store-postgres` のSQLが組み立て、`provenance` はadapterに従い `{source_format: "audit-store-control-v1" | "audit-relay-control-v1", adapter_version: 1}`（commitment・registrationなし）である。detailsは必ず `session_role`（呼出元の `session_user`）を持つ。
 
-| type | origin | class |
-|---|---|---|
-| `audit.access.intent_opened` | store | DATA_ACCESS |
-| `audit.access.denied` | store | SECURITY |
-| `audit.access.closed` | store | DATA_ACCESS |
-| `audit.access_policy.changed` | store | ACCESS_POLICY |
-| `audit.retention.policy_changed` | store | CONFIGURATION |
-| `audit.retention.expired` | store | PRIVILEGED_OPERATION |
-| `audit.body.purged` | store | PRIVILEGED_OPERATION |
-| `audit.integrity.verified` | store | SYSTEM_AUDIT |
-| `audit.integrity.conflict_detected` | store | SECURITY |
-| `audit.recovery.epoch_started` | store | SYSTEM_AUDIT |
-| `audit.recovery.fingerprint_rebound` | store | SYSTEM_AUDIT |
-| `audit.delivery.replay_requested` | relay_control | PRIVILEGED_OPERATION |
-| `audit.reconciliation.completed` | relay_control | SYSTEM_AUDIT |
-| `audit.integrity.source_mismatch_detected` | relay_control | SECURITY |
+| type | origin | class | 主なdetails |
+|---|---|---|---|
+| `audit.access.intent_opened` | store | DATA_ACCESS | operation、型付きfilter（`filter_seq_after` / `filter_seq_through` を含む）、filter_digest、watermark、page_size、max_pages、include_control、期限、token digest |
+| `audit.access.denied` | store | SECURITY | operation（`ingest`、`report_regression`、`declare_recovery_pending` を含む）、denial_code（unbound / insufficient_capability / invalid_input / self_grant / not_source_service）、required_capability |
+| `audit.access.closed` | store | DATA_ACCESS | intent seq、返した件数、page数、page digestのdigest |
+| `audit.access_policy.changed` | store | ACCESS_POLICY | change（granted / revoked / bound / unbound / bootstrap / reapplied）、対象主体、capability、db_role |
+| `audit.retention.policy_changed` | store | CONFIGURATION | policy_id、revision、selector、selector_digest、retain_days（nullable） |
+| `audit.retention.expired` | store | PRIVILEGED_OPERATION | policy_id、revision、selector snapshot、retain_days、cutoff、effective_cutoff、tx_time、limit、count、first_seq / last_seq（count=0ならnull）、expired_set_digest |
+| `audit.retention.expire_refused` | store | PRIVILEGED_OPERATION | policy_id、expected_revision、current_revision、refusal（stale_revision / not_expirable / held）、retain_days、cutoff、tx_time |
+| `audit.body.purged` | store | PRIVILEGED_OPERATION | target_seq、target_event_id、purge_reason_code |
+| `audit.integrity.verified` | store | SYSTEM_AUDIT | trigger（verify / checkpoint）、from/to seq、watermark、checked、head（epoch, chain）、outcome、違反code別件数 |
+| `audit.integrity.conflict_detected` | store | SECURITY | event_id、既存seq・origin、conflict_kind、commitment一致の有無、adapter_version |
+| `audit.recovery.epoch_started` | store | SYSTEM_AUDIT | old_epoch、new_epoch、restored_head_seq、restored_head_chain、照合checkpoint（epoch/seq/chain、nullable）と分類、classification（restore / planned_move / regression）、identity_range_digest、lost_from_seq、lost_upper_seq、lost_upper_known、regressionの証拠（報告seq・event_id・digest・報告者・時刻・報告時head。nullable）、旧/新fingerprint（system identifier、database oid、timeline） |
+| `audit.delivery.replay_requested` | relay_control | PRIVILEGED_OPERATION | event_id、quarantine_code（replayで解除する旧quarantine code） |
+| `audit.reconciliation.completed` | relay_control | SYSTEM_AUDIT | run_id、mode、watermark、id_set_digest、class別件数（`count_<class>`、`replay_record_lost` を含む）、repair件数 |
+| `audit.integrity.source_mismatch_detected` | relay_control | SECURITY | event_id、mismatch_code（source_digest_mismatch / actor_mismatch） |
 
-設計§4.5の12種に加え、設計が記録を求めるが§4.5に型の無い2種を登録した：`audit.access.closed`（§10.3 `close_access` の件数・page digest）と `audit.recovery.fingerprint_rebound`（§11 `rebind_fingerprint` の旧/新fingerprint）。`checkpoint` は `audit.integrity.verified`（`trigger: "checkpoint"`）として記録する。
+- `checkpoint` は独立したtypeを持たず、`audit.integrity.verified` を `trigger: "checkpoint"` で再利用する（明示的な再利用）。
+- `rebind_fingerprint` は設計から削除した。計画的な移動（pg_upgrade、dump/restore移行、promotion）は `begin_recovery_epoch` で扱い、`audit.recovery.epoch_started` に `classification: "planned_move"`、空の消失範囲（`lost_upper_seq = restored_head_seq`、`lost_from_seq = restored_head_seq + 1`）を記録する。
+- relay経路（`Origin::Relay`）は、`audit.*` type（field `type`）、control source（field `source`）、`AuditStore` resource（field `data.resource.type`）を `control_type_forbidden` で常に拒否する。control eventはそれぞれ `Origin::Store` / `Origin::RelayControl` の経路でだけ受理する。
+- 試験は、control entryごとに受理されるfixture（最小・全field）と、拒否（relay経路、他のcontrol経路、他のsource_format、legacy format、commitment・registrationの付与、`audit-store` 以外のresource id、version_id、Document source、trace_id）を、codeとfieldの組で確認する。Storeの試験は、SQLが生成したすべてのcontrol eventをこの経路で検証する。
+- relay control eventのdetailsは `RelayControl::details()`（`session_role` を除く）が作り、試験でcatalogに適合することを確認する。
 
-relay経路（`Origin::Relay`）は、`audit.*` type、control source、`AuditStore` resourceを `control_type_forbidden` で常に拒否する。control eventはそれぞれ `Origin::Store` / `Origin::RelayControl` の経路でだけ受理する。Storeの試験は、SQLが生成したすべてのcontrol eventをこの経路で検証する。
+## Store port（`audit_core::port`）
 
-## recovery epochのDB外判定
+`AuditStore` traitは、runtime非依存（boxed `Send` future、tokio型なし）でcontent-freeである。
 
-`assess_recovery(report, checkpoints, records)` は、anchor付きで検証したexport（identity chainを含む）を、帯域外のcheckpointと復元記録（`RecoveryRecord`：旧/新epoch、復元head、消失範囲の上限）で判定する（設計§8）。
-
-| verdict | 意味 |
+| method | 用途 |
 |---|---|
-| `Authentic` | anchorから連続し、帯域外checkpointが検証経路上にあり、消失を伴うrecoveryが無い |
-| `NoCheckpoint` | 経路を確認する帯域外checkpointが無い（真正とは主張しない） |
-| `Lost` | 差異が帯域外に記録されたrecoveryの消失範囲だけで説明できる（authenticとはしない） |
-| `UnverifiedRecovery` | recovery epochに帯域外記録が無い、または記録と食い違う（改変の疑い） |
-| `Tampered` | 復元head以下、またはrecoveryの無い位置で帯域外checkpointと食い違う |
-| `Unanchored` | filter付きの部分集合 |
+| `ingest(envelope)` | relay-originのenvelopeを保存する |
+| `probe(&ProbeExpectation)` | ingestと同じgate（head lock、書込可否、fingerprint、recovery_pending、posture、ingest主体の束縛、(source, adapter_version, types) の登録、最後にack済みのreceipt identity）を、保存せずに確認する。gateの結果は `StoreStatus` に入り、`Err` はprobe自体の外部障害である |
+| `lookup_receipts(event_ids)` / `list_source_receipts(source, after_seq, limit)` / `lookup_control_receipts(seqs)` | content-freeなreceipt（seq、event_id、origin、type、envelope digest、commitment、expired、epoch／control対象event_id、code）。1回あたり最大1000件 |
+| `record_relay_control(RelayControl)` | `replay_requested` / `reconciliation.completed` / `source_mismatch_detected` を記録し、（seq, epoch）を返す。source_mismatchは (event_id, code) で冪等 |
+| `report_regression(ReceiptIdentity)` | ack済みのreceiptが解決できないことを報告する。StoreはHead lockの下で再確認してからrecovery_pendingを設定する |
 
-全recovery epochと消失範囲は `epochs` に列挙され、人の確認対象になる。
+`StoreStatus` は head_seq、recovery_epoch、`state`（`Operational` / `RecoveryMode`（fingerprint不一致かrecovery_pending、`store_recovery_required`）/ `PostureInvalid`（`store_posture_invalid`）/ `ReadOnly`（`store_read_only`））、missing_types、regression_detected、last_verified_seq を持つ。`admission()` は、state、regression（`store_regressed`）、未登録type（`store_unregistered_type`）の順に判定する。
+
+### 失敗の分類（設計§6.3、二分類）
+
+- Terminal（quarantine）：`StoreError::Conflict` と `StoreError::Rejected { code }` だけである。これらはingestの構造化された結果行（`IngestRow::into_result`）からだけ作られる。
+- Outage（試行を返却して保留）：`StoreError::Outage { code }`。それ以外のすべて。`is_outage() == !is_terminal()` を全variantで試験する。
+
+`classify_sqlstate` は全域関数で、どの入力もoutageになる。
+
+| SQLSTATE | OutageCode |
+|---|---|
+| `25006` | `store_read_only` |
+| `57014` | `store_timeout` |
+| `57P..`（57P01–57P05と将来のcode） | `store_shutdown` |
+| `40001` / `40P01` / `55P03` | `store_serialization` / `store_deadlock` / `store_lock_unavailable` |
+| `08...` / `53...` | `store_connection` / `store_resources` |
+| `42...` | `store_deploy_mismatch` |
+| `58...` / `XX...` / `54...` | `store_internal` |
+| それ以外（形式不正・空を含む） | `store_other` |
+
+このほかのOutageCodeは `store_transport`、`store_outcome_unknown`、`store_recovery_required`、`store_regressed`、`store_posture_invalid`、`store_unregistered_type`、`store_denied`（ingestのloginが登録済みsource serviceの主体でない）である。全5文字 `[0-9A-Z]` のSQLSTATEがterminalにならないことを網羅試験で確認する。
+
+`IngestRow { status, seq, envelope_digest, adapter_version, code }` の解釈：
+
+| status | 結果 |
+|---|---|
+| `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt。seq（≥1）、32 byteのdigest、adapter_version（≥1）が欠けていれば `store_outcome_unknown` |
+| `conflict` | `Conflict` |
+| `rejected` | `Rejected { code }`。codeが無い・`[a-z0-9_]{1,64}` でなければ `store_other` |
+| `recovery_required` | `store_recovery_required` |
+| `outage` | codeのOutageCode（`store_` 接頭辞の有無を問わない。`unregistered_type` → `store_unregistered_type`）、不明なら `store_other` |
+| `denied` | `store_denied` |
+| その他 | `store_other` |
+
+`OutageCode::counts_toward_outage_streak()` は `store_internal` と `store_other`（残余の予期しない失敗）だけが真である。gateの結果、既知のSQLSTATE class、transport、timeout、結果不明はStore全体の状態なので `outage_streak` に数えない。
 
 ## hash chain
 
 - `envelope_digest = sha256(jsonb::text のbyte列)`（`kp-audit-jsonb-sha256-v1`）
 - `chain = sha256("kp-audit-chain-v1" || prev_chain || int8send(seq) || uuid_send(event_id) || envelope_digest)`
 - `GENESIS = sha256("kp-audit-chain-genesis-v1")`。seq 1の `prev_chain` である。
+- `expired_set_digest = sha256("kp-audit-expired-set-v1" || int8send(seq_1) || … || int8send(seq_n))`。`audit.retention.expired` が印を付けたseqを昇順に連結する（空集合は接頭辞だけのhash）。SQLでは `sha256('kp-audit-expired-set-v1'::bytea || coalesce(string_agg(int8send(seq), ''::bytea ORDER BY seq), ''::bytea))` である。
 
 SQL実装と照合するための固定vector（`crates/audit-core/tests/chain_export.rs`）：
 
@@ -160,19 +280,52 @@ SQL実装と照合するための固定vector（`crates/audit-core/tests/chain_e
 | `envelope_digest('{"example":"envelope"}')` | `c147ac99fc21ba6cc69a47812b1bb2415e353995e22b65d6a2b58a5222dd5f6f` |
 | seq 1、event `0199a1b2-0000-7000-8000-000000000001`、上のdigest | `babbd336ec2c8556082424a253afb6d8e88ef5a63c9cbcab6cea8f441ad528e1` |
 | seq 2、event `0199a1b2-0000-7000-8000-000000000002`、digest = `0x11` × 32 | `1496cf0e490216c2ca995db8ac0a340562a691cf1d2f955865624900b4856106` |
+| `expired_set_digest([])` | `156d594bbdfb392f0b9d899bf2342920d15ce007185b736b7323675c4eed4582` |
+| `expired_set_digest([3, 5, 9])` | `66efae7170a5138bff29bb1c633cd75e5eb7345491ca9c354aea98c0e08a45e6` |
 
 ## export検証
 
-export行は `{"seq","event_id","origin","envelope_digest","prev_chain","chain","recovery_epoch","expired","envelope"}` で、`envelope` はStoreの `jsonb::text` の原文（失効済み・identity chainでは `null`）である。audit-coreはRawValueで原文を保持してhashする。
+export行は次の10 keyを持つ（閉じた集合、重複key不可）。
 
-- `verify_export(text, Anchor)`：genesisまたは信頼済みcheckpointから、seqの連続性、`prev_chain` の連鎖、chainの再計算、本文digest、`envelope.id = event_id`、本文の有無と `expired` の整合、epochの非減少を検査する。
-- `verify_identity_chain(text, Anchor)`：本文の無いidentity chainを同様に検査する。
+```
+{"seq","event_id","origin","envelope_digest","prev_chain","chain","recovery_epoch","expired","expired_by_seq","envelope"}
+```
+
+`envelope` はStoreの `jsonb::text` の原文（失効済み・identity chainでは `null`）で、audit-coreはRawValueで原文を保持してhashする。`expired_by_seq` は本文を消したcontrol eventのseqで、`expired = true` ⇔ `expired_by_seq` が非null（identity chainの行も同じ）。SQLは `e.expired_by_seq` をそのまま出力する。`origin`、`recovery_epoch`、`expired`、`expired_by_seq` はchainの対象外なので、本文付きのanchor検証でだけ、chainに入った本文で裏付ける。
+
+- `verify_export(text, Anchor)`：genesisまたは信頼済みcheckpointから、次を検査する。
+  - seqの連続性（seqの加算は `checked_add`。overflowは `Malformed`）、`prev_chain` の連鎖、chainの再計算、本文digest、`envelope.id = event_id`、本文の有無と `expired` の整合。
+  - origin：本文のtypeがcatalogにあれば、そのoriginと一致し、本文のsourceがcatalogのsourceと一致する（store → audit-store、relay_control → audit-relay）。catalogに無いtypeは構造規則（`audit.*` typeと専用source）で判定する。不一致は `OriginMismatch`。
+  - 失効：origin=relay以外の行の失効は `ExpiryOnControlEvent`。`expired_by_seq` は自分のseqより大きい（そうでなければ `ExpiryEvidenceMissing`）。参照先がexport内なら、そのseqはorigin=storeの本文付き `audit.retention.expired` か `audit.body.purged` でなければならない（そうでなければ `ExpiryEvidenceMissing`）。
+    - retention：参照する行の集合について、count、first_seq、last_seq、`expired_set_digest` が一致する（不一致は `ExpiryEvidenceMismatch`）。参照されないretention行も空集合と照合する。first_seqがanchor以前の場合は、見えている行が範囲内に収まることだけを確認し、未検証として数える。
+    - purge：target_seqの1行だけが参照し、その `event_id` が `target_event_id` と一致する。
+    - 参照先がexportの範囲外の場合は、黙って通さず `ExportReport.unverified_expiry_evidence` に数える。
+  - epoch：減少は `EpochRegressed`、+1以外の増加は `EpochSkipped`。増加はorigin=storeの本文付き `audit.recovery.epoch_started` の行で起き、そのdetailsの `old_epoch` / `new_epoch` が列の値と一致し、`restored_head_seq` がその行より前で、検証経路上にあれば `restored_head_chain` がそのseqのchainと一致しなければならない（そうでなければ `UnattestedEpochChange`）。この場合 `epochs_authenticated = true`。
+- `verify_identity_chain(text, Anchor)`：本文の無いidentity chainを同様に検査する（seq、chain、epochの単調性と+1、失効行の `expired_by_seq`）。本文が無いので、epochは `epochs_authenticated = false`、失効はすべて `unverified_expiry_evidence` に数える。
 - `verify_export_subset(text)`：filter付きexportの行単位の整合だけを見る。結果は常に `anchored: false` であり、真正性の根拠にならない。
-- `compare_checkpoint(report, checkpoint)`：`Match` / `Mismatch` / `StoreBehind` / `Ahead` / `BeforeAnchor` / `Unanchored`。
+- `ExportReport` は `epoch_transitions()`（`(first_seq, old_epoch, new_epoch)`）、`epoch_at(seq)`、`chain_at(seq)` を持つ。
+- `compare_checkpoint(report, checkpoint)`：`Match` / `Mismatch` / `EpochMismatch` / `StoreBehind` / `Ahead` / `BeforeAnchor` / `Unanchored`。checkpointは（epoch, seq, chain）で、`checkpoint.epoch` はそのseqの行の `recovery_epoch`（取得時の `publication_head.recovery_epoch`）である。chainは一致するがepochが異なる場合は、書換えではなく `EpochMismatch`（epoch列または帯域外記録の改変）とする。
+
+## recovery epochのDB外判定
+
+epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery.epoch_started` の行（新しいepochの最初の行、通常は復元head+1）で起きる。
+
+`assess_recovery(report, checkpoints, records)` は、anchor付きで検証したexport（identity chainを含む）を、帯域外のcheckpointと遷移記録（`RecoveryRecord { old_epoch, new_epoch, restored_head_seq, restored_head_chain, lost_upper }`）で判定する（設計§8）。記録は、epochが一致し、`restored_head_seq` が遷移より前で、検証経路上にあれば `restored_head_chain` がそのseqのchainと一致する場合に、その遷移を説明する。`lost_upper = restored_head_seq` は消失の無い計画的な移動である。
+
+| verdict | 意味 |
+|---|---|
+| `Authentic` | anchorから連続し、帯域外checkpointが検証経路上にあり、消失を伴うrecoveryが無い（計画的な移動は記録があれば含めてよい） |
+| `NoCheckpoint` | 経路を確認する帯域外checkpointが無い（真正とは主張しない） |
+| `Lost` | 差異が帯域外に記録されたrecoveryの消失範囲（restored_head_seq, lost_upper]だけで説明できる（authenticとはしない） |
+| `UnverifiedRecovery` | recovery epochに帯域外記録が無い、記録と食い違う、またはcheckpointのepochだけが異なる（改変の疑い） |
+| `Tampered` | 復元head以下、またはrecoveryの無い位置で帯域外checkpointと食い違う |
+| `Unanchored` | filter付きの部分集合 |
+
+全recovery epochと消失範囲は `epochs` に列挙され、人の確認対象になる。
 
 ## 拒否code
 
-`envelope_too_large`、`invalid_json`、`duplicate_key`、`invalid_envelope`、`unknown_event_type`、`control_type_forbidden`、`invalid_source`、`invalid_subject`、`invalid_resource`、`invalid_result`、`invalid_actor`、`invalid_service_executor`、`unknown_field`、`missing_field`、`invalid_field`、`invalid_correlation`、`invalid_source_correlation`、`invalid_reason`、`reason_not_string`、`actor_mismatch`、`source_row_too_large`、`source_digest_mismatch`、`invalid_provenance`、`invalid_extensions`。拒否は、codeと、catalogのfield名または固定の位置名だけを持つ。payloadの値は含めない。
+`envelope_too_large`、`invalid_json`、`duplicate_key`、`invalid_envelope`、`unknown_event_type`、`control_type_forbidden`、`invalid_source`、`invalid_subject`、`invalid_resource`、`nil_client_id`、`invalid_result`、`invalid_actor`、`invalid_service_executor`、`unknown_field`、`missing_field`、`invalid_field`、`invalid_correlation`、`invalid_source_correlation`、`invalid_reason`、`reason_not_string`、`actor_mismatch`、`source_row_too_large`、`source_digest_mismatch`、`invalid_provenance`、`invalid_extensions`。拒否は、codeと、catalogのfield名または固定の位置名（`type`、`source`、`data.resource.type`、`data.resource.id` 等）だけを持つ。payloadの値は含めない。
 
 ## producerとの対応（main `d515aa3`）
 

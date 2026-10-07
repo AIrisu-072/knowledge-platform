@@ -145,6 +145,55 @@ impl<'de> Visitor<'de> for UniqueSeed<'_> {
     }
 }
 
+/// Length in bytes of the PostgreSQL `jsonb::text` rendering of `value`
+/// (design §4.1). PostgreSQL renders `{"a": 1, "b": [1, 2]}`: one space after
+/// every member `:` and after every `,` separator, nothing else. String
+/// escaping is identical to the compact serde rendering for every string an
+/// envelope can contain (`"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t` as short
+/// escapes, other C0 controls as `\u00xx`, everything else verbatim), and
+/// integers render as their decimal digits. The result therefore equals the
+/// compact length plus one byte per structural `:` and `,`. Exact for every
+/// envelope the validator can accept (integers only, no control characters);
+/// for floats it approximates the numeric rendering.
+pub fn jsonb_text_len(value: &Value) -> usize {
+    let mut total = 0_usize;
+    let mut stack = vec![value];
+    while let Some(value) = stack.pop() {
+        let len = match value {
+            Value::Null | Value::Bool(true) => 4,
+            Value::Bool(false) => 5,
+            Value::Number(number) => number.to_string().len(),
+            Value::String(text) => quoted_len(text),
+            Value::Array(items) => {
+                stack.extend(items);
+                2 + 2 * items.len().saturating_sub(1)
+            }
+            Value::Object(map) => {
+                let mut len = 2 + 2 * map.len().saturating_sub(1);
+                for (key, member) in map {
+                    len = len.saturating_add(quoted_len(key) + 2);
+                    stack.push(member);
+                }
+                len
+            }
+        };
+        total = total.saturating_add(len);
+    }
+    total
+}
+
+/// Length of a JSON string literal with PostgreSQL / serde escaping.
+fn quoted_len(text: &str) -> usize {
+    2 + text
+        .chars()
+        .map(|c| match c {
+            '"' | '\\' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => 2,
+            c if u32::from(c) < 0x20 => 6,
+            c => c.len_utf8(),
+        })
+        .sum::<usize>()
+}
+
 /// Rebuilds every object with keys inserted in byte order, so that
 /// serialization is identical whether or not `serde_json/preserve_order` is
 /// enabled by feature unification.
@@ -198,6 +247,45 @@ mod tests {
         assert_eq!(code("[[[[[[[[[1]]]]]]]]]"), RejectionCode::InvalidJson);
         let big = format!("\"{}\"", "a".repeat(MAX_JSON_BYTES));
         assert_eq!(code(&big), RejectionCode::EnvelopeTooLarge);
+    }
+
+    #[test]
+    fn jsonb_text_len_matches_postgresql_renderings() {
+        // Expected texts are PostgreSQL 18 `jsonb::text` output.
+        for (input, rendered) in [
+            (r#"{"a":1,"b":[1,2]}"#, r#"{"a": 1, "b": [1, 2]}"#),
+            ("{}", "{}"),
+            ("[]", "[]"),
+            (r#"{"a":{}}"#, r#"{"a": {}}"#),
+            (r#"{"a":[]}"#, r#"{"a": []}"#),
+            ("[[],[[]]]", "[[], [[]]]"),
+            (r#"{"k":"a\"b\\c"}"#, r#"{"k": "a\"b\\c"}"#),
+            (r#"{"t":"x\ty\nz\u0001"}"#, r#"{"t": "x\ty\nz\u0001"}"#),
+            (r#"{"u":"é名","s":"/"}"#, r#"{"s": "/", "u": "é名"}"#),
+            (
+                r#"{"n":null,"t":true,"f":false,"i":-9223372036854775808}"#,
+                r#"{"f": false, "i": -9223372036854775808, "n": null, "t": true}"#,
+            ),
+            (
+                r#"{"d":[255,0,17],"o":{"x":{"y":[1]}}}"#,
+                r#"{"d": [255, 0, 17], "o": {"x": {"y": [1]}}}"#,
+            ),
+            ("18446744073709551615", "18446744073709551615"),
+            (r#""plain""#, r#""plain""#),
+        ] {
+            let value = parse_unique(input).expect("valid");
+            assert_eq!(jsonb_text_len(&value), rendered.len(), "{input}");
+        }
+    }
+
+    #[test]
+    fn jsonb_text_len_is_compact_length_plus_structural_separators() {
+        let value =
+            parse_unique(r#"{"a":[1,2,{"b":"c,d:e"}],"f":{"g":null,"h":[[],{}]},"i":"\"q\""}"#)
+                .expect("valid");
+        let compact = value.to_string();
+        // Separators outside strings: 6 ':' and 6 ','.
+        assert_eq!(jsonb_text_len(&value), compact.len() + 12);
     }
 
     #[test]

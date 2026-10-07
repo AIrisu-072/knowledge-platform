@@ -4,8 +4,11 @@
 mod common;
 
 use audit_core::catalog::{AUDIT_STORE_SOURCE, DOCUMENT_SOURCE};
-use audit_core::envelope::{DATASCHEMA, LEGACY_SOURCE_FORMAT, MAX_ENVELOPE_BYTES};
-use audit_core::{Catalog, DocumentStagingProjection, RejectionCode as C, project};
+use audit_core::envelope::{DATASCHEMA, LEGACY_SOURCE_FORMAT};
+use audit_core::{
+    Catalog, DocumentStagingProjection, JSONB_TEXT_LIMIT, Rejection, RejectionCode as C,
+    jsonb_text_len, project,
+};
 use common::*;
 use serde_json::{Map, Value, json};
 
@@ -86,7 +89,10 @@ fn every_producer_variant_projects_to_the_expected_envelope() {
             "{name}"
         );
         let text = envelope.to_json_string();
-        assert!(text.len() <= MAX_ENVELOPE_BYTES, "{name}");
+        assert!(
+            jsonb_text_len(envelope.as_value()) <= JSONB_TEXT_LIMIT,
+            "{name}"
+        );
         assert!(
             !text.contains("identityProvider"),
             "{name}: legacy principal kept"
@@ -161,6 +167,27 @@ fn debug_output_of_rows_and_envelopes_omits_payload() {
 }
 
 #[test]
+fn debug_output_of_malformed_rows_never_echoes_column_text() {
+    let mut row = fixture_named("document.created").row;
+    row.event_id = "SECRET-NOT-A-UUID".to_owned();
+    row.event_type = "secret free text type".to_owned();
+    let debug = format!("{row:?}");
+    assert!(!debug.contains("SECRET"), "{debug}");
+    assert!(!debug.contains("secret"), "{debug}");
+    assert!(debug.contains("<invalid len=17>"), "{debug}");
+    assert!(debug.contains("<invalid len=21>"), "{debug}");
+    // A well-formed id and a catalog type are shown.
+    let fine = format!("{:?}", fixture_named("document.created").row);
+    assert!(
+        fine.contains(EVENT_ID) && fine.contains("\"document.created\""),
+        "{fine}"
+    );
+    let mut uppercase = fixture_named("document.created").row;
+    uppercase.event_id = EVENT_ID.to_uppercase();
+    assert!(format!("{uppercase:?}").contains("<invalid len=36>"));
+}
+
+#[test]
 fn legacy_time_matches_the_workspace_time_serde_shape() {
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
     let date = Date::from_calendar_date(2026, Month::October, 7).expect("date");
@@ -195,8 +222,12 @@ fn legacy_time_matches_the_workspace_time_serde_shape() {
     }
 }
 
-fn reject(row: &DocumentStagingProjection) -> audit_core::Rejection {
+fn reject(row: &DocumentStagingProjection) -> Rejection {
     project(row).expect_err("must be rejected")
+}
+
+fn at(code: C, field: &'static str) -> Rejection {
+    Rejection::at(code, field)
 }
 
 fn with_data(name: &str, edit: impl FnOnce(&mut Map<String, Value>)) -> DocumentStagingProjection {
@@ -224,7 +255,7 @@ fn free_text_and_unknown_members_are_quarantined() {
                 data.insert(key.to_owned(), json!("synthetic free text"));
             });
             let rejection = reject(&row);
-            assert_eq!(rejection.code, C::UnknownField, "{name}/{key}");
+            assert_eq!(rejection, at(C::UnknownField, "data"), "{name}/{key}");
             assert!(!rejection.to_string().contains("synthetic"));
         }
     }
@@ -236,32 +267,42 @@ fn reason_text_never_passes_through() {
         data.insert("reason".to_owned(), json!("SYNTHETIC-REASON-TEXT"));
     });
     let rejection = reject(&row);
-    assert_eq!(rejection.code, C::UnknownField);
+    assert_eq!(rejection, at(C::UnknownField, "reason"));
     assert!(!format!("{rejection:?} {rejection}").contains("SYNTHETIC"));
 
+    let invalid = at(C::InvalidReason, "reason");
     let mut missing = fixture_named("document.metadata.changed").row;
     missing.reason_kind = None;
     missing.reason_bytes = None;
-    assert_eq!(reject(&missing).code, C::InvalidReason);
+    assert_eq!(reject(&missing), invalid);
 
     let mut no_bytes = fixture_named("folder.created").row;
     no_bytes.reason_bytes = None;
-    assert_eq!(reject(&no_bytes).code, C::InvalidReason);
+    assert_eq!(reject(&no_bytes), invalid);
 
     let mut negative = fixture_named("folder.created").row;
     negative.reason_bytes = Some(-1);
-    assert_eq!(reject(&negative).code, C::InvalidReason);
+    assert_eq!(reject(&negative), invalid);
+
+    // The Document HTTP body limit bounds the reported length.
+    let mut at_limit = fixture_named("folder.created").row;
+    at_limit.reason_bytes = Some(1_048_576);
+    let envelope = project(&at_limit).expect("at the body limit");
+    assert_eq!(envelope.data()["reason"]["utf8_bytes"], 1_048_576);
+    let mut over_limit = fixture_named("folder.created").row;
+    over_limit.reason_bytes = Some(1_048_577);
+    assert_eq!(reject(&over_limit), invalid);
 
     for kind in ["number", "object", "array", "null", "boolean"] {
         let mut row = fixture_named("document.publication.ended").row;
         row.reason_kind = Some(kind.to_owned());
-        assert_eq!(reject(&row).code, C::ReasonNotString, "{kind}");
+        assert_eq!(reject(&row), at(C::ReasonNotString, "reason"), "{kind}");
     }
 
     let mut on_acl = fixture_named("access_policy.changed/document").row;
     on_acl.reason_kind = Some("string".to_owned());
     on_acl.reason_bytes = Some(3);
-    assert_eq!(reject(&on_acl).code, C::UnknownField);
+    assert_eq!(reject(&on_acl), at(C::UnknownField, "reason"));
 }
 
 #[test]
@@ -276,15 +317,22 @@ fn duplicated_actor_must_match_the_row_actor() {
                 json!({"identityProvider": "poc", "principalId": "someone-else"}),
             );
         });
-        assert_eq!(reject(&row).code, C::ActorMismatch, "{name}");
+        assert_eq!(reject(&row), at(C::ActorMismatch, "actor"), "{name}");
         let row = with_data(name, |data| {
             data.remove("actor");
         });
-        assert_eq!(reject(&row).code, C::MissingField, "{name}");
+        assert_eq!(reject(&row), at(C::MissingField, "actor"), "{name}");
         let row = with_data(name, |data| {
             data.insert("actor".to_owned(), json!({"identityProvider": "poc"}));
         });
-        assert_eq!(reject(&row).code, C::InvalidActor, "{name}");
+        assert_eq!(reject(&row), at(C::InvalidActor, "actor"), "{name}");
+        let row = with_data(name, |data| {
+            data.insert(
+                "actor".to_owned(),
+                json!({"identityProvider": "poc", "principalId": "poc-human\u{200f}"}),
+            );
+        });
+        assert_eq!(reject(&row), at(C::InvalidActor, "actor"), "{name}");
     }
 }
 
@@ -296,18 +344,33 @@ fn service_executor_shape_is_enforced() {
             json!({"identityProvider": "service"}),
         );
     });
-    assert_eq!(reject(&row).code, C::InvalidServiceExecutor);
+    let invalid = at(C::InvalidServiceExecutor, "serviceExecutor");
+    assert_eq!(reject(&row), invalid);
     let row = with_data("document.version.publication.terminal/scheduler", |data| {
         data.insert(
             "serviceExecutor".to_owned(),
             json!({"identityProvider": "service", "principalId": "sch\u{1b}eduler"}),
         );
     });
-    assert_eq!(reject(&row).code, C::InvalidServiceExecutor);
+    assert_eq!(reject(&row), invalid);
+    for hidden in [
+        "\u{feff}scheduler",
+        "scheduler\u{e0020}",
+        "  ",
+        "scheduler\u{2029}",
+    ] {
+        let row = with_data("document.version.published/scheduled", |data| {
+            data.insert(
+                "serviceExecutor".to_owned(),
+                json!({"identityProvider": "service", "principalId": hidden}),
+            );
+        });
+        assert_eq!(reject(&row), invalid, "{hidden:?}");
+    }
     let row = with_data("document.created", |data| {
         data.insert("serviceExecutor".to_owned(), scheduler());
     });
-    assert_eq!(reject(&row).code, C::UnknownField);
+    assert_eq!(reject(&row), at(C::UnknownField, "data"));
 }
 
 #[test]
@@ -442,106 +505,168 @@ fn typed_fields_reject_wrong_types_floats_and_bounds() {
 #[test]
 fn row_columns_are_validated() {
     let base = || fixture_named("document.version.created/later").row;
-    let mut cases: Vec<(&str, DocumentStagingProjection, C)> = Vec::new();
+    let mut cases: Vec<(&str, DocumentStagingProjection, Rejection)> = Vec::new();
+    let trace = at(C::InvalidSourceCorrelation, "trace_id");
+    let resource = at(C::InvalidResource, "data.resource");
+    let subject = at(C::InvalidSubject, "subject");
+    let actor = at(C::InvalidActor, "data.actor");
+    let provenance = at(C::InvalidProvenance, "data.provenance");
     let mut r = base();
     r.trace_id = Some("request-1234".to_owned());
-    cases.push(("trace not uuid", r, C::InvalidSourceCorrelation));
+    cases.push(("trace not uuid", r, trace));
     let mut r = base();
     r.trace_id = Some(CORR.to_uppercase());
-    cases.push(("trace uppercase", r, C::InvalidSourceCorrelation));
+    cases.push(("trace uppercase", r, trace));
     let mut r = base();
     r.trace_id = Some("4bf92f3577b34da6a3ce929d0e0e4736".to_owned());
-    cases.push(("trace w3c", r, C::InvalidSourceCorrelation));
+    cases.push(("trace w3c", r, trace));
     let mut r = base();
     r.trace_id = Some(NIL.to_owned());
-    cases.push(("trace nil", r, C::InvalidSourceCorrelation));
+    cases.push(("trace nil", r, trace));
     let mut r = base();
     r.resource_id = NIL.to_owned();
-    cases.push(("nil resource", r, C::InvalidResource));
+    cases.push(("nil resource", r, at(C::NilClientId, "data.resource.id")));
+    let mut r = base();
+    r.resource_version_id = Some(NIL.to_owned());
+    cases.push((
+        "nil version",
+        r,
+        at(C::NilClientId, "data.resource.version_id"),
+    ));
     let mut r = base();
     r.resource_version_id = None;
-    cases.push(("missing version", r, C::InvalidResource));
+    cases.push(("missing version", r, resource));
     let mut r = fixture_named("document.created").row;
     r.resource_version_id = Some(VER.to_owned());
-    cases.push(("unexpected version", r, C::InvalidResource));
+    cases.push(("unexpected version", r, resource));
     let mut r = base();
     r.resource_type = "Folder".to_owned();
-    cases.push(("resource type", r, C::InvalidResource));
+    cases.push(("resource type", r, resource));
     let mut r = base();
     r.subject = format!("document/{OTHER_DOC}/version/{VER}");
-    cases.push(("subject other document", r, C::InvalidSubject));
+    cases.push(("subject other document", r, subject));
     let mut r = fixture_named("document.file.access_granted/download").row;
     r.subject = format!("document/{DOC}/version/{VER}/representation/{ITEM}");
-    cases.push(("subject representation binding", r, C::InvalidSubject));
+    cases.push(("subject representation binding", r, subject));
     let mut r = fixture_named("access_policy.changed/folder_inherit").row;
     r.subject = format!("document/{FOLDER}");
-    cases.push(("subject resource scope", r, C::InvalidSubject));
+    cases.push(("subject resource scope", r, subject));
     let mut r = base();
     r.result = "denied".to_owned();
-    cases.push(("result", r, C::InvalidResult));
+    cases.push(("result", r, at(C::InvalidResult, "data.result")));
     let mut r = base();
     r.actor_principal_id = "p".repeat(257);
-    cases.push(("actor too long", r, C::InvalidActor));
+    cases.push(("actor too long", r, actor));
     let mut r = base();
     r.actor_principal_id = "poc\nhuman".to_owned();
-    cases.push(("actor control", r, C::InvalidActor));
+    cases.push(("actor control", r, actor));
+    let mut r = base();
+    r.actor_principal_id = "poc\u{202d}human".to_owned();
+    cases.push(("actor bidi", r, actor));
+    let mut r = base();
+    r.actor_identity_provider = "poc ".to_owned();
+    cases.push(("actor trailing space", r, actor));
+    let mut r = base();
+    r.actor_identity_provider = "\u{2003}".to_owned();
+    cases.push(("actor whitespace only", r, actor));
+    let mut r = base();
+    r.actor_principal_id = "poc\u{e0068}\u{e0069}".to_owned();
+    cases.push(("actor tag smuggling", r, actor));
+    let mut r = base();
+    r.actor_principal_id = "poc\u{ffff}".to_owned();
+    cases.push(("actor noncharacter", r, actor));
     let mut r = base();
     r.source = "urn:knowledge-platform:search-platform".to_owned();
-    cases.push(("source", r, C::InvalidSource));
+    cases.push(("source", r, at(C::InvalidSource, "source")));
     let mut r = base();
     r.source = AUDIT_STORE_SOURCE.to_owned();
-    cases.push(("control source", r, C::ControlTypeForbidden));
+    cases.push(("control source", r, at(C::ControlTypeForbidden, "source")));
     let mut r = base();
     r.event_type = "audit.access.denied".to_owned();
-    cases.push(("control type", r, C::ControlTypeForbidden));
+    cases.push(("control type", r, at(C::ControlTypeForbidden, "event_type")));
     let mut r = base();
     r.resource_type = "AuditStore".to_owned();
-    cases.push(("control resource", r, C::ControlTypeForbidden));
+    cases.push((
+        "control resource",
+        r,
+        at(C::ControlTypeForbidden, "resource_type"),
+    ));
     let mut r = base();
     r.event_type = "document.version.deleted".to_owned();
-    cases.push(("unknown type", r, C::UnknownEventType));
+    cases.push(("unknown type", r, at(C::UnknownEventType, "event_type")));
     let mut r = base();
     r.event_id = EVENT_ID.to_uppercase();
-    cases.push(("event id", r, C::InvalidEnvelope));
+    cases.push(("event id", r, at(C::InvalidEnvelope, "id")));
     let mut r = base();
     r.occurred_at = "2026-10-07 01:02:03.456789+00".to_owned();
-    cases.push(("occurred_at", r, C::InvalidEnvelope));
+    cases.push(("occurred_at", r, at(C::InvalidEnvelope, "time")));
     let mut r = base();
     r.registration_kind = "manual".to_owned();
-    cases.push(("registration", r, C::InvalidProvenance));
+    cases.push(("registration", r, provenance));
     let mut r = base();
     r.source_commitment = "zz".repeat(32);
-    cases.push(("commitment", r, C::InvalidProvenance));
+    cases.push(("commitment", r, provenance));
     let mut r = base();
     r.data_kind = "array".to_owned();
     r.data = Some(json!([]));
-    cases.push(("data array", r, C::InvalidField));
+    cases.push(("data array", r, at(C::InvalidField, "data")));
     let mut r = base();
     r.data = None;
-    cases.push(("data null", r, C::InvalidField));
+    cases.push(("data null", r, at(C::InvalidField, "data")));
+    let mut r = base();
+    r.data_kind = "object".to_owned();
+    r.data = Some(json!("scalar"));
+    cases.push(("data scalar", r, at(C::InvalidField, "data")));
     let mut r = base();
     r.source_intact = false;
-    cases.push(("source digest", r, C::SourceDigestMismatch));
+    cases.push(("source digest", r, Rejection::new(C::SourceDigestMismatch)));
     let mut r = base();
     r.oversize = true;
     r.source_intact = false;
     r.data = None;
-    cases.push(("oversize first", r, C::SourceRowTooLarge));
+    cases.push((
+        "digest before oversize",
+        r,
+        Rejection::new(C::SourceDigestMismatch),
+    ));
+    let mut r = base();
+    r.oversize = true;
+    r.data = None;
+    cases.push(("honest oversize", r, Rejection::new(C::SourceRowTooLarge)));
+    let mut r = base();
+    r.source_intact = false;
+    r.data_kind = "array".to_owned();
+    r.data = Some(json!([1]));
+    r.event_type = "audit.access.denied".to_owned();
+    r.actor_principal_id = "x\u{202e}".to_owned();
+    cases.push((
+        "tamper with an invalid shape",
+        r,
+        Rejection::new(C::SourceDigestMismatch),
+    ));
     let mut r = fixture_named("document.created").row;
     r.data.as_mut().expect("data")["documentId"] = json!(OTHER_DOC);
-    cases.push(("binding resource id", r, C::InvalidField));
+    cases.push(("binding resource id", r, at(C::InvalidField, "documentId")));
     let mut r = fixture_named("document.publication.ended").row;
     r.data.as_mut().expect("data")["formerCurrentVersionId"] = json!(BASE_VER);
-    cases.push(("binding version id", r, C::InvalidField));
+    cases.push((
+        "binding version id",
+        r,
+        at(C::InvalidField, "formerCurrentVersionId"),
+    ));
     let mut r = fixture_named("access_policy.changed/folder_inherit").row;
     r.data.as_mut().expect("data")["target_type"] = json!("Document");
-    cases.push(("binding resource type", r, C::InvalidField));
+    cases.push((
+        "binding resource type",
+        r,
+        at(C::InvalidField, "target_type"),
+    ));
     let mut r = fixture_named("access_policy.changed/folder_inherit").row;
     r.data.as_mut().expect("data")["target_id"] = json!(OTHER_FOLDER);
-    cases.push(("binding target id", r, C::InvalidField));
+    cases.push(("binding target id", r, at(C::InvalidField, "target_id")));
 
-    for (label, row, code) in cases {
-        assert_eq!(reject(&row).code, code, "{label}");
+    for (label, row, expected) in cases {
+        assert_eq!(reject(&row), expected, "{label}");
     }
 }
 
@@ -555,8 +680,47 @@ fn nil_resource_is_only_for_authorization_denied() {
     ] {
         let mut row = fixture_named(name).row;
         row.resource_id = NIL.to_owned();
-        assert_eq!(reject(&row).code, C::InvalidResource, "{name}");
+        assert_eq!(
+            reject(&row),
+            at(C::NilClientId, "data.resource.id"),
+            "{name}"
+        );
     }
+}
+
+#[test]
+fn nil_client_chosen_ids_are_quarantined_as_nil_client_id() {
+    let cases: [(&str, &str); 8] = [
+        ("folder.created", "parent_folder_id"),
+        ("folder.moved", "from_parent_id"),
+        ("folder.moved", "to_parent_id"),
+        ("document.moved", "to_folder_id"),
+        ("document.version.created/later", "baseDocumentVersionId"),
+        (
+            "document.version.withdrawn/restored",
+            "resultingCurrentVersionId",
+        ),
+        (
+            "document.diff.result_access_granted/compare",
+            "base_version_id",
+        ),
+        (
+            "document.revision_comparison.result_access_granted/same_version",
+            "target_revision_id",
+        ),
+    ];
+    for (name, field) in cases {
+        let row = with_data(name, |data| {
+            data.insert(field.to_owned(), json!(NIL));
+        });
+        assert_eq!(reject(&row), at(C::NilClientId, field), "{name}/{field}");
+    }
+    // A nil folder id that is also the resource id fails at the resource.
+    let mut row = fixture_named("folder.renamed").row;
+    row.resource_id = NIL.to_owned();
+    row.subject = format!("folder/{NIL}");
+    row.data.as_mut().expect("data")["folder_id"] = json!(NIL);
+    assert_eq!(reject(&row), at(C::NilClientId, "data.resource.id"));
 }
 
 #[test]
@@ -564,10 +728,10 @@ fn control_characters_and_oversized_strings_are_rejected_without_echo() {
     let mut row = fixture_named("document.created").row;
     row.subject = format!("document/{DOC}\u{0}");
     let rejection = reject(&row);
-    assert_eq!(rejection.code, C::InvalidSubject);
+    assert_eq!(rejection, at(C::InvalidSubject, "subject"));
     let mut row = fixture_named("document.created").row;
     row.actor_identity_provider = "i".repeat(600);
     let rejection = reject(&row);
-    assert_eq!(rejection.code, C::InvalidActor);
+    assert_eq!(rejection, at(C::InvalidActor, "data.actor"));
     assert!(!rejection.to_string().contains("iii"));
 }
