@@ -96,7 +96,7 @@ mise run desktop:gui:e2e
 
 | シナリオ | 主な確認内容（「IPC」はページのscriptからbrokerを直接呼んだ確認、「ページのscript」はその他のscriptによる確認） |
 |---|---|
-| 起動と既存画面 | WebDriver：ウィンドウはmain 1つ、文書画面のdocument.title。文書一覧に実APIの合成文書、詳細への移動と画面の「← 一覧へ戻る」 |
+| 起動と既存画面 | WebDriver：ウィンドウはmain 1つ、文書画面のdocument.title。文書一覧に実APIの合成文書、詳細への移動、詳細の表示で既読になり（表示の記録をshell経由で送信）「未読に戻す」で未読になる、画面の「← 一覧へ戻る」 |
 | Router・Query | ページのscript：URLで `/tasks` を直接開く（SPAのfallback）と `location.reload` での再読み込み、タスク一覧にWork APIの内容、検索（PoCの未実装表示）・担当と委任・文書・編集作業への移動 |
 | キーボードとfocus | ローカルWorkspace画面で、ページ先頭からのTabで共通の「メインコンテンツへ」（文書一覧は読み込み後に選択中の行へfocusを移し、最初のTabと競合することがあるため、その画面では確認していない）、focus表示、Enterでmainへ、ダイアログの開閉とfocusの戻り |
 | reduced motion（2件） | ページのscript：既定では動きあり。GTKの「アニメーション無効」設定で `prefers-reduced-motion` が成立し、motion tokenが0msになる（media queryとCSS変数を読む） |

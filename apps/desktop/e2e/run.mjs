@@ -517,6 +517,11 @@ scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳�
     await clickText(s, 'button', '詳細を開く');
     await s.waitFor(async () => new URL(await s.url()).pathname === `/documents/${docId}`, { message: 'detail route' });
     check('詳細画面へRouterで遷移し、題名を表示', await s.waitForText('h1', 'デスクトップ確認用資料'));
+    // Viewing the detail records it as read (POST through the shell); undo it from the screen.
+    check('詳細を表示すると既読になる（表示の記録をshell経由で送信）', await s.waitForText('section[aria-label="本人の既読状態"] p[role="status"]', '既読', { timeout: 30_000 })
+      && !(await (await s.find('section[aria-label="本人の既読状態"] p[role="status"]')).text()).includes('未読'));
+    await clickText(s, 'section[aria-label="本人の既読状態"] button', '未読に戻す');
+    check('「未読に戻す」で未読になる', await s.waitFor(async () => (await (await s.find('section[aria-label="本人の既読状態"] p[role="status"]')).text()).trim() === '未読', { timeout: 30_000, message: 'unread' }));
     await shot(s, 'detail');
     // The desktop window has no browser back button: use the screen's own.
     await clickText(s, 'button', '← 一覧へ戻る');
