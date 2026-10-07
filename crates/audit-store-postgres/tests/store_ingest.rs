@@ -299,6 +299,20 @@ async fn structural_rejections_are_verdict_rows_and_version_skew_is_an_outage() 
             "invalid_envelope",
         ),
         (
+            "control character in subject",
+            with(&base, |v| v["subject"] = json!("document/\u{7}")),
+            "rejected",
+            "invalid_envelope",
+        ),
+        (
+            "C1 control character in actor",
+            with(&base, |v| {
+                v["data"]["actor"]["principal_id"] = json!("synthetic\u{85}human");
+            }),
+            "rejected",
+            "invalid_actor",
+        ),
+        (
             "missing commitment",
             with(&base, |v| {
                 v["data"]["provenance"]
