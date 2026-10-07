@@ -513,7 +513,8 @@ impl PgDocumentIndexRuntime {
                     pending.resources.clone(),
                     pending.lexical,
                     pending.graph.clone(),
-                    pending.unit_manifest.clone(),
+                    // Moved, not copied: settling runs once per key.
+                    pending.unit_manifest.take(),
                     pending.coverage.clone(),
                     pending.delivery.clone(),
                 ))
