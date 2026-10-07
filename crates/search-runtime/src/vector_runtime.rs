@@ -84,8 +84,8 @@ pub fn manifest_units(
                 unit: unit.clone(),
                 authority: VectorAuthorityInput {
                     generation: key,
-                    version: unit.version.clone(),
-                    part: unit.part.clone(),
+                    version: (*unit.version).clone(),
+                    part: (*unit.part).clone(),
                     authoritative_representation_ref: unit
                         .provenance
                         .authoritative_representation_ref

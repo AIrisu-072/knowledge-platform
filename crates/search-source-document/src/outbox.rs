@@ -27,6 +27,7 @@ use search_core::assertion::Assertion;
 use search_core::discovery::{DiscoveryRequest, FederatedCandidate};
 use search_core::graph::GraphTraversalPlan;
 use search_core::id::{ProjectionGenerationId, RelationId, ResourceId, SourceId};
+use search_core::knowledge_unit::restamp_source_snapshot;
 use search_core::observation::Coverage;
 use search_core::predicate::{ConceptResolver, TruthValue};
 use search_core::profile::DiscoveryLens;
@@ -1107,9 +1108,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                         && entry.authoritative_representation_ref == representation
                         && entry.raw == item.raw
                 }) {
-                    for unit in &mut entry.units {
-                        unit.provenance.source_snapshot = snapshot.source_snapshot.clone();
-                    }
+                    restamp_source_snapshot(&mut entry.units, &snapshot.source_snapshot);
                     entries.push(entry);
                     continue;
                 }

@@ -128,8 +128,8 @@ fn unit(parent: u128, part: &str, ordinal: u32, text: &str) -> KnowledgeUnit {
     let profile = profile();
     KnowledgeUnit {
         unit_id: UnitId::derive(&version, &part, &profile, &locator, ordinal).unwrap(),
-        version,
-        part,
+        version: version.into(),
+        part: part.into(),
         parent_unit_id: None,
         ordinal,
         kind: UnitKind::PlainText,
@@ -148,7 +148,8 @@ fn unit(parent: u128, part: &str, ordinal: u32, text: &str) -> KnowledgeUnit {
             archive_inner_format: None,
             profile,
             parser_build_id: "search-extraction-worker-test".into(),
-        },
+        }
+        .into(),
     }
 }
 
@@ -324,8 +325,8 @@ async fn same_text_separate_part_keeps_ref() {
             .find(|unit| unit.unit_id == unit_hit.unit_id)
             .unwrap();
         assert_eq!(Some(unit_hit.parent_resource), hit.candidate.resource_ref);
-        assert_eq!(unit_hit.version, source_unit.version);
-        assert_eq!(unit_hit.part, source_unit.part);
+        assert_eq!(unit_hit.version, *source_unit.version);
+        assert_eq!(unit_hit.part, *source_unit.part);
         assert_eq!(unit_hit.raw, source_unit.provenance.raw);
         assert_eq!(unit_hit.profile, source_unit.provenance.profile);
         assert_eq!(unit_hit.text_sha256, source_unit.text_sha256);

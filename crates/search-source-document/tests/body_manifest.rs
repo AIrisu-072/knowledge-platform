@@ -1,4 +1,5 @@
 //! P1-B01 canonical body manifest, coverage artifact and bundle receipt.
+use std::sync::Arc;
 
 #[path = "support/body.rs"]
 mod body_support;
@@ -265,7 +266,8 @@ async fn rebuild_equivalence_ignores_generation_and_snapshot_identity() {
     rebuilt.source_snapshot = "document-snapshot-rebuilt".into();
     for entry in &mut rebuilt.entries {
         for unit in &mut entry.units {
-            unit.provenance.source_snapshot = "document-snapshot-rebuilt".into();
+            Arc::make_mut(&mut unit.provenance).source_snapshot =
+                "document-snapshot-rebuilt".into();
         }
     }
     let first = unit_manifest_receipt(&manifest).unwrap();
