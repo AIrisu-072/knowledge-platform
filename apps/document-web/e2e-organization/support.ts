@@ -906,7 +906,7 @@ export async function requestSyntheticFinding(page: Page, request: APIRequestCon
   expect(output).toMatchObject({ simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false, evidenceRevisionRefs: [revisionRef(evidence)] });
   expect(output.findingRevisionRefs).toHaveLength(1);
   expect(output.uncertainty.length).toBeGreaterThan(0);
-  const finding = await get<Finding>(request, origin, `/v1/organization/findings/${output.findingRevisionRefs[0].id}`);
+  const finding = await get<Finding>(request, origin, `/v1/organization/findings/${output.findingRevisionRefs[0]!.id}`);
   expect(finding).toMatchObject({ ...output.findingRevisionRefs[0], taskId, attemptId: result.task.attemptId, contextId: result.task.contextId, author: 'organization-synthetic/agent-01', originExecutionId: execution.id, evidenceRevisionRefs: [revisionRef(evidence)], uncertainty: output.uncertainty, visibility: 'work_item_private' });
   expect(await get(request, origin, `/v1/organization/findings/${finding.id}/decisions`)).toEqual({ items: [], nextCursor: null });
   const beforeReplay = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
