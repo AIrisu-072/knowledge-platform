@@ -5,9 +5,9 @@ import { readRuntimeContext } from './e2e-organization/support';
 const context = readRuntimeContext();
 const phase = process.env.KP_ORGANIZATION_RUNTIME_PHASE;
 const output = process.env.KP_ORGANIZATION_BROWSER_OUTPUT;
-// Two-principal phases plus the separate fresh-database six-principal policy and context phases.
+// Two-principal phases plus the separate fresh-database six-principal policy, context and files phases.
 // Exact basenames: `journey` must never also select `policy-journey` or `context-journey`.
-const specs: Record<string, RegExp> = { journey: /(?:^|[\\/])journey\.spec\.ts$/u, persistence: /(?:^|[\\/])persistence\.spec\.ts$/u, 'policy-journey': /(?:^|[\\/])policy-journey\.spec\.ts$/u, 'policy-persistence': /(?:^|[\\/])policy-persistence\.spec\.ts$/u, 'context-journey': /(?:^|[\\/])context-journey\.spec\.ts$/u, 'context-persistence': /(?:^|[\\/])context-persistence\.spec\.ts$/u };
+const specs: Record<string, RegExp> = { journey: /(?:^|[\\/])journey\.spec\.ts$/u, persistence: /(?:^|[\\/])persistence\.spec\.ts$/u, 'policy-journey': /(?:^|[\\/])policy-journey\.spec\.ts$/u, 'policy-persistence': /(?:^|[\\/])policy-persistence\.spec\.ts$/u, 'context-journey': /(?:^|[\\/])context-journey\.spec\.ts$/u, 'context-persistence': /(?:^|[\\/])context-persistence\.spec\.ts$/u, 'files-journey': /(?:^|[\\/])files-journey\.spec\.ts$/u, 'files-persistence': /(?:^|[\\/])files-persistence\.spec\.ts$/u };
 if (!output || !phase || !Object.hasOwn(specs, phase)) {
   throw new Error('Organization harness must supply its output directory and a known phase');
 }

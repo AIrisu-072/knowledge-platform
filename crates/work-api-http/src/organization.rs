@@ -105,7 +105,7 @@ pub(super) async fn session(State(state): State<ApiState>) -> Json<serde_json::V
         "responsibilities": organization.as_ref().map(|view| &view.responsibilities),
         "canManageOrganization": organization.as_ref().is_some_and(|view| view.can_manage),
         "policyRevision": organization.as_ref().map(|view| view.policy_revision),
-        "capabilities": {"nativeWorkspace": false, "agent": state.agent_dispatch.is_some(), "search": false, "fileUpload": false, "return": true}
+        "capabilities": {"nativeWorkspace": false, "agent": state.agent_dispatch.is_some(), "search": false, "fileUpload": state.repository.artifact_store_available(), "return": true}
     }))
 }
 pub(super) async fn units(

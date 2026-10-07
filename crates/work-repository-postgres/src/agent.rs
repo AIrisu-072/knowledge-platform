@@ -10,6 +10,7 @@ impl PostgresWorkRepository {
             pool,
             evidence_source: Some(evidence_source),
             agent_source: Some(agent_source),
+            artifact_store: None,
         }
     }
     pub(super) async fn authorize_agent_context(

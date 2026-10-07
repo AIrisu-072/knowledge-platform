@@ -141,10 +141,10 @@ test('existing phase selection collects the separate Root folder cases with expl
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
   // Each phase selects exactly one spec basename; `journey` never also selects `policy-journey`.
   assert.match(config, /testMatch: specs\[phase\]!,/u);
-  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u, 'context-journey': \/(.+?)\/u, 'context-persistence': \/(.+?)\/u \};/u);
+  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u, 'context-journey': \/(.+?)\/u, 'context-persistence': \/(.+?)\/u, 'files-journey': \/(.+?)\/u, 'files-persistence': \/(.+?)\/u \};/u);
   assert.ok(specs);
   const patterns = specs.slice(1).map(source => new RegExp(source, 'u'));
-  const files = ['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence'].map(name => `e2e-organization/${name}.spec.ts`);
+  const files = ['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence', 'files-journey', 'files-persistence'].map(name => `e2e-organization/${name}.spec.ts`);
   for (const [pattern, expected] of patterns.map((value, index) => [value, index])) {
     assert.deepEqual(files.filter(file => pattern.test(file)), [files[expected]]);
   }

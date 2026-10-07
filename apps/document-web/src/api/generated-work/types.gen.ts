@@ -79,14 +79,19 @@ export type TaskSummary = {
     contextTitle: string | null;
 };
 
+/**
+ * 現在の試行の非公開成果物。文案（value）またはファイル（file）のどちらか一方。
+ */
 export type WorkingArtifact = {
     id: string;
     taskId: string;
     attemptId: string;
     revision: number;
-    schemaId: 'organization.text-draft.v1';
-    value: TextValue;
+    schemaId: 'organization.text-draft.v1' | 'organization.work-file.v1';
+    value?: TextValue;
     visibility: 'work_item_private';
+    file?: WorkFile;
+    derivedFrom?: DerivedFrom;
 };
 
 export type InputResource = {
@@ -152,11 +157,15 @@ export type TaskPage = {
     nextCursor: null;
 };
 
+/**
+ * 提出で固定した成果物。ファイルは提出時の不変世代を固定する。
+ */
 export type PinnedArtifact = {
     artifactId: string;
     revision: number;
-    schemaId: 'organization.text-draft.v1';
-    value: TextValue;
+    schemaId: 'organization.text-draft.v1' | 'organization.work-file.v1';
+    value?: TextValue;
+    file?: WorkFile;
 };
 
 export type HandoffSnapshot = {
@@ -226,13 +235,13 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed | Held | Resumed | Assigned | RoleAssignmentCreated | RoleAssignmentRevoked | DelegationCreated | DelegationRevoked;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed | Held | Resumed | Assigned | RoleAssignmentCreated | RoleAssignmentRevoked | DelegationCreated | DelegationRevoked | ArtifactCreated | ArtifactContentWritten | ArtifactDiscarded | SubmissionImported;
 
 export type Problem = {
     type: string;
     title: string;
     status: number;
-    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE' | 'ORGANIZATION_RECORD_NOT_FOUND' | 'WORK_CONTEXT_NOT_FOUND';
+    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE' | 'ORGANIZATION_RECORD_NOT_FOUND' | 'WORK_CONTEXT_NOT_FOUND' | 'WORK_ARTIFACT_UNAVAILABLE';
     traceId: string;
 };
 
@@ -876,6 +885,89 @@ export type WorkViewProfilePage = {
     nextCursor: null;
 };
 
+/**
+ * Work所有の共有保存領域に保存した不変の世代。大きさとSHA-256はserverが受け取ったbytesから計算する。IDは内容登録の操作IDと同じ。
+ */
+export type FileGeneration = {
+    id: string;
+    sizeBytes: number;
+    sha256: string;
+    storedAt: string;
+    providerId: 'organization.work-artifacts';
+};
+
+/**
+ * 表示名と申告media type（取得時の応答には使わない）。ローカルのパスではない。
+ */
+export type WorkFile = {
+    /**
+     * 255 bytes以内。パス区切り・制御文字・.・..は不可
+     */
+    fileName: string;
+    mediaType: string;
+    generation: FileGeneration | null;
+};
+
+/**
+ * 差戻し後に前回の提出から明示的に取り込んだ成果物の出典
+ */
+export type DerivedFrom = {
+    snapshotId: string;
+    artifactId: string;
+};
+
+/**
+ * ファイル成果物の作成。内容は別途登録する。
+ */
+export type FileArtifactCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    file: {
+        fileName: string;
+        mediaType: string;
+    };
+};
+
+export type DiscardArtifactCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedArtifactRevision: number;
+};
+
+export type ImportSubmissionCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    snapshotId: string;
+};
+
+export type ArtifactCreated = {
+    kind: 'artifact_created';
+    task: TaskSummary;
+    artifact: WorkingArtifact;
+};
+
+export type ArtifactContentWritten = {
+    kind: 'artifact_content_written';
+    task: TaskSummary;
+    artifact: WorkingArtifact;
+};
+
+export type ArtifactDiscarded = {
+    kind: 'artifact_discarded';
+    task: TaskSummary;
+    artifactId: string;
+};
+
+export type SubmissionImported = {
+    kind: 'submission_imported';
+    task: TaskSummary;
+    artifacts: Array<WorkingArtifact>;
+};
+
 export type GetOrganizationSessionData = {
     body?: never;
     path?: never;
@@ -1016,7 +1108,7 @@ export type ListWorkingArtifactsResponses = {
 export type ListWorkingArtifactsResponse = ListWorkingArtifactsResponses[keyof ListWorkingArtifactsResponses];
 
 export type CreateWorkingArtifactData = {
-    body: DraftCommand;
+    body: DraftCommand | FileArtifactCommand;
     path: {
         id: string;
     };
@@ -2159,3 +2251,177 @@ export type MarkWorkAttentionSeenResponses = {
 };
 
 export type MarkWorkAttentionSeenResponse = MarkWorkAttentionSeenResponses[keyof MarkWorkAttentionSeenResponses];
+
+export type ReadWorkingArtifactContentData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/working-artifacts/{id}/content';
+};
+
+export type ReadWorkingArtifactContentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ReadWorkingArtifactContentError = ReadWorkingArtifactContentErrors[keyof ReadWorkingArtifactContentErrors];
+
+export type ReadWorkingArtifactContentResponses = {
+    /**
+     * Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない
+     */
+    200: Blob | File;
+};
+
+export type ReadWorkingArtifactContentResponse = ReadWorkingArtifactContentResponses[keyof ReadWorkingArtifactContentResponses];
+
+export type WriteWorkingArtifactContentData = {
+    body: Blob | File;
+    headers: {
+        /**
+         * 操作ID（UUIDv7）。新しい世代のIDになる
+         */
+        'x-operation-id': string;
+        /**
+         * タスクのrevision
+         */
+        'x-expected-revision': number;
+        /**
+         * 実行する責任
+         */
+        'x-acting-assignment-id': string;
+        /**
+         * 成果物のrevision
+         */
+        'x-expected-artifact-revision': number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/working-artifacts/{id}/content';
+};
+
+export type WriteWorkingArtifactContentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type WriteWorkingArtifactContentError = WriteWorkingArtifactContentErrors[keyof WriteWorkingArtifactContentErrors];
+
+export type WriteWorkingArtifactContentResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type WriteWorkingArtifactContentResponse = WriteWorkingArtifactContentResponses[keyof WriteWorkingArtifactContentResponses];
+
+export type DiscardWorkingArtifactData = {
+    body: DiscardArtifactCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/working-artifacts/{id}/discard';
+};
+
+export type DiscardWorkingArtifactErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type DiscardWorkingArtifactError = DiscardWorkingArtifactErrors[keyof DiscardWorkingArtifactErrors];
+
+export type DiscardWorkingArtifactResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type DiscardWorkingArtifactResponse = DiscardWorkingArtifactResponses[keyof DiscardWorkingArtifactResponses];
+
+export type ImportSubmissionData = {
+    body: ImportSubmissionCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/working-artifacts/import';
+};
+
+export type ImportSubmissionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ImportSubmissionError = ImportSubmissionErrors[keyof ImportSubmissionErrors];
+
+export type ImportSubmissionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type ImportSubmissionResponse = ImportSubmissionResponses[keyof ImportSubmissionResponses];
+
+export type ReadHandoffSnapshotContentData = {
+    body?: never;
+    path: {
+        id: string;
+        artifactId: string;
+    };
+    query?: never;
+    url: '/v1/organization/handoff-snapshots/{id}/artifacts/{artifactId}/content';
+};
+
+export type ReadHandoffSnapshotContentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ReadHandoffSnapshotContentError = ReadHandoffSnapshotContentErrors[keyof ReadHandoffSnapshotContentErrors];
+
+export type ReadHandoffSnapshotContentResponses = {
+    /**
+     * Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない
+     */
+    200: Blob | File;
+};
+
+export type ReadHandoffSnapshotContentResponse = ReadHandoffSnapshotContentResponses[keyof ReadHandoffSnapshotContentResponses];

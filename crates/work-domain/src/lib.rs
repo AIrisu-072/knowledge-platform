@@ -5,10 +5,12 @@ use uuid::Uuid;
 mod agent;
 mod context;
 mod evidence;
+mod files;
 mod organization;
 pub use agent::*;
 pub use context::*;
 pub use evidence::*;
+pub use files::*;
 pub use organization::*;
 use time::OffsetDateTime;
 
@@ -160,6 +162,9 @@ pub enum WorkError {
     OrganizationRecordNotFound,
     #[error("WORK_CONTEXT_NOT_FOUND")]
     WorkContextNotFound,
+    /// The Work artifact store could not confirm a stored generation.
+    #[error("WORK_ARTIFACT_UNAVAILABLE")]
+    WorkArtifactUnavailable,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -188,8 +193,16 @@ pub struct WorkingArtifact {
     pub attempt_id: Uuid,
     pub revision: i64,
     pub schema_id: String,
-    pub value: TextValue,
+    /// Text drafts only; the stored text-draft JSON keeps exactly this shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<TextValue>,
     pub visibility: String,
+    /// Work files only: display label and current immutable generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<WorkFile>,
+    /// Set when explicitly imported from a prior submission after a return.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<DerivedFrom>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,7 +210,11 @@ pub struct PinnedArtifact {
     pub artifact_id: Uuid,
     pub revision: i64,
     pub schema_id: String,
-    pub value: TextValue,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<TextValue>,
+    /// The pinned immutable generation, never a live draft pointer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<WorkFile>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -357,6 +374,8 @@ pub struct PolicyAuthority {
     evaluated_at: Option<OffsetDateTime>,
     /// The evaluating actor's acknowledged assignment periods (presentation only).
     acknowledged: Option<std::sync::Arc<(VerifiedActor, std::collections::BTreeSet<Uuid>)>>,
+    /// Server verification of stored file generations for one commit.
+    generations: GenerationReceipts,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -553,6 +572,35 @@ pub enum Command {
         task_id: Uuid,
         context: CommandContext,
     },
+    /// A private work file record; content is registered separately.
+    CreateFileArtifact {
+        task_id: Uuid,
+        context: CommandContext,
+        file_name: String,
+        media_type: String,
+    },
+    /// Records a server-stored immutable generation (its ID is the operation ID).
+    WriteArtifactContent {
+        task_id: Uuid,
+        artifact_id: Uuid,
+        context: CommandContext,
+        expected_artifact_revision: i64,
+        generation: GenerationInput,
+    },
+    /// Removes an unsubmitted record from the draft; stored bytes stay.
+    DiscardArtifact {
+        task_id: Uuid,
+        artifact_id: Uuid,
+        context: CommandContext,
+        expected_artifact_revision: i64,
+    },
+    /// Explicit import of the submission a returned attempt refers to.
+    ImportSubmission {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        snapshot_id: Uuid,
+    },
     Submit {
         task_id: Uuid,
         context: CommandContext,
@@ -579,6 +627,10 @@ impl Command {
             | Self::RegisterFinding { context, .. }
             | Self::RecordDecision { context, .. }
             | Self::SaveDraft { context, .. }
+            | Self::CreateFileArtifact { context, .. }
+            | Self::WriteArtifactContent { context, .. }
+            | Self::DiscardArtifact { context, .. }
+            | Self::ImportSubmission { context, .. }
             | Self::Claim { context, .. }
             | Self::Submit { context, .. }
             | Self::Assign { context, .. }
@@ -596,6 +648,10 @@ impl Command {
             | Self::RegisterFinding { task_id, .. }
             | Self::RecordDecision { task_id, .. }
             | Self::SaveDraft { task_id, .. }
+            | Self::CreateFileArtifact { task_id, .. }
+            | Self::WriteArtifactContent { task_id, .. }
+            | Self::DiscardArtifact { task_id, .. }
+            | Self::ImportSubmission { task_id, .. }
             | Self::Claim { task_id, .. }
             | Self::Submit { task_id, .. }
             | Self::Assign { task_id, .. }
@@ -616,7 +672,11 @@ impl Command {
             Self::RecordDecision { .. } => PolicyAction::DecisionRecord,
             Self::Return { .. } => PolicyAction::WorkReturn,
             Self::Assign { .. } => PolicyAction::WorkAssign,
-            Self::SaveDraft { .. } => PolicyAction::WorkEdit,
+            Self::SaveDraft { .. }
+            | Self::CreateFileArtifact { .. }
+            | Self::WriteArtifactContent { .. }
+            | Self::DiscardArtifact { .. }
+            | Self::ImportSubmission { .. } => PolicyAction::WorkEdit,
             Self::Claim { .. } => PolicyAction::WorkClaim,
             Self::Submit { .. } => PolicyAction::WorkSubmit,
         }
@@ -664,6 +724,23 @@ pub enum MutationResult {
     DraftSaved {
         task: TaskSummary,
         artifact: WorkingArtifact,
+    },
+    ArtifactCreated {
+        task: TaskSummary,
+        artifact: WorkingArtifact,
+    },
+    ArtifactContentWritten {
+        task: TaskSummary,
+        artifact: WorkingArtifact,
+    },
+    ArtifactDiscarded {
+        task: TaskSummary,
+        #[serde(rename = "artifactId")]
+        artifact_id: Uuid,
+    },
+    SubmissionImported {
+        task: TaskSummary,
+        artifacts: Vec<WorkingArtifact>,
     },
     Claimed {
         task: TaskSummary,
@@ -729,6 +806,7 @@ impl Workflow {
                 policy: Some(std::sync::Arc::new(OrganizationPolicy::synthetic())),
                 evaluated_at: None,
                 acknowledged: None,
+                generations: GenerationReceipts::None,
             },
             context_id: CONTEXT_ID,
             revision: 0,
@@ -784,6 +862,7 @@ impl Workflow {
             policy: Some(policy),
             evaluated_at: Some(at),
             acknowledged: None,
+            generations: GenerationReceipts::None,
         };
     }
     pub fn with_authority(mut self, policy: OrganizationPolicy, at: OffsetDateTime) -> Self {
@@ -1340,6 +1419,16 @@ impl Workflow {
                     }
                 }
             }
+            Command::WriteArtifactContent { artifact_id, .. }
+            | Command::DiscardArtifact { artifact_id, .. } => {
+                self.authorize_assigned(actor, item, acting, action)?;
+                if self.artifact(actor, *artifact_id)?.task_id != item.id {
+                    return Err(WorkError::WorkArtifactNotFound);
+                }
+            }
+            Command::CreateFileArtifact { .. } | Command::ImportSubmission { .. } => {
+                self.authorize_assigned(actor, item, acting, action)?
+            }
             Command::Hold { .. }
             | Command::Resume { .. }
             | Command::Complete { .. }
@@ -1397,8 +1486,18 @@ impl Workflow {
             } => {
                 self.return_instruction(actor, return_instruction.id)?;
             }
-            MutationResult::DraftSaved { artifact, .. } => {
+            MutationResult::DraftSaved { artifact, .. }
+            | MutationResult::ArtifactCreated { artifact, .. }
+            | MutationResult::ArtifactContentWritten { artifact, .. } => {
                 self.artifact(actor, artifact.id)?;
+            }
+            MutationResult::ArtifactDiscarded { task, .. } => {
+                self.detail(actor, task.id)?;
+            }
+            MutationResult::SubmissionImported { artifacts, .. } => {
+                for artifact in artifacts {
+                    self.artifact(actor, artifact.id)?;
+                }
             }
             MutationResult::Held { task }
             | MutationResult::Resumed { task }
@@ -1650,6 +1749,10 @@ impl Workflow {
                 })
             }
 
+            Command::CreateFileArtifact { .. }
+            | Command::WriteArtifactContent { .. }
+            | Command::DiscardArtifact { .. }
+            | Command::ImportSubmission { .. } => self.apply_files(actor, command, now),
             Command::SaveDraft {
                 task_id,
                 artifact_id,
@@ -1668,11 +1771,15 @@ impl Workflow {
                         .iter_mut()
                         .find(|artifact| artifact.id == *id)
                         .ok_or(WorkError::WorkArtifactNotFound)?;
+                    // A text save never targets a file record.
+                    if artifact.schema_id != TEXT_SCHEMA_ID {
+                        return Err(WorkError::ValidationFailed);
+                    }
                     artifact.revision = artifact
                         .revision
                         .checked_add(1)
                         .ok_or(WorkError::IntegrityViolation)?;
-                    artifact.value = value.clone();
+                    artifact.value = Some(value.clone());
                     artifact.clone()
                 } else {
                     if self
@@ -1690,8 +1797,10 @@ impl Workflow {
                         attempt_id: self.source.attempt_id,
                         revision: 0,
                         schema_id: TEXT_SCHEMA_ID.into(),
-                        value: value.clone(),
+                        value: Some(value.clone()),
                         visibility: "work_item_private".into(),
+                        file: None,
+                        derived_from: None,
                     };
                     self.artifacts.push(artifact.clone());
                     artifact
@@ -1890,15 +1999,30 @@ impl Workflow {
                     }
                     if artifact.task_id != self.source.id
                         || artifact.attempt_id != self.source.attempt_id
-                        || artifact.schema_id != TEXT_SCHEMA_ID
                     {
                         return Err(WorkError::HandoffNotReady);
+                    }
+                    match artifact.schema_id.as_str() {
+                        TEXT_SCHEMA_ID if artifact.value.is_some() && artifact.file.is_none() => {}
+                        FILE_SCHEMA_ID if artifact.value.is_none() => {
+                            // Only a generation the server verified in the store is pinned.
+                            let generation = artifact
+                                .file
+                                .as_ref()
+                                .and_then(|file| file.generation.as_ref())
+                                .ok_or(WorkError::HandoffNotReady)?;
+                            if !self.generation_verified(generation.id) {
+                                return Err(WorkError::WorkArtifactUnavailable);
+                            }
+                        }
+                        _ => return Err(WorkError::HandoffNotReady),
                     }
                     pinned.push(PinnedArtifact {
                         artifact_id: artifact.id,
                         revision: artifact.revision,
                         schema_id: artifact.schema_id,
                         value: artifact.value,
+                        file: artifact.file,
                     });
                 }
                 let plan = self.plan()?;

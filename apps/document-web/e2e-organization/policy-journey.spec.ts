@@ -69,7 +69,7 @@ test('6名の合成担当で割当・担当変更・期限付き委任・同時�
     await hidden(request, context.sales, `/v1/organization/working-artifacts/${saved.result.artifact.id}`, 'WORK_ARTIFACT_NOT_FOUND', text);
     const transferred = await read<TaskDetail>(request, context.review, `/v1/organization/tasks/${source!.id}`);
     expect(transferred).toMatchObject({ attemptId: source!.attemptId, assignment: { principalId: 'review-01', actingKind: 'role_assignment' } });
-    expect(transferred.workingArtifacts.map((artifact) => artifact.value.text)).toEqual([text]);
+    expect(transferred.workingArtifacts.map((artifact) => artifact.value?.text)).toEqual([text]);
     await sales.reload();
     await expect(sales.getByLabel('作業中の文案', { exact: true })).toHaveCount(0);
     await review.goto(`/tasks?view=context&taskId=${source!.id}`);

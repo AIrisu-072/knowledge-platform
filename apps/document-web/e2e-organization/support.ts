@@ -105,7 +105,8 @@ export async function assertSessions(request: APIRequestContext, context: Runtim
   expect(sales.principalId).toBe('sales-01');
   expect(office.principalId).toBe('office-01');
   expect(sales.actingAssignmentId).not.toBe(office.actingAssignmentId);
-  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: true });
+  // Work files (U3) are composed with the Work-owned store; the capability is a hint only.
+  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: true, search: false, fileUpload: true, return: true });
   return { sales, office };
 }
 export async function assertHidden(request: APIRequestContext, origin: string, path: string, code: string, privateText?: string) {
@@ -1011,7 +1012,7 @@ export async function holdAndResume(page: Page, request: APIRequestContext, orig
   await expect(page.getByText(unsaved.text, { exact: true })).toHaveCount(0);
   if (before.workingArtifacts.length) {
     const readonly = page.getByRole('region', { name: '保存済みの作業文案', exact: true });
-    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value.text);
+    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value?.text ?? artifact.file!.fileName);
     await expect(readonly).not.toContainText(unsaved.text);
   }
   const heldDetail = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);

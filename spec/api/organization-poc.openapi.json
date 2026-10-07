@@ -288,11 +288,19 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DraftCommand"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DraftCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FileArtifactCommand"
+                  }
+                ]
               }
             }
           }
-        }
+        },
+        "description": "文案（value）またはファイル成果物（file）を現在の試行の非公開成果物として作成する。両方の指定は不可。"
       }
     },
     "/v1/organization/working-artifacts/{id}": {
@@ -2183,6 +2191,340 @@
           }
         }
       }
+    },
+    "/v1/organization/working-artifacts/{id}/content": {
+      "put": {
+        "operationId": "writeWorkingArtifactContent",
+        "summary": "writeWorkingArtifactContent",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-operation-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "操作ID（UUIDv7）。新しい世代のIDになる"
+          },
+          {
+            "in": "header",
+            "name": "x-expected-revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "タスクのrevision"
+          },
+          {
+            "in": "header",
+            "name": "x-acting-assignment-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "実行する責任"
+          },
+          {
+            "in": "header",
+            "name": "x-expected-artifact-revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "成果物のrevision"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 8388608
+              }
+            }
+          }
+        },
+        "description": "1 byte以上8 MiB以下。認可（現在の試行の担当者）を確認してから保存し、serverが計算した大きさとSHA-256でcommandを確定する。同じ操作IDで異なる内容はOPERATION_CONFLICT"
+      },
+      "get": {
+        "operationId": "readWorkingArtifactContent",
+        "summary": "readWorkingArtifactContent",
+        "responses": {
+          "200": {
+            "description": "Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/working-artifacts/{id}/discard": {
+      "post": {
+        "operationId": "discardWorkingArtifact",
+        "summary": "discardWorkingArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscardArtifactCommand"
+              }
+            }
+          }
+        },
+        "description": "提出前の現在の試行の成果物を記録から外す。保存済みの内容は削除しない"
+      }
+    },
+    "/v1/organization/tasks/{id}/working-artifacts/import": {
+      "post": {
+        "operationId": "importSubmission",
+        "summary": "importSubmission",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSubmissionCommand"
+              }
+            }
+          }
+        },
+        "description": "差戻しで作られた試行が参照する前回の提出を、新しい非公開成果物として明示的に取り込む。前回の提出は変更しない"
+      }
+    },
+    "/v1/organization/handoff-snapshots/{id}/artifacts/{artifactId}/content": {
+      "get": {
+        "operationId": "readHandoffSnapshotContent",
+        "summary": "readHandoffSnapshotContent",
+        "responses": {
+          "200": {
+            "description": "Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifactId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "description": "getHandoffSnapshotと同じ規則で読める利用者だけ。固定した世代を保存領域で照合してから返す。一致しない・欠落はWORK_ARTIFACT_UNAVAILABLE"
+      }
     }
   },
   "components": {
@@ -2534,8 +2876,11 @@
             "minimum": 0
           },
           "schemaId": {
-            "const": "organization.text-draft.v1",
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "organization.text-draft.v1",
+              "organization.work-file.v1"
+            ]
           },
           "value": {
             "$ref": "#/components/schemas/TextValue"
@@ -2543,6 +2888,12 @@
           "visibility": {
             "const": "work_item_private",
             "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/WorkFile"
+          },
+          "derivedFrom": {
+            "$ref": "#/components/schemas/DerivedFrom"
           }
         },
         "required": [
@@ -2551,9 +2902,9 @@
           "attemptId",
           "revision",
           "schemaId",
-          "value",
           "visibility"
-        ]
+        ],
+        "description": "現在の試行の非公開成果物。文案（value）またはファイル（file）のどちらか一方。"
       },
       "InputResource": {
         "type": "object",
@@ -2888,19 +3239,25 @@
             "minimum": 0
           },
           "schemaId": {
-            "const": "organization.text-draft.v1",
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "organization.text-draft.v1",
+              "organization.work-file.v1"
+            ]
           },
           "value": {
             "$ref": "#/components/schemas/TextValue"
+          },
+          "file": {
+            "$ref": "#/components/schemas/WorkFile"
           }
         },
         "required": [
           "artifactId",
           "revision",
-          "schemaId",
-          "value"
-        ]
+          "schemaId"
+        ],
+        "description": "提出で固定した成果物。ファイルは提出時の不変世代を固定する。"
       },
       "HandoffSnapshot": {
         "type": "object",
@@ -3248,6 +3605,18 @@
           },
           {
             "$ref": "#/components/schemas/DelegationRevoked"
+          },
+          {
+            "$ref": "#/components/schemas/ArtifactCreated"
+          },
+          {
+            "$ref": "#/components/schemas/ArtifactContentWritten"
+          },
+          {
+            "$ref": "#/components/schemas/ArtifactDiscarded"
+          },
+          {
+            "$ref": "#/components/schemas/SubmissionImported"
           }
         ]
       },
@@ -3284,7 +3653,8 @@
               "AGENT_RESULT_NOT_READY",
               "WORK_CONTEXT_STALE",
               "ORGANIZATION_RECORD_NOT_FOUND",
-              "WORK_CONTEXT_NOT_FOUND"
+              "WORK_CONTEXT_NOT_FOUND",
+              "WORK_ARTIFACT_UNAVAILABLE"
             ]
           },
           "traceId": {
@@ -6011,6 +6381,291 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "FileGeneration": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Work所有の共有保存領域に保存した不変の世代。大きさとSHA-256はserverが受け取ったbytesから計算する。IDは内容登録の操作IDと同じ。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 8388608
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "storedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "providerId": {
+            "const": "organization.work-artifacts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sizeBytes",
+          "sha256",
+          "storedAt",
+          "providerId"
+        ]
+      },
+      "WorkFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "表示名と申告media type（取得時の応答には使わない）。ローカルのパスではない。",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "255 bytes以内。パス区切り・制御文字・.・..は不可"
+          },
+          "mediaType": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "generation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FileGeneration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fileName",
+          "mediaType",
+          "generation"
+        ]
+      },
+      "DerivedFrom": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "差戻し後に前回の提出から明示的に取り込んだ成果物の出典",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "artifactId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "artifactId"
+        ]
+      },
+      "FileArtifactCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "ファイル成果物の作成。内容は別途登録する。",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "file": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "fileName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "mediaType": {
+                "type": "string",
+                "maxLength": 127
+              }
+            },
+            "required": [
+              "fileName",
+              "mediaType"
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "file"
+        ]
+      },
+      "DiscardArtifactCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedArtifactRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedArtifactRevision"
+        ]
+      },
+      "ImportSubmissionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "snapshotId"
+        ]
+      },
+      "ArtifactCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "artifact_created",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/WorkingArtifact"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifact"
+        ]
+      },
+      "ArtifactContentWritten": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "artifact_content_written",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/WorkingArtifact"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifact"
+        ]
+      },
+      "ArtifactDiscarded": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "artifact_discarded",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifactId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifactId"
+        ]
+      },
+      "SubmissionImported": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "submission_imported",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkingArtifact"
+            },
+            "maxItems": 16
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifacts"
         ]
       }
     }

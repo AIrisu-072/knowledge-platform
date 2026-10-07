@@ -115,7 +115,7 @@ async fn committed_handoff_replays_after_reconnect_and_staging_failure_rolls_bac
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(migrations_before.len(), 8);
+    assert_eq!(migrations_before.len(), 9);
     migrate(&pool).await.unwrap();
     let migrations_after: Vec<(i64, Vec<u8>, time::OffsetDateTime)> = sqlx::query_as(
         "SELECT version, checksum, applied_at FROM work.schema_migrations ORDER BY version",
@@ -2261,6 +2261,425 @@ async fn several_contexts_commit_to_their_own_instance_and_acknowledgment_is_not
             .collect::<Vec<_>>(),
         ["claimed", "submitted"]
     );
+    sqlx::raw_sql("DROP SCHEMA work CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+/// Work-owned store double: bytes per generation, and every call proves the
+/// caller holds no instance row lock (a remote call never runs under a lock).
+struct MemoryStore {
+    pool: sqlx::PgPool,
+    files: std::sync::Mutex<std::collections::BTreeMap<Uuid, Vec<u8>>>,
+    unavailable: AtomicBool,
+    puts: AtomicUsize,
+}
+impl MemoryStore {
+    async fn unlocked(&self) -> Result<(), WorkError> {
+        sqlx::query("SELECT id FROM work.workflow_instances WHERE id=$1 FOR UPDATE NOWAIT")
+            .bind(CONTEXT_C_WORKFLOW_ID)
+            .fetch_one(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|_| WorkError::IntegrityViolation)
+    }
+}
+impl work_application::WorkArtifactStore for MemoryStore {
+    fn put(
+        &self,
+        generation_id: Uuid,
+        bytes: Vec<u8>,
+    ) -> WorkFuture<'_, work_application::StoredGeneration> {
+        Box::pin(async move {
+            self.unlocked().await?;
+            self.puts.fetch_add(1, Ordering::SeqCst);
+            let mut files = self.files.lock().unwrap();
+            if files
+                .get(&generation_id)
+                .is_some_and(|stored| stored != &bytes)
+            {
+                return Err(WorkError::OperationConflict);
+            }
+            let identity = work_application::content_identity(&bytes);
+            files.insert(generation_id, bytes);
+            Ok(identity)
+        })
+    }
+    fn read(&self, generation: FileGeneration) -> WorkFuture<'_, Vec<u8>> {
+        Box::pin(async move {
+            self.unlocked().await?;
+            let bytes = self
+                .files
+                .lock()
+                .unwrap()
+                .get(&generation.id)
+                .cloned()
+                .filter(|_| !self.unavailable.load(Ordering::SeqCst))
+                .ok_or(WorkError::WorkArtifactUnavailable)?;
+            let identity = work_application::content_identity(&bytes);
+            if identity.size_bytes != generation.size_bytes || identity.sha256 != generation.sha256
+            {
+                return Err(WorkError::WorkArtifactUnavailable);
+            }
+            Ok(bytes)
+        })
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly authorized disposable PostgreSQL database"]
+async fn private_files_are_stored_outside_locks_pinned_with_receipts_and_staged_without_names() {
+    let pool = disposable_pool().await;
+    sqlx::raw_sql("DROP SCHEMA IF EXISTS work CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+    migrate(&pool).await.unwrap();
+    seed_synthetic(&pool, None).await.unwrap();
+    seed_synthetic_contexts(&pool, None).await.unwrap();
+    let store = Arc::new(MemoryStore {
+        pool: pool.clone(),
+        files: Default::default(),
+        unavailable: AtomicBool::new(false),
+        puts: AtomicUsize::new(0),
+    });
+    let repository = PostgresWorkRepository::new(pool.clone()).with_artifact_store(store.clone());
+    let row_of = |actor| {
+        let repository = repository.clone();
+        async move {
+            repository
+                .list_tasks(actor, TaskView::Queue)
+                .await
+                .unwrap()
+                .into_iter()
+                .chain(
+                    repository
+                        .list_tasks(actor, TaskView::Context)
+                        .await
+                        .unwrap(),
+                )
+                .find(|item| {
+                    item.id == CONTEXT_C_SALES_TASK_ID || item.id == CONTEXT_C_OFFICE_TASK_ID
+                })
+                .unwrap()
+        }
+    };
+    let sales = row_of(VerifiedActor::Sales01).await;
+    repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::Claim {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                context: acting(SALES_ASSIGNMENT_ID, sales.revision),
+            },
+        )
+        .await
+        .unwrap();
+    let name = "合成_住所変更届_添付.txt";
+    let MutationResult::ArtifactCreated { artifact, task } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::CreateFileArtifact {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                context: acting(SALES_ASSIGNMENT_ID, sales.revision + 1),
+                file_name: name.into(),
+                media_type: "text/plain".into(),
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let bytes = "【合成データ】住所変更の添付メモ".as_bytes().to_vec();
+    let write = acting(SALES_ASSIGNMENT_ID, task.revision);
+    let written = repository
+        .write_artifact_content(
+            VerifiedActor::Sales01,
+            artifact.id,
+            write.clone(),
+            0,
+            bytes.clone(),
+        )
+        .await
+        .unwrap();
+    let MutationResult::ArtifactContentWritten {
+        artifact: stored,
+        task,
+    } = written.clone()
+    else {
+        panic!()
+    };
+    let generation = stored.file.clone().unwrap().generation.unwrap();
+    assert_eq!(generation.id, write.operation_id);
+    assert_eq!(
+        generation.sha256,
+        work_application::content_identity(&bytes).sha256
+    );
+    assert_eq!(store.puts.load(Ordering::SeqCst), 1);
+    // An exact retry replays without writing again; other bytes under the same
+    // operation are a conflict and never reach the store.
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                artifact.id,
+                write.clone(),
+                0,
+                bytes.clone()
+            )
+            .await
+            .unwrap(),
+        written
+    );
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                artifact.id,
+                write.clone(),
+                0,
+                b"other".to_vec()
+            )
+            .await,
+        Err(WorkError::OperationConflict)
+    );
+    // Stale revisions and non-assignees are refused before any bytes are stored.
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                artifact.id,
+                acting(SALES_ASSIGNMENT_ID, task.revision),
+                0,
+                b"stale".to_vec()
+            )
+            .await,
+        Err(WorkError::RevisionConflict)
+    );
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Office01,
+                artifact.id,
+                acting(OFFICE_ASSIGNMENT_ID, task.revision),
+                1,
+                b"intrusion".to_vec()
+            )
+            .await,
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    assert_eq!(store.puts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        repository
+            .artifact_content(VerifiedActor::Sales01, artifact.id)
+            .await
+            .unwrap(),
+        (stored.file.clone().unwrap(), bytes.clone())
+    );
+    assert_eq!(
+        repository
+            .artifact_content(VerifiedActor::Office01, artifact.id)
+            .await,
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    // A content write is resolved by its operation even after its record was
+    // discarded: nothing is stored again and other bytes are a conflict.
+    let MutationResult::ArtifactCreated {
+        artifact: extra,
+        task,
+    } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::CreateFileArtifact {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                context: acting(SALES_ASSIGNMENT_ID, task.revision),
+                file_name: "外す資料.txt".into(),
+                media_type: "text/plain".into(),
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let extra_write = acting(SALES_ASSIGNMENT_ID, task.revision);
+    let MutationResult::ArtifactContentWritten { task, .. } = repository
+        .write_artifact_content(
+            VerifiedActor::Sales01,
+            extra.id,
+            extra_write.clone(),
+            0,
+            b"discard me".to_vec(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let MutationResult::ArtifactDiscarded { task, .. } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::DiscardArtifact {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                artifact_id: extra.id,
+                context: acting(SALES_ASSIGNMENT_ID, task.revision),
+                expected_artifact_revision: 1,
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let puts = store.puts.load(Ordering::SeqCst);
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                extra.id,
+                extra_write.clone(),
+                0,
+                b"discard me".to_vec()
+            )
+            .await,
+        Err(WorkError::WorkArtifactNotFound),
+        "the receipt names a record that is no longer current"
+    );
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                extra.id,
+                extra_write,
+                0,
+                b"other".to_vec()
+            )
+            .await,
+        Err(WorkError::OperationConflict)
+    );
+    assert_eq!(store.puts.load(Ordering::SeqCst), puts);
+    // Without a store receipt nothing is committed.
+    let instance_revision = || async {
+        sqlx::query_scalar::<_, i64>("SELECT revision FROM work.workflow_instances WHERE id=$1")
+            .bind(CONTEXT_C_WORKFLOW_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    };
+    let before = instance_revision().await;
+    let submit = |context: CommandContext| Command::Submit {
+        task_id: CONTEXT_C_SALES_TASK_ID,
+        context,
+        artifacts: vec![ArtifactSelection {
+            artifact_id: stored.id,
+            revision: stored.revision,
+        }],
+        expected_attempt_id: Some(stored.attempt_id),
+        evidence_revision_refs: vec![],
+        finding_revision_refs: vec![],
+        decision_revision_refs: vec![],
+    };
+    store.unavailable.store(true, Ordering::SeqCst);
+    let refused = acting(SALES_ASSIGNMENT_ID, task.revision);
+    assert_eq!(
+        repository
+            .execute(VerifiedActor::Sales01, submit(refused.clone()))
+            .await,
+        Err(WorkError::WorkArtifactUnavailable)
+    );
+    assert_eq!(instance_revision().await, before);
+    assert!(
+        repository
+            .recover(VerifiedActor::Sales01, refused.operation_id)
+            .await
+            .is_err()
+    );
+    store.unavailable.store(false, Ordering::SeqCst);
+    let MutationResult::Submitted { snapshot, .. } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            submit(acting(SALES_ASSIGNMENT_ID, task.revision)),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(
+        snapshot.artifacts[0].file.as_ref().unwrap().generation,
+        Some(generation.clone())
+    );
+    // The next step reads the pinned file only after its own claim.
+    assert_eq!(
+        repository
+            .snapshot_content(VerifiedActor::Office01, snapshot.id, stored.id)
+            .await,
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    let office = row_of(VerifiedActor::Office01).await;
+    repository
+        .execute(
+            VerifiedActor::Office01,
+            Command::Claim {
+                task_id: CONTEXT_C_OFFICE_TASK_ID,
+                context: acting(OFFICE_ASSIGNMENT_ID, office.revision),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        repository
+            .snapshot_content(VerifiedActor::Office01, snapshot.id, stored.id)
+            .await
+            .unwrap()
+            .1,
+        bytes
+    );
+    // Altered stored bytes are never disclosed.
+    store
+        .files
+        .lock()
+        .unwrap()
+        .insert(generation.id, b"tampered".to_vec());
+    assert_eq!(
+        repository
+            .snapshot_content(VerifiedActor::Office01, snapshot.id, stored.id)
+            .await,
+        Err(WorkError::WorkArtifactUnavailable)
+    );
+    // Staging records identities only, never the file name.
+    let staged: Vec<(String, String)> = sqlx::query_as(
+        "SELECT action, payload::text FROM work.event_staging WHERE workflow_id=$1 ORDER BY occurred_at, id",
+    )
+    .bind(CONTEXT_C_WORKFLOW_ID)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        staged
+            .iter()
+            .map(|(action, _)| action.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "claimed",
+            "artifact_created",
+            "artifact_content_written",
+            "artifact_created",
+            "artifact_content_written",
+            "artifact_discarded",
+            "submitted",
+            "claimed"
+        ]
+    );
+    assert!(
+        staged
+            .iter()
+            .all(|(_, payload)| !payload.contains("住所変更届_添付"))
+    );
+    assert!(staged[2].1.contains(&generation.sha256));
+    assert!(staged[6].1.contains(&generation.id.to_string()));
     sqlx::raw_sql("DROP SCHEMA work CASCADE")
         .execute(&pool)
         .await

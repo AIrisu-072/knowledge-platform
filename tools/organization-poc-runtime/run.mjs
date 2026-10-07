@@ -21,7 +21,8 @@ const directory = await mkdtemp(join(base, 'run-'));
 const runId = randomUUID();
 const report = new EvidenceReport(directory, ['build', 'database', 'transaction', 'initialize', 'journey', 'restart', 'persistence', 'shutdown',
   'policy-initialize', 'policy-journey', 'policy-restart', 'policy-persistence',
-  'context-seed', 'context-journey', 'context-restart', 'context-persistence', 'policy-shutdown']);
+  'context-seed', 'context-journey', 'context-restart', 'context-persistence',
+  'files-journey', 'files-restart', 'files-persistence', 'policy-shutdown']);
 report.data.scope = 'Synthetic Organization Browser PoC: actual PostgreSQL transaction, two-principal browser journey and a separate fresh-database six-principal policy journey';
 report.data.runId = runId;
 const processes = [];
@@ -183,6 +184,10 @@ try {
   await report.stage('context-journey', () => browser('context-journey', policyContextPath));
   await report.stage('context-restart', async () => { await stopPolicy(); await startPolicy(3); });
   await report.stage('context-persistence', () => browser('context-persistence', policyContextPath));
+  // Private work files in the Work-owned store, handoff and rework on the same DB.
+  await report.stage('files-journey', () => browser('files-journey', policyContextPath));
+  await report.stage('files-restart', async () => { await stopPolicy(); await startPolicy(4); });
+  await report.stage('files-persistence', () => browser('files-persistence', policyContextPath));
   await report.stage('policy-shutdown', stopPolicy);
 } catch (error) {
   failed = true;

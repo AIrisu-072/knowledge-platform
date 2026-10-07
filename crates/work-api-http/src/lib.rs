@@ -2,6 +2,7 @@
 //! Work HTTP transport. The composition root injects a process-fixed verified actor.
 mod agent;
 mod evidence;
+mod files;
 mod organization;
 use agent::*;
 use axum::{
@@ -13,9 +14,10 @@ use axum::{
     http::{HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use evidence::*;
+use files::*;
 use organization::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -93,6 +95,24 @@ fn build_router(
             get(artifact).put(update_artifact),
         )
         .route(
+            "/v1/organization/working-artifacts/{id}/content",
+            put(write_content)
+                .get(read_content)
+                .layer(DefaultBodyLimit::max(MAX_CONTENT_BYTES)),
+        )
+        .route(
+            "/v1/organization/working-artifacts/{id}/discard",
+            post(discard),
+        )
+        .route(
+            "/v1/organization/tasks/{id}/working-artifacts/import",
+            post(import_submission),
+        )
+        .route(
+            "/v1/organization/handoff-snapshots/{id}/artifacts/{artifact_id}/content",
+            get(read_snapshot_content),
+        )
+        .route(
             "/v1/organization/tasks/{id}/evidence",
             get(list_evidence).post(register_evidence),
         )
@@ -166,6 +186,7 @@ async fn transport_boundary(request: Request, next: Next) -> Response {
             || (path.starts_with("/v1/organization/tasks/")
                 && (path.ends_with("/evidence") || path.ends_with("/findings")))
             || (path.starts_with("/v1/organization/findings/") && path.ends_with("/decisions")));
+    let content_read = request.method() == axum::http::Method::GET && path.ends_with("/content");
     let response = if header_bytes > 16 * 1024
         || forbidden
             .iter()
@@ -177,7 +198,13 @@ async fn transport_boundary(request: Request, next: Next) -> Response {
         next.run(request).await
     };
     let (parts, body) = response.into_parts();
-    let mut response = match axum::body::to_bytes(body, MAX_JSON_BYTES).await {
+    // Only the two file-content reads carry the larger file profile.
+    let limit = if content_read {
+        MAX_CONTENT_BYTES
+    } else {
+        MAX_JSON_BYTES
+    };
+    let mut response = match axum::body::to_bytes(body, limit).await {
         Ok(bytes) => Response::from_parts(parts, axum::body::Body::from(bytes)),
         Err(_) => Problem(WorkError::DependencyUnavailable).into_response(),
     };
@@ -356,12 +383,27 @@ struct SubmitBody {
     acting_assignment_id: Uuid,
     artifacts: Vec<ArtifactSelection>,
 }
+/// A text draft (`value`) or a file record (`file`), never both.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CreateArtifactBody {
+    Text(DraftBody),
+    File(FileArtifactBody),
+}
 async fn create_artifact(
     State(state): State<ApiState>,
     path: Result<Path<Uuid>, PathRejection>,
-    body: Result<Json<DraftBody>, JsonRejection>,
+    body: Result<Json<CreateArtifactBody>, JsonRejection>,
 ) -> Result<Json<MutationResult>, Problem> {
-    let command = json_body(body)?.command(path_id(path)?, None);
+    let task_id = path_id(path)?;
+    let command = match json_body(body)? {
+        CreateArtifactBody::Text(body) => body.command(task_id, None),
+        // Without a composed Work store a file record could never get content.
+        CreateArtifactBody::File(_) if !state.repository.artifact_store_available() => {
+            return Err(Problem(WorkError::WorkArtifactUnavailable));
+        }
+        CreateArtifactBody::File(body) => body.command(task_id),
+    };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }
 async fn update_artifact(
@@ -521,9 +563,9 @@ impl IntoResponse for Problem {
             | WorkError::AgentResultNotReady
             | WorkError::HandoffNotReady
             | WorkError::CursorStale => StatusCode::CONFLICT,
-            WorkError::DependencyUnavailable | WorkError::CommitOutcomeUnknown => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            WorkError::DependencyUnavailable
+            | WorkError::CommitOutcomeUnknown
+            | WorkError::WorkArtifactUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             WorkError::IntegrityViolation => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = serde_json::json!({"type":"about:blank","title":status.canonical_reason().unwrap_or("Request failed"),"status":status.as_u16(),"code":self.0,"traceId":Uuid::now_v7()});

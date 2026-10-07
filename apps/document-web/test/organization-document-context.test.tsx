@@ -284,7 +284,8 @@ test('no shared inputs means no Document request or upload/private attachment co
   jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, inputResources: [] } as never);
   await screen.findByText('入力文書はありません');
   expect(documentApi.getDocument).not.toHaveBeenCalled();
-  expect(document.querySelector('input[type="file"]')).toBeNull();
+  // The Document module never uploads; private work files belong to the main work area only.
+  expect(screen.getByRole('complementary', { name: '文脈情報' }).querySelector('input[type="file"]')).toBeNull();
 });
 
 

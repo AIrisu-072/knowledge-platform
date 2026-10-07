@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-07 07:20 UTC — Organization 作業ファイル・共有provider・Handoff・差戻し後の作業（U3）
+
+- U2は[PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)でmain `240bfd2` へ統合済み（[U2状況](organization-work-context-status.md)）。U3の再開先は[状況](organization-work-files-status.md)、[実装追補](../specs/2026-10-07-organization-work-files-handoff-amendment.md)、[小計画](../plans/2026-10-07-organization-work-files.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `240bfd2` から作り直し、U3 commitを移した。作業ファイル（Work所有の共有保存領域 `work-artifacts/`）、提出時の世代固定と受領者の取得、差戻し後の明示的な取込み
+- 独立reviewはGO。Important 1件（外した記録への操作が閲覧拒否扱い）と軽微事項を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 20 stageが成功。新しい判断10点は承認済みとして扱わない
+- 次はPR作成→exact-head CI→main統合→統合後CI→同名branchを作り直してU4（AgentExecutionの構造化結果・Agent Chat・adapter境界）
+
+---
+
 ## 2026-10-07 06:10 UTC — Organization 複数文脈・注意・表示Profile（U2）
 
 - U1は[PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)でmain `04076b1` へ統合済み（[U1状況](organization-multi-principal-status.md)）。U2の再開先は[状況](organization-work-context-status.md)、[実装追補](../specs/2026-10-07-organization-work-context-attention-amendment.md)、[小計画](../plans/2026-10-07-organization-work-context.md)
