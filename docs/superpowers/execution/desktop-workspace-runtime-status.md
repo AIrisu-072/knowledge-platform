@@ -1,5 +1,23 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-07 07:30 UTC — Tauri shellの実装と実GUI確認（依頼者が判断5項目に合意）
+
+- 依頼者が判断5項目すべてに合意し、「クラウド環境でTauriを構築し、デスクトップアプリのGUIから確認する。CIにはしない」と指示。[判断事項](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)へ合意内容と適用を記録しました。
+- 基点：PR95統合後のmain `04076b1`（PR96を含む）。branch `claude/upbeat-tesla-qcu94x` をmainから作り直しました。main `04076b1` のCI run 37578317667は全job成功で、PR95統合直後（`93947f3`）のrust-test失敗（無関係なDocker pullの切断）は後続mainで解消済みです。
+- 実装：`apps/desktop/src-tauri`（独立Cargo workspace、Tauri 2.12.1）。単一window、IPC 1件、rfdのフォルダー選択、URL schemeの置き換えによるasset配信と `/v1` 転送（loopbackの1 originだけ）、遷移・新規window・downloadの制限、desktop用のdeny.toml／osv-scanner.toml、architecture-lintの境界、ローカル専用のmise task（`desktop:check`／`desktop:build`／`desktop:gui:e2e`）。
+- 実GUIで見つけて直したもの：
+  - WebKitGTK 2.52がcustom schemeへのBlob/FormData本文でSIGSEGV（gdbで確認、文字列・バイト列は正常）→初期化scriptで本文をページ内で確定。
+  - WebKitGTKは同一originの要求にOriginを付けない→Origin必須をやめ、「付いていれば一致」の多層防御へ（RED→GREEN）。
+  - `<a download>` のblob URLが遷移制限で拒否されていた→自アプリのblob URLだけ許可（RED→GREEN）。
+  - ローカルWorkspace画面：同じフォルダーの「開く」で再取得しない／置換検出後も古い一覧を表示／二重起動の理由を表示しない→いずれも画面試験を先に追加して修正。
+- 検証（ローカル、Linux）：
+  - shell：単体10件、変異4件（転送先・header・loopback・Referer判定）をすべて検出、clippy -D warnings（Linux、`x86_64-pc-windows-gnu`）、fmt、`cargo deny check`（desktop）。
+  - root：fmt、`cargo deny check`、architecture-lint、assurance scan/plan/run/report、repo:policyの追跡物検査、gitleaks（今回のcommit範囲0件）。
+  - GUI：全64 suites／1557件、型検査、本番build。
+  - 実GUI（`mise run desktop:gui:e2e`）：16シナリオ・99項目がすべて成功（tauri-driver 2.1.0、WebKitWebDriver、WebKitGTK 2.52.6、Xvfb、xdotool、PostgreSQL 18.6、organization-server）。証跡は `apps/desktop/e2e/.state/run-*/`（git管理外）。
+- 未検証：Windows実機・WebView2・MSVC build（依頼者が実施、[手順](../../operations/desktop-workspace-runtime.md)）、Windows版broker（未実装、fail-closed）、macOSでの実行、OSVの実送信（この環境からapi.osv.devへは接続不可。PRのsecurity jobで確認）。
+- 次のexact action：独立review（実行中）の指摘を確認・修正 → push → Draft PR → exact-head CI（特にsecurityのOSV） → 統合 → 統合後のmain CIを確認。
+
 ## 2026-10-07 04:20 UTC — 修正commitの再reviewと追加修正
 
 - 修正commit（c5f9564/4df588a）の独立再review：

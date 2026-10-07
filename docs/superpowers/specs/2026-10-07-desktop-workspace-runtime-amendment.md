@@ -50,6 +50,24 @@
   - `FILE_FLAG_OPEN_REPARSE_POINT` で開き、reparse属性とfile IDを確認する
   - 共有モードで書込みを拒否してsnapshotを取る
 
+## 差分5：desktop shell（Tauri v2）の境界と転送（2026-10-07追記）
+
+依頼者の判断（[判断事項](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)、全項目合意）を受けて追加しました。
+
+- **window**：main windowを1つだけコードで作ります。`window.open` 等の新しいウィンドウは拒否し、遷移は同梱アプリのURL（Linux/macOS：`tauri://localhost`、Windows：`http://tauri.localhost`）と、同梱アプリが作ったblob URLだけを許可します。drag&dropのOS連携（絶対pathを渡すもの）は無効です。
+- **IPC**：capabilityは `main` windowのローカル（同梱）originに `allow-local-workspace-runtime` の1件だけです。Tauri core・pluginの権限は与えません。remote contentはcommandに届きません。
+- **転送**：アプリ自身のURL schemeをshellが登録し、同梱assetの配信と `/v1` の転送を行います（Tauri既定のasset handlerは未知のpathにindex.htmlを返すため、置き換えが必要）。
+  - 転送先は `KNOWLEDGE_PLATFORM_API_ORIGIN` の1つだけで、literalのloopback（`127.0.0.0/8`・`::1`）・`http`・port必須・path無しに限ります。
+  - 正規化した後のpathが `/v1` 以下で、originが同じ場合だけ転送します（`..`・`%2e%2e`・`\`・`//host` での脱出は拒否）。method：GET/HEAD/POST/PUT/PATCH/DELETE。
+  - 要求header：`accept`・`accept-language`・`content-type`・`traceparent` だけ。応答header：`content-type`・`content-disposition`・`content-language`・`cache-control`・`etag`・`last-modified`・`retry-after` だけ（Set-Cookie・Location・CORS系は返しません）。`X-Content-Type-Options: nosniff` を付けます。
+  - redirectは追わず、cookie・system proxyは使いません。上限：要求本文1GiB＋1MiB、応答本文256MiB＋1MiB、接続5秒、全体180秒。失敗はpath等を含まないproblem（503未設定・502接続不可・504時間切れ・400宛先不正・405 method・413大きさ）。
+  - Origin/Refererは、付いていれば同梱アプリと一致することを求めます（WebKitGTKは同一originのcustom scheme要求にOriginを付けないため、必須にはできません）。
+  - 既存serverのCORS・認証・identityの扱いは変えません（名乗りheaderは転送しません）。
+- **CSP**：既存previewと同等に、Tauri IPCの `ipc:` と `http://ipc.localhost` を `connect-src` に加えたものです。backendへの直接接続はできません。
+- **本文の確定（WebKitGTK回避）**：WebKitGTK 2.52はcustom schemeへのBlob/FormData本文でSIGSEGVします。shellは初期化scriptで、同一originへのGET/HEAD以外の要求本文をページ内でArrayBufferに確定してから送ります。bytes・method・header・中断signalは変わりません。他originとIPCには触れません。
+- **ダウンロード**：同梱アプリのblob URLを、Downloadsフォルダー直下（WebViewが重複を避けた名前）に保存する場合だけ許可します。
+- **picker**：`rfd` の単一フォルダー選択。brokerはworker threadから呼び、lockを持たずに待ちます。LinuxではGTKのmain contextでdialogが動きます。Windowsではmain windowを親にします。
+
 ## 不変条件（変更なし）
 
 - 任意の絶対path、shell、実行ファイル起動、汎用FS APIは公開しません。architecture-lintで、`std::process` などをこのcrateから禁止しています。
@@ -72,4 +90,5 @@
   - headerのruntime表示（desktopのときだけ表示し、browserの見た目は変わりません）
   - `activeNavigation` 型への値の追加
 - 主ナビゲーション（タスク／文書／検索）は変えていません。ローカルWorkspace画面へは `/local-workspaces` から開きます。
+- ローカルWorkspace画面（2026-10-07、実GUI確認で見つけた3点）：表示中のフォルダーで「開く」を押すと一覧を取り直す。一覧の取得に失敗したら古い一覧を表示しない。desktopでruntimeが使えないとき、理由（別に起動中・記録を読めない・未対応OS）を表示する。
 - Organization担当がserver側Workspaceを実装する際は、`createWorkspace(context, operationId)` を追加し、server発行のworkspaceIdをローカルの記録と対応付けてください。ローカルWorkspaceを共有Workspaceとして扱わないでください。
