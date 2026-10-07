@@ -513,6 +513,12 @@ impl SearchApiBackend for RuntimeBackend {
                     DISCOVER_LEXICAL_LIMIT,
                 ));
             }
+            // Directory lists every Resource in scope with no relevance to a
+            // query; with a query it only padded the ranking with unrelated
+            // Resources. It stays the browse route of a query-less request.
+            if input.query.is_some() {
+                config.retriever_support.directory = false;
+            }
             if let (Some(_), Some(query)) = (&scoped_vector, &input.query) {
                 config.retriever_support.vector = true;
                 config.retrieval_inputs.vector_query_available = true;
