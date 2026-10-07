@@ -46,6 +46,21 @@
 | 一覧の既定件数50とclientの未指定 | clientが `limit=100` を明示（追補§9.11） |
 | 表示指定時のProfile・期限順の試験が無い／文脈の無い行が未整列／古いfixture | 試験を追加（修正を外すとRED）、文脈の無い行も期限順、fixtureを現行の規則へ更新 |
 
+### 検証（軽微事項の修正後 `d14fa76`、ローカル）
+
+| 区分 | 結果 |
+|---|---|
+| Domain・HTTP・server・application | 全pass（文脈試験11件。新規1件は3つの修正をそれぞれ外すとRED） |
+| 実PostgreSQL 16 | 3件pass |
+| GUI | 1563/1563（65 suites）、型検査。1回目の全体実行で1件失敗（対象は記録できず）、その後の全体3回はすべてpass、新規・変更した2 filesは単独6回すべてpass |
+| fmt・clippy（変更crate、`-D warnings`）・organization OpenAPI lint | pass |
+| 実browser（ローカル） | 17 stageすべてpassed（受入済み2名journeyは不変のまま成功） |
+
+### hosted CI
+
+- 修正前head `8df98de`：全job成功（`document-poc-runtime` のOrganization受入stepを含む）
+- 修正後headはこのpushで実行する
+
 ### 検証（ローカル、修正後 `3a309f3`）
 
 | 区分 | 結果 |
