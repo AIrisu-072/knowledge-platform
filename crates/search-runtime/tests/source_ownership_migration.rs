@@ -75,7 +75,7 @@ async fn ownership_migration_preserves_independent_ledgers_and_namespaces() {
             .iter()
             .map(|(version, _)| *version)
             .collect::<Vec<_>>(),
-        (1..=11).collect::<Vec<_>>()
+        (1..=12).collect::<Vec<_>>()
     );
     migrate_only_search_0001(&pool).await;
     let first_search: (i64, Vec<u8>) = sqlx::query_as(

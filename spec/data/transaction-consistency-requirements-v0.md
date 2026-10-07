@@ -636,6 +636,16 @@ Document Management Basics v0 では、信頼済み HumanInteractive 本人に�
 
 ---
 
+### T9追補：本人VIEW/RESETの原子性
+
+[2026-10-07文書詳細表示・未読戻し追補](../../docs/superpowers/specs/2026-10-07-document-view-read-state-design.md)を追加する。旧空body PUTの4field応答、初回日時、read_confirmed Auditは保持し、既存row再生は再確認flag/revisionを変更しない。
+
+GETはaccess共有guard→Document共有lock→trusted identity/現在Read/所属→必要なReadHistory→現行PUBLISHED/未終了を一貫read transactionで確認する。POSTはaccess共有guard→Document FOR UPDATE→現在認可/所属/必要なReadHistory→本人receipt→現在state/CASの順。一致receiptはcurrent判定とCASより前に再生し、現在stateを変更しない。認可拒否をSTALE_VERSIONへ置換しない。receiptなしの旧版/終了後は409、期待revision不一致はread-stateのREVISION_CONFLICT409、既に未読へのRESETは422。既読VIEWはchanged=false・同revision・receiptだけである。
+
+初回VIEWはr0→r1で日時を作る。再確認VIEWとRESETは本人revisionを1増やし日時は保持する。MAX=9007199254740991からの増分は422でstate/receipt/Audit不変、既読VIEW no-opと旧receipt再生はMAXでも許す。state/receipt/実遷移の必須Auditは同transaction。異Document同IDのreceipt INSERTはON CONFLICT DO NOTHING RETURNINGで競合側を検出し、state/Auditも全rollback後、新transactionで再認可して保存receiptを照合する。commit不明をrollback確定扱いにせず、固定ID付きCOMMIT_OUTCOME_UNKNOWN503/retryable:true/exactRetry:trueで同path/bodyだけ再送する。GET一致を元操作の成否証明にしない。
+
+旧PUTのDocument lockとも初回混在を直列化し、初回row/Auditは1件。Document revision/汎用管理台帳/Domain/Search eventは変更しない。migration0012は旧checksumと旧日時/Auditを保持し、移行Auditを作らない。旧serverはresetを理解しないため新旧serverを混在稼働させない。
+
 ## T10: 文書全体の公開を終了する（Versioning v0のT4とは別操作）
 
 通常業務では論理削除・物理削除を行わない。文書全体を今後の通常利用・通常検索対象から外す必要がある場合は、T4 の Version 取下げではなく独立した公開終了 transaction を使う。T4 は直前の公開版を current に戻し得るため、T10 の代用にならない。

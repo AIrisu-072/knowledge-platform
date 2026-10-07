@@ -1,3 +1,4 @@
+import { invalidateDocumentReadStateViews } from './document-view-navigation';
 import type { CommandsMoveFolder, FolderDetail, MutationResult } from '@knowledge-platform/document-api-client';
 import type { QueryClient } from '@tanstack/react-query';
 import { rootFolderValidation, validOccurredAt, wasRejected, type SelectedFolderContext } from './document-root-folder';
@@ -50,9 +51,10 @@ export function folderMoveOperations(owner: object) {
 // Folder move changes global access_revision. Reset reads, including Organization document/evidence
 // reads, without clearing immutable operation payloads, blobs, mutation cache or provider state.
 export async function refreshFolderMoveReads(client: QueryClient): Promise<void> {
+  invalidateDocumentReadStateViews(client);
   const reads = new Set(['folder-tree', 'documents', 'document', 'document-versions', 'document-revisions',
     'document-history', 'folder-access-policy', 'document-access-policy', 'document-version', 'document-version-files',
-    'document-edit-manifest', 'revision-comparison']);
+    'document-edit-manifest', 'revision-comparison', 'document-read-opening', 'document-current-read-state']);
   const operations = new Set(['document-working-operation', 'document-schedule-cancel', 'document-lifecycle-operation']);
   // Keep Organization identity/task selection stable: its transient provider holds fixed operations.
   // These module reads can disclose Document/evidence content under current Document authorization.

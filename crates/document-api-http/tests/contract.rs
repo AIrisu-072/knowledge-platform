@@ -111,6 +111,21 @@ async fn every_openapi_operation_is_dispatched_to_exactly_one_handler_family() {
             format!("/v1/documents/{id}/versions/{id}/read-state"),
             "management",
         ),
+        (
+            Method::GET,
+            format!("/v1/documents/{id}/versions/{id}/read-state"),
+            "management",
+        ),
+        (
+            Method::POST,
+            format!("/v1/documents/{id}/versions/{id}/read-state/view"),
+            "management",
+        ),
+        (
+            Method::POST,
+            format!("/v1/documents/{id}/versions/{id}/read-state/reset"),
+            "management",
+        ),
         (Method::GET, format!("/v1/documents/{id}/history"), "read"),
         (
             Method::GET,
@@ -149,7 +164,7 @@ async fn every_openapi_operation_is_dispatched_to_exactly_one_handler_family() {
         ),
     ];
 
-    assert_eq!(cases.len(), 34);
+    assert_eq!(cases.len(), 37);
     for (method, uri, expected) in cases {
         let response = api
             .clone()

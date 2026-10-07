@@ -7,9 +7,9 @@ use axum::http::StatusCode;
 use axum::routing::{patch, post, put};
 use axum::{Extension, Json, Router};
 use document_application::{
-    AccessPolicyService, ApplicationError, DocumentManagementService, FolderService,
-    ManagementCommand, ManagementMutationResult, ManagementOperationId, ManagementRepository,
-    ReadStateRepository, VerifiedActorContext,
+    AccessPolicyService, ApplicationError, CurrentReadStateRepository, DocumentManagementService,
+    FolderService, ManagementCommand, ManagementMutationResult, ManagementOperationId,
+    ManagementRepository, ReadStateRepository, VerifiedActorContext,
 };
 use document_domain::{
     Action, DocumentId, FolderId, PolicyGrant, PolicyMode, PolicySubject, PolicySubjectKind,
@@ -29,12 +29,17 @@ use crate::timeout::with_operation_timeout;
 use crate::trace::TraceContext;
 
 pub trait ManagementApiRepository:
-    ManagementRepository + ReadStateRepository + Send + Sync + 'static
+    ManagementRepository + ReadStateRepository + CurrentReadStateRepository + Send + Sync + 'static
 {
 }
 
 impl<T> ManagementApiRepository for T where
-    T: ManagementRepository + ReadStateRepository + Send + Sync + 'static
+    T: ManagementRepository
+        + ReadStateRepository
+        + CurrentReadStateRepository
+        + Send
+        + Sync
+        + 'static
 {
 }
 

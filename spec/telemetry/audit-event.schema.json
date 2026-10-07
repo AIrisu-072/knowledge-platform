@@ -1,0 +1,5663 @@
+{
+  "$defs": {
+    "actor": {
+      "additionalProperties": false,
+      "properties": {
+        "issuer": {
+          "$ref": "#/$defs/principal_part"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/principal_part"
+        }
+      },
+      "required": [
+        "issuer",
+        "principal_id"
+      ],
+      "type": "object"
+    },
+    "boolean": {
+      "type": "boolean"
+    },
+    "canonical_uuid": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "code": {
+      "pattern": "^[a-z0-9_]{1,64}$",
+      "type": "string"
+    },
+    "counter": {
+      "maximum": 9223372036854775807,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "db_role": {
+      "description": "Control events only: a PostgreSQL role name that needs no quoting",
+      "pattern": "^[a-z_][a-z0-9_$]{0,62}$",
+      "type": "string"
+    },
+    "digest": {
+      "items": {
+        "maximum": 255,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxItems": 32,
+      "minItems": 32,
+      "type": "array"
+    },
+    "event.access_policy.changed": {
+      "anyOf": [
+        {
+          "properties": {
+            "data": {
+              "properties": {
+                "resource": {
+                  "properties": {
+                    "type": {
+                      "const": "Document"
+                    }
+                  }
+                }
+              }
+            },
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        },
+        {
+          "properties": {
+            "data": {
+              "properties": {
+                "resource": {
+                  "properties": {
+                    "type": {
+                      "const": "Folder"
+                    }
+                  }
+                }
+              }
+            },
+            "subject": {
+              "pattern": "^folder/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "access_policy.changed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "access_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "bootstrap": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "policy_id": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "policy_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "target_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "target_type": {
+                  "enum": [
+                    "Document",
+                    "Folder"
+                  ]
+                }
+              },
+              "required": [
+                "operation_id",
+                "target_type",
+                "target_id",
+                "policy_id",
+                "policy_revision",
+                "access_revision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "ACCESS_POLICY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document",
+                    "Folder"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.audit.access.closed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access.closed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "intent_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "page_count": {
+                  "$ref": "#/$defs/counter"
+                },
+                "page_digests_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "returned_count": {
+                  "$ref": "#/$defs/counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                }
+              },
+              "required": [
+                "session_role",
+                "intent_seq",
+                "returned_count",
+                "page_count",
+                "page_digests_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.access.denied": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access.denied"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "denial_code": {
+                  "enum": [
+                    "unbound",
+                    "insufficient_capability",
+                    "invalid_input",
+                    "self_grant",
+                    "not_source_service"
+                  ]
+                },
+                "operation": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "identity_chain",
+                    "close_access",
+                    "integrity_verify",
+                    "checkpoint",
+                    "change_access",
+                    "set_retention_policy",
+                    "expire",
+                    "purge_body",
+                    "begin_recovery_epoch",
+                    "declare_recovery_pending",
+                    "record_relay_control",
+                    "report_regression",
+                    "ingest"
+                  ]
+                },
+                "required_capability": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "administer",
+                    "maintain"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                }
+              },
+              "required": [
+                "session_role",
+                "operation",
+                "denial_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "denied"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.access.intent_opened": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access.intent_opened"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "expires_at": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "filter_actor_issuer": {
+                  "$ref": "#/$defs/principal_ref"
+                },
+                "filter_actor_principal_id": {
+                  "$ref": "#/$defs/principal_ref"
+                },
+                "filter_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "filter_event_ids": {
+                  "$ref": "#/$defs/uuid_list"
+                },
+                "filter_event_types": {
+                  "$ref": "#/$defs/event_type_list"
+                },
+                "filter_occurred_from": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "filter_occurred_to": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "filter_resource_id": {
+                  "$ref": "#/$defs/resource_ref"
+                },
+                "filter_resource_type": {
+                  "enum": [
+                    "Document",
+                    "Folder",
+                    "AccessPolicy",
+                    "AuditStore"
+                  ]
+                },
+                "filter_seq_after": {
+                  "$ref": "#/$defs/counter"
+                },
+                "filter_seq_through": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "filter_source": {
+                  "enum": [
+                    "urn:knowledge-platform:audit-relay",
+                    "urn:knowledge-platform:audit-store",
+                    "urn:knowledge-platform:document-platform"
+                  ]
+                },
+                "include_control": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "max_pages": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "operation": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "identity_chain"
+                  ]
+                },
+                "page_size": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "token_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "watermark": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "operation",
+                "filter_digest",
+                "watermark",
+                "page_size",
+                "max_pages",
+                "include_control",
+                "expires_at",
+                "token_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.access_policy.changed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.access_policy.changed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "capability": {
+                  "enum": [
+                    "investigate",
+                    "export",
+                    "verify",
+                    "administer",
+                    "maintain"
+                  ]
+                },
+                "change": {
+                  "enum": [
+                    "granted",
+                    "revoked",
+                    "bound",
+                    "unbound",
+                    "bootstrap",
+                    "reapplied"
+                  ]
+                },
+                "db_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "target_issuer": {
+                  "$ref": "#/$defs/principal_ref"
+                },
+                "target_principal_id": {
+                  "$ref": "#/$defs/principal_ref"
+                }
+              },
+              "required": [
+                "session_role",
+                "change",
+                "target_issuer",
+                "target_principal_id"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "ACCESS_POLICY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.body.purged": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.body.purged"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "purge_reason_code": {
+                  "enum": [
+                    "minimization_failure",
+                    "prohibited_content",
+                    "adapter_defect"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "target_event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "target_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "target_seq",
+                "target_event_id",
+                "purge_reason_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.delivery.replay_requested": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.delivery.replay_requested"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "quarantine_code": {
+                  "$ref": "#/$defs/code"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                }
+              },
+              "required": [
+                "session_role",
+                "event_id",
+                "quarantine_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-relay-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-relay"
+        }
+      }
+    },
+    "event.audit.integrity.conflict_detected": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.integrity.conflict_detected"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "commitment_match": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "conflict_kind": {
+                  "enum": [
+                    "identity_mismatch",
+                    "commitment_mismatch",
+                    "projection_mismatch",
+                    "digest_mismatch"
+                  ]
+                },
+                "event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "existing_adapter_version": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "existing_origin": {
+                  "enum": [
+                    "relay",
+                    "store",
+                    "relay_control"
+                  ]
+                },
+                "existing_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "submitted_adapter_version": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "event_id",
+                "existing_seq",
+                "existing_origin",
+                "conflict_kind",
+                "commitment_match",
+                "existing_adapter_version",
+                "submitted_adapter_version"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.integrity.source_mismatch_detected": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.integrity.source_mismatch_detected"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "event_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "mismatch_code": {
+                  "enum": [
+                    "source_digest_mismatch",
+                    "actor_mismatch"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                }
+              },
+              "required": [
+                "session_role",
+                "event_id",
+                "mismatch_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-relay-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-relay"
+        }
+      }
+    },
+    "event.audit.integrity.verified": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.integrity.verified"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "checked": {
+                  "$ref": "#/$defs/counter"
+                },
+                "from_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "head_chain": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "head_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "head_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "outcome": {
+                  "enum": [
+                    "ok",
+                    "violations"
+                  ]
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "to_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "trigger": {
+                  "enum": [
+                    "verify",
+                    "checkpoint"
+                  ]
+                },
+                "violation_body_digest_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_chain_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_epoch_regressed": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_event_id_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_expiry_state_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_head_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_identity_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_prev_chain_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_purge_evidence_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_retention_evidence_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_retention_evidence_missing": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violation_seq_gap": {
+                  "$ref": "#/$defs/counter"
+                },
+                "violations_total": {
+                  "$ref": "#/$defs/counter"
+                },
+                "watermark": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "trigger",
+                "from_seq",
+                "to_seq",
+                "watermark",
+                "checked",
+                "head_seq",
+                "head_epoch",
+                "head_chain",
+                "outcome",
+                "violations_total",
+                "violation_seq_gap",
+                "violation_prev_chain_mismatch",
+                "violation_chain_mismatch",
+                "violation_body_digest_mismatch",
+                "violation_identity_mismatch",
+                "violation_event_id_mismatch",
+                "violation_expiry_state_mismatch",
+                "violation_epoch_regressed",
+                "violation_retention_evidence_missing",
+                "violation_retention_evidence_mismatch",
+                "violation_purge_evidence_mismatch",
+                "violation_head_mismatch"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success",
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.reconciliation.completed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.reconciliation.completed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "count_delivered_missing": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_digest_mismatch": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_ok": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_pending": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_quarantined": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_quarantined_conflict": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_quarantined_stored": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_relay_catalog_skew": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_replay_record_lost": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_source_tampered": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_store_only": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_unaudited_replay": {
+                  "$ref": "#/$defs/counter"
+                },
+                "count_unregistered": {
+                  "$ref": "#/$defs/counter"
+                },
+                "id_set_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "mode": {
+                  "enum": [
+                    "read_only",
+                    "repair"
+                  ]
+                },
+                "repaired_delivered_missing": {
+                  "$ref": "#/$defs/counter"
+                },
+                "repaired_quarantined_stored": {
+                  "$ref": "#/$defs/counter"
+                },
+                "repaired_unregistered": {
+                  "$ref": "#/$defs/counter"
+                },
+                "run_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "watermark": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "session_role",
+                "run_id",
+                "mode",
+                "watermark",
+                "id_set_digest",
+                "count_ok",
+                "count_delivered_missing",
+                "count_digest_mismatch",
+                "count_quarantined_stored",
+                "count_quarantined_conflict",
+                "count_pending",
+                "count_quarantined",
+                "count_unregistered",
+                "count_source_tampered",
+                "count_store_only",
+                "count_unaudited_replay",
+                "count_replay_record_lost",
+                "count_relay_catalog_skew",
+                "repaired_delivered_missing",
+                "repaired_quarantined_stored",
+                "repaired_unregistered"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-relay-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-relay"
+        }
+      }
+    },
+    "event.audit.recovery.epoch_started": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.recovery.epoch_started"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "checkpoint_chain": {
+                  "$ref": "#/$defs/nullable_hex_digest"
+                },
+                "checkpoint_classification": {
+                  "enum": [
+                    "match",
+                    "ahead",
+                    "store_behind",
+                    "mismatch",
+                    "epoch_mismatch",
+                    null
+                  ]
+                },
+                "checkpoint_epoch": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "checkpoint_seq": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "classification": {
+                  "enum": [
+                    "restore",
+                    "planned_move",
+                    "regression"
+                  ]
+                },
+                "identity_range_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "lost_from_seq": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "lost_upper_known": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "lost_upper_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "new_database_oid": {
+                  "$ref": "#/$defs/int8_text"
+                },
+                "new_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "new_system_identifier": {
+                  "$ref": "#/$defs/int8_text"
+                },
+                "new_timeline": {
+                  "$ref": "#/$defs/int8_text"
+                },
+                "old_database_oid": {
+                  "$ref": "#/$defs/int8_text"
+                },
+                "old_epoch": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "old_system_identifier": {
+                  "$ref": "#/$defs/int8_text"
+                },
+                "old_timeline": {
+                  "$ref": "#/$defs/int8_text"
+                },
+                "regression_head_seq": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "regression_reported_at": {
+                  "$ref": "#/$defs/nullable_utc_timestamp"
+                },
+                "regression_reported_by": {
+                  "$ref": "#/$defs/nullable_db_role"
+                },
+                "regression_reported_digest": {
+                  "$ref": "#/$defs/nullable_hex_digest"
+                },
+                "regression_reported_event_id": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "regression_reported_seq": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "relay_max_seq": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "restored_head_chain": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "restored_head_seq": {
+                  "$ref": "#/$defs/counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                }
+              },
+              "required": [
+                "session_role",
+                "classification",
+                "old_epoch",
+                "new_epoch",
+                "restored_head_seq",
+                "restored_head_chain",
+                "checkpoint_epoch",
+                "checkpoint_seq",
+                "checkpoint_chain",
+                "checkpoint_classification",
+                "identity_range_digest",
+                "relay_max_seq",
+                "lost_from_seq",
+                "lost_upper_seq",
+                "lost_upper_known",
+                "regression_reported_seq",
+                "regression_reported_event_id",
+                "regression_reported_digest",
+                "regression_reported_by",
+                "regression_reported_at",
+                "regression_head_seq",
+                "old_system_identifier",
+                "old_database_oid",
+                "old_timeline",
+                "new_system_identifier",
+                "new_database_oid",
+                "new_timeline"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SYSTEM_AUDIT"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.retention.expire_refused": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.retention.expire_refused"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "current_revision": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "expected_revision": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "policy_id": {
+                  "$ref": "#/$defs/code"
+                },
+                "refusal": {
+                  "enum": [
+                    "stale_revision",
+                    "not_expirable",
+                    "held"
+                  ]
+                },
+                "retain_days": {
+                  "$ref": "#/$defs/nullable_positive_counter"
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "tx_time": {
+                  "$ref": "#/$defs/utc_timestamp"
+                }
+              },
+              "required": [
+                "session_role",
+                "policy_id",
+                "expected_revision",
+                "current_revision",
+                "refusal",
+                "retain_days",
+                "cutoff",
+                "tx_time"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.retention.expired": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.retention.expired"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "$ref": "#/$defs/counter"
+                },
+                "cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "effective_cutoff": {
+                  "$ref": "#/$defs/utc_timestamp"
+                },
+                "expired_set_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "first_seq": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "last_seq": {
+                  "$ref": "#/$defs/nullable_counter"
+                },
+                "limit": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "policy_id": {
+                  "$ref": "#/$defs/code"
+                },
+                "retain_days": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "revision": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "selector_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "selector_event_classes": {
+                  "items": {
+                    "enum": [
+                      "SECURITY",
+                      "PRIVILEGED_OPERATION",
+                      "CONTENT_LIFECYCLE",
+                      "ACCESS_POLICY",
+                      "DATA_ACCESS",
+                      "SEARCH_ACCESS",
+                      "CONFIGURATION",
+                      "SYSTEM_AUDIT"
+                    ]
+                  },
+                  "maxItems": 8,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "selector_event_types": {
+                  "$ref": "#/$defs/event_type_list"
+                },
+                "selector_sources": {
+                  "items": {
+                    "enum": [
+                      "urn:knowledge-platform:audit-relay",
+                      "urn:knowledge-platform:audit-store",
+                      "urn:knowledge-platform:document-platform"
+                    ]
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                },
+                "tx_time": {
+                  "$ref": "#/$defs/utc_timestamp"
+                }
+              },
+              "required": [
+                "session_role",
+                "policy_id",
+                "revision",
+                "selector_digest",
+                "retain_days",
+                "cutoff",
+                "effective_cutoff",
+                "tx_time",
+                "limit",
+                "count",
+                "first_seq",
+                "last_seq",
+                "expired_set_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "PRIVILEGED_OPERATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.audit.retention.policy_changed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^audit-store$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "audit.retention.policy_changed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "policy_id": {
+                  "$ref": "#/$defs/code"
+                },
+                "retain_days": {
+                  "$ref": "#/$defs/nullable_positive_counter"
+                },
+                "revision": {
+                  "$ref": "#/$defs/positive_counter"
+                },
+                "selector_digest": {
+                  "$ref": "#/$defs/hex_digest"
+                },
+                "selector_event_classes": {
+                  "items": {
+                    "enum": [
+                      "SECURITY",
+                      "PRIVILEGED_OPERATION",
+                      "CONTENT_LIFECYCLE",
+                      "ACCESS_POLICY",
+                      "DATA_ACCESS",
+                      "SEARCH_ACCESS",
+                      "CONFIGURATION",
+                      "SYSTEM_AUDIT"
+                    ]
+                  },
+                  "maxItems": 8,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "selector_event_types": {
+                  "$ref": "#/$defs/event_type_list"
+                },
+                "selector_sources": {
+                  "items": {
+                    "enum": [
+                      "urn:knowledge-platform:audit-relay",
+                      "urn:knowledge-platform:audit-store",
+                      "urn:knowledge-platform:document-platform"
+                    ]
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "session_role": {
+                  "$ref": "#/$defs/db_role"
+                }
+              },
+              "required": [
+                "session_role",
+                "policy_id",
+                "revision",
+                "selector_digest",
+                "retain_days"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONFIGURATION"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.audit-store-control-v1"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "audit-store"
+                },
+                "type": {
+                  "enum": [
+                    "AuditStore"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:audit-store"
+        }
+      }
+    },
+    "event.authorization.denied": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^authorization/denied$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "authorization.denied"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "action_code": {
+                  "enum": [
+                    "create_folder",
+                    "lookup_management_operation",
+                    "mark_version_read",
+                    "move_document",
+                    "move_folder",
+                    "rename_folder",
+                    "set_access_policy",
+                    "update_document_metadata"
+                  ]
+                },
+                "reason_code": {
+                  "enum": [
+                    "forbidden"
+                  ]
+                }
+              },
+              "required": [
+                "action_code",
+                "reason_code"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "SECURITY"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason_code": {
+              "enum": [
+                "forbidden"
+              ]
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/canonical_uuid"
+                },
+                "type": {
+                  "enum": [
+                    "AccessPolicy"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "denied"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason_code"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.created": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.created"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "documentId"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.diff.result_access_granted": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/diff$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.diff.result_access_granted"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "base_snapshot_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "base_version_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "cache_hit": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "comparison_profile": {
+                  "enum": [
+                    "document-diff-v0"
+                  ]
+                },
+                "coverage": {
+                  "enum": [
+                    "full",
+                    "none",
+                    "partial"
+                  ]
+                },
+                "resource_profile": {
+                  "enum": [
+                    "diff-resource-v0"
+                  ]
+                },
+                "result_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "target_snapshot_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "target_version_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "verdict": {
+                  "enum": [
+                    "different",
+                    "same",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "base_version_id",
+                "target_version_id",
+                "base_snapshot_digest",
+                "target_snapshot_digest",
+                "comparison_profile",
+                "resource_profile",
+                "result_digest",
+                "verdict",
+                "coverage",
+                "cache_hit"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.file.access_granted": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/representation/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.file.access_granted"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "content_item_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "purpose": {
+                  "enum": [
+                    "authoring",
+                    "history",
+                    "published"
+                  ]
+                },
+                "representation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "content_item_id",
+                "representation_id",
+                "purpose"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.metadata.changed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.metadata.changed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "changed_keys": {
+                  "items": {
+                    "enum": [
+                      "category",
+                      "document_type",
+                      "extensions",
+                      "owning_department"
+                    ]
+                  },
+                  "maxItems": 4,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "document_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "document_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id",
+                "document_id",
+                "changed_keys",
+                "document_revision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.moved": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.moved"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "access_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "document_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "document_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "from_folder_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "to_folder_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "visibility_changed": {
+                  "$ref": "#/$defs/boolean"
+                }
+              },
+              "required": [
+                "operation_id",
+                "document_id",
+                "from_folder_id",
+                "to_folder_id",
+                "document_revision",
+                "access_revision",
+                "visibility_changed"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.publication.ended": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.publication.ended"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "endedAt": {
+                  "$ref": "#/$defs/legacy_time"
+                },
+                "formerCurrentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "invalidatedScheduleCount": {
+                  "$ref": "#/$defs/counter"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resultingCurrentVersionId": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "operationId",
+                "documentId",
+                "formerCurrentVersionId",
+                "resultingCurrentVersionId",
+                "resultingDocumentRevision",
+                "invalidatedScheduleCount",
+                "endedAt"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.revision_comparison.result_access_granted": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/revision-comparison$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.revision_comparison.result_access_granted"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "base_metadata_snapshot_digest": {
+                  "$ref": "#/$defs/nullable_digest"
+                },
+                "base_revision_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "content_audit_event_id": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "content_comparison_status": {
+                  "enum": [
+                    "differentAuthoritativeVersions",
+                    "sameAuthoritativeVersion"
+                  ]
+                },
+                "content_result_digest": {
+                  "$ref": "#/$defs/nullable_digest"
+                },
+                "metadata_comparison_status": {
+                  "enum": [
+                    "different",
+                    "same",
+                    "unavailableLegacy"
+                  ]
+                },
+                "target_metadata_snapshot_digest": {
+                  "$ref": "#/$defs/nullable_digest"
+                },
+                "target_revision_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "base_revision_id",
+                "target_revision_id",
+                "content_comparison_status",
+                "content_result_digest",
+                "content_audit_event_id",
+                "metadata_comparison_status",
+                "base_metadata_snapshot_digest",
+                "target_metadata_snapshot_digest"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.created": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        },
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.created"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "baseDocumentVersionId": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "documentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "versionNo": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "documentId",
+                "documentVersionId"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.publication.cancelled": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.publication.cancelled"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "publish_operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "publish_operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "documentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publishOperationId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "documentId",
+                "documentVersionId",
+                "publishOperationId",
+                "resultingDocumentRevision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.publication.scheduled": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.publication.scheduled"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publish_operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id",
+                "publish_operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "acceptedDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "documentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publishOperationId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "scheduledPublishAt": {
+                  "$ref": "#/$defs/legacy_time"
+                }
+              },
+              "required": [
+                "documentId",
+                "documentVersionId",
+                "publishOperationId",
+                "scheduledPublishAt",
+                "acceptedDocumentRevision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.publication.terminal": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.publication.terminal"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publish_operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id",
+                "publish_operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "documentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publishOperationId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "terminalReason": {
+                  "enum": [
+                    "identity_invalid",
+                    "authorization_revoked",
+                    "publish_quality_rejected",
+                    "stale_publication_intent",
+                    "publication_business_rule",
+                    "publication_integrity_failure",
+                    "semantic_inspection_rejected",
+                    "publication_preflight_rejected"
+                  ]
+                }
+              },
+              "required": [
+                "documentId",
+                "documentVersionId",
+                "publishOperationId",
+                "terminalReason",
+                "resultingDocumentRevision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason_code": {
+              "enum": [
+                "identity_invalid",
+                "authorization_revoked",
+                "publish_quality_rejected",
+                "stale_publication_intent",
+                "publication_business_rule",
+                "publication_integrity_failure",
+                "semantic_inspection_rejected",
+                "publication_preflight_rejected"
+              ]
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "failure"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            },
+            "service_executor": {
+              "$ref": "#/$defs/actor"
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason_code"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.published": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.published"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publish_operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id",
+                "publish_operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "expectedDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "publishOperationId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "publishedAt": {
+                  "$ref": "#/$defs/legacy_time"
+                },
+                "result": {
+                  "enum": [
+                    "success"
+                  ]
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                }
+              },
+              "required": [
+                "publishOperationId",
+                "expectedDocumentRevision",
+                "resultingDocumentRevision",
+                "result",
+                "publishedAt"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            },
+            "service_executor": {
+              "$ref": "#/$defs/actor"
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.read_confirmed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.read_confirmed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "document_version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "document_version_id"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.rebased": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.rebased"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "baseDocumentVersionId": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "documentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "versionNo": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "documentId",
+                "documentVersionId",
+                "versionNo",
+                "baseDocumentVersionId",
+                "resultingDocumentRevision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.updated": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.updated"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "baseDocumentVersionId": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "documentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resultingDocumentRevision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "versionNo": {
+                  "$ref": "#/$defs/positive_counter"
+                }
+              },
+              "required": [
+                "documentId",
+                "documentVersionId",
+                "versionNo",
+                "baseDocumentVersionId",
+                "resultingDocumentRevision"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.withdrawn": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/version/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.withdrawn"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "formerCurrentVersionId": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "invalidatedScheduleCount": {
+                  "$ref": "#/$defs/counter"
+                },
+                "restorationWithheldByValidation": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "restorationWithheldReason": {
+                  "enum": [
+                    "base_unavailable_or_not_published",
+                    "base_inspection_unavailable",
+                    "base_quality_or_storage_unavailable",
+                    "base_database_evidence_changed",
+                    "base_not_qualified",
+                    null
+                  ]
+                },
+                "resultingCurrentVersionId": {
+                  "$ref": "#/$defs/nullable_uuid"
+                },
+                "withdrawnDocumentVersionId": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "documentId",
+                "withdrawnDocumentVersionId",
+                "formerCurrentVersionId",
+                "resultingCurrentVersionId",
+                "restorationWithheldByValidation",
+                "restorationWithheldReason",
+                "invalidatedScheduleCount"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.folder.created": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^folder/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "folder.created"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "folder_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "folder_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "parent_folder_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "folder_id",
+                "parent_folder_id",
+                "folder_revision",
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Folder"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.folder.moved": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^folder/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "folder.moved"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "access_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "folder_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "folder_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "from_parent_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "subtree_affected": {
+                  "$ref": "#/$defs/counter"
+                },
+                "to_parent_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id",
+                "folder_id",
+                "from_parent_id",
+                "to_parent_id",
+                "folder_revision",
+                "access_revision",
+                "subtree_affected"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Folder"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.folder.renamed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^folder/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "folder.renamed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "folder_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "folder_revision": {
+                  "$ref": "#/$defs/counter"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "folder_id",
+                "folder_revision",
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "CONTENT_LIFECYCLE"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason_summary"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Folder"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event_type": {
+      "description": "Control events only: an event type name in the catalog grammar",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+      "type": "string"
+    },
+    "event_type_list": {
+      "items": {
+        "$ref": "#/$defs/event_type"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "extensions": {
+      "maxProperties": 0,
+      "type": "object"
+    },
+    "hex_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "int8_text": {
+      "description": "Control events only: canonical decimal text of an int8 (the i64 range is checked in Rust)",
+      "pattern": "^(0|-?[1-9][0-9]{0,18})$",
+      "type": "string"
+    },
+    "legacy_time": {
+      "description": "time 0.3 serde tuple [year, ordinal, hour, minute, second, nanosecond, offset_h, offset_m, offset_s]; not RFC 3339",
+      "items": false,
+      "maxItems": 9,
+      "minItems": 9,
+      "prefixItems": [
+        {
+          "maximum": 9999,
+          "minimum": -9999,
+          "type": "integer"
+        },
+        {
+          "maximum": 366,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "maximum": 23,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "maximum": 59,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "maximum": 59,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "maximum": 999999999,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "maximum": 25,
+          "minimum": -25,
+          "type": "integer"
+        },
+        {
+          "maximum": 59,
+          "minimum": -59,
+          "type": "integer"
+        },
+        {
+          "maximum": 59,
+          "minimum": -59,
+          "type": "integer"
+        }
+      ],
+      "type": "array"
+    },
+    "nullable_counter": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/counter"
+        }
+      ]
+    },
+    "nullable_db_role": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/db_role"
+        }
+      ]
+    },
+    "nullable_digest": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/digest"
+        }
+      ]
+    },
+    "nullable_hex_digest": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/hex_digest"
+        }
+      ]
+    },
+    "nullable_positive_counter": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/positive_counter"
+        }
+      ]
+    },
+    "nullable_utc_timestamp": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/utc_timestamp"
+        }
+      ]
+    },
+    "nullable_uuid": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/uuid"
+        }
+      ]
+    },
+    "positive_counter": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "principal": {
+      "additionalProperties": false,
+      "properties": {
+        "identityProvider": {
+          "$ref": "#/$defs/principal_part"
+        },
+        "principalId": {
+          "$ref": "#/$defs/principal_part"
+        }
+      },
+      "required": [
+        "identityProvider",
+        "principalId"
+      ],
+      "type": "object"
+    },
+    "principal_part": {
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$",
+      "type": "string"
+    },
+    "principal_ref": {
+      "$ref": "#/$defs/principal_part",
+      "description": "Control events only: one principal part (rust_only:principal_charset applies)"
+    },
+    "provenance.audit-relay-control-v1": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_version": {
+          "const": 1
+        },
+        "source_format": {
+          "const": "audit-relay-control-v1"
+        }
+      },
+      "required": [
+        "source_format",
+        "adapter_version"
+      ],
+      "type": "object"
+    },
+    "provenance.audit-store-control-v1": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_version": {
+          "const": 1
+        },
+        "source_format": {
+          "const": "audit-store-control-v1"
+        }
+      },
+      "required": [
+        "source_format",
+        "adapter_version"
+      ],
+      "type": "object"
+    },
+    "provenance.document-audit-outbox-v0": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_version": {
+          "const": 1
+        },
+        "registration": {
+          "enum": [
+            "trigger",
+            "backfill",
+            "repair"
+          ]
+        },
+        "source_commitment": {
+          "$ref": "#/$defs/hex_digest"
+        },
+        "source_format": {
+          "const": "document-audit-outbox-v0"
+        }
+      },
+      "required": [
+        "source_format",
+        "adapter_version",
+        "source_commitment",
+        "registration"
+      ],
+      "type": "object"
+    },
+    "reason_summary": {
+      "additionalProperties": false,
+      "description": "Caller reason text is never copied; only its presence and UTF-8 length",
+      "properties": {
+        "provided": {
+          "const": true
+        },
+        "text_retained": {
+          "const": "source_systems"
+        },
+        "utf8_bytes": {
+          "maximum": 1048576,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "provided",
+        "utf8_bytes",
+        "text_retained"
+      ],
+      "type": "object"
+    },
+    "resource_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/canonical_uuid"
+        },
+        {
+          "const": "audit-store"
+        }
+      ],
+      "description": "Control events only: a resource id (canonical UUID, nil included, or audit-store)"
+    },
+    "utc_timestamp": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$",
+      "type": "string"
+    },
+    "uuid": {
+      "$ref": "#/$defs/canonical_uuid",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "uuid_list": {
+      "items": {
+        "$ref": "#/$defs/uuid"
+      },
+      "maxItems": 100,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "w3c_trace_id": {
+      "not": {
+        "const": "00000000000000000000000000000000"
+      },
+      "pattern": "^[0-9a-f]{32}$",
+      "type": "string"
+    }
+  },
+  "$id": "urn:knowledge-platform:audit:envelope-schema:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.created"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.created"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.created"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.created"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.updated"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.updated"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.rebased"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.rebased"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.published"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.published"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.publication.scheduled"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.publication.scheduled"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.publication.cancelled"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.publication.cancelled"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.publication.terminal"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.publication.terminal"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.withdrawn"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.withdrawn"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.publication.ended"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.publication.ended"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.metadata.changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.metadata.changed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.moved"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.moved"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "folder.created"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.folder.created"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "folder.renamed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.folder.renamed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "folder.moved"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.folder.moved"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "access_policy.changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.access_policy.changed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.read_confirmed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.read_confirmed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.file.access_granted"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.file.access_granted"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.diff.result_access_granted"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.diff.result_access_granted"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.revision_comparison.result_access_granted"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.revision_comparison.result_access_granted"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "authorization.denied"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.authorization.denied"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access.intent_opened"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access.intent_opened"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access.denied"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access.denied"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access.closed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access.closed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.access_policy.changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.access_policy.changed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.retention.policy_changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.retention.policy_changed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.retention.expired"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.retention.expired"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.retention.expire_refused"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.retention.expire_refused"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.body.purged"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.body.purged"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.integrity.verified"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.integrity.verified"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.integrity.conflict_detected"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.integrity.conflict_detected"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.recovery.epoch_started"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.recovery.epoch_started"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.delivery.replay_requested"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.delivery.replay_requested"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.reconciliation.completed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.reconciliation.completed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "audit.integrity.source_mismatch_detected"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.audit.integrity.source_mismatch_detected"
+      }
+    }
+  ],
+  "description": "Generated by audit-core from spec/telemetry/audit-event-catalog.json. Do not edit; regenerate with AUDIT_SCHEMA_BLESS=1 cargo test -p audit-core --test schema_contract. Rust-only constraints are listed in spec/telemetry/README.md.",
+  "properties": {
+    "data": {
+      "type": "object"
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "dataschema": {
+      "const": "urn:knowledge-platform:audit:payload:v1"
+    },
+    "id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "source": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "specversion": {
+      "const": "1.0"
+    },
+    "subject": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "time": {
+      "$ref": "#/$defs/utc_timestamp"
+    },
+    "type": {
+      "enum": [
+        "document.created",
+        "document.version.created",
+        "document.version.updated",
+        "document.version.rebased",
+        "document.version.published",
+        "document.version.publication.scheduled",
+        "document.version.publication.cancelled",
+        "document.version.publication.terminal",
+        "document.version.withdrawn",
+        "document.publication.ended",
+        "document.metadata.changed",
+        "document.moved",
+        "folder.created",
+        "folder.renamed",
+        "folder.moved",
+        "access_policy.changed",
+        "document.version.read_confirmed",
+        "document.file.access_granted",
+        "document.diff.result_access_granted",
+        "document.revision_comparison.result_access_granted",
+        "authorization.denied",
+        "audit.access.intent_opened",
+        "audit.access.denied",
+        "audit.access.closed",
+        "audit.access_policy.changed",
+        "audit.retention.policy_changed",
+        "audit.retention.expired",
+        "audit.retention.expire_refused",
+        "audit.body.purged",
+        "audit.integrity.verified",
+        "audit.integrity.conflict_detected",
+        "audit.recovery.epoch_started",
+        "audit.delivery.replay_requested",
+        "audit.reconciliation.completed",
+        "audit.integrity.source_mismatch_detected"
+      ]
+    }
+  },
+  "required": [
+    "data",
+    "datacontenttype",
+    "dataschema",
+    "id",
+    "source",
+    "specversion",
+    "subject",
+    "time",
+    "type"
+  ],
+  "title": "Knowledge Platform audit envelope (CloudEvents 1.0.2 structured JSON, payload v1)",
+  "type": "object"
+}

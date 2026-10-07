@@ -6,6 +6,26 @@
 
 **本書の対象は、架空データだけを使うOrganization Browser PoCの導入である。本番利用開始の手順は未完成。** 固定の営業・事務profileを使い、そのポートへ接続した人は同じprofileとして扱われる。認証画面、実利用者の識別、production modeはない。実文書・顧客情報を投入せず、インターネットや社内LANへ公開しない。
 
+- 固定ソース：[PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の受入済み製品head `cbe65d140852cbacd7fea4a8fed7830f0757ea4b` / tree `b2cb1cba60bfc29c4407335faec8f30a6d1c9740`。基点mainは `a7cf93d53a1b1627ace31d079fd222d7400d8673`。PRの資格であり、main統合や対象サーバーへの反映を実施したという記録ではない
+- 旧pin `bba1d6dd` までの文書・Folder操作を保持し、PR100のDocumentアクセス設定の固定要求・画面往復回復、Organization U1〜U4、および本人が現行公開版の通常詳細を正常表示したときの既読・「未読に戻す」を含む。旧pinには今回の既読方式・Document migration0012・Work migration0007〜0009はない
+- 2026-10-07確認の[通常CI37692284389](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389)はcompleted/success。required-check、Rust/static/containerを含む全14jobs成功。headの19checksは16success・既存条件による3skipで、failure/未終端0。終端後の公開artifactは0件。旧headの失敗・旧pinの成功を今回の資格へ付け替えない
+- Document runtimeの公式step8 `Real composition-root acceptance`、9 `Real Organization two-principal acceptance`、10 `Emit bounded runtime evidence` はそれぞれcompleted/success。[固定workflow](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/.github/workflows/ci.yml)はこのjobでPRの `head.sha` を明示checkoutする
+- runtimeの大きなstdoutは元の接続済みtoolでTransport closedとなり未取得。head/clean/qualified、GUI/browser件数、個々のassertion・再起動・cleanup receipt、run UUID・port・artifact/DB/storage hashの印字を直接読んだとは扱わない。別route/credentialや再実行で補っておらず、画像・画素も未確認
+- 必須runtime gateは、同一sourceの[Document runner](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/tools/document-poc-runtime/run.mjs)・[summary](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/tools/document-poc-runtime/ci-summary.mjs)・[Organization runner](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/tools/organization-poc-runtime/run.mjs)が強制する成功条件と、今回の公式成功stepを対応させて合格と評価した。実build・clean source・必須工程・Agent provenance・同じowned DB/storageでのHTTP再起動を確認し、cleanup失敗や強制終了は非zeroへ伝播する。これはsourceとstepの対応による推論であり、各値をstdoutで直接確認したという意味ではない
+- 今回の既読受入の対応sourceは[通常journey](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/apps/document-web/e2e-runtime/document-runtime.spec.ts)、[metadata](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/apps/document-web/e2e-runtime/metadata-editor.spec.ts)、[HTTP再起動後](https://github.com/AIrisu-072/knowledge-platform/blob/cbe65d140852cbacd7fea4a8fed7830f0757ea4b/apps/document-web/e2e-runtime/persistence.spec.ts)。未読→意図した通常表示→既読→未読戻し、同画面再取得・タブ往復・条件操作後の未読snapshot、再入場、旧PUT/古いVIEW receiptの再送、Agent拒否、最後の閲覧後の未読保存と再起動後GUI表示前の照合を扱う。個別の実測件数は主張しない
+- [Rust公式job113035189328](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389/job/113035189328)のログで1980成功/既存skip13、追加21成功/skip0、別追加7成功/既存skip1を直接確認した。checkoutはGitHub merge ref `1d3a4ab197935122cc7d61e804c3ccecff30e502` であり、PR headそのものとは書き替えない。このmerge refのtreeは上記製品headと完全同一、parentsは基点main `a7cf93d53` と製品head `cbe65d14` である
+- 導入例は従来の営業 `sales-01`・事務 `office-01` の2profile/2HTTP processを維持する。sourceにある追加4profileや追加文脈は任意の合成確認用で、6processの常設は必要ない。現在の合成Agentは外部モデル/MCPへ接続しない
+- 対象は画像なしUbuntuの機能受入。macOS golden比較・全画素不変、対象PCでの手順全文、常設DBのbackup/restore、PostgreSQLプロセス再起動、本番Identity/TLSは未資格。WORKING応答のstatus/headers全喪失、実の大量履歴・複数旧原本等の既存未資格も広げない。HTTPサーバー再起動をDBプロセス再起動へ読み替えない
+- 本書のコマンドは所有者が実行する。初回導入は節1〜6、既存環境の更新は停止時保存と別環境検証を含む節8〜10へ進む。GPU/CUDA、外部モデル、Tauriの導入、本番公開や秘密情報の送信は含まない
+
+### 過去の受入記録
+
+以下は以前の固定版に対する記録であり、上記の最終ソースや対象PCの手動導入へ資格を付け替えない。
+
+#### 2026-10-07 04:38 UTC PR97統合mainの固定版
+
+以下の「今回」「現在開発中」「未収録」は当時のpinとDocumentアクセス設定回復補修の開発時点を指す。
+
 - 導入対象の資格：固定合成2profile・画像保存なしのUbuntu機能受入に合格したmain。対象PCでの手順実行、本番認証、見た目全体の比較検証は対象外。固定SHAと受入記録が未確定の版は実行しない
 - 固定ソース：[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)統合main `bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab` / tree `84b0b0d48d3dfdc8b0a5b66ec53f9cc070aa6420`。PR公開headの資格と、このmain自身のpush CIの結果を区別する
 - 採用sourceは旧pin d515までの文書/Folder操作・絞り込み・正式改訂/比較の続き表示・両履歴と旧原本・履歴一覧入口/JST表示・PR94公開前WORKING内容比較を保持し、PR97の非root Folderアクセス設定GUIと、アクセス設定変更後の旧原本・比較結果の遅延保存/復活を抑止する関連guardを含む。これらは旧固定版d515には含まれない。現在開発中のDocument AccessTabのUNKNOWN固定要求・画面往復保持・関連read失効の回復補修は新pin bba1d6ddに未収録で、追加される操作説明は後続source向けである
@@ -24,10 +44,6 @@
 - この手順そのものの対象PCでの実行、常設DBのbackup/restore、PostgreSQLプロセス再起動後の確認は未実施。CI成功と区別する
 - GPU、CUDA、外部モデル、Tauriは使わない。Agentは固定の合成executorであり、既存Document現在認可を確認して候補を作る。本文分析・実LLM・外部MCP通信は行わない
 - 本書のコマンドは所有者が実行する。既存本番サーバーへの接続や秘密情報の送信を代行するものではない
-
-### 過去の受入記録
-
-以下は以前の固定版に対する記録であり、上記の最終ソースや対象PCの手動導入へ資格を付け替えない。
 
 #### 2026-10-07 02:50 UTC PR94統合mainの固定版
 
@@ -142,6 +158,14 @@
 - 当時の固定ソース：統合済みmain `6c514850850110a3c2f8b2b5664ec263510c5d47`。受入済み[PR67](https://github.com/AIrisu-072/knowledge-platform/pull/67) `a39c90c2` と同一tree `880b1a57abc6890ed47df5e7bc16a4694d4546cc`
 - 当時の確認：PR67の[通常CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574840)、[DSI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574859)、[Sandbox](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37251574842)成功。同treeで使い捨てPostgreSQL・2名の合成Agent/完了/保留再開/原本取得・HTTPサーバー再起動後の復元・cleanupを確認済み。統合後mainの[push CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37253316995)もrequired-checkを含む13 jobsと実受入が成功
 
+## 固定導入版の既読状態移行（PR106）
+
+固定導入版はDocument migration `0012_document_current_read_state.sql` を追加する。既存の本人×版の初回日時と過去の監査を残し、再確認flagをfalse、既読専用revisionを1として移行する。未記録の版は行なし・revision0である。旧PUTによる初回記録/再送の応答形は保持するが、旧PUT再送で新しい「未読戻し」を解除しない。
+
+新しいserver・生成クライアント・GUIは同じ受入済みsourceから組み合わせる。旧serverは再確認flagを理解しないため新旧を混在稼働しない。migrationを適用済みのDBへ旧binaryを戻すだけの切戻しは行わない。この手順の停止時バックアップ・元環境を壊さない別DBでの復元確認・更新手順に従い、台帳やchecksumを手動変更して起動を通さない。
+
+固定sourceと実DB/画面/HTTP再起動の受入根拠は冒頭に記録した。対象PCでの導入、backup/restore、PostgreSQLプロセス再起動の資格は別であり、今回のCI成功だけで確認済みにはしない。
+
 ## 1 開始前の確認
 
 - [ ] `/etc/os-release`、`uname -m`、`uname -r`、空きディスクを確認した
@@ -163,7 +187,7 @@ set -euo pipefail
 set +x
 umask 077
 export KP_HOME="$HOME/knowledge-platform-poc"
-export KP_SOURCE_SHA='bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab'
+export KP_SOURCE_SHA='cbe65d140852cbacd7fea4a8fed7830f0757ea4b'
 [[ "$KP_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '受入済みの固定SHAが未設定です'; exit 1; }
 export KP_SOURCE="$KP_HOME/releases/$KP_SOURCE_SHA"
 test ! -e "$KP_HOME"
@@ -195,7 +219,7 @@ test -d "$KP_SOURCE/apps/document-web/dist"
 git diff --exit-code
 ```
 
-これは受入時と同じdebugビルド経路。releaseビルドの性能・適格性を主張しない。旧0801からPR87までの共通Cargo manifest/lock/deny更新は当時の基点main側に含まれる。旧固定cd6aafcc→main e249の当時の限定照合は履歴として保持する。旧固定e249→main933dの当時の限定照合も履歴として保持する。旧固定933d→main41bの当時の限定照合も履歴として保持する。旧固定41b→main d515の当時の限定照合も履歴として保持する。今回の旧固定d515→main bba1d6ddの新しいGit showとobject bytes照合では、OrganizationのCLI/env/identity/bootstrap、Document 0001〜0011とWork 0001〜0006のmigration/台帳、Cargo manifest/lock/deny、Rust/Node/pnpmの固定設定とlock、生成SDK/API schema、PDFium取得scriptの指定17objectsが全て同一である。業務schemaのsource不変は対象既存DBの履歴や安全な更新の実証ではない。この照合だけで対象実DBの更新可能性や全面互換を保証しない。採用sourceの `Cargo.lock` を保持し、上記の既存 `--locked` debug buildとGUI buildを行う。旧binary/distの流用、旧lockへの戻し、`cargo update`、移動専用の依存追加やSDK再生成は行わない。PDFiumは既存スクリプトが固定151.0.7881.0のarchiveとlibraryのhashを確認する。失敗した場合は非検証版へ差し替えない。既存Dockerfileはツール/scheduler向けで、Organizationアプリを配備するimageではない。
+これは受入時と同じdebugビルド経路。releaseビルドの性能・適格性を主張しない。旧pin bba1d6ddと今回の固定sourceをGit objectで比較すると、Document 0001〜0011とWork 0001〜0006の既存migration本文、Organization configの環境変数契約、rust-toolchain.toml、pnpm-lock.yaml、deny.toml、PDFium取得scriptは同一である。一方、Document 0012とWork 0007〜0009、Organizationのidentity/bootstrap/起動・seed処理、生成SDK/API schema、Cargo manifest/lockは変わっている。mise.tomlには既存Desktop確認taskが加わるが、Rust1.98.1/Node24.21.0/pnpm12.4.1の固定値は変わらない。旧記録の「17objects不変」を今回の比較に流用せず、対象実DBの更新安全性もsource比較だけでは保証しない。採用sourceの `Cargo.lock` を保持し、上記の `--locked` debug buildとGUI buildを行う。旧binary/distの流用、旧lockへの戻し、`cargo update` やSDK再生成は行わない。PDFiumは既存スクリプトが固定151.0.7881.0のarchiveとlibraryのhashを確認する。失敗した場合は非検証版へ差し替えない。既存Dockerfileはツール/scheduler向けで、Organizationアプリを配備するimageではない。
 
 ## 3 専用の合成DBと秘匿設定
 
@@ -256,7 +280,7 @@ versionが18.6であることを確認する。readinessはTCPを指定し、初
 
 ## 4 明示的な初期化
 
-初回の新しい専用DBだけで実行する。Document migration 0001〜0011（0011はOutbox）を `_sqlx_migrations`、Work migration 0001〜0006を別schema/台帳 `work.schema_migrations` へ適用する。Workの0004は合成Agent、0005は完了、0006は保留/再開の記録を支える。`serve` はmigrationやseedを実行しない。
+初回の新しい専用DBだけで、この節の順序を使う。Document migration 0001〜0012（0011はOutbox、0012は現在の既読状態）を `_sqlx_migrations`、Work migration 0001〜0009を別schema/台帳 `work.schema_migrations` へ適用する。Workの0007はOrganization policy、0008は注意、0009は作業ファイルを支える。`serve` はmigrationやseedを実行しない。初回の空Workでは、節5で起動して文書を作り、節6でseedできる。既存Workの更新にはこの起動順を使わず、節10の `migrate` →同じDocument IDで `seed-work` → `serve` に従う。
 
 ```bash
 source "$KP_HOME/config/runtime.env"
@@ -266,7 +290,7 @@ unset KP_BIND
 "$KP_SOURCE/target/debug/organization-server" bootstrap-poc
 ```
 
-DocumentとWorkのmigrationは別々に適用され、両方を一括rollbackするコマンドではない。失敗・結果不明ならDBと台帳を調査し、ledgerの行削除やchecksum変更で通さない。`bootstrap-poc` はsales-01のfixture作成権限、office-01と固定Document provider `poc/poc-agent` のread/readHistoryを作る。異なる既存policyは上書きせず停止する。Agent対応前のDBへ暗黙にgrantを追加しない。
+DocumentとWorkのmigrationは別々に適用され、両方を一括rollbackするコマンドではない。失敗・結果不明ならDBと台帳を調査し、ledgerの行削除やchecksum変更で通さない。新しいDBの `bootstrap-poc` はsales-01のfixture作成権限、office-01・追加4名の合成Human・固定Document provider `poc/poc-agent` のread/readHistoryを作る。旧2名用の正確なpolicyも受け入れるが追加grantは行わず、それ以外の異なる既存policyは上書きせず停止する。追加4名の起動はこの最小導入には不要である。
 
 ## 5 営業と事務を起動
 
@@ -336,7 +360,7 @@ export KP_ORGANIZATION_DOCUMENT_ID
 KP_ORGANIZATION_PROFILE=sales-01 "$KP_SOURCE/target/debug/organization-server" seed-work
 ```
 
-seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再開を含む定義versionを使う。migration適用だけで既存workflowの定義・担当・進捗を変更しない。以前のforward-only/差戻/完了のみの定義や別の入力文書から作り直す場合は、このDBを上書きせず新しい専用環境で行う。予約公開schedulerはこのOrganization手順では起動しない。予約取消GUIがあっても、予約時刻の自動公開が稼働することを意味しない。[Document PoCのscheduler起動例](document-poc-runtime-v0.md#scheduler-and-other-boundaries)は `KP_RUNTIME_MODE=poc` 用であり、`organization-synthetic` のrequesterを解決しないため流用しない。
+seedは合成Organization policyを追加し、既存policy/Workを上書き・リセットしない。新規fixtureだけに完了/保留/再開を含む定義versionを使う。migration適用だけで既存workflowの定義・担当・進捗を変更しない。以前のforward-only/差戻/完了のみの定義や別の入力文書から作り直す場合は、このDBを上書きせず新しい専用環境で行う。予約公開schedulerはこのOrganization手順では起動しない。予約取消GUIがあっても、予約時刻の自動公開が稼働することを意味しない。[Document PoCのscheduler起動例](document-poc-runtime-v0.md#scheduler-and-other-boundaries)は `KP_RUNTIME_MODE=poc` 用であり、`organization-synthetic` のrequesterを解決しないため流用しない。
 
 確認する操作:
 
@@ -361,7 +385,7 @@ seedは既存Workをリセットせず、新規fixtureだけに完了/保留/再
 - [ ] 文書種別・所管部署・カテゴリに短い合成値を持つ確認用文書で、3条件一致、1条件だけ不一致、属性解除、詳細往復と条件保持を確認する。絞り込みだけで元の属性・版を変更しない
 
 - [ ] 読める別親を明示選択し、対象ID・現在親・移動先と継承アクセスへの影響を確認して合成の子を移動する。旧親から消え、移動先で同ID・同名を読めることと、節7のHTTP再起動後の現在親を確認する。実ACL変化やGUI通信断を確認したとは記録しない
-- [ ] 公開一覧で「未読のみ」を明示適用し、詳細往復と解除で他の有効な条件が保持されることを確認する。閲覧だけで既読を記録したとは扱わない
+- [ ] 公開一覧で「未読のみ」を明示適用し、詳細往復と解除で他の有効な条件が保持されることを確認する。本人が通常の現行公開版の詳細を正常表示すると既読になることを確認する。「未読に戻す」後は同画面の再取得・タブ往復で未読を維持し、意図して開き直したときに既読になること、初回日時が保持されることを確認する。読了・同意の証明には使わない
 - [ ] 作成日時の開始を含み終了を含まない条件、詳細往復・条件解除を合成文書で確認する。精密URLを使う場合は元の日時原文が保持されることを確認する
 - [ ] 読める合成文書の詳細で「文書を移動」を開き、現在の文書・元所属・移動先と継承アクセスへの影響を確認して移動する。新しい読取で現在所属を確認し、節7のHTTP再起動後も同じ文書ID・所属を確認する。権限変化や通信断の確認を行ったとは記録しない
 - [ ] 正式改訂が2件以上ある合成文書の「版・改訂」で履歴を読み、基準・対象を明示して「新旧比較」を開く。正式改訂を先頭から読み直した後と節7のHTTP再起動後にも同じ選択で読取・比較を確認する。対象機で100件以下なら101件目以降の実GUI読取は未確認と記録する
@@ -384,7 +408,7 @@ Dockerはtimeout後に強制終了し得る。正常終了でなければその�
 
 ## 8 停止時バックアップ
 
-**両アプリと、このDB/storageへ書く他の全プロセスを停止した状態で、DBとstorageを一組として保存する。DB自体は起動したまま。** `pg_dump` 単体の整合性は、別filesystemとの整合性を保証しない。
+**両アプリと、このDB/storageへ書く他の全プロセスを停止した状態で、DBとstorageを一組として保存する。DB自体は起動したまま。** 保存対象は `KP_STORAGE_ROOT` 全体で、Documentの `staging/`・`objects/` とWorkの `work-artifacts/` を含む。原本だけを選んで保存すると提出済み作業ファイルを復元できない。 `pg_dump` 単体の整合性は、別filesystemとの整合性を保証しない。
 
 ```bash
 source "$HOME/knowledge-platform-poc/config/runtime.env"
@@ -442,23 +466,46 @@ chmod 600 "$KP_HOME/config/restore.env"
 
 復元先は空DBなので、先にmigration/bootstrap/seedを走らせない。`pg_restore --single-transaction` は復元SQLを一括transactionで処理する。失敗時に `--clean`、ledger修正、元DB削除で続行しない。[pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)
 
-節5の2つのterminalで、読み込むファイルだけを `config/restore.env` に変えて起動する。health、合成文書の原本、提出・差戻・根拠/判断・合成Agent結果・完了/保留状態・非公開分離、以前の保存状態を確認する。元環境と同じportなので同時起動しない。元環境へ戻る場合は復元側を正常停止し、元の `runtime.env` で再開する。復元コピーへの新しい書込は元DBへ戻らない。
+節5の2つのterminalで、読み込むファイルだけを `config/restore.env` に変えて起動する。元releaseに存在する機能の範囲で、health、合成文書の原本と本人の既読状態・初回日時、提出済み作業ファイルの取得、提出・差戻・根拠/判断・合成Agent結果・完了/保留状態・非公開分離、以前の保存状態を確認する。元環境と同じportなので同時起動しない。元環境へ戻る場合は復元側を正常停止し、元の `runtime.env` で再開する。復元コピーへの新しい書込は元DBへ戻らない。
 
 ## 10 更新と切戻し
 
 1. 新しい受入済みcommit SHAとそのexact CI結果を決め、別のreleaseディレクトリへ取得・ビルドする。稼働中のcheckoutやbinaryを上書きしない
 2. 新旧のmigrationファイル・台帳・環境変数・操作仕様を比較する。新headに本書の固定SHAだけを差し替えて実行しない
-3. 両アプリを停止し、節8のDB/storage/設定/releaseを保存する。節9の**別DB・別storage**で新しい候補のmigrationと起動・業務・復旧を先に確認する
+3. 両アプリと任意に追加した同じDB/storageの全書込processを停止し、節8のDB/storage全体/設定/releaseを保存する。節9でまず元releaseの**別DB・別storage**への復元を確認する。その後、下記の既存Work更新順序で新しい候補のmigrationと起動・業務・復旧を先に確認する
 4. 検証できた変更だけを所有者が適用する。更新対象の実DBに対するmigrationは明示操作であり、Gitのmergeでは実行されない
 5. schema/dataに変更がないことを確認できる場合のみ旧releaseへの切替を検討する。旧binaryがschema不一致で拒否したら、保護を解除しない
 6. schema/data変更後の切戻しは、互換性を確認したforward fix、または更新前のDBとstorageをセットで別環境へ復元して旧releaseを起動する。更新後の書込を失う可能性を所有者が判断する
 
 **Git revertはDB migration、提出済みデータ、原本storage、外部へ送った情報を戻さない。** 下りmigration、DB巻戻し、旧ledgerへ偽装するコマンドは提供していない。
 
+### 既存Workがある環境を今回の固定版へ更新する順序
+
+1. 更新前の公開入力Document IDを確認して控える。新しく作った文書ID、Version ID、別環境のIDで代用しない。IDやmigration履歴が不明なら停止する
+2. 新sourceを別releaseでビルドし、停止時backupを別DB・別storageへ復元する。検証用設定は復元先DB/storageと新releaseの `KP_SOURCE_SHA`・`KP_SOURCE`・worker・GUI・PDFiumを指すように揃える。元の `runtime.env` は検証で上書きしない
+3. **HTTP processを起動する前に**、検証用設定を読み込んだserver側shellで次を順に実行する。`KP_SOURCE` は上記の受入済み新releaseであることを照合する
+
+```bash
+set -euo pipefail
+test "$(git -C "$KP_SOURCE" rev-parse HEAD)" = 'cbe65d140852cbacd7fea4a8fed7830f0757ea4b'
+export KP_RUNTIME_MODE=organization-synthetic
+export KP_ORGANIZATION_PROFILE=sales-01
+unset KP_BIND
+"$KP_SOURCE/target/debug/organization-server" migrate
+read -r -p '更新前と同じ公開入力Document ID: ' KP_ORGANIZATION_DOCUMENT_ID
+export KP_ORGANIZATION_DOCUMENT_ID
+"$KP_SOURCE/target/debug/organization-server" seed-work
+```
+
+4. `migrate` と `seed-work` の成功後、節5と同じ2profileで新releaseを起動し、節6・9の状態とファイルを確認する。seedは2profileの現在の公開文書アクセスを確認し、不足するOrganization policyを追加する。既存workflowの進捗・担当・定義は上書きしない。旧Workにpolicyが無い状態で先に `serve` すると起動時回復が拒否されるため、保護を外したり空DB用の順序へ戻したりしない
+5. 別環境の検証が済んだ変更だけを所有者が実環境へ適用する。全書込停止・最新backupの後、実環境のDB/storageと同じ入力Document IDで同じ順序を使い、保存済み設定を新releaseへ揃えてから起動する。初回作成用の `bootstrap-poc`、新しい文書登録、追加文脈用の `seed-contexts` は更新の必須操作ではない
+
+Document 0012適用後は新旧serverを同じDBで混在稼働させない。旧serverへの単純なbinary差戻しは、未読戻しの意味とmigration照合の互換性を保証しない。通常の同じreleaseの停止・再開ではmigration/seedを繰り返さない。
+
 現在の統合注意点:
 
 - この固定版ではDocument `0009_document_revisions_v0.sql` / `0010_document_version_updated_at.sql` を保持し、OutboxをSQL本文不変で `0011_outbox_delivery_v0.sql` へ配置済み。旧Search `0009_outbox_delivery_v0.sql` 適用済み・不明履歴は変換せず停止する。[判断記録](../decisions/2026-10-04-search-main-migration-integration.md)と[STOP条件](search-main-migration-stop.md)に従い、既存DBへこの初回手順を流用しない。所有者の実環境に旧Search9がないことは未証明
-- Work 0001〜0006はDocumentと別の `work.schema_migrations` 台帳を使う。旧checksumは保持する。合成Agent/完了/保留再開は新規fixtureの定義を使用し、既存workflowの定義を自動昇格しない。モデル用秘密情報や新しい認証設定は不要
+- Work 0001〜0009はDocumentと別の `work.schema_migrations` 台帳を使う。旧0001〜0006のchecksumは保持する。合成Agent/完了/保留再開は新規fixtureの定義を使用し、既存workflowの定義を自動昇格しない。モデル用秘密情報や新しい認証設定は不要
 - 旧PR82のpersistence失敗とPR83のOrganization HTTP503は原因未特定の履歴として保持する。後続headの合格だけで原因を修正済みとしない。PR87の同Root継承・文書なしのフォルダー移動fixtureと、PR88の同権限の文書移動fixtureを、実ACL変化やGUI通信断の資格へ広げない
 - PR89の過去4runの実受入失敗、有限診断の解釈訂正、別のHome focus競合残件は[正式改訂の記録](../superpowers/execution/document-revision-pagination-status.md)に保持する。現在mainの合格だけで旧失敗原因をすべて解消したとは扱わない
 - PR62初回の再起動後read失敗とPR65初回のresponse.body()観測bytesの実encoding原因は未特定。PR67の実Download照合・再起動後復元成功を、対象PCの復旧資格や原因解消と読み替えない
