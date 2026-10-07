@@ -1,4 +1,4 @@
-import { expect, test, type Download, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Download, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { FileGeneration, HandoffSnapshot, SubmissionImported, Submitted } from '../src/api/generated-work/types.gen';
@@ -12,6 +12,11 @@ export function filesAction(action: FilesAction): void {
   annotations.push({ type: 'organization-stage', description: action });
 }
 export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+/** Like `openPage`, but this context explicitly accepts attachment downloads. */
+export async function openDownloadPage(browser: Browser, origin: string): Promise<Page> {
+  const context = await browser.newContext({ baseURL: origin, locale: 'ja-JP', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: true });
+  return await context.newPage();
+}
 /** Saved bytes of a browser download; never rendered in the page. */
 export async function downloaded(download: Download): Promise<Buffer> {
   const stream = await download.createReadStream();

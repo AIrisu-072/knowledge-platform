@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { ArtifactContentWritten, ArtifactCreated, Completed, HandoffSnapshot, SubmissionImported, Submitted, TaskDetail } from '../src/api/generated-work/types.gen';
 import { capture, hidden, openPage, read } from './policy-support';
 import { loadContextState, readContextRuntime } from './context-support';
-import { downloadFrom, filesAction, saveFilesState, sha256 } from './files-support';
+import { downloadFrom, filesAction, openDownloadPage, saveFilesState, sha256 } from './files-support';
 
 // Image-free like the existing runtime acceptance; downloads are read as bytes only.
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
@@ -19,7 +19,7 @@ test('差戻し後に前回の提出を取り込み、作業ファイルを共�
   const firstSnapshot = await read<HandoffSnapshot>(request, context.sales, `/v1/organization/handoff-snapshots/${firstSnapshotId}`);
   expect(firstSnapshot.artifacts.every((value) => value.file === undefined)).toBe(true);
   const sales = await openPage(browser, context.sales);
-  const review = await openPage(browser, context.review);
+  const review = await openDownloadPage(browser, context.review);
   try {
     filesAction('files-claim');
     await sales.goto(`/tasks?taskId=${state.bSalesTaskId}`);

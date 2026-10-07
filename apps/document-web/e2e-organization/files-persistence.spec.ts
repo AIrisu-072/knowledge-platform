@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { ArtifactContentWritten, HandoffSnapshot } from '../src/api/generated-work/types.gen';
-import { hidden, openPage, read } from './policy-support';
+import { hidden, read } from './policy-support';
 import { readContextRuntime } from './context-support';
-import { downloadFrom, filesAction, loadFilesState } from './files-support';
+import { downloadFrom, filesAction, loadFilesState, openDownloadPage } from './files-support';
 
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
@@ -28,7 +28,7 @@ test('6 processの再起動後も提出したファイル・前回の提出・�
     await hidden(request, origin, `/v1/organization/handoff-snapshots/${snapshotId}/artifacts/${state.fileArtifactId}/content`, 'WORK_ARTIFACT_NOT_FOUND', state.fileName);
     await hidden(request, origin, `/v1/organization/working-artifacts/${state.fileArtifactId}/content`, 'WORK_ARTIFACT_NOT_FOUND', state.fileName);
   }
-  const review = await openPage(browser, context.review);
+  const review = await openDownloadPage(browser, context.review);
   try {
     await review.goto(`/tasks?taskId=${state.bReviewTaskId}`);
     const received = review.getByRole('region', { name: '受領したスナップショット', exact: true });
