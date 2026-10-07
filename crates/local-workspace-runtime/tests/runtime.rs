@@ -1125,3 +1125,47 @@ fn wire_values_use_camel_case_and_base64_bytes() {
     let outcome = serde_json::to_value(RuntimeWorkspaceOutcome::Pending).unwrap();
     assert_eq!(outcome, serde_json::json!({"state":"pending"}));
 }
+
+#[test]
+fn creation_into_a_parent_moved_out_of_the_binding_leaves_no_orphan_file() {
+    let fixture = Fixture::new();
+    let outside = fixture.folder("outside");
+    let folder = fixture.folder("folder");
+    fs::create_dir(folder.join("sub")).unwrap();
+    let rt = fixture.open();
+    let view = new_workspace(&rt, "w");
+    let (view, binding) = attach(&rt, &view, &folder);
+    let stop = Arc::new(AtomicBool::new(false));
+    let mover = {
+        let stop = Arc::clone(&stop);
+        let (inside, away) = (folder.join("sub"), outside.join("sub"));
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if fs::rename(&inside, &away).is_ok() {
+                    std::thread::yield_now();
+                    fs::rename(&away, &inside).unwrap();
+                }
+            }
+        })
+    };
+    let c = ctx(&view);
+    let mut created = Vec::new();
+    for i in 0..400 {
+        let name = format!("n{i}.txt");
+        if rt
+            .create_file(&c, &local(&binding, &["sub"]), &name, b"x", &op())
+            .is_ok()
+        {
+            created.push(name);
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    mover.join().unwrap();
+    let mut on_disk: Vec<String> = fs::read_dir(folder.join("sub"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    on_disk.sort();
+    created.sort();
+    assert_eq!(on_disk, created, "a refused creation left its file behind");
+}

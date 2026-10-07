@@ -1333,16 +1333,15 @@ impl LocalWorkspaceRuntime {
         // Post-verify confinement: the parent reached again from the binding
         // root must be the same directory the file was created in, and the
         // name must still denote the new inode. Otherwise remove our own file.
-        let (again, _) = self.open_parent(record, target).map_err(|_| {
-            RuntimeError::with(
-                RuntimeErrorCode::Conflict,
-                RuntimeErrorReason::ConcurrentChange,
-            )
-        })?;
+        let same_parent = self
+            .open_parent(record, target)
+            .is_ok_and(|(again, _)| again.stat.identity() == dir.stat.identity());
         let still_ours = dir
             .stat_child(&leaf)
             .is_ok_and(|s| s.identity() == created.identity());
-        if again.stat.identity() != dir.stat.identity() || !still_ours {
+        if !same_parent || !still_ours {
+            // Removal is relative to the pinned parent, so it reaches the file
+            // even when that directory was moved outside the binding.
             if still_ours {
                 let _ = dir.unlink_child_file(&leaf);
             }
