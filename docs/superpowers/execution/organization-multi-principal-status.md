@@ -77,11 +77,13 @@ Work側の必須local staging（`work.event_staging`）に次を記録する。A
 | m6 既存DBの更新で `seed-work` 前の起動エラーが不明瞭 | 起動エラーに `seed-work` の実行を明記（新DBは従来どおりseed前に起動できる） |
 | m7 policy未添付時に合成fixtureで評価 | 未添付は何も許可しない。repositoryは常に添付 |
 | m8 担当可能なだけの一覧に提出ID・差戻指示ID | 担当者本人の一覧にだけ含める |
-| m9 担当期間の記録が無制限 | 試行ごと16件、理由1024 bytes |
+| m9 担当期間の記録が無制限 | 試行ごと16件、理由1024 bytes。担当者の責任が終了した試行は上限後も担当変更できる（停止しない。増加はpolicy記録の上限で有界） |
 | m10 管理担当が引受可能でも引受が出ない／自分が担当中だと担当変更できない／候補判定がclient時計 | 引受と担当の管理を併記。一覧APIに `evaluatedAt` を追加し候補・状態をserver時刻で判定。自分は候補から除外 |
 | m11 6 process×2 poolがPostgreSQL既定の接続上限を超えうる | runnerの所有containerを `max_connections=200` で起動 |
 
 追補§5・§6・§8（新しい判断6・7）と利用手順を更新した。
+
+再review（同じreviewer）：GO。残る軽微事項（取消・期限切れを含む件数上限は削除方針未決定、委任・割当フォームの期限入力の事前判定はbrowser時計＝serverが再検証）は追補§8.7・利用手順に記録した。
 
 ### 次のexact action
 

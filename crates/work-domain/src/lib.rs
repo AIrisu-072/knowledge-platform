@@ -1699,12 +1699,23 @@ impl Workflow {
                 if item.attempt_id != *expected_attempt_id {
                     return Err(WorkError::RevisionConflict);
                 }
-                if self
-                    .assignments
-                    .iter()
-                    .filter(|record| record.attempt_id == item.attempt_id)
-                    .count()
-                    >= MAX_ASSIGNMENTS_PER_ATTEMPT
+                // The bound never strands an attempt: once its assignee's responsibility
+                // has ended, reassignment stays possible (growth is then bounded by
+                // the policy's own record limits).
+                let current_effective =
+                    item.assignee
+                        .zip(item.acting_assignment_id)
+                        .is_some_and(|(principal, id)| {
+                            self.step_responsibility(principal, id, item, PolicyAction::WorkRead)
+                                .is_some()
+                        });
+                if current_effective
+                    && self
+                        .assignments
+                        .iter()
+                        .filter(|record| record.attempt_id == item.attempt_id)
+                        .count()
+                        >= MAX_ASSIGNMENTS_PER_ATTEMPT
                 {
                     return Err(WorkError::ValidationFailed);
                 }

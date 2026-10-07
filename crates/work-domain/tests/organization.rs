@@ -1225,4 +1225,36 @@ fn reassignment_reasons_and_periods_per_attempt_are_bounded() {
         Err(WorkError::ValidationFailed)
     );
     assert_eq!(w, before);
+    // Once the assignee's responsibility ends, the bound never strands the attempt.
+    let mut ended = policy_with(&assignment);
+    let revision = ended.revision;
+    let current = w.source.acting_assignment_id.unwrap();
+    ended
+        .apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::RevokeRoleAssignment {
+                context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, revision),
+                assignment_id: current,
+                reason: "異動".into(),
+            },
+            T1,
+        )
+        .unwrap();
+    let mut w = attach(&w, &ended, T1);
+    let replacement = if current == SALES_ASSIGNMENT_ID {
+        (VerifiedActor::Review01, assignment.id)
+    } else {
+        (VerifiedActor::Sales01, SALES_ASSIGNMENT_ID)
+    };
+    w.apply(
+        VerifiedActor::Approver01,
+        &assign(&w, replacement.0, replacement.1, "責任終了後の交代"),
+        T1,
+    )
+    .unwrap();
+}
+fn policy_with(assignment: &RoleAssignment) -> OrganizationPolicy {
+    let mut policy = OrganizationPolicy::synthetic();
+    policy.role_assignments.push(assignment.clone());
+    policy
 }
