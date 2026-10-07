@@ -30,6 +30,7 @@ function setup(entry: string, session: unknown, tasks: unknown[]) {
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: tasks, nextCursor: null } as never);
   jest.spyOn(workApi, 'listWorkContexts').mockResolvedValue({ items: [], nextCursor: null });
+  jest.spyOn(workApi, 'listWorkViewProfiles').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'getTask').mockRejectedValue(new WorkApiError(404, 'WORK_ITEM_NOT_FOUND'));
   jest.spyOn(workApi, 'getSnapshot').mockRejectedValue(new WorkApiError(404, 'WORK_ARTIFACT_NOT_FOUND'));
   jest.spyOn(workApi, 'listEvidence').mockResolvedValue({ items: [], nextCursor: null });

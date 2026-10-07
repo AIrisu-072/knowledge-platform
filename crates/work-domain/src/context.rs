@@ -432,7 +432,13 @@ impl Workflow {
                 due_at: None,
             });
         }
-        if let Some(id) = item.return_instruction_id {
+        // Only the attempt a return created is "returned"; a later forward attempt
+        // keeps the reference for comparison but is not itself returned work.
+        if let Some(id) = item.return_instruction_id.filter(|id| {
+            self.return_instructions
+                .iter()
+                .any(|value| value.id == *id && value.target_attempt_id == item.attempt_id)
+        }) {
             items.push(Attention {
                 kind: AttentionKind::Returned,
                 source_id: readable.then_some(id),
@@ -467,7 +473,7 @@ impl Workflow {
         task_id: Uuid,
     ) -> Result<TaskAttention, WorkError> {
         let item = self.item(task_id)?;
-        if !self.visible(actor, item) {
+        if !self.listed(actor, item.id) {
             return Err(WorkError::WorkItemNotFound);
         }
         Ok(TaskAttention {
@@ -476,6 +482,15 @@ impl Workflow {
             evaluated_at: format_instant(self.evaluated_at())?,
             items: self.attention_for(actor, item),
         })
+    }
+    /// Exactly the list-row membership of either projection; never broader.
+    fn listed(&self, actor: VerifiedActor, task_id: Uuid) -> bool {
+        [TaskView::Context, TaskView::Queue]
+            .into_iter()
+            .any(|view| {
+                self.list_tasks_in(actor, view, None)
+                    .is_ok_and(|items| items.iter().any(|item| item.id == task_id))
+            })
     }
     /// Validates an acknowledgment of the actor's own current assignment period.
     /// It records presentation state only: no Work revision, ledger or staging.
@@ -568,7 +583,7 @@ impl Workflow {
             .collect();
         let attention_count = self
             .current_items()
-            .filter(|item| self.visible(actor, item))
+            .filter(|item| self.listed(actor, item.id))
             .map(|item| self.attention_for(actor, item).len())
             .sum::<usize>();
         Some(WorkContextView {

@@ -16,6 +16,13 @@ export function AttentionBadges({ attention, label }: { attention: Attention[]; 
   </ul>;
 }
 
+/** Profile default sort `due_at`: earliest explicit due first, undated rows keep server order. */
+export function byDue(items: TaskSummary[]): TaskSummary[] {
+  return items.map((item, index) => ({ item, index })).sort((a, b) => {
+    const left = a.item.dueAt ? Date.parse(a.item.dueAt) : Number.POSITIVE_INFINITY, right = b.item.dueAt ? Date.parse(b.item.dueAt) : Number.POSITIVE_INFINITY;
+    return left === right ? a.index - b.index : left - right;
+  }).map(({ item }) => item);
+}
 export function TaskRowButton({ item, selected, hint, onSelect }: { item: TaskSummary; selected: boolean; hint: string; onSelect: () => void }) {
   return <button type="button" aria-pressed={selected} onClick={onSelect}>
     {item.title}<span>{taskStateLabel(item.state)}</span>
@@ -36,7 +43,7 @@ export function ContextCollection({ contexts, contextError, tasks, selectedConte
       <button type="button" aria-pressed={selectedContext === context.id && !selectedTask} onClick={() => onContext(context.id)}>
         {context.title}<span>{contextKindLabels[context.kind]}</span>{context.attentionCount > 0 && <small>注意 {context.attentionCount}件</small>}
       </button>
-      {tasks.filter((item) => item.contextId === context.id).map((item) => <TaskRowButton key={item.id} item={item} selected={selectedTask === item.id} hint={hint(item)} onSelect={() => onTask(item.id)} />)}
+      {byDue(tasks.filter((item) => item.contextId === context.id)).map((item) => <TaskRowButton key={item.id} item={item} selected={selectedTask === item.id} hint={hint(item)} onSelect={() => onTask(item.id)} />)}
     </section>)}
     {other.length > 0 && <section className={styles.contextGroup} aria-label="文脈を表示しないタスク">
       {contexts?.length ? <h3>文脈を表示しないタスク</h3> : null}
@@ -48,7 +55,7 @@ export function ContextCollection({ contexts, contextError, tasks, selectedConte
 /** Office/review archetype: WorkType first, then own work and eligible-only rows. */
 export function QueueCollection({ tasks, session, workTypeId, selectedTask, hint, onWorkType, onTask }: { tasks: TaskSummary[]; session: WorkSession; workTypeId?: string; selectedTask?: string; hint: (item: TaskSummary) => string; onWorkType: (id?: string) => void; onTask: (id: string) => void }) {
   const types = Array.from(new Map(tasks.map((item) => [item.workTypeId, item.workTypeLabel || item.stepLabel])).entries());
-  const shown = tasks.filter((item) => !workTypeId || item.workTypeId === workTypeId);
+  const shown = byDue(tasks.filter((item) => !workTypeId || item.workTypeId === workTypeId));
   const own = shown.filter((item) => item.assignment?.principalId === session.principalId || (!item.canClaim && !item.canAssign));
   const claimable = shown.filter((item) => item.canClaim);
   const managed = shown.filter((item) => !own.includes(item) && !claimable.includes(item));

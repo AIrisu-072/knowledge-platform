@@ -71,15 +71,18 @@ impl PostgresWorkRepository {
         policy.validate_integrity()?;
         Ok(policy)
     }
-    /// The actor's acknowledged assignment periods (presentation state only).
+    /// The actor's acknowledged assignment periods (presentation state only),
+    /// optionally for one instance. Never read while a row lock is held.
     async fn acknowledgements(
         &self,
         actor: VerifiedActor,
+        workflow_id: Option<Uuid>,
     ) -> Result<std::collections::BTreeSet<Uuid>, WorkError> {
         let ids: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT work_assignment_id FROM work.attention_acknowledgements WHERE principal_id=$1",
+            "SELECT work_assignment_id FROM work.attention_acknowledgements WHERE principal_id=$1 AND ($2::uuid IS NULL OR workflow_id=$2)",
         )
         .bind(actor.principal_id())
+        .bind(workflow_id)
         .fetch_all(&self.pool)
         .await
         .map_err(database_error)?;
@@ -105,7 +108,7 @@ impl PostgresWorkRepository {
             return Err(WorkError::IntegrityViolation);
         }
         let policy = Arc::new(self.load_policy().await?);
-        let acknowledged = self.acknowledgements(actor).await?;
+        let acknowledged = self.acknowledgements(actor, None).await?;
         let now = OffsetDateTime::now_utc();
         rows.into_iter()
             .map(|Json(mut workflow)| {
@@ -138,7 +141,7 @@ impl PostgresWorkRepository {
         workflow.validate_integrity()?;
         let policy = self.load_policy().await?;
         workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
-        workflow.attach_acknowledgements(actor, self.acknowledgements(actor).await?);
+        workflow.attach_acknowledgements(actor, self.acknowledgements(actor, Some(id)).await?);
         Ok(workflow)
     }
     async fn authorize_sources(
@@ -294,6 +297,8 @@ impl PostgresWorkRepository {
         let checked_at = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|_| WorkError::IntegrityViolation)?;
+        // Presentation-only acknowledgments are read before any row lock is taken.
+        let acknowledged = self.acknowledgements(actor, Some(observed.id)).await?;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
         // Lock order: policy (share) before workflow (update). Policy writers take
         // the policy update lock, so authority cannot change before this commit.
@@ -307,7 +312,7 @@ impl PostgresWorkRepository {
                 .ok_or(WorkError::DependencyUnavailable)?;
         workflow.validate_integrity()?;
         workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
-        workflow.attach_acknowledgements(actor, self.acknowledgements(actor).await?);
+        workflow.attach_acknowledgements(actor, acknowledged);
         let previous=sqlx::query("SELECT principal_id,command_digest,outcome FROM work.operation_ledger WHERE operation_id=$1")
             .bind(operation_id).fetch_optional(&mut *tx).await.map_err(database_error)?;
         if let Some(previous) = previous {

@@ -576,3 +576,194 @@ fn records_resolve_to_their_owning_instance() {
     );
     assert!(b.owns(WorkTarget::Artifact(b.artifacts[0].id)));
 }
+
+fn claim_next(w: &mut Workflow, actor: VerifiedActor, acting: Uuid) {
+    let next = w.next.clone().unwrap();
+    w.apply(
+        actor,
+        &Command::Claim {
+            task_id: next.id,
+            context: ctx(acting, next.revision),
+        },
+        T0,
+    )
+    .unwrap();
+}
+fn return_next(w: &mut Workflow, actor: VerifiedActor, acting: Uuid) -> ReturnInstruction {
+    let next = w.next.clone().unwrap();
+    let MutationResult::Returned {
+        return_instruction, ..
+    } = w
+        .apply(
+            actor,
+            &Command::Return {
+                task_id: next.id,
+                context: ctx(acting, next.revision),
+                expected_attempt_id: next.attempt_id,
+                previous_submission_id: next.handoff_snapshot_id.unwrap(),
+                target_task_id: w.source.id,
+                transition_id: RETURN_TRANSITION_ID,
+                reason: "記載を確認してください".into(),
+            },
+            T0,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    return_instruction
+}
+
+#[test]
+fn a_returned_review_context_resubmits_to_a_new_review_attempt_and_completes() {
+    let policy = OrganizationPolicy::synthetic();
+    let mut w = seeded(CONTEXT_B_WORKFLOW_ID, &policy, T0);
+    submit_sales(&mut w, T0);
+    claim_next(&mut w, VerifiedActor::Review01, REVIEW_ASSIGNMENT_ID);
+    return_next(&mut w, VerifiedActor::Review01, REVIEW_ASSIGNMENT_ID);
+    submit_sales(&mut w, T0);
+    let review = w.next.clone().unwrap();
+    assert_eq!(
+        (review.id, review.attempt_number, review.state),
+        (CONTEXT_B_REVIEW_TASK_ID, 2, TaskState::Ready)
+    );
+    claim_next(&mut w, VerifiedActor::Review01, REVIEW_ASSIGNMENT_ID);
+    let detail = w
+        .detail(VerifiedActor::Review01, CONTEXT_B_REVIEW_TASK_ID)
+        .unwrap();
+    w.apply(
+        VerifiedActor::Review01,
+        &Command::Complete {
+            task_id: CONTEXT_B_REVIEW_TASK_ID,
+            context: ctx(REVIEW_ASSIGNMENT_ID, detail.task.revision),
+            expected_attempt_id: detail.task.attempt_id,
+            definition_action_id: detail.task.completion_action_id.unwrap(),
+        },
+        T0,
+    )
+    .unwrap();
+    assert_eq!(w.next.unwrap().state, TaskState::Completed);
+}
+
+#[test]
+fn returned_attention_belongs_only_to_the_attempt_the_return_targeted() {
+    let policy = OrganizationPolicy::synthetic();
+    let mut w = seeded(CONTEXT_C_WORKFLOW_ID, &policy, T0);
+    submit_sales(&mut w, T0);
+    claim_next(&mut w, VerifiedActor::Office01, OFFICE_ASSIGNMENT_ID);
+    let instruction = return_next(&mut w, VerifiedActor::Office01, OFFICE_ASSIGNMENT_ID);
+    assert_eq!(
+        kinds(
+            &row(
+                &w,
+                VerifiedActor::Sales01,
+                TaskView::Queue,
+                CONTEXT_C_SALES_TASK_ID
+            )
+            .unwrap()
+            .attention
+        ),
+        [AttentionKind::Returned]
+    );
+    submit_sales(&mut w, T0);
+    // The re-received next attempt carries the return reference for comparison,
+    // but it was not itself created by the return.
+    let office = w.next.clone().unwrap();
+    assert_eq!(office.return_instruction_id, Some(instruction.id));
+    assert!(
+        row(&w, VerifiedActor::Office01, TaskView::Queue, office.id)
+            .unwrap()
+            .attention
+            .is_empty()
+    );
+    assert!(
+        w.attention(VerifiedActor::Office01, office.id)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}
+
+#[test]
+fn attention_is_visible_exactly_where_the_list_row_is() {
+    let mut policy = OrganizationPolicy::synthetic();
+    // A delegation narrowed to queue.read alone never lists a claimable row.
+    policy
+        .apply(
+            VerifiedActor::Sales01,
+            &PolicyCommand::CreateDelegation {
+                context: ctx(SALES_ASSIGNMENT_ID, 0),
+                source_assignment_id: SALES_ASSIGNMENT_ID,
+                recipient: VerifiedActor::Delegate01,
+                actions: vec![PolicyAction::QueueRead],
+                valid_from: None,
+                valid_until: later(48),
+                reason: "閲覧のみ".into(),
+            },
+            T0,
+        )
+        .unwrap();
+    let w = seeded(CONTEXT_C_WORKFLOW_ID, &policy, T0);
+    assert!(
+        w.list_tasks(VerifiedActor::Delegate01, TaskView::Queue)
+            .is_empty()
+    );
+    assert!(
+        w.list_tasks(VerifiedActor::Delegate01, TaskView::Context)
+            .is_empty()
+    );
+    assert_eq!(
+        w.attention(VerifiedActor::Delegate01, CONTEXT_C_SALES_TASK_ID),
+        Err(WorkError::WorkItemNotFound)
+    );
+    assert!(
+        w.attention(VerifiedActor::Sales01, CONTEXT_C_SALES_TASK_ID)
+            .is_ok()
+    );
+}
+
+#[test]
+fn due_attention_boundaries_and_owner_unit_context_scope() {
+    let policy = OrganizationPolicy::synthetic();
+    let due = |now: &str| {
+        let w = seeded(CONTEXT_B_WORKFLOW_ID, &policy, now);
+        kinds(
+            &row(
+                &w,
+                VerifiedActor::Sales01,
+                TaskView::Queue,
+                CONTEXT_B_SALES_TASK_ID,
+            )
+            .unwrap()
+            .attention,
+        )
+    };
+    // Lead 24h before a due instant of T0+6h: due soon from T0-18h, overdue at T0+6h.
+    let before_lead = (at(T0) - Duration::hours(18) - Duration::seconds(1))
+        .format(&Rfc3339)
+        .unwrap();
+    let lead = (at(T0) - Duration::hours(18)).format(&Rfc3339).unwrap();
+    let just_before = (at(T0) + Duration::hours(6) - Duration::seconds(1))
+        .format(&Rfc3339)
+        .unwrap();
+    assert!(due(&before_lead).is_empty());
+    assert_eq!(due(&lead), [AttentionKind::DueSoon]);
+    assert_eq!(due(&just_before), [AttentionKind::DueSoon]);
+    assert_eq!(due(&later(6)), [AttentionKind::Overdue]);
+    // context.read over another unit never discloses this owner unit's context.
+    let mut other = OrganizationPolicy::synthetic();
+    other.units[1].role_ids.push(ROLE_SALES_ID);
+    let mut grant = other.role_assignments[0].clone();
+    grant.id = Uuid::now_v7();
+    grant.principal = VerifiedActor::Delegate01;
+    grant.unit_id = UNIT_OFFICE_ID;
+    other.role_assignments.push(grant);
+    let w = seeded(CONTEXT_C_WORKFLOW_ID, &other, T0);
+    assert!(w.context_view(VerifiedActor::Delegate01, None).is_none());
+    assert!(
+        w.list_tasks(VerifiedActor::Delegate01, TaskView::Context)
+            .iter()
+            .all(|item| item.context_title.is_none())
+    );
+    assert!(w.context_view(VerifiedActor::Sales01, None).is_some());
+}

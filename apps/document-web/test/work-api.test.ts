@@ -233,3 +233,34 @@ test.each([
     await expect(execute()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
   }
 });
+
+test('context, attention and profile decoders are closed and bound to the requested target', async () => {
+  const context = { id: 'context-c', kind: 'request', title: '合成依頼C', ownerUnitId: 'unit-sales', progress: [{ taskId: 'task-1', stepLabel: '営業内容整理', workTypeId: 'type-sales', state: 'ready', attemptNumber: 1, dueAt: '2026-10-07T08:00:00Z', assigned: false }], canReadHistory: true, ownTaskIds: [], attentionCount: 1 };
+  fetchMock.mockResolvedValue(response({ items: [context], nextCursor: null }));
+  expect((await workApi.listWorkContexts('assignment-sales')).items).toEqual([context]);
+  expect(fetchMock.mock.calls[0]![0]).toBe('/v1/organization/work-contexts?actingAssignmentId=assignment-sales');
+  for (const invalid of [{ ...context, kind: 'customer' }, { ...context, progress: [{ ...context.progress[0], state: 'returned' }] }, { ...context, progress: [{ ...context.progress[0], attemptNumber: 0 }] }]) {
+    fetchMock.mockResolvedValue(response({ items: [invalid], nextCursor: null }));
+    await expect(workApi.listWorkContexts()).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+  fetchMock.mockResolvedValue(response({ ...context, id: 'other' }));
+  await expect(workApi.getWorkContext(context.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ contextId: 'other', entries: [] }));
+  await expect(workApi.getWorkContextHistory(context.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  const attention = { taskId: 'task-1', attemptId: 'attempt-1', evaluatedAt: '2026-10-07T09:00:00Z', items: [{ kind: 'overdue', sourceId: null, dueAt: '2026-10-07T08:00:00Z' }] };
+  fetchMock.mockResolvedValue(response(attention));
+  expect(await workApi.markAttentionSeen('task-1', 'period-1')).toEqual(attention);
+  expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({ workAssignmentId: 'period-1' });
+  fetchMock.mockResolvedValue(response({ ...attention, items: [{ kind: 'blocked', sourceId: null, dueAt: null }] }));
+  await expect(workApi.getTaskAttention('task-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ ...attention, taskId: 'other' }));
+  await expect(workApi.getTaskAttention('task-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  const profile = { id: 'p', key: 'review-queue', label: '審査', archetype: 'queue', primaryGrouping: 'work_type', defaultSort: 'due_at', initialModule: 'evidence', modules: [{ module: 'evidence', presentation: 'prominent' }] };
+  fetchMock.mockResolvedValue(response({ items: [profile], nextCursor: null }));
+  expect((await workApi.listWorkViewProfiles()).items).toEqual([profile]);
+  fetchMock.mockResolvedValue(response({ items: [{ ...profile, modules: [{ module: 'evidence', presentation: 'granted' }] }], nextCursor: null }));
+  await expect(workApi.listWorkViewProfiles()).rejects.toMatchObject({ code: 'invalid_response' });
+  // A filtered list never accepts rows outside the requested context.
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: 'other' }], nextCursor: null }));
+  await expect(workApi.listTasks('context', undefined, { contextId: 'context-1' })).rejects.toMatchObject({ code: 'invalid_response' });
+});

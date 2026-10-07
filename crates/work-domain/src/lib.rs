@@ -1867,13 +1867,8 @@ impl Workflow {
                         .next
                         .as_ref()
                         .is_some_and(|item| item.state != TaskState::Completed)
-                    || (self.next.is_some()
-                        && !matches!(
-                            self.definition_version_id,
-                            RETURN_DEFINITION_VERSION_ID
-                                | COMPLETE_DEFINITION_VERSION_ID
-                                | HOLD_RESUME_DEFINITION_VERSION_ID
-                        ))
+                    // Resubmission after a return exists only in returnable definitions.
+                    || (self.next.is_some() && !self.returnable())
                 {
                     return Err(WorkError::HandoffNotReady);
                 }

@@ -290,10 +290,17 @@ impl PostgresWorkRepository {
         // Bootstrap starts the servers before the explicit seed-work command.
         // Only this interruption sweep treats an absent fixture as no work to stop.
         let instances: Vec<Uuid> =
-            sqlx::query_scalar("SELECT id FROM work.workflow_instances ORDER BY id")
+            sqlx::query_scalar("SELECT id FROM work.workflow_instances ORDER BY id LIMIT $1")
+                .bind(
+                    i64::try_from(MAX_WORK_CONTEXTS + 1)
+                        .map_err(|_| WorkError::IntegrityViolation)?,
+                )
                 .fetch_all(&self.pool)
                 .await
                 .map_err(database_error)?;
+        if instances.len() > MAX_WORK_CONTEXTS {
+            return Err(WorkError::IntegrityViolation);
+        }
         let mut interrupted = 0;
         for instance in instances {
             let mut tx = self.pool.begin().await.map_err(database_error)?;

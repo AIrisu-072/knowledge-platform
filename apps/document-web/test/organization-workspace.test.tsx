@@ -30,6 +30,7 @@ function setup(entry = '/tasks?view=context&taskId=task-1') {
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [task], nextCursor: null } as never);
   jest.spyOn(workApi, 'listWorkContexts').mockResolvedValue({ items: [], nextCursor: null });
+  jest.spyOn(workApi, 'listWorkViewProfiles').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'getTask').mockResolvedValue(detail as never);
   jest.spyOn(workApi, 'listEvidence').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'listFindings').mockResolvedValue({ items: [], nextCursor: null });

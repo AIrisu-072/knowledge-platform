@@ -38,7 +38,8 @@ export function TaskHomePage() {
   // A selected responsibility only narrows the projection; an unknown one is ignored, never sent as identity.
   const scope = search.acting && sessionData?.responsibilities?.some((value) => value.id === search.acting) ? search.acting : undefined;
   // Presentation default only: the selected (or session) responsibility's WorkViewProfile.
-  const profiles = useQuery({ queryKey: ['organization-work-view-profiles'], queryFn: workApi.listWorkViewProfiles, enabled: Boolean(sessionData) && !search.view, staleTime: 0, gcTime: 0, retry: false });
+  // Loaded regardless of an explicit view: the profile's initial module still applies.
+  const profiles = useQuery({ queryKey: ['organization-work-view-profiles'], queryFn: workApi.listWorkViewProfiles, enabled: Boolean(sessionData), staleTime: 0, gcTime: 0, retry: false });
   const activeResponsibility = sessionData?.responsibilities?.find((value) => value.id === (scope ?? sessionData.actingAssignmentId));
   const profile = profiles.isSuccess ? profiles.data.items.find((value) => value.id === activeResponsibility?.workViewProfileId) : undefined;
   const profileSettled = Boolean(search.view) || !activeResponsibility || profiles.isSuccess || profiles.isError;
