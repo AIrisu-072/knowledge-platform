@@ -111,6 +111,38 @@ impl PgGenerationGc {
         }
     }
 
+    /// Retires READY generations of `source_id` older than the current one and
+    /// the `keep_previous` newest before it. A pinned generation is skipped
+    /// and retried at the next publication. Returns the number deleted.
+    pub async fn retire_superseded(
+        &self,
+        source_id: SourceId,
+        keep_previous: usize,
+    ) -> Result<u64, GcError> {
+        let rows: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT g.generation_id FROM search_generation g \
+             JOIN search_source_coordination c ON c.source_id = g.source_id \
+             WHERE g.source_id = $1 AND g.state = 'READY' \
+             AND g.generation_id IS DISTINCT FROM c.current_generation_id \
+             ORDER BY g.ready_at DESC NULLS LAST OFFSET $2",
+        )
+        .bind(source_id.as_uuid())
+        .bind(i64::try_from(keep_previous).map_err(|_| GcError::Store)?)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut deleted = 0;
+        for generation in rows {
+            let key = ProjectionGenerationKey {
+                source_id,
+                generation_id: ProjectionGenerationId::from_uuid(generation),
+            };
+            if self.retire_unpinned(key).await? == GcOutcome::Deleted {
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
+    }
+
     /// Deletes Unit segments that no generation lists any more. Returns the
     /// number of deleted segments.
     pub async fn sweep_unreferenced_segments(&self) -> Result<u64, GcError> {

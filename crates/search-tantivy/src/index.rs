@@ -63,6 +63,8 @@ pub struct LexicalBuildInput {
     body_units: Option<Vec<KnowledgeUnit>>,
     /// The analyzer this input is indexed with; it must equal the manifest's.
     analyzer_version: String,
+    /// A committed Unit index of an earlier generation to start from.
+    base_units_dir: Option<std::path::PathBuf>,
 }
 
 impl LexicalBuildInput {
@@ -81,7 +83,15 @@ impl LexicalBuildInput {
             documents,
             body_units: None,
             analyzer_version: crate::analyzer::LEGACY_ANALYZER_VERSION.into(),
+            base_units_dir: None,
         }
+    }
+
+    /// Build the Unit index from this earlier generation's committed Unit
+    /// index when it can serve as a base; the result is the same Units.
+    pub fn with_base_units_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.base_units_dir = Some(dir.into());
+        self
     }
 
     /// Index with a supported analyzer instead of the legacy default.
@@ -318,11 +328,19 @@ impl TantivyLexicalIndex {
             .body_units
             .as_deref()
             .map(|units| match dir {
-                Some(dir) => crate::body::build_unit_index_at(
-                    units,
-                    &dir.join(crate::persist::UNITS_DIR),
-                    tokenizer,
-                ),
+                Some(dir) => {
+                    let target = dir.join(crate::persist::UNITS_DIR);
+                    let from_base = match &input.base_units_dir {
+                        Some(base) => crate::body::build_unit_index_from_base(
+                            units, base, &target, tokenizer,
+                        )?,
+                        None => None,
+                    };
+                    match from_base {
+                        Some(index) => Ok(index),
+                        None => crate::body::build_unit_index_at(units, &target, tokenizer),
+                    }
+                }
                 None => build_unit_index(units, tokenizer),
             })
             .transpose()?;
