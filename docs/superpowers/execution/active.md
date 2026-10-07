@@ -10,6 +10,8 @@
 
 05:08追補：最終GUI1583/62・focused307/5・schema/型/buildと独立全体レビューが成功。公開前mainがPR95統合93947f3dへ進んだため、他担当のRuntime/Shell/CIをそのまま保持し、Active両記録だけを通常統合して組合せ確認へ進む。新headのhostedはまだ未資格。
 
+05:38追補：PR100 head0936a93dのDocument composition/summaryがFAIL、Org未実行。初回logはTransport closedで実失敗caseは未取得。別途、本番fresh cacheでは正常往復時にGETが増えないDOM反例を確認したため、追加受入のGET必須待受だけを限定補修する。旧head失敗と根因未確定を保持し、次sourceのCIで確認する。
+
 ---
 
 ## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）

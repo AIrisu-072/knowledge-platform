@@ -1,5 +1,15 @@
 # 文書アクセス設定の回復補修：実行状況
 
+## 2026-10-07 05:38 UTC — 初回実受入の失敗とcache境界の反例
+
+- [PR100](https://github.com/AIrisu-072/knowledge-platform/pull/100)公開head0936a93decae951eb91224154dec8afca15e8bab / tree3843ca884958b7b83eba23f829c0b8c7e36b4415 / base93947f3d。全25filesの公開blob SHA・日本語本文・head/baseを照合済み。最新mainとの組合せは全GUI1606/65・schema/型/build・独立unionレビューGOだった。
+- 新CI37575786400のjob112644262356はDocument compositionがfailure、Organizationは未実行、bounded summaryもfailure。新headは未資格。通常の接続済みログtoolの初回readはTransport closedで、失敗case・bounded診断本文・cleanupのreceiptを取得できていない。check output本文もnull。旧資格へ読み替えず、失敗したheadとrunを保持する。
+- 限定source/DOM診断で別途確認できた不整合：本番QueryClientのstaleTime15秒では、正常保存後のpolicy GET3回から一覧往復後も3回のまま、同じreceipt/ID/理由/送信revision・結果revisionとclose動作は正常に保たれる。cacheなしの既存単体fixtureでは4回になる。追加受入の「往復すればGETが必ず増える」という待受は本番のfresh cacheと両立しない。
+- この反例と実jobの根因は同一と断定しない。結果表示の保持・PUT1回・確定close後の正規SDK GET一致を維持し、往復GET待受4行だけ（アクセスを開くクリックは保持）を補修する。製品cache・API/権限・画像・timeout/skip・後続検査は変えない。独立レビュー後、新sourceの同PR通常CIで判断する。公開GET403経路・別認証・未対応endpoint・ログ取得目的だけのrerunは行わない。
+- 05:39追補：旧GET増加必須条件は本番fixtureでExpected 1 / Received 0のREDを確認。最小補修f5d8b43a508299dff3cdf9bdbb04a26531ba0c18はruntime1fileの4行削除だけで、正常DOM2条件・実SDK GET境界・PUT1回・型・収集18・空白検査が成功した。製品/他受入bytesは保持し、実browser/新head CIは未資格。
+
+---
+
 ## 2026-10-07 05:08 UTC — 最終GUIと独立レビューの確認
 
 - GUI commit 2b6cd7785e3329b7a21b5fe8d1dffcda804cceeaの固定16filesでfocused307/5、全GUI1583/62、schema/型/buildが成功。既存warningは保持し、途中1580の資格とは区別する。

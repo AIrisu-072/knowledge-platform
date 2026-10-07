@@ -430,11 +430,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: /規程サンプル/ }).click();
   await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === `/documents/${documentId}` && url.searchParams.get('view') === 'authoring');
-  const returnedDocumentPolicyResponse = documentPolicyRead();
   await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
-  const returnedDocumentPolicyResult = await returnedDocumentPolicyResponse;
-  expect(returnedDocumentPolicyResult.status()).toBe(200);
-  expect(await returnedDocumentPolicyResult.json()).toEqual(policy);
   await expect(documentPolicyOutcome.getByRole('status').filter({ hasText: 'アクセス設定を保存しました。' })).toBeVisible();
   await expect(documentPolicyOutcome).toContainText(documentPolicyPayload.operationId);
   await expect(documentPolicyOutcome.getByRole('textbox', { name: '変更理由', exact: true })).toHaveValue(documentPolicyPayload.reason);
