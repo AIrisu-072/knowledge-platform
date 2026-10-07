@@ -24,6 +24,7 @@ use search_source_document::{
     GenerationBundleReceipt, compute_bundle_receipt_from, profile_set_digest, segment_digest,
     unit_manifest_receipt_from_segments, validate_restored_manifest_skipping,
 };
+use search_tantivy::{UnitSealEntry, unit_doc_hash};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
@@ -134,7 +135,22 @@ type RestoredParts = (
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestoredSummaryV1 {
     pub projection: ProjectionPayloadV1,
+    pub units: UnitManifestSummaryV1,
     pub coverage: BodyCoverageArtifact,
+}
+
+/// A generation's Unit manifest without its Units: what its receipts and the
+/// lexical seal need.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitManifestSummaryV1 {
+    pub key: ProjectionGenerationKey,
+    pub source_snapshot: String,
+    /// The Unit manifest receipt, from every segment digest.
+    pub receipt: search_source_document::ArtifactReceipt,
+    pub items: usize,
+    pub profile_set_digest: [u8; 32],
+    /// Every Unit's ID and `unit_doc_hash`, in manifest order.
+    pub units: Vec<UnitSealEntry>,
 }
 
 /// A bundle whose payload digests were all recomputed. Not a READY proof.
@@ -304,10 +320,14 @@ fn sha256_text(digest: &[u8; 32]) -> String {
 struct SegmentSummary {
     item: BodyCoverageItem,
     digest: [u8; 32],
+    /// The item's profile and parser build, when it has a profile.
+    profile: Option<(String, String)>,
+    units: Vec<UnitSealEntry>,
 }
 
-/// Summaries kept per process (a few hundred bytes each); above this the
-/// cache keeps only the segments of the generation being read.
+/// Summaries kept per process (a few hundred bytes each plus 48 bytes per
+/// Unit); above this the cache keeps only the segments of the generation
+/// being read.
 const SUMMARY_CACHE_ITEMS: usize = 1_000_000;
 /// Segments read per query by `restore_without_units`, so the Unit text of
 /// one batch at most is held at a time.
@@ -328,6 +348,20 @@ fn summarize_segment(
 ) -> Result<SegmentSummary, BundleError> {
     let mut entry = verified_segment(digest, count, text)?;
     let segment = segment_digest(&entry).map_err(|_| BundleError::Digest)?;
+    let profile = entry
+        .profile
+        .as_ref()
+        .map(|profile| (profile.as_str().to_owned(), entry.parser_build_id.clone()));
+    let units = entry
+        .units
+        .iter()
+        .map(|unit| {
+            Ok(UnitSealEntry {
+                unit_id: unit.unit_id,
+                hash: unit_doc_hash(unit).map_err(|_| BundleError::Digest)?,
+            })
+        })
+        .collect::<Result<Vec<_>, BundleError>>()?;
     for unit in &mut entry.units {
         unit.provenance.source_snapshot = header.source_snapshot.clone();
     }
@@ -346,6 +380,8 @@ fn summarize_segment(
     Ok(SegmentSummary {
         item,
         digest: segment,
+        profile,
+        units,
     })
 }
 
@@ -873,6 +909,8 @@ impl PgPayloadStore {
         cache.extend(fetched);
         let mut items = Vec::with_capacity(list.len());
         let mut segments = Vec::with_capacity(list.len());
+        let mut units = Vec::new();
+        let mut profiles = Vec::new();
         for digest in &list {
             let summary = cache.get(digest).ok_or(BundleError::Shape)?;
             if summary.item.version.source_id != key.source_id {
@@ -880,6 +918,8 @@ impl PgPayloadStore {
             }
             items.push(summary.item.clone());
             segments.push((summary.digest, u64::from(summary.item.unit_count)));
+            units.extend_from_slice(&summary.units);
+            profiles.extend(summary.profile.clone());
         }
         if cache.len() > SUMMARY_CACHE_ITEMS {
             let current: std::collections::BTreeSet<&String> = list.iter().collect();
@@ -892,9 +932,16 @@ impl PgPayloadStore {
         {
             return Err(BundleError::Digest);
         }
+        let items_len = items.len();
         let derived = BodyCoverageArtifact { key, items };
         let units_receipt =
             unit_manifest_receipt_from_segments(key, &segments).map_err(|_| BundleError::Digest)?;
+        let profile_set_digest = search_source_document::profile_set_digest_from(
+            profiles
+                .iter()
+                .map(|(profile, build)| (profile.as_str(), build.as_str())),
+        )
+        .map_err(|_| BundleError::Digest)?;
         check_restored(
             manifest,
             &projection,
@@ -905,6 +952,14 @@ impl PgPayloadStore {
         )?;
         Ok(RestoredSummaryV1 {
             projection,
+            units: UnitManifestSummaryV1 {
+                key,
+                source_snapshot: header.source_snapshot,
+                receipt: units_receipt,
+                items: items_len,
+                profile_set_digest,
+                units,
+            },
             coverage,
         })
     }

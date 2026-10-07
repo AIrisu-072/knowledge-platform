@@ -279,13 +279,29 @@ pub fn seal_lexical_entries(
     manifest: &BodyUnitManifest,
     documents: &[UnitSealEntry],
 ) -> Result<(), SearchError> {
-    let mut expected: BTreeMap<UnitId, [u8; 32]> = BTreeMap::new();
+    let mut expected = Vec::new();
     for unit in manifest.entries.iter().flat_map(|entry| &entry.units) {
         if text_sha256(&unit.text) != unit.text_sha256 {
             return Err(failed("lexical seal: Unit text differs from its digest"));
         }
         let hash = unit_doc_hash(unit).map_err(|_| failed("lexical seal: Unit encoding"))?;
-        if expected.insert(unit.unit_id, hash).is_some() {
+        expected.push(UnitSealEntry {
+            unit_id: unit.unit_id,
+            hash,
+        });
+    }
+    seal_lexical_hashes(&expected, documents)
+}
+
+/// [`seal_lexical_entries`] from the manifest's Unit entries (each Unit's ID
+/// and `unit_doc_hash`, every text already checked against its digest).
+pub fn seal_lexical_hashes(
+    units: &[UnitSealEntry],
+    documents: &[UnitSealEntry],
+) -> Result<(), SearchError> {
+    let mut expected: BTreeMap<UnitId, [u8; 32]> = BTreeMap::new();
+    for unit in units {
+        if expected.insert(unit.unit_id, unit.hash).is_some() {
             return Err(failed("duplicate Unit in manifest"));
         }
     }

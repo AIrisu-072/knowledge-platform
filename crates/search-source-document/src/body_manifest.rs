@@ -573,16 +573,19 @@ pub fn coverage_receipt(
 
 /// `body-profile-set:v1`: distinct `(profile ID, parser build)` pairs, ascending.
 pub fn profile_set_digest(manifest: &BodyUnitManifest) -> Result<[u8; 32], BodyBuildError> {
-    let set: BTreeSet<(&str, &str)> = manifest
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            entry
-                .profile
-                .as_ref()
-                .map(|profile| (profile.as_str(), entry.parser_build_id.as_str()))
-        })
-        .collect();
+    profile_set_digest_from(manifest.entries.iter().filter_map(|entry| {
+        entry
+            .profile
+            .as_ref()
+            .map(|profile| (profile.as_str(), entry.parser_build_id.as_str()))
+    }))
+}
+
+/// [`profile_set_digest`] from each profiled item's profile and parser build.
+pub fn profile_set_digest_from<'a>(
+    pairs: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Result<[u8; 32], BodyBuildError> {
+    let set: BTreeSet<(&str, &str)> = pairs.into_iter().collect();
     let mut out = Canonical::default();
     out.count(set.len())?;
     for (profile, build) in set {
