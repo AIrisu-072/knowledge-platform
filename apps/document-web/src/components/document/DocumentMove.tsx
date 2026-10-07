@@ -1,3 +1,5 @@
+import { documentAccessPolicyOperations } from '../../application/document-access-policy';
+import { folderAccessPolicyOperations } from '../../application/document-folder-access-policy';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
@@ -17,7 +19,7 @@ import workspace from '../../routes/DocumentWorkspace.module.css';
 const title = '文書を移動';
 const sourceError = '文書の最新の状態と元所属を確認できません。最新の状態を取得して見直してください。';
 const destinationError = '移動先の最新の状態を取得できません。移動先ツリーで選び直してください。';
-const otherBlocked = 'フォルダー作成・改名・移動の結果が未確定です。保持されている操作の結果を先に確認してください。';
+const otherBlocked = 'アクセス設定・フォルダー作成・改名・移動の結果が未確定です。保持されている操作の結果を先に確認してください。';
 function changedSource(current: DocumentDetail, baseline: DocumentDetail): boolean {
   return current.documentId !== baseline.documentId || current.title !== baseline.title || current.folderId !== baseline.folderId
     || current.folderName !== baseline.folderName || current.revision !== baseline.revision;
@@ -28,7 +30,11 @@ function displayContext(current: DocumentDetail & { folderId: string; folderName
 export function DocumentMove({ document, purpose = 'published', currentRead = false, contextKey }: {
   document?: DocumentDetail; purpose?: 'published' | 'authoring'; currentRead?: boolean; contextKey: string;
 }) {
-  const client = useQueryClient(); const store = documentMoveOperations(client);
+  const client = useQueryClient();
+  const documentPolicyStore = documentAccessPolicyOperations(client);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
+  const policyStore = folderAccessPolicyOperations(client);
+  const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get); const store = documentMoveOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
   const createStore = rootFolderOperations(client); const renameStore = folderRenameOperations(client); const folderStore = folderMoveOperations(client);
   const create = useSyncExternalStore(createStore.subscribe, createStore.get); const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get); const folderMove = useSyncExternalStore(folderStore.subscribe, folderStore.get);
@@ -45,8 +51,8 @@ export function DocumentMove({ document, purpose = 'published', currentRead = fa
   const clearConfirmation = () => { impactConfirmed.current = false; setConfirmed(false); };
   useEffect(() => { generation.current += 1; destinationGeneration.current += 1; refreshing.current = false; destinationBusy.current = false; setReading(false); setDestinationReading(false); setOpen(false); }, [contextKey]);
   useEffect(() => () => { generation.current += 1; destinationGeneration.current += 1; }, []);
-  const otherUnresolved = [create, rename, folderMove].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [createStore.get(), renameStore.get(), folderStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolved = [documentPolicyOperation, create, rename, folderMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [documentPolicyStore.get(), createStore.get(), renameStore.get(), folderStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
   const pending = operation?.status === 'pending'; const unknown = operation?.status === 'unknown';
   const entryAllowed = currentRead && canMoveDocument(document) && !otherUnresolved;
   const allowed = !blocked && !staleSource && !staleDestination && !otherUnresolved && canMoveDocument(baseline) && Boolean(destinationBaseline);

@@ -105,7 +105,8 @@ export async function assertSessions(request: APIRequestContext, context: Runtim
   expect(sales.principalId).toBe('sales-01');
   expect(office.principalId).toBe('office-01');
   expect(sales.actingAssignmentId).not.toBe(office.actingAssignmentId);
-  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: true });
+  // Work files (U3) are composed with the Work-owned store; the capability is a hint only.
+  for (const session of [sales, office]) expect(session.capabilities).toEqual({ nativeWorkspace: false, agent: true, search: false, fileUpload: true, return: true });
   return { sales, office };
 }
 export async function assertHidden(request: APIRequestContext, origin: string, path: string, code: string, privateText?: string) {
@@ -905,7 +906,7 @@ export async function requestSyntheticFinding(page: Page, request: APIRequestCon
   expect(output).toMatchObject({ simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false, evidenceRevisionRefs: [revisionRef(evidence)] });
   expect(output.findingRevisionRefs).toHaveLength(1);
   expect(output.uncertainty.length).toBeGreaterThan(0);
-  const finding = await get<Finding>(request, origin, `/v1/organization/findings/${output.findingRevisionRefs[0].id}`);
+  const finding = await get<Finding>(request, origin, `/v1/organization/findings/${output.findingRevisionRefs[0]!.id}`);
   expect(finding).toMatchObject({ ...output.findingRevisionRefs[0], taskId, attemptId: result.task.attemptId, contextId: result.task.contextId, author: 'organization-synthetic/agent-01', originExecutionId: execution.id, evidenceRevisionRefs: [revisionRef(evidence)], uncertainty: output.uncertainty, visibility: 'work_item_private' });
   expect(await get(request, origin, `/v1/organization/findings/${finding.id}/decisions`)).toEqual({ items: [], nextCursor: null });
   const beforeReplay = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);
@@ -987,7 +988,7 @@ export async function holdAndResume(page: Page, request: APIRequestContext, orig
   await page.getByRole('button', { name: '保留内容を確認', exact: true }).click();
   const confirmation = page.getByRole('dialog', { name: '保留の確認', exact: true });
   await expect(confirmation).toContainText(before.attemptId);
-  await expect(confirmation).toContainText(session.actingAssignmentId);
+  await expect(confirmation).toContainText(session.actingAssignmentId!);
   await expect(confirmation).toContainText('未保存の入力は保存せず');
   await expect(confirmation.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
   await confirmation.getByRole('button', { name: 'キャンセル', exact: true }).click();
@@ -1011,7 +1012,7 @@ export async function holdAndResume(page: Page, request: APIRequestContext, orig
   await expect(page.getByText(unsaved.text, { exact: true })).toHaveCount(0);
   if (before.workingArtifacts.length) {
     const readonly = page.getByRole('region', { name: '保存済みの作業文案', exact: true });
-    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value.text);
+    for (const artifact of before.workingArtifacts) await expect(readonly).toContainText(artifact.value?.text ?? artifact.file!.fileName);
     await expect(readonly).not.toContainText(unsaved.text);
   }
   const heldDetail = await get<TaskDetail>(request, origin, `/v1/organization/tasks/${taskId}`);

@@ -64,6 +64,13 @@ crate_path = "crates/work-api-http"
 forbidden_dependencies = ["sqlx", "work-repository-postgres", "document-server", "organization-server"]
 forbidden_source_patterns = ["work_repository_postgres", "document_repository_postgres", "AllowAllIdentityAdapter"]
 
+[workspace.boundaries.local_workspace_runtime]
+# Local Workspace broker: bounded relative operations only. No process/shell
+# launch, async runtime, HTTP, database, Tauri or business-layer dependency.
+crate_path = "crates/local-workspace-runtime"
+forbidden_dependencies = ["tokio", "axum", "sqlx", "reqwest", "tauri", "document-server", "organization-server", "work-application", "work-api-http", "search-runtime"]
+forbidden_source_patterns = ["std::process", "Command::new", "tokio::fs", "libc::exec", "libc::system", "libc::fork", "libc::vfork", "libc::posix_spawn", "libc::dlopen"]
+
 [workspace.boundaries.search_core]
 crate_path = "crates/search-core"
 forbidden_dependencies = ["sqlx", "axum", "tokio", "tantivy", "search-tantivy", "reqwest"]
@@ -97,6 +104,7 @@ forbidden_dependencies = [
   "tokio",
   "axum",
   "jsonschema",
+  "local-workspace-runtime",
   "outbox-delivery",
   "organization-server",
   "document-api-http",

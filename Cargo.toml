@@ -36,6 +36,7 @@ members = [
   "crates/document-storage-fs",
   "crates/document-repository-postgres",
   "crates/document-publication-scheduler",
+  "crates/local-workspace-runtime",
   "tools/architecture-lint",
   "tools/assurance",
 ]

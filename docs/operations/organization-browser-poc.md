@@ -2,6 +2,46 @@
 
 ## 対象ソースと確認状況
 
+固定ソースは[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)統合main `bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab` / tree `84b0b0d48d3dfdc8b0a5b66ec53f9cc070aa6420` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37570945202](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
+
+採用sourceは旧pin d515までの文書GUI/Folder操作/絞り込み/文書移動/正式改訂・比較の続き表示・両履歴/旧原本・履歴一覧入口/JST表示・PR94公開前WORKING内容比較を保持し、PR97の非root Folderアクセス設定GUIと、アクセス設定変更後の旧原本・比較結果の遅延保存/復活を抑止する関連guardを含む。これらは旧固定版d515には含まれない。現在開発中のDocument AccessTabのUNKNOWN固定要求・画面往復保持・関連read失効の回復補修は新pin bba1d6ddに未収録で、追加される操作説明は後続source向けである。exact run/job URL・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
+
+2026-10-07 04:38 UTCに証拠を整理し、mainの通常CI全13jobs/13checks成功・completed/successと終端後公開artifact0を確認した。[runtime job112629195726](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202/job/112629195726)のcheckout/Document/Organization/summary各step成功は直接観測した。runtime stdoutは元tool初回のTransport closedで未取得のため、head/clean/qualified・GUI/browser件数・provenance/再起動/cleanup receiptの印字値は未読のままである。固定mainのsourceが実build・全必須工程・Agent provenance・同じowned DB/storageでのHTTP再起動・owned cleanupを強制し、失敗時に非zeroとなることと今回成功stepを対応させ、既存必須gateを合格と評価した。PR97/旧pinの値やローカルGUI件数を今回hosted値へ移さない。
+
+Document22工程/選択18＋5、Agent9 groups、Organization8工程/選択2＋2は固定source構成と今回成功実行からの対応推論である。PR94は既存単一原本の公開Version2対WORKING Version3の内容差分、固定payload、状態不変、閉じた後の従来公開を確認するsourceに対応する。HTTP再起動後は同文書が公開済みでWORKINGと比較入口がないことだけを確認し、正のWORKING比較を実証したとはしない。従来の履歴一覧/旧原本/少数events等の個別assertionも同じ証拠境界を保つ。summaryはbrowser件数/skipped=0を直接検査しないため、no-skipの対応は固定選択source/configにskip/only/expected-failure/CLI narrowing経路がない範囲に限る。Organizationのowned-container-removedも今回は直接stdoutではない。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない。[新Rust実DB job112629195607](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202/job/112629195607)のmain bba1d6dd checkout、1849成功/10skip＋21成功/0skip＋7成功/1skip、DB36/Folder4の各1本PASSは正式ログで直接確認した。
+
+旧d515→bba1d6ddの新しいGit show/object bytes照合で、既存CLI/env/identity/bootstrap、Document/Workのmigration/台帳、Cargo manifest/lock/deny、Rust/Node/pnpm設定/lock、生成SDK/schema、PDFium scriptの17objectsは不変。sourceの業務schema不変を対象既存DBの更新安全性の実証とはしない。実行例は保持し、Linux手順のKP_SOURCE_SHAだけを更新する。
+
+PR97の追加範囲は、既存合成Sharedの2groupへの4GUI PUT（agent履歴権限off→復元→継承→個別設定）、exact subject/payload/operationId/revisionと正規GET、別requestによる既知成功receiptの再送、継承Documentへの効果、Root/HumanOnly/Document不変、後続Agent権限の復旧である。最終GETをprivate stateへ保存し、同owned DB/storageでのHTTP再起動後にGET/revisionとGUIを照合する。[固定journey source](https://github.com/AIrisu-072/knowledge-platform/blob/bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab/apps/document-web/e2e-runtime/document-runtime.spec.ts)と[固定persistence source](https://github.com/AIrisu-072/knowledge-platform/blob/bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab/apps/document-web/e2e-runtime/persistence.spec.ts)、今回Document成功stepの対応評価であり、個々のHTTP応答やassertion値の直接公開ログではない。実通信断・自己失権・親並行変更を新hostedで再現したとは扱わず、read-to-commitの原子的保証も追加しない。
+
+正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本・複数原本の公開前比較は実GUI未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
+
+資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identity/TLSの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91/93/94/97と過去mainのstdout未取得を後続成功だけで解消済みとしない。
+
+### 過去の受入記録
+
+#### 2026-10-07 02:50 UTC PR94統合mainの固定版
+
+以下の「固定版」「今回」「未収録」は当時のpinと非root Folderアクセス設定GUI開発時点を指す。
+
+固定ソースは[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)統合main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4` / tree `29f75ce9c8bc2c9d283a2ae9484529bcb8d6555d` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37562024089](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
+
+採用sourceは旧pin41bまでの文書GUI/Folder操作/絞り込み/文書移動/正式改訂・比較の続き表示・両履歴/旧原本・履歴一覧入口/JST表示を保持し、PR94の公開前WORKINGと現行公開版の内容比較を含む。この比較は旧固定版41bに未収録。現在開発中の非root Folderアクセス設定GUIは新pin d515にも未収録で、追加される操作説明は後続source向けである。exact run/job URL・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
+
+2026-10-07 02:50 UTCに証拠を整理し、mainの通常CI全13jobs/13checks成功・completed/successと終端後公開artifact0を確認した。[runtime job112601213962](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089/job/112601213962)のcheckout/Document/Organization/summary各step成功は直接観測した。runtime stdoutは元tool初回のTransport closedで未取得のため、head/clean/qualified・GUI/browser件数・provenance/再起動/cleanup receiptの印字値は未読のままである。固定mainのsourceが実build・全必須工程・Agent provenance・同じowned DB/storageでのHTTP再起動・owned cleanupを強制し、失敗時に非zeroとなることと今回成功stepを対応させ、既存必須gateを合格と評価した。PR94/旧pinの値やローカルGUI件数を今回hosted値へ移さない。
+
+Document22工程/選択18＋5、Agent9 groups、Organization8工程/選択2＋2は固定source構成と今回成功実行からの対応推論である。PR94は既存単一原本の公開Version2対WORKING Version3の内容差分、固定payload、状態不変、閉じた後の従来公開を確認するsourceに対応する。HTTP再起動後は同文書が公開済みでWORKINGと比較入口がないことだけを確認し、正のWORKING比較を実証したとはしない。従来の履歴一覧/旧原本/少数events等の個別assertionも同じ証拠境界を保つ。summaryはbrowser件数/skipped=0を直接検査しないため、no-skipの対応は固定選択source/configにskip/only/expected-failure/CLI narrowing経路がない範囲に限る。Organizationのowned-container-removedも今回は直接stdoutではない。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない。[新Rust実DB job112601213993](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089/job/112601213993)のmain d515 checkout、1849成功/10skip＋21成功/0skip＋7成功/1skip、DB36/Folder4の各1本PASSは正式ログで直接確認した。
+
+旧41b→d515の新しいGit show/object bytes照合で、既存CLI/env/identity/bootstrap、Document/Workのmigration/台帳、Cargo manifest/lock/deny、Rust/Node/pnpm設定/lock、生成SDK/schema、PDFium scriptの17objectsは不変。sourceの業務schema不変を対象既存DBの更新安全性の実証とはしない。実行例は保持し、Linux手順のKP_SOURCE_SHAだけを更新する。
+
+正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本・複数原本の公開前比較は実GUI未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
+
+資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identity/TLSの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91/93/94と過去mainのstdout未取得を後続成功だけで解消済みとしない。
+
+#### 2026-10-07 01:35 UTC PR93統合mainの固定版
+
+以下の「固定版」「今回」「未収録」は当時のpinと公開前WORKING比較GUI開発時点を指す。
+
 固定ソースは[PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)統合main `41b584ddea6c3c9ec90343f3ba98cfdac560bd24` / tree `591eb64a2d54912c2faf925b16ed70bb97265deb` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37553290752](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37553290752)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
 
 採用sourceは旧pin933dまでの文書GUI/Folder操作/絞り込み/文書移動/正式改訂・比較の続き表示・通常詳細のコンテンツ版/イベント履歴と旧原本を保持し、PR93の履歴一覧入口から公開終了/全版取下げ後の旧版・原本・イベントを読む操作と、共有履歴表示のJST指定修復を含む。この入口とJST修復は旧固定版933dに未収録。現在開発中の公開前WORKINGと現行公開版の内容比較GUIは新pin41bにも未収録で、追加される操作説明は後続source向けである。exact run/job URL・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
@@ -15,8 +55,6 @@ Document22工程/選択18＋5、Agent9 groups、Organization8工程/選択2＋2�
 正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本の実GUIは未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
 
 資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identityの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91 head81be7976のstdout未取得、PR93の過去失敗とstdout未取得を後続成功だけで解消済みとしない。
-
-### 過去の受入記録
 
 #### 2026-10-06 21:24 UTC PR91統合mainの固定版
 
@@ -91,7 +129,7 @@ Document GUIの追加はPR69初回登録、PR70取下げ・公開終了、PR71�
 
 ## 現在の範囲
 
-2名の起動時固定の模擬ユーザーを使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成、最終事務タスクの明示的な完了、担当中タスクの保留と再開を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
+起動時固定の模擬ユーザー（既存の2名、および後続sourceでは6名）を使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成、最終事務タスクの明示的な完了、担当中タスクの保留と再開を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
 
 これは認証システムではない。各loopbackポートへ接続できる利用者はその固定profileとして扱われる。顧客情報・秘密情報・production DBを使用しない。外部公開・production deploy・Tauri実行を含まない。
 
@@ -232,9 +270,60 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 
 実受入の状況は[保留/再開sliceの最新状況](../superpowers/execution/organization-hold-resume-slice-status.md)を参照する。以前の完了操作の成功を新機能の資格へ付け替えない。
 
+## 複数の担当者・役割・委任を使う
+
+この節は、組織単位・役割・正式割当・期限付き委任・担当変更を追加した後続source向けである（上の固定pinには未収録）。凍結済み設計への接続の具体化は[複数担当の実装追補](../superpowers/specs/2026-10-07-organization-multi-principal-amendment.md)、検証状況は[複数担当の状況](../superpowers/execution/organization-multi-principal-status.md)を参照する。
+
+### 6名の合成profile
+
+| profile | 既定port | 正式割当（役割@組織単位） |
+|---|---|---|
+| `sales-01` | 8090 | 営業@営業店 |
+| `office-01` | 8091 | 事務処理@事務 |
+| `review-01` | 8092 | 審査@融資審査 |
+| `approver-01` | 8093 | 承認@承認、業務管理@承認 |
+| `multi-role-01` | 8094 | 事務処理@事務、審査@融資審査（兼務） |
+| `delegate-01` | 8095 | なし（委任を受ける） |
+
+各profileは別processで起動する。利用者はprocess起動時の `KP_ORGANIZATION_PROFILE` だけで決まり、画面・header・query・本文で切り替えることはできない。「業務管理」は合成fixtureの管理担当であり、実組織の管理規則ではない。
+
+### 準備と起動
+
+1. 新しい使い捨てDBで `migrate`、`bootstrap-poc`（sales-01）を実行する。新しいDBでは追加4名にも共有入力文書の閲覧（Read/ReadHistory）だけを付与する
+2. 6profileを同じDB・storage・built GUIで起動する。portを変える場合は `KP_BIND` を指定する
+
+```sh
+for profile in sales-01 office-01 review-01 approver-01 multi-role-01 delegate-01; do
+  KP_ORGANIZATION_PROFILE="$profile" ./target/debug/organization-server serve &
+done
+```
+
+3. 「共有文書を用意する」の手順でDocument IDを用意し、`seed-work` を実行する。`seed-work` はWorkの業務fixtureと合成Organization policy（組織単位・役割・正式割当）を作る。既存の行は上書きしない
+
+既存DBの更新：migration 0007を適用した後、同じDocument IDで `seed-work` を再実行するとpolicyだけが追加される（既存の進捗は変えない）。以前の2名用 `bootstrap-poc` で初期化したDBはそのまま受け入れるが、追加4名には共有入力文書の閲覧権限がなく、文書の参照は「利用できない」と表示される。追加4名で文書も確認する場合は新しい使い捨てDBを使う。
+
+### 操作の流れ
+
+1. 画面上部のヘッダーに実際の利用者と「担当」（役割@組織単位）が表示される。兼務者は「表示する担当」で一覧の範囲を切り替えられる。切替は表示範囲だけを変え、権限は変えない。現在有効な担当がない利用者には「現在有効な担当はありません」と表示される
+2. 「担当・委任を確認」から担当と委任の画面を開く（主ナビゲーションには追加しない）
+3. 委任：自分の正式割当を選び、受任者・任せる操作・期限（日本時間、この時刻を含まない）・理由を入力して「委任の内容を確認」→「確定」。担当変更と担当・委任の管理は委任できない。再委任はできない。委任は本人だけが作成でき、委任者ごとに16件（取消・期限切れを含む）まで
+4. 委任の取消：「この委任を取り消す」→「確定」。受任者は次の閲覧・操作から、その委任で担当していたタスクの非公開内容を読めなくなる。期限を過ぎた場合も同じである
+5. 担当可能な（担当候補の）利用者の一覧には、工程名・状態・「担当を引き受ける」だけが表示される。引受けが確定するまで本文は表示しない。同じタスクを同時に引き受けた場合、確定するのは1名だけで、もう1名には競合が表示される
+6. 担当変更（approver-01）：タスク一覧で対象を選ぶと「担当の管理」に現在の担当者だけが表示される（非公開本文は表示しない）。「担当変更の内容を確認」で、工程の役割を持つ現在有効な割当・委任から新しい担当者を選び、理由を入力して「担当変更を確定」。同じ試行の保存済み文案は新しい担当者へ引き継がれ、元の担当者は以後読めない。管理担当は自分自身へ担当変更できない（自分が担当可能なら「担当を引き受ける」を使う）。差戻し後の試行を引き継いだ担当者は差戻指示と差戻し前の提出を読める
+7. 正式割当の追加・取消（approver-01）：「担当と委任」画面の「割当を追加」「この割当を取り消す」。自分自身への割当は追加できない。取消は過去の操作記録を書き換えない。取り消した割当で担当中のタスクは自動では解放されず、「担当の責任が終了」と表示されるので、担当変更で解消する。その割当を元にした委任も無効になる
+8. 結果が分からない操作は、画面の「同じ操作の結果を確認」で同じ操作IDの記録を照会する。記録がまだ無い場合だけ「同じ操作を再送」が表示される
+
+判定はすべてサーバーが行う。画面の表示・非表示、ボタンの有無、検索結果は許可ではない。時刻の判定はサーバーのUTC時刻で、期限ちょうどの時刻から無効になる。
+
+### 実行確認
+
+`mise run organization:poc:runtime` は、既存の2名の確認に続けて、別の新しいDBで6profileを起動する。実画面で割当の追加、担当変更（非公開文案の引継ぎと旧担当者の非開示）、提出、期限付き委任、2名の同時引受（1件だけ成立）、担当変更、委任と割当の取消、完了を行い、6processを再起動した後に記録・操作結果の回復と非開示を確認する。
+
 ## 未対応と検証限界
 
-- Tauri/実Windows/WebView2/native Workspace、ファイル添付、実LLM/外部model・MCP通信、検索の接続、role管理・委任は今回の最小slice外
+- Tauri/実Windows/WebView2/native Workspace、実LLM/外部model・MCP通信、検索の接続は今回の最小slice外。作業ファイルはブラウザーで選んだファイルの添付だけで、ローカルWorkspaceからの選択とDocumentへの昇格は未対応
+- 理由はUTF-8で1024バイト以内（改行・タブ以外の制御文字は不可）。開始日時は過去へ遡れない
+- 役割・割当・委任は合成fixtureの範囲。管理担当の範囲を組織単位で分けること、委任の最長期間、自動の担当解放、管理画面での役割定義の編集は扱わない
 - Work fixtureは2stepの1workflow。物理DBでは1aggregateをrow lockし、privateなschema-bound textを保存する。一般workflow designerや大規模運用を意味しない
 - AuditはWork transaction内のstagingまで。別Audit pipeline配送の資格取得は主張しない
 - 実PostgreSQLとbrowserの確認は、明示承認されたGitHub Actionsの使い捨て環境で行う。ローカルの既知DB/browser拒否を再試行しない。以前、純粋試験と誤認したDocument Node試験が合成loopback listenerを起動した事実は報告・終了確認済みで、実DB資格や追加実行許可を意味しない。純粋テスト/HTTP oneshot/型検査/buildの成功で実runtime合格としない
@@ -256,3 +345,96 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
 通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。現在pinのmain自身の資格は、冒頭の対象ソースと確認状況で確認し、過去の公開製品headの資格とは分ける。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+
+## 複数の文脈（案件）・注意・表示Profileを使う
+
+この節は、複数の合成WorkContext（案件・依頼）、注意（Attention）、営業型／事務型の表示Profileを追加した後続source向けである。設計の具体化は[文脈・注意・Profileの実装追補](../superpowers/specs/2026-10-07-organization-work-context-attention-amendment.md)、検証状況は[文脈・注意・Profileの状況](../superpowers/execution/organization-work-context-status.md)を参照する。
+
+### 追加の合成文脈を用意する
+
+既存の `seed-work` は従来どおり1件の文脈（合成案件A）だけを作る。追加の2件は明示コマンドで作る（既存の進捗・行は上書きしない。再実行しても増えない）。
+
+```sh
+KP_ORGANIZATION_PROFILE=sales-01 KP_ORGANIZATION_DOCUMENT_ID="$document_id" \
+  ./target/debug/organization-server seed-contexts
+```
+
+| 文脈 | 種類 | 工程 | 初期状態 |
+|---|---|---|---|
+| 合成案件B・運転資金相談 | 案件 | 営業内容整理 → 審査内容確認 | 営業工程が担当待ち、期限はseedの6時間後（期限間近） |
+| 合成依頼C・住所変更届 | 依頼 | 営業内容整理 → 事務内容確認 | 営業工程が担当待ち、期限はseedの1時間前（期限超過） |
+
+既存DBへ追加する場合は、migration 0008を適用してから `seed-contexts` を実行する。表示名・期限は合成fixtureであり、実際の顧客・業務規則ではない。
+
+### 表示Profile
+
+- URLに表示の指定が無い場合、現在の担当（ヘッダーの「表示する担当」）の表示Profileで開く。営業店の担当は「営業・文脈」、事務・承認は「事務・キュー」、審査は「審査・キュー」（最初に「根拠」を開く）
+- 「営業型・文脈」「事務型・キュー」の切替は同じタスクの別の表示であり、権限は変わらない
+
+### 操作の流れ
+
+1. 営業型：左の一覧に、閲覧できる文脈（表示名・種類・注意の件数）と、その文脈のタスクが並ぶ。文脈を選ぶと、工程ごとの進捗（状態・試行・期限・担当の有無）、自分の次の作業、文脈の履歴（状態の推移と時刻だけ）を表示する。担当者の名前・理由・本文は表示しない
+2. 事務型：左の一覧で業務の種類（例：事務内容確認・審査内容確認）を選び、「自分の担当」「引受可能」「管理対象のタスク」に分けて表示する。引受可能なだけの行には、顧客名に当たる文脈の表示名を表示しない
+3. 注意：「新しい割当」（管理担当が自分に割り当てた）、「差戻し」、「期限間近」（期限の24時間前から）、「期限超過」を文字で表示する。「新しい割当」はタスクを開いて「確認済みにする」で消える。確認済みにしても作業は完了しない
+4. 文脈の表示名は、営業店の文脈閲覧の役割を持つ担当と、その文脈のタスクの現在の担当者だけに表示される。管理担当や引受可能なだけの利用者には表示しない
+
+### 実行確認
+
+`mise run organization:poc:runtime` は6名の確認の後、同じDBに `seed-contexts` を2回実行し（2回目は追加なし）、実画面で文脈の選択と概要、期限超過の依頼の引受・提出、管理担当による割当と「新しい割当」の確認済み、案件Bの審査（審査Profile）と差戻し、非開示を確認する。6processを再起動した後に、確認済み・差戻しの注意・文脈と操作結果の回復を確認する。
+
+## 作業ファイルを添付して提出し、差戻し後にやり直す
+
+この節は、作業ファイル・共有の作業領域・提出時の固定・差戻し後の取込みを追加した後続source向けである。設計の具体化は[作業ファイル・Handoffの実装追補](../superpowers/specs/2026-10-07-organization-work-files-handoff-amendment.md)、検証状況は[作業ファイルの状況](../superpowers/execution/organization-work-files-status.md)を参照する。
+
+### 保存先と準備
+
+- 作業ファイルの内容は、Organization serverの保存root（`KP_STORAGE_ROOT`）の下の `work-artifacts/` に保存する。Documentの保存（`staging/`・`objects/`）とは別の領域で、静的には配信しない。6processは同じ保存rootを共有する
+- 既存DBへ追加する場合は、migration 0009（記録の種類の追加だけ）を適用する。新しい設定値は無い
+- 保存領域を消すと提出済みのファイルも取得できなくなる（「利用できません」と表示し、空や成功として扱わない）。削除・保持期間の方針は未決定で、PoCでは削除しない
+
+### 操作の流れ
+
+1. 担当中のタスクの「作業ファイル」で「作業ファイルを追加」からファイルを選ぶ。1ファイル8MiBまで、空のファイルや名前に使えない文字を含むファイルは送らない。端末上の場所（パス）は送信しない
+2. 選んだファイルは記録を作った後に内容を保存する。保存できなかった場合は「内容未登録」と表示し、「内容を登録」で選び直すか「外す」。内容未登録のファイルがある間は提出できない
+3. 提出までは、そのタスクの現在の担当者だけが「ファイルを取得」できる。次の工程の担当、引受可能なだけの利用者、管理担当、担当変更後の元の担当者は取得できない
+4. 「提出内容を確認」で文案とファイルの一覧を確認して提出する。serverが保存領域で大きさ・SHA-256を確認できたファイルだけを固定する。確認できない場合は提出しない
+5. 受領した担当は「受領したスナップショット」の「ファイルを取得」で添付として保存する。画面には内容を表示しない
+6. 差戻しで新しい試行が作られた場合は、担当を引き受けた後に「差戻し後の作業」の「前回の提出内容を取り込む」を押すと、前回の文案とファイルを新しい非公開の作業として取り込める（自動では取り込まない）。前回の提出は変わらず、ファイルは同じ保存内容を参照する。文案の修正・ファイルの追加や外しをして再提出する
+
+### 実行確認
+
+`mise run organization:poc:runtime` は文脈の確認の後、同じDBで、差戻された案件Bを営業担当が引き受けて前回の提出を取り込み、文案を追記し、作業ファイルを添付して保存する。提出前に審査・事務・管理担当が既知のIDで取得できないことを確認して提出し、審査担当が受領ファイルを取得してbytesとSHA-256を照合し、前回の提出が変わっていないことを確認して完了する。6processを再起動した後、提出したファイル・前回の提出・操作結果の回復と非開示を確認する。
+
+## Agent Chatで構造化結果を確認し、提案から通常の操作へ進む
+
+この節は、AgentExecutionの構造化結果（下書き候補・型付きの提案・根拠ごとの利用結果）とAgent Chatを追加した後続source向けである。設計の具体化は[Agent Chatの実装追補](../superpowers/specs/2026-10-07-organization-agent-chat-amendment.md)、検証状況は[Agent Chatの状況](../superpowers/execution/organization-agent-chat-status.md)を参照する。
+
+### 準備
+
+- 新しい設定値・migrationは無い。Agentは従来どおり固定規則の模擬処理（`organization-synthetic/agent-01`）で、原本本文を分析せず、実LLM・MCP通信は使わない
+- Agentの依頼には、そのタスクで登録済みの根拠（人間が登録した参照）が1件以上必要
+
+### 操作の流れ
+
+1. 担当中のタスクで文脈モジュールの「Agent」を開く（営業型・事務型のどちらでも同じ）。「Agent Chat」に、このタスクの現在の試行で自分が依頼した実行が時系列に並ぶ。最新の1件を展開し、他は「依頼 n を表示」で開く
+2. 依頼目的を書き、根拠を選んで「合成Agentに依頼」を押す。受付後、実行状態を確認する。成功すると次を表示する
+   - 要約・不確実な点・根拠ごとの利用結果（模擬処理は「参照情報だけを使用」）。一部の根拠を利用できなかった結果は、その旨を明示し、全体を確認したものとしては扱わない
+   - 候補（Finding）：「候補を根拠モジュールで確認」で既存の根拠・判断モジュールへ
+   - 下書き候補：Agentの非公開の下書き。作業成果物ではなく、提出の対象にならない
+   - 提案：実行はされない。「提案を開く」は現在の権限で読み直してから通常の画面を開くだけ
+3. 下書き候補の「作業文案に入れる」（または提案「下書き候補を作業文案に使う」）は、候補を読み直して作業中の文案へ入れるだけで、保存はしない。内容を確認・編集して「文案を保存」で保存する。保存していない文案の変更がある間、文案を編集できない工程、文案が複数ある場合は入れられない
+4. 提案「候補 … を確認し、人間判断を記録する」は根拠・判断モジュールを開く。人間判断は既存の操作で記録する（Agentは記録しない）
+5. 依頼目的・結果・下書き候補・提案は、依頼した本人の同じ担当・同じ試行でだけ表示される。担当変更・差戻しで新しい試行になると、以前の記録は新しい試行のChatに出ない。入力中の依頼はこの画面の中だけで保持し、利用者・担当・タスクが変わると消える
+
+### 実行確認
+
+`mise run organization:poc:runtime` は作業ファイルの確認の後、同じDBで、事務担当が文脈Cのタスクで根拠を登録してAgentに依頼し、構造化結果・下書き候補（この工程では作業文案に入れられないこと）・提案を確認する。他の5名が既知のIDで下書き候補・提案を取得できないことを確認し、提案から根拠・判断モジュールを開いて人間判断を記録してから営業へ差し戻す。営業担当は差戻し後の試行を引き受け、根拠を登録してAgentに依頼し、下書き候補を作業中の文案に入れて（その時点では何も保存されないことを確認）、追記して保存する。続けて2回目の依頼を行い、時系列に並ぶことを確認する。6processを再起動した後、結果・下書き候補・提案・保存した文案と非開示を確認し、Chatの入力欄が空であることを確認する。
+
+### 実Agent/MCPへの接続（依頼者向け、本PoCでは実施しない）
+
+1. 依頼者がモデル・provider・資格情報の管理方式・実行環境を選定し、Domain設計§9の識別・認可の義務を満たす仕様として承認する
+2. 下書き候補・提案の本文はWorkの記録として残るため、根拠のprovider方針（NO_RETENTION・複製禁止）に反する内容を書かないことの確認方法と保持期間を決める
+3. `work-application` の `AgentExecutorPort` を実装するadapterを作る。入力はWorkが組み立てた認可済みの実行文脈だけで、読取り専用。要求者の現在の権限とprovider principalの権限の両方を毎回確認できないproviderは使わない。既存Document MCP（provider `poc`・principal `poc-agent` の起動時確認）は変更しない
+4. Domainの固定の許可一覧（executorの識別・provider binding・模擬処理の表示）へ新しいexecutorを加える変更を、独立reviewと受入を経て行う
+5. `organization-server` の起動処理で合成executorの代わりに渡す。合成executorは試験用に残す
+6. 本番接続・実データの使用・サーバーへの反映は、この手順の承認後に別途行う

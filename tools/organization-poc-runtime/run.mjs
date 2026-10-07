@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { Blocked, EvidenceReport, binaryDirectory, command, freePort, postgresArguments, startProcess, stopProcess, waitReady } from '../document-poc-runtime/harness.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from '../document-poc-runtime/postgres-readiness.mjs';
-import { organizationEnvironment } from './settings.mjs';
+import { ORGANIZATION_PROFILES, organizationEnvironment } from './settings.mjs';
 import { readBrowserFailureDiagnostics } from './browser-diagnostics.mjs';
 
 if (process.argv.length !== 2) throw Error('Organization runtime accepts no alternate or prebuilt mode');
@@ -19,12 +19,16 @@ const base = join(root, 'tools/organization-poc-runtime/.state');
 await mkdir(base, { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join(base, 'run-'));
 const runId = randomUUID();
-const report = new EvidenceReport(directory, ['build', 'database', 'transaction', 'initialize', 'journey', 'restart', 'persistence', 'shutdown']);
-report.data.scope = 'Synthetic Organization Browser PoC: actual PostgreSQL transaction and two-principal browser journey';
+const report = new EvidenceReport(directory, ['build', 'database', 'transaction', 'initialize', 'journey', 'restart', 'persistence', 'shutdown',
+  'policy-initialize', 'policy-journey', 'policy-restart', 'policy-persistence',
+  'context-seed', 'context-journey', 'context-restart', 'context-persistence',
+  'files-journey', 'files-restart', 'files-persistence',
+  'agent-chat-journey', 'agent-chat-restart', 'agent-chat-persistence', 'policy-shutdown']);
+report.data.scope = 'Synthetic Organization Browser PoC: actual PostgreSQL transaction, two-principal browser journey and a separate fresh-database six-principal policy journey';
 report.data.runId = runId;
 const processes = [];
-let cid, database, testDatabase, password, failed = false, interrupted = false;
-const options = (name, env = process.env) => ({ cwd: root, env, log: join(directory, `${name}.log`), secrets: [database, testDatabase, password] });
+let cid, binding, database, testDatabase, policyDatabase, password, failed = false, interrupted = false;
+const options = (name, env = process.env) => ({ cwd: root, env, log: join(directory, `${name}.log`), secrets: [database, testDatabase, policyDatabase, password] });
 const run = (name, exe, args, env, timeoutMs) => command(exe, args, { ...options(name, env), ...(timeoutMs ? { timeoutMs } : {}) });
 const signal = () => { interrupted = true; for (const owned of processes) if (owned.child.exitCode === null) owned.child.kill('SIGTERM'); };
 process.on('SIGTERM', signal); process.on('SIGINT', signal);
@@ -50,10 +54,12 @@ try {
   await report.stage('database', async () => {
     password = randomBytes(24).toString('hex');
     const cidfile = join(directory, 'postgres.cid');
-    try { await run('postgres-start', 'docker', postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }); }
+    // Six principal processes each hold two lazily opened pools (Document and Work, up to 12
+    // connections each); raise the owned container's limit above that worst case.
+    try { await run('postgres-start', 'docker', [...postgresArguments(runId, cidfile), '-c', 'max_connections=200'], { ...process.env, POSTGRES_PASSWORD: password }); }
     finally { try { cid = (await readFile(cidfile, 'utf8')).trim(); } catch { /* No owned container was created. */ } }
     assert.match(cid ?? '', /^[a-f0-9]{64}$/);
-    const binding = await run('postgres-port', 'docker', ['port', cid, '5432/tcp']);
+    binding = await run('postgres-port', 'docker', ['port', cid, '5432/tcp']);
     assert.match(binding, /^127\.0\.0\.1:\d+$/);
     database = `postgres://postgres:${password}@${binding}/kp_document_poc`;
     testDatabase = `postgres://postgres:${password}@${binding}/organization_work_poc_test`;
@@ -78,6 +84,25 @@ try {
     await waitReady(profile === 'sales-01' ? sales : office, owned.child);
     return owned;
   }
+  // Create and publish the synthetic shared input through the existing Document API only.
+  async function publishSharedDocument(origin) {
+    const form = new FormData();
+    form.append('request', new Blob([JSON.stringify({ folderId: '00000000-0000-7000-8000-000000000001', title: 'PoC共有参照資料', documentMetadata: {}, versionMetadata: {} })], { type: 'application/json' }));
+    form.append('file', new Blob(['【合成データ】2名の提出確認に使う共有資料です。\n'], { type: 'text/plain' }), 'organization-reference.txt');
+    const createdResponse = await fetch(`${origin}/v1/documents`, { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) });
+    assert.equal(createdResponse.status, 201, 'Synthetic Document create must succeed; do not retry unknown outcomes');
+    const created = await createdResponse.json(); const createdId = created.documentId;
+    assert.match(createdId, /^[0-9a-f-]{36}$/);
+    const detailResponse = await fetch(`${origin}/v1/documents/${createdId}?view=authoring`, { signal: AbortSignal.timeout(15_000) });
+    assert.equal(detailResponse.status, 200);
+    const detail = await detailResponse.json();
+    const bytes = randomBytes(16); bytes.writeUIntBE(Date.now(), 0, 6); bytes[6] = (bytes[6] & 15) | 0x70; bytes[8] = (bytes[8] & 63) | 0x80;
+    const hex = bytes.toString('hex'); const operationId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    const published = await fetch(`${origin}/v1/documents/${createdId}/versions/${created.documentVersionId}:publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId, expectedRevision: detail.revision }), signal: AbortSignal.timeout(60_000) });
+    assert.equal(published.status, 200, 'Synthetic Document publication must succeed');
+    await published.arrayBuffer();
+    return createdId;
+  }
   let salesProcess, officeProcess, documentId;
   await report.stage('initialize', async () => {
     await run('migrate', binary, ['migrate'], env('sales-01'));
@@ -85,21 +110,7 @@ try {
     await run('bootstrap-replay', binary, ['bootstrap-poc'], env('sales-01'));
     salesProcess = await start('sales-01', 1);
     officeProcess = await start('office-01', 1);
-    const form = new FormData();
-    form.append('request', new Blob([JSON.stringify({ folderId: '00000000-0000-7000-8000-000000000001', title: 'PoC共有参照資料', documentMetadata: {}, versionMetadata: {} })], { type: 'application/json' }));
-    form.append('file', new Blob(['【合成データ】2名の提出確認に使う共有資料です。\n'], { type: 'text/plain' }), 'organization-reference.txt');
-    const createdResponse = await fetch(`${sales}/v1/documents`, { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) });
-    assert.equal(createdResponse.status, 201, 'Synthetic Document create must succeed; do not retry unknown outcomes');
-    const created = await createdResponse.json(); documentId = created.documentId;
-    assert.match(documentId, /^[0-9a-f-]{36}$/);
-    const detailResponse = await fetch(`${sales}/v1/documents/${documentId}?view=authoring`, { signal: AbortSignal.timeout(15_000) });
-    assert.equal(detailResponse.status, 200);
-    const detail = await detailResponse.json();
-    const bytes = randomBytes(16); bytes.writeUIntBE(Date.now(), 0, 6); bytes[6] = (bytes[6] & 15) | 0x70; bytes[8] = (bytes[8] & 63) | 0x80;
-    const hex = bytes.toString('hex'); const operationId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-    const published = await fetch(`${sales}/v1/documents/${documentId}/versions/${created.documentVersionId}:publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId, expectedRevision: detail.revision }), signal: AbortSignal.timeout(60_000) });
-    assert.equal(published.status, 200, 'Synthetic Document publication must succeed');
-    await published.arrayBuffer();
+    documentId = await publishSharedDocument(sales);
     await run('seed-work', binary, ['seed-work'], { ...env('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: documentId });
     await run('seed-replay', binary, ['seed-work'], { ...env('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: documentId });
   });
@@ -107,9 +118,9 @@ try {
   await writeFile(contextPath, JSON.stringify({ sales, office, documentId, statePath: join(directory, 'state.json') }), { mode: 0o600 });
   const require = createRequire(join(root, 'apps/document-web/package.json'));
   await access(require('@playwright/test').chromium.executablePath(), constants.X_OK);
-  async function browser(phase) {
+  async function browser(phase, runtimeContext = contextPath) {
     try {
-      await run(`browser-${phase}`, 'pnpm', ['--filter', '@knowledge-platform/document-web', 'exec', 'playwright', 'test', '--config', 'playwright.organization.config.ts'], { ...process.env, KP_ORGANIZATION_RUNTIME_CONTEXT: contextPath, KP_ORGANIZATION_RUNTIME_PHASE: phase, KP_ORGANIZATION_BROWSER_OUTPUT: join(directory, `browser-${phase}`), PLAYWRIGHT_JSON_OUTPUT_FILE: join(directory, `browser-${phase}`, 'results.json') });
+      await run(`browser-${phase}`, 'pnpm', ['--filter', '@knowledge-platform/document-web', 'exec', 'playwright', 'test', '--config', 'playwright.organization.config.ts'], { ...process.env, KP_ORGANIZATION_RUNTIME_CONTEXT: runtimeContext, KP_ORGANIZATION_RUNTIME_PHASE: phase, KP_ORGANIZATION_BROWSER_OUTPUT: join(directory, `browser-${phase}`), PLAYWRIGHT_JSON_OUTPUT_FILE: join(directory, `browser-${phase}`, 'results.json') });
     } catch (error) {
       console.error(`Organization browser failure: ${JSON.stringify(await readBrowserFailureDiagnostics(directory, phase))}`);
       throw error;
@@ -122,6 +133,67 @@ try {
   });
   await report.stage('persistence', () => browser('persistence'));
   await report.stage('shutdown', async () => { await stopProcess(salesProcess); await stopProcess(officeProcess); });
+
+  // Six fixed-profile processes on a separate fresh database, so the accepted
+  // two-principal journey above stays unchanged. Identity is per process only.
+  const roles = { 'sales-01': 'sales', 'office-01': 'office', 'review-01': 'review', 'approver-01': 'approver', 'multi-role-01': 'multiRole', 'delegate-01': 'delegate' };
+  const policyPorts = {}, policyProcesses = {};
+  const policyStorage = join(directory, 'policy-storage');
+  const policyContextPath = join(directory, 'policy-context.json');
+  const policyOrigin = profile => `http://127.0.0.1:${policyPorts[profile]}`;
+  const policyEnv = profile => organizationEnvironment({ inherited: process.env, database: policyDatabase, profile, port: policyPorts[profile], storage: policyStorage, dsi, diff, web, pdfium });
+  async function startPolicy(generation) {
+    if (interrupted) throw Error('Runtime interrupted');
+    await Promise.all(ORGANIZATION_PROFILES.map(async profile => {
+      const owned = startProcess(binary, ['serve'], options(`policy-${profile}-${generation}`, policyEnv(profile)));
+      processes.push(owned); policyProcesses[profile] = owned;
+      await waitReady(policyOrigin(profile), owned.child);
+    }));
+  }
+  const stopPolicy = () => Promise.all(ORGANIZATION_PROFILES.map(profile => stopProcess(policyProcesses[profile])));
+  let policyDocumentId;
+  await report.stage('policy-initialize', async () => {
+    const create = postgresVersionArgs(cid);
+    create[create.length - 1] = 'CREATE DATABASE kp_organization_policy_poc';
+    await run('create-policy-database', 'docker', create, { ...process.env, PGPASSWORD: password }, 10_000);
+    policyDatabase = `postgres://postgres:${password}@${binding}/kp_organization_policy_poc`;
+    await mkdir(policyStorage, { mode: 0o700 });
+    const used = new Set([salesPort, officePort]);
+    for (const profile of ORGANIZATION_PROFILES) {
+      let port = await freePort(); while (used.has(port)) port = await freePort();
+      used.add(port); policyPorts[profile] = port;
+    }
+    await run('policy-migrate', binary, ['migrate'], policyEnv('sales-01'));
+    await run('policy-bootstrap', binary, ['bootstrap-poc'], policyEnv('sales-01'));
+    await startPolicy(1);
+    policyDocumentId = await publishSharedDocument(policyOrigin('sales-01'));
+    await run('policy-seed', binary, ['seed-work'], { ...policyEnv('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: policyDocumentId });
+    const origins = Object.fromEntries(ORGANIZATION_PROFILES.map(profile => [roles[profile], policyOrigin(profile)]));
+    await writeFile(policyContextPath, JSON.stringify({ ...origins, documentId: policyDocumentId, statePath: join(directory, 'policy-state.json'), contextStatePath: join(directory, 'context-state.json') }), { mode: 0o600 });
+    report.data.policy = { profiles: ORGANIZATION_PROFILES.length, database: 'separate-fresh-owned' };
+  });
+  await report.stage('policy-journey', () => browser('policy-journey', policyContextPath));
+  await report.stage('policy-restart', async () => { await stopPolicy(); await startPolicy(2); });
+  await report.stage('policy-persistence', () => browser('policy-persistence', policyContextPath));
+  // Additional synthetic WorkContexts through the explicit command on the same (now
+  // existing) database: the upgrade path, never a reset of earlier progress.
+  await report.stage('context-seed', async () => {
+    await run('context-seed', binary, ['seed-contexts'], { ...policyEnv('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: policyDocumentId });
+    await run('context-seed-replay', binary, ['seed-contexts'], { ...policyEnv('sales-01'), KP_ORGANIZATION_DOCUMENT_ID: policyDocumentId });
+    report.data.contexts = { seeded: 'explicit-command', replay: 'idempotent' };
+  });
+  await report.stage('context-journey', () => browser('context-journey', policyContextPath));
+  await report.stage('context-restart', async () => { await stopPolicy(); await startPolicy(3); });
+  await report.stage('context-persistence', () => browser('context-persistence', policyContextPath));
+  // Private work files in the Work-owned store, handoff and rework on the same DB.
+  await report.stage('files-journey', () => browser('files-journey', policyContextPath));
+  await report.stage('files-restart', async () => { await stopPolicy(); await startPolicy(4); });
+  await report.stage('files-persistence', () => browser('files-persistence', policyContextPath));
+  // Structured Agent results and the Agent Chat over business records, same DB.
+  await report.stage('agent-chat-journey', () => browser('agent-chat-journey', policyContextPath));
+  await report.stage('agent-chat-restart', async () => { await stopPolicy(); await startPolicy(5); });
+  await report.stage('agent-chat-persistence', () => browser('agent-chat-persistence', policyContextPath));
+  await report.stage('policy-shutdown', stopPolicy);
 } catch (error) {
   failed = true;
   if (report.data.status === 'running') report.data.status = error instanceof Blocked ? 'blocked' : 'failed';

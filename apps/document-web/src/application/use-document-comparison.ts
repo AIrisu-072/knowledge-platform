@@ -87,7 +87,22 @@ export function useDocumentComparison(documentId: string, baseRevisionId: string
     void client.cancelQueries({ queryKey, exact: true }, { revert: false });
     void client.resetQueries({ queryKey, exact: true });
   }
-  return { comparison, busy, initialLoading: query.isPending, adding: query.isFetchingNextPage,
+  function readableNow() {
+    const current = client.getQueryState(queryKey);
+    return Boolean(readable && comparison && current && current.data === query.data && !current.isInvalidated
+      && current.fetchStatus === 'idle' && (!current.error || continuationError && current.error === query.error));
+  }
+  function watchReadLoss(onLoss: () => void) {
+    const snapshot = client.getQueryState(queryKey);
+    if (!readableNow() || !snapshot) { onLoss(); return () => undefined; }
+    const queryHash = hashKey(queryKey);
+    // Pin the exact read that authorized a download. A later equal refetch cannot revive it.
+    return client.getQueryCache().subscribe(event => {
+      if (event.query.queryHash === queryHash && (event.type === 'removed'
+        || event.type === 'updated' && event.query.state !== snapshot)) onLoss();
+    });
+  }
+  return { comparison, readableNow, watchReadLoss, busy, initialLoading: query.isPending, adding: query.isFetchingNextPage,
     error: query.error, continuationError, canContinue, loadMore, restart };
 }
 

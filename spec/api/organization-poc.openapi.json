@@ -3,7 +3,7 @@
   "info": {
     "title": "Organization Browser PoC API",
     "version": "0.1.0",
-    "description": "凍結済みOrganization APIの最小実装subset。起動時固定synthetic identity専用。production認証ではない。"
+    "description": "凍結済みOrganization APIの実装subset。起動時固定synthetic identity専用（6 profile）。production認証ではない。"
   },
   "paths": {
     "/v1/organization/session": {
@@ -108,6 +108,33 @@
             "description": "この固定2step PoCはcursor非対応。指定するとCURSOR_STALE。",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actingAssignmentId",
+            "description": "表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contextId",
+            "description": "同じ認可済みprojectionを文脈で絞る表示用filter。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workTypeId",
+            "description": "同じ認可済みprojectionをWorkTypeで絞る表示用filter。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ]
@@ -261,11 +288,19 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DraftCommand"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DraftCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FileArtifactCommand"
+                  }
+                ]
               }
             }
           }
-        }
+        },
+        "description": "文案（value）またはファイル成果物（file）を現在の試行の非公開成果物として作成する。両方の指定は不可。"
       }
     },
     "/v1/organization/working-artifacts/{id}": {
@@ -1442,6 +1477,1152 @@
           }
         }
       }
+    },
+    "/v1/organization/units": {
+      "get": {
+        "operationId": "listOrganizationalUnits",
+        "summary": "listOrganizationalUnits",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/roles": {
+      "get": {
+        "operationId": "listBusinessRoles",
+        "summary": "listBusinessRoles",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/role-assignments": {
+      "get": {
+        "operationId": "listRoleAssignments",
+        "summary": "listRoleAssignments",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAssignmentPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRoleAssignment",
+        "summary": "createRoleAssignment",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleAssignmentCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/role-assignments/{id}/revoke": {
+      "post": {
+        "operationId": "revokeRoleAssignment",
+        "summary": "revokeRoleAssignment",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokePolicyRecordCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/delegations": {
+      "get": {
+        "operationId": "listDelegations",
+        "summary": "listDelegations",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelegationPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createDelegation",
+        "summary": "createDelegation",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DelegationCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/delegations/{id}/revoke": {
+      "post": {
+        "operationId": "revokeDelegation",
+        "summary": "revokeDelegation",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokePolicyRecordCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/tasks/{id}/assignment": {
+      "post": {
+        "operationId": "assignWorkItem",
+        "summary": "assignWorkItem",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/work-view-profiles": {
+      "get": {
+        "operationId": "listWorkViewProfiles",
+        "summary": "listWorkViewProfiles",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkViewProfilePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/work-contexts": {
+      "get": {
+        "operationId": "listWorkContexts",
+        "summary": "listWorkContexts",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkContextPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actingAssignmentId",
+            "description": "表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/work-contexts/{id}": {
+      "get": {
+        "operationId": "getWorkContext",
+        "summary": "getWorkContext",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkContext"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/work-contexts/{id}/history": {
+      "get": {
+        "operationId": "getWorkflowHistory",
+        "summary": "getWorkflowHistory",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkContextHistory"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/attention": {
+      "get": {
+        "operationId": "getWorkAttention",
+        "summary": "getWorkAttention",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAttention"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/attention-seen": {
+      "post": {
+        "operationId": "markWorkAttentionSeen",
+        "summary": "markWorkAttentionSeen",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAttention"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttentionSeenCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/working-artifacts/{id}/content": {
+      "put": {
+        "operationId": "writeWorkingArtifactContent",
+        "summary": "writeWorkingArtifactContent",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-operation-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "操作ID（UUIDv7）。新しい世代のIDになる"
+          },
+          {
+            "in": "header",
+            "name": "x-expected-revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "タスクのrevision"
+          },
+          {
+            "in": "header",
+            "name": "x-acting-assignment-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "実行する責任"
+          },
+          {
+            "in": "header",
+            "name": "x-expected-artifact-revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "成果物のrevision"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 8388608
+              }
+            }
+          }
+        },
+        "description": "1 byte以上8 MiB以下。認可（現在の試行の担当者）を確認してから保存し、serverが計算した大きさとSHA-256でcommandを確定する。同じ操作IDで異なる内容はOPERATION_CONFLICT"
+      },
+      "get": {
+        "operationId": "readWorkingArtifactContent",
+        "summary": "readWorkingArtifactContent",
+        "responses": {
+          "200": {
+            "description": "Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/working-artifacts/{id}/discard": {
+      "post": {
+        "operationId": "discardWorkingArtifact",
+        "summary": "discardWorkingArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscardArtifactCommand"
+              }
+            }
+          }
+        },
+        "description": "提出前の現在の試行の成果物を記録から外す。保存済みの内容は削除しない"
+      }
+    },
+    "/v1/organization/tasks/{id}/working-artifacts/import": {
+      "post": {
+        "operationId": "importSubmission",
+        "summary": "importSubmission",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSubmissionCommand"
+              }
+            }
+          }
+        },
+        "description": "差戻しで作られた試行が参照する前回の提出を、新しい非公開成果物として明示的に取り込む。前回の提出は変更しない"
+      }
+    },
+    "/v1/organization/handoff-snapshots/{id}/artifacts/{artifactId}/content": {
+      "get": {
+        "operationId": "readHandoffSnapshotContent",
+        "summary": "readHandoffSnapshotContent",
+        "responses": {
+          "200": {
+            "description": "Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "maxLength": 8388608
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifactId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "description": "getHandoffSnapshotと同じ規則で読める利用者だけ。固定した世代を保存領域で照合してから返す。一致しない・欠落はWORK_ARTIFACT_UNAVAILABLE"
+      }
+    },
+    "/v1/organization/generated-artifacts/{id}": {
+      "get": {
+        "operationId": "getGeneratedArtifact",
+        "summary": "getGeneratedArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の権限で読んだ非公開の下書き候補（実行の依頼者本人・同じ担当・同じ試行だけ）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedArtifact"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/suggested-actions/{id}": {
+      "get": {
+        "operationId": "getSuggestedAction",
+        "summary": "getSuggestedAction",
+        "responses": {
+          "200": {
+            "description": "現在の権限で読んだ型付き提案（実行の依頼者本人・同じ担当・同じ試行だけ）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedAction"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1471,8 +2652,12 @@
             "type": "string"
           },
           "actingAssignmentId": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "既定の実行担当。現在有効な責任がなければnull。"
           },
           "capabilities": {
             "type": "object",
@@ -1501,13 +2686,43 @@
               "fileUpload",
               "return"
             ]
+          },
+          "responsibilities": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Responsibility"
+                },
+                "maxItems": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "nullはpolicyを現在評価できないことを示す（空の許可ではない）。"
+          },
+          "canManageOrganization": {
+            "type": "boolean"
+          },
+          "policyRevision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "description": "担当・委任操作のexpectedRevision。policyを評価できない場合null。"
           }
         },
         "required": [
           "principalId",
           "displayName",
           "actingAssignmentId",
-          "capabilities"
+          "capabilities",
+          "responsibilities",
+          "canManageOrganization",
+          "policyRevision"
         ]
       },
       "TaskSummary": {
@@ -1519,8 +2734,12 @@
             "format": "uuid"
           },
           "contextId": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。"
           },
           "attemptId": {
             "type": "string",
@@ -1639,6 +2858,61 @@
                 "type": "null"
               }
             ]
+          },
+          "requiredRoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "claimAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "canAssign": {
+            "type": "boolean"
+          },
+          "assignment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskAssignmentView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeLabel": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "attention": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attention"
+            },
+            "maxItems": 4
+          },
+          "contextTitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。"
           }
         },
         "required": [
@@ -1666,7 +2940,16 @@
           "canHold",
           "holdActionId",
           "canResume",
-          "resumeActionId"
+          "resumeActionId",
+          "requiredRoleId",
+          "claimAssignmentId",
+          "canAssign",
+          "assignment",
+          "workTypeId",
+          "workTypeLabel",
+          "dueAt",
+          "attention",
+          "contextTitle"
         ]
       },
       "WorkingArtifact": {
@@ -1691,8 +2974,11 @@
             "minimum": 0
           },
           "schemaId": {
-            "const": "organization.text-draft.v1",
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "organization.text-draft.v1",
+              "organization.work-file.v1"
+            ]
           },
           "value": {
             "$ref": "#/components/schemas/TextValue"
@@ -1700,6 +2986,12 @@
           "visibility": {
             "const": "work_item_private",
             "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/WorkFile"
+          },
+          "derivedFrom": {
+            "$ref": "#/components/schemas/DerivedFrom"
           }
         },
         "required": [
@@ -1708,9 +3000,9 @@
           "attemptId",
           "revision",
           "schemaId",
-          "value",
           "visibility"
-        ]
+        ],
+        "description": "現在の試行の非公開成果物。文案（value）またはファイル（file）のどちらか一方。"
       },
       "InputResource": {
         "type": "object",
@@ -1760,8 +3052,12 @@
             "format": "uuid"
           },
           "contextId": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。"
           },
           "attemptId": {
             "type": "string",
@@ -1909,6 +3205,61 @@
                 "type": "null"
               }
             ]
+          },
+          "requiredRoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "claimAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "canAssign": {
+            "type": "boolean"
+          },
+          "assignment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskAssignmentView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeLabel": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "attention": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attention"
+            },
+            "maxItems": 4
+          },
+          "contextTitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。"
           }
         },
         "required": [
@@ -1940,7 +3291,16 @@
           "canHold",
           "holdActionId",
           "canResume",
-          "resumeActionId"
+          "resumeActionId",
+          "requiredRoleId",
+          "claimAssignmentId",
+          "canAssign",
+          "assignment",
+          "workTypeId",
+          "workTypeLabel",
+          "dueAt",
+          "attention",
+          "contextTitle"
         ]
       },
       "TaskPage": {
@@ -1977,19 +3337,25 @@
             "minimum": 0
           },
           "schemaId": {
-            "const": "organization.text-draft.v1",
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "organization.text-draft.v1",
+              "organization.work-file.v1"
+            ]
           },
           "value": {
             "$ref": "#/components/schemas/TextValue"
+          },
+          "file": {
+            "$ref": "#/components/schemas/WorkFile"
           }
         },
         "required": [
           "artifactId",
           "revision",
-          "schemaId",
-          "value"
-        ]
+          "schemaId"
+        ],
+        "description": "提出で固定した成果物。ファイルは提出時の不変世代を固定する。"
       },
       "HandoffSnapshot": {
         "type": "object",
@@ -2038,7 +3404,11 @@
             "type": "string",
             "enum": [
               "sales-01",
-              "office-01"
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
             ]
           },
           "submissionNumber": {
@@ -2318,6 +3688,33 @@
           },
           {
             "$ref": "#/components/schemas/Resumed"
+          },
+          {
+            "$ref": "#/components/schemas/Assigned"
+          },
+          {
+            "$ref": "#/components/schemas/RoleAssignmentCreated"
+          },
+          {
+            "$ref": "#/components/schemas/RoleAssignmentRevoked"
+          },
+          {
+            "$ref": "#/components/schemas/DelegationCreated"
+          },
+          {
+            "$ref": "#/components/schemas/DelegationRevoked"
+          },
+          {
+            "$ref": "#/components/schemas/ArtifactCreated"
+          },
+          {
+            "$ref": "#/components/schemas/ArtifactContentWritten"
+          },
+          {
+            "$ref": "#/components/schemas/ArtifactDiscarded"
+          },
+          {
+            "$ref": "#/components/schemas/SubmissionImported"
           }
         ]
       },
@@ -2352,7 +3749,10 @@
               "EVIDENCE_NOT_FOUND",
               "FINDING_NOT_FOUND",
               "AGENT_RESULT_NOT_READY",
-              "WORK_CONTEXT_STALE"
+              "WORK_CONTEXT_STALE",
+              "ORGANIZATION_RECORD_NOT_FOUND",
+              "WORK_CONTEXT_NOT_FOUND",
+              "WORK_ARTIFACT_UNAVAILABLE"
             ]
           },
           "traceId": {
@@ -2464,7 +3864,12 @@
           "returnedBy": {
             "type": "string",
             "enum": [
-              "office-01"
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
             ]
           },
           "createdAt": {
@@ -3303,8 +4708,9 @@
             "items": {
               "$ref": "#/components/schemas/RevisionRef"
             },
-            "minItems": 1,
-            "maxItems": 1
+            "minItems": 0,
+            "maxItems": 1,
+            "description": "0〜1件。根拠の無い提案はFindingにしない。U4以前の結果は常に1件。"
           },
           "evidenceRevisionRefs": {
             "type": "array",
@@ -3340,6 +4746,35 @@
           "mcpWireExecuted": {
             "type": "boolean",
             "const": false
+          },
+          "sourceOutcomes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSourceOutcome"
+            },
+            "minItems": 1,
+            "maxItems": 16,
+            "description": "選択した根拠ごとの利用結果（同じ順序）。U4以前の結果には無い。unavailable/unsupportedを含む結果は一部の根拠だけで作成した結果であり、全体の検証済みを意味しない。"
+          },
+          "generatedArtifactIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 2,
+            "description": "非公開の下書き候補。空なら省略。"
+          },
+          "suggestedActionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "description": "実行権限の無い型付き提案。空なら省略。"
           }
         },
         "required": [
@@ -3377,7 +4812,11 @@
             "type": "string",
             "enum": [
               "sales-01",
-              "office-01"
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
             ]
           },
           "requesterResponsibility": {
@@ -3707,6 +5146,1888 @@
         "required": [
           "kind",
           "task"
+        ]
+      },
+      "PolicyAction": {
+        "type": "string",
+        "enum": [
+          "context.read",
+          "context.progress.read",
+          "context.history.read",
+          "queue.read",
+          "work.read",
+          "work.claim",
+          "work.assign",
+          "work.edit",
+          "work.submit",
+          "work.return",
+          "work.complete",
+          "work.hold",
+          "work.resume",
+          "evidence.register",
+          "finding.register",
+          "decision.record",
+          "agent.request",
+          "organization.manage"
+        ]
+      },
+      "Responsibility": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "role_assignment",
+              "delegation"
+            ]
+          },
+          "principal": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "roleLabel": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitLabel": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "maxItems": 18
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "sourceAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "delegator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "workViewProfileId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "役割の上書き→組織単位の既定で選ぶ表示Profile。権限ではない。"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "principal",
+          "roleId",
+          "roleLabel",
+          "unitId",
+          "unitLabel",
+          "actions",
+          "validFrom",
+          "validUntil",
+          "sourceAssignmentId",
+          "delegator",
+          "workViewProfileId"
+        ],
+        "description": "評価時点で有効な責任の説明。再利用できる許可ではない。"
+      },
+      "OrganizationalUnit": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "defaultArchetype": {
+            "type": "string",
+            "enum": [
+              "context",
+              "queue"
+            ]
+          },
+          "roleIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "defaultArchetype",
+          "roleIds"
+        ]
+      },
+      "BusinessRole": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "maxItems": 18
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "label",
+          "actions"
+        ]
+      },
+      "RoleAssignment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "revokeReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "principal",
+          "roleId",
+          "unitId",
+          "validFrom",
+          "validUntil",
+          "reason",
+          "createdBy",
+          "createdAt",
+          "revokedAt",
+          "revokedBy",
+          "revokeReason"
+        ]
+      },
+      "Delegation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "delegator": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "recipient": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "minItems": 1,
+            "maxItems": 18
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "revokeReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sourceAssignmentId",
+          "delegator",
+          "recipient",
+          "actions",
+          "validFrom",
+          "validUntil",
+          "reason",
+          "createdBy",
+          "createdAt",
+          "revokedAt",
+          "revokedBy",
+          "revokeReason"
+        ]
+      },
+      "TaskAssignmentView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "principalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actingKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "role_assignment",
+              "delegation",
+              null
+            ]
+          },
+          "roleLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delegatorPrincipalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "responsibilityEffective": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "principalId",
+          "displayName",
+          "actingAssignmentId",
+          "actingKind",
+          "roleLabel",
+          "delegatorPrincipalId",
+          "responsibilityEffective"
+        ],
+        "description": "現在の担当者本人と現在のwork.assign保有者にだけ返す。"
+      },
+      "WorkAssignmentRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          },
+          "managerAssignmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "attemptId",
+          "principal",
+          "actingAssignmentId",
+          "assignedBy",
+          "managerAssignmentId",
+          "reason",
+          "startedAt",
+          "endedAt",
+          "endedBy"
+        ]
+      },
+      "UnitPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationalUnit"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RolePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessRole"
+            },
+            "maxItems": 100
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RoleAssignmentPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleAssignment"
+            },
+            "maxItems": 96
+          },
+          "nextCursor": {
+            "type": "null"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "evaluatedAt"
+        ]
+      },
+      "DelegationPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Delegation"
+            },
+            "maxItems": 96
+          },
+          "nextCursor": {
+            "type": "null"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "evaluatedAt"
+        ]
+      },
+      "RoleAssignmentCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "principalId",
+          "roleId",
+          "unitId",
+          "reason"
+        ],
+        "description": "expectedRevisionはOrganization policyのrevision。actingAssignmentIdは現在有効な業務管理の正式割当。"
+      },
+      "RevokePolicyRecordCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "reason"
+        ]
+      },
+      "DelegationCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recipientPrincipalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyAction"
+            },
+            "minItems": 1,
+            "maxItems": 18
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "sourceAssignmentId",
+          "recipientPrincipalId",
+          "actions",
+          "validUntil",
+          "reason"
+        ],
+        "description": "委任元の正式割当より広い操作・長い期限・再委任は拒否。organization.manageとwork.assignは委任不可。"
+      },
+      "AssignmentCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assigneePrincipalId": {
+            "type": "string",
+            "enum": [
+              "sales-01",
+              "office-01",
+              "review-01",
+              "approver-01",
+              "multi-role-01",
+              "delegate-01"
+            ]
+          },
+          "assigneeResponsibilityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "assigneePrincipalId",
+          "assigneeResponsibilityId",
+          "reason"
+        ],
+        "description": "expectedRevisionはタスクのrevision。新担当者の責任は工程の役割とwork.claimを含み現在有効であること。"
+      },
+      "Assigned": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "assigned",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/WorkAssignmentRecord"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "assignment"
+        ]
+      },
+      "RoleAssignmentCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "role_assignment_created",
+            "type": "string"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/RoleAssignment"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "assignment",
+          "policyRevision"
+        ]
+      },
+      "RoleAssignmentRevoked": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "role_assignment_revoked",
+            "type": "string"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/RoleAssignment"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "assignment",
+          "policyRevision"
+        ]
+      },
+      "DelegationCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "delegation_created",
+            "type": "string"
+          },
+          "delegation": {
+            "$ref": "#/components/schemas/Delegation"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "delegation",
+          "policyRevision"
+        ]
+      },
+      "DelegationRevoked": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "delegation_revoked",
+            "type": "string"
+          },
+          "delegation": {
+            "$ref": "#/components/schemas/Delegation"
+          },
+          "policyRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "kind",
+          "delegation",
+          "policyRevision"
+        ]
+      },
+      "AttentionKind": {
+        "type": "string",
+        "enum": [
+          "newly_assigned",
+          "returned",
+          "due_soon",
+          "overdue"
+        ],
+        "description": "記録から導出した注意。lifecycleではない。waiting_for_confirmation/blockedは根拠の記録が無いため出さない。"
+      },
+      "Attention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AttentionKind"
+          },
+          "sourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "根拠記録のID（割当期間・差戻指示）。担当者本人にだけ開示。"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "kind",
+          "sourceId",
+          "dueAt"
+        ]
+      },
+      "TaskAttention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attention"
+            },
+            "maxItems": 4
+          }
+        },
+        "required": [
+          "taskId",
+          "attemptId",
+          "evaluatedAt",
+          "items"
+        ]
+      },
+      "AttentionSeenCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "workAssignmentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "本人の現在の割当期間。Work操作ではなく冪等な確認済み記録。"
+          }
+        },
+        "required": [
+          "workAssignmentId"
+        ]
+      },
+      "ContextProgressItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepLabel": {
+            "type": "string"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "active",
+              "held",
+              "completed"
+            ]
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "assigned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "taskId",
+          "stepLabel",
+          "workTypeId",
+          "state",
+          "attemptNumber",
+          "dueAt",
+          "assigned"
+        ]
+      },
+      "WorkContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "case",
+              "routine_run",
+              "batch",
+              "request"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "ownerUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContextProgressItem"
+                },
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "owner unitのcontext.progress.readがある場合だけ。担当者識別・理由・本文を含まない。"
+          },
+          "canReadHistory": {
+            "type": "boolean"
+          },
+          "ownTaskIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 2
+          },
+          "attentionCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "ownerUnitId",
+          "progress",
+          "canReadHistory",
+          "ownTaskIds",
+          "attentionCount"
+        ]
+      },
+      "WorkContextPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkContext"
+            },
+            "maxItems": 32
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "WorkContextHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "occurredAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "kind",
+                "occurredAt"
+              ]
+            },
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "contextId",
+          "entries"
+        ],
+        "description": "業務状態の推移（種類と時刻）だけ。理由・本文・識別を含まない。"
+      },
+      "WorkViewProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "archetype": {
+            "type": "string",
+            "enum": [
+              "context",
+              "queue"
+            ]
+          },
+          "primaryGrouping": {
+            "type": "string",
+            "enum": [
+              "context",
+              "work_type"
+            ]
+          },
+          "defaultSort": {
+            "type": "string",
+            "enum": [
+              "due_at"
+            ]
+          },
+          "initialModule": {
+            "type": "string",
+            "enum": [
+              "document",
+              "history",
+              "evidence",
+              "agent",
+              "search",
+              "resources",
+              "return"
+            ]
+          },
+          "modules": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "module": {
+                  "type": "string",
+                  "enum": [
+                    "document",
+                    "history",
+                    "evidence",
+                    "agent",
+                    "search",
+                    "resources",
+                    "return"
+                  ]
+                },
+                "presentation": {
+                  "type": "string",
+                  "enum": [
+                    "hidden",
+                    "available",
+                    "visible",
+                    "prominent"
+                  ]
+                }
+              },
+              "required": [
+                "module",
+                "presentation"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "label",
+          "archetype",
+          "primaryGrouping",
+          "defaultSort",
+          "initialModule",
+          "modules"
+        ],
+        "description": "表示だけを変える定義。権限・操作を変えない。"
+      },
+      "WorkViewProfilePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkViewProfile"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "FileGeneration": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Work所有の共有保存領域に保存した不変の世代。大きさとSHA-256はserverが受け取ったbytesから計算する。IDは内容登録の操作IDと同じ。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 8388608
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "storedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "providerId": {
+            "const": "organization.work-artifacts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sizeBytes",
+          "sha256",
+          "storedAt",
+          "providerId"
+        ]
+      },
+      "WorkFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "表示名と申告media type（取得時の応答には使わない）。ローカルのパスではない。",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "255 bytes以内。パス区切り・制御文字・.・..は不可"
+          },
+          "mediaType": {
+            "type": "string",
+            "maxLength": 127
+          },
+          "generation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FileGeneration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fileName",
+          "mediaType",
+          "generation"
+        ]
+      },
+      "DerivedFrom": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "差戻し後に前回の提出から明示的に取り込んだ成果物の出典",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "artifactId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "artifactId"
+        ]
+      },
+      "FileArtifactCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "ファイル成果物の作成。内容は別途登録する。",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "file": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "fileName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "mediaType": {
+                "type": "string",
+                "maxLength": 127
+              }
+            },
+            "required": [
+              "fileName",
+              "mediaType"
+            ]
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "file"
+        ]
+      },
+      "DiscardArtifactCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedArtifactRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedArtifactRevision"
+        ]
+      },
+      "ImportSubmissionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "actingAssignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "actingAssignmentId",
+          "expectedAttemptId",
+          "snapshotId"
+        ]
+      },
+      "ArtifactCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "artifact_created",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/WorkingArtifact"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifact"
+        ]
+      },
+      "ArtifactContentWritten": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "artifact_content_written",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/WorkingArtifact"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifact"
+        ]
+      },
+      "ArtifactDiscarded": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "artifact_discarded",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifactId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifactId"
+        ]
+      },
+      "SubmissionImported": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "submission_imported",
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkingArtifact"
+            },
+            "maxItems": 16
+          }
+        },
+        "required": [
+          "kind",
+          "task",
+          "artifacts"
+        ]
+      },
+      "AgentSourceOutcome": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evidenceRevisionRef": {
+            "$ref": "#/components/schemas/RevisionRef"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "referenced",
+              "analyzed",
+              "unavailable",
+              "unsupported"
+            ],
+            "description": "executorが利用できた範囲。認可はWorkが別に再確認する。合成executorはanalyzedを返さない。"
+          }
+        },
+        "required": [
+          "evidenceRevisionRef",
+          "outcome"
+        ]
+      },
+      "GeneratedArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Agentの非公開の下書き候補。Workの作業成果物ではなく、提出・次工程の対象にならない。担当者が既存の文案保存で保存したときだけ作業に入る。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "schemaId": {
+            "type": "string",
+            "const": "organization.text-draft.v1"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "UTF-8で200 bytes以内、制御文字なし。"
+          },
+          "value": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192,
+                "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+              }
+            },
+            "required": [
+              "text"
+            ]
+          },
+          "sourceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "author": {
+            "type": "string",
+            "description": "実際のexecutorの識別"
+          },
+          "simulated": {
+            "type": "boolean"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "agent_execution_private"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "contextId",
+          "workItemId",
+          "attemptId",
+          "schemaId",
+          "title",
+          "value",
+          "sourceRevisionRefs",
+          "author",
+          "simulated",
+          "visibility",
+          "createdAt"
+        ]
+      },
+      "ProposedAction": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ReviewFindingAction"
+          },
+          {
+            "$ref": "#/components/schemas/UseGeneratedArtifactAction"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "review_finding": "#/components/schemas/ReviewFindingAction",
+            "use_generated_artifact": "#/components/schemas/UseGeneratedArtifactAction"
+          }
+        }
+      },
+      "SuggestedAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "実行権限の無い型付き提案。実行するAPIは無く、人間が選ぶと画面は対象を現在の権限で読み直して通常の操作画面を開く。HumanDecisionでも工程操作でもない。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ProposedAction"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "UTF-8で1024 bytes以内。"
+          },
+          "supportingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "author": {
+            "type": "string",
+            "description": "実際のexecutorの識別"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "agent_execution_private"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "contextId",
+          "workItemId",
+          "attemptId",
+          "action",
+          "rationale",
+          "supportingRevisionRefs",
+          "author",
+          "visibility",
+          "createdAt"
+        ]
+      },
+      "ReviewFindingAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "review_finding"
+          },
+          "findingRevisionRef": {
+            "$ref": "#/components/schemas/RevisionRef"
+          }
+        },
+        "required": [
+          "kind",
+          "findingRevisionRef"
+        ]
+      },
+      "UseGeneratedArtifactAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "use_generated_artifact"
+          },
+          "generatedArtifactId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "generatedArtifactId"
         ]
       }
     }

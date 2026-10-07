@@ -378,7 +378,13 @@ fn legacy_definition_remains_forward_only_and_old_json_roundtrips() {
     let mut legacy = serde_json::to_value(&workflow).unwrap();
     legacy.as_object_mut().unwrap().remove("completedAttempts");
     legacy.as_object_mut().unwrap().remove("returnInstructions");
-    let decoded: Workflow = serde_json::from_value(legacy).unwrap();
+    // Stored JSON never carries authority; the repository attaches the policy.
+    let decoded = serde_json::from_value::<Workflow>(legacy)
+        .unwrap()
+        .with_authority(
+            OrganizationPolicy::synthetic(),
+            time::OffsetDateTime::now_utc(),
+        );
     assert_eq!(decoded.definition_version_id, DEFINITION_VERSION_ID);
     let command = return_command(&decoded, &snapshot);
     let mut candidate = decoded.clone();
@@ -776,8 +782,15 @@ fn draft_limit_is_per_attempt_and_prior_artifacts_cannot_be_selected_again() {
 fn operation_context_requires_valid_identity_revision_and_current_responsibility() {
     let valid = context(VerifiedActor::Office01, 1);
     assert_eq!(valid.authorize(VerifiedActor::Office01), Ok(()));
+    // Responsibility ownership is resolved against the current Organization
+    // policy by the aggregate: another principal's assignment is refused.
+    let (workflow, _) = received_workflow();
+    let claim = Command::Claim {
+        task_id: OFFICE_TASK_ID,
+        context: valid.clone(),
+    };
     assert_eq!(
-        valid.authorize(VerifiedActor::Sales01),
+        workflow.authorize_command(VerifiedActor::Sales01, &claim),
         Err(WorkError::Forbidden)
     );
     let mut invalid = valid.clone();
@@ -959,13 +972,14 @@ fn completion_never_bypasses_forward_submission_or_changes_older_definition_vers
     command["task_id"] = serde_json::json!(SALES_TASK_ID);
     command["expected_attempt_id"] = serde_json::json!(SALES_ATTEMPT_ID);
     command["context"] = serde_json::json!(context(VerifiedActor::Sales01, 0));
+    // The sales role has no `work.complete`; the permission check precedes state.
     assert_eq!(
         sales.apply(
             VerifiedActor::Sales01,
             &serde_json::from_value(command).unwrap(),
             NOW
         ),
-        Err(WorkError::HandoffNotReady)
+        Err(WorkError::Forbidden)
     );
     assert_eq!(sales, before);
 }
@@ -1063,11 +1077,12 @@ fn completion_invalidates_running_agent_and_rejects_late_candidate_output() {
     assert_eq!(
         workflow.finish_agent_execution(
             &running,
-            AgentFindingOutput {
-                summary: "合成実行".into(),
-                claim: "遅い出力".into(),
-                uncertainty: vec!["本文分析なし".into()]
-            },
+            AgentOutput::referenced_finding(
+                &running,
+                "合成実行",
+                "遅い出力",
+                vec!["本文分析なし".into()]
+            ),
             NOW
         ),
         Err(WorkError::WorkContextStale)

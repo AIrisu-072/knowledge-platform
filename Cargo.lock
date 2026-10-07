@@ -3251,6 +3251,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
+name = "local-workspace-runtime"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3792,8 +3805,10 @@ dependencies = [
  "document-domain",
  "document-repository-postgres",
  "document-server",
+ "document-storage-fs",
  "serde_json",
  "sqlx",
+ "tempfile",
  "time",
  "tokio",
  "tower",
@@ -7215,6 +7230,7 @@ dependencies = [
  "axum",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tower",
  "uuid",
@@ -7240,6 +7256,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "time",
  "uuid",
 ]
 

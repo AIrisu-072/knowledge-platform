@@ -1,3 +1,6 @@
+import { documentAccessPolicyOperations, sendDocumentAccessPolicyOperation } from '../src/application/document-access-policy';
+import { folderAccessPolicyOperations, sendFolderAccessPolicyOperation } from '../src/application/document-folder-access-policy';
+import { refreshFolderMoveReads } from '../src/application/document-folder-move';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { defaultStringifySearch, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -76,7 +79,7 @@ function mockApi() {
   api.getVersionEditManifest.mockImplementation((id, sourceVersionId, purpose) => Promise.resolve({ documentId: id, sourceVersionId, purpose, documentRevision: 7, title: '受入手順', items: [{ contentItemId: 'primary-item', logicalPath: 'primary', ordinal: 0, representations: [{ role: 'authoritative', representationId: 'primary-representation', fileId: 'source-file', mediaType: 'text/plain', originalFilename: 'source.txt', sizeBytes: 8 }] }] }));
   api.publishVersion.mockResolvedValue({ publishOperationId: 'pub', documentId, documentVersionId: versionId, resultingDocumentRevision: 8, publishedAt: '2026-10-01T02:00:00Z' });
   api.schedulePublication.mockResolvedValue({ publishOperationId: 'pub', documentId, targetVersionId: versionId, acceptedRevision: 8, scheduledPublishAt: '2026-10-02T02:00:00Z' });
-  api.setDocumentAccessPolicy.mockResolvedValue({ operationId: 'op', resourceId: documentId, resultingRevision: 5, changed: true, occurredAt: '2026-10-01T02:00:00Z' });
+  api.setDocumentAccessPolicy.mockImplementation((id, body) => Promise.resolve({ operationId: body.operationId, resourceId: id, resultingRevision: body.expectedPolicyRevision + 1, changed: true, occurredAt: '2026-10-01T02:00:00Z' }));
   api.downloadVersionFile.mockResolvedValue(new Blob(['original']));
   return api;
 }
@@ -402,7 +405,7 @@ test('partial comparison keeps Unknown and Partial visible and sends the reader 
   await user.click(screen.getByRole('button', { name: '基準原本を確認' }));
   await waitFor(() => expect(api.downloadVersionFile).toHaveBeenCalledWith(expect.objectContaining({
     documentId, contentItemId: 'content-id', representationId: 'representation-id', purpose: 'published',
-  })));
+  }), { signal: expect.any(AbortSignal) }));
 });
 
 test('access changes use existing identities and the current policy revision', async () => {
@@ -460,7 +463,7 @@ test('an explicit policy can be changed back to inheritance with a reason and it
     reason: '親フォルダーの設定へ戻す',
     mode: 'inherit',
   });
-  expect(screen.queryByText(documentId)).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '文書アクセス設定の保存結果' })).toHaveTextContent(documentId);
 });
 
 function listItem(view: 'published' | 'authoring') {
@@ -1385,4 +1388,62 @@ test('created changes preserve detail selection, pagination and all unknown oper
     });
     clearCreationReceipt();
   }
+});
+
+test.each(['基準原本を確認', '対象原本を確認'])('Folder ACL送信後の詳細routeで%sのBlobと成功receiptが同tickでも保存しない', async label => {
+  const api = mockApi(); const { client, router } = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: '受入手順' });
+  let resolveReceipt!: (value: { operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }) => void;
+  const receipt = new Promise<{ operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }>(resolve => { resolveReceipt = resolve; });
+  const running = sendFolderAccessPolicyOperation({ store: folderAccessPolicyOperations(client), targetFolderId: reviewFolderId, context: { kind: 'selected', folderId: reviewFolderId, sourceParentId: folderId, pageLimit: 1, name: '資料' }, request: { operationId: 'policy', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' }, send: () => receipt, invalidate: () => refreshFolderMoveReads(client) });
+  await act(async () => { await router.navigate({ to: '/documents/$documentId', params: { documentId }, search: validateDetailSearch({ view: 'published', tab: 'compare' }) }); });
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: label }));
+  api.getDocument.mockRejectedValue(new Error('current read denied'));
+  await act(async () => { resolveReceipt({ operationId: 'policy', resourceId: reviewFolderId, resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }); resolveBlob(new Blob(['late'])); await running; });
+  expect(folderAccessPolicyOperations(client).get()?.status).toBe('succeeded'); expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); client.clear();
+});
+
+test.each(['invalidate', 'refetch', 'reset', 'remove'] as const)('比較原本の旧Blobを%s後の同値fresh readで復活させない', async kind => {
+  const api = mockApi(); const h = renderAt(`/documents/${documentId}?view=published&tab=compare`);
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: '基準原本を確認' }));
+  const signal = api.downloadVersionFile.mock.calls[0]![1].signal as AbortSignal;
+  await act(async () => {
+    if (kind === 'invalidate') await h.client.invalidateQueries({ queryKey: ['revision-comparison'] });
+    else if (kind === 'refetch') await h.client.refetchQueries({ queryKey: ['revision-comparison'] });
+    else if (kind === 'reset') await h.client.resetQueries({ queryKey: ['revision-comparison'] });
+    else h.client.removeQueries({ queryKey: ['revision-comparison'] });
+  });
+  await act(async () => { resolveBlob(new Blob(['old before ACL reset'])); });
+  expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); expect(signal.aborted).toBe(true);
+  if (kind === 'invalidate') { api.downloadVersionFile.mockResolvedValueOnce(new Blob(['fresh'])); fireEvent.click(await screen.findByRole('button', { name: '基準原本を確認' })); await waitFor(() => expect(create).toHaveBeenCalledTimes(1)); expect(click).toHaveBeenCalledTimes(1); }
+  h.client.clear();
+});
+test('比較原本の旧BlobをACL全read reset後の同値fresh readで復活させない', async () => {
+  const api = mockApi(); const h = renderAt(`/documents/${documentId}?view=published&tab=compare`);
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: '基準原本を確認' }));
+  const signal = api.downloadVersionFile.mock.calls[0]![1].signal as AbortSignal;
+  await act(async () => { await refreshFolderMoveReads(h.client); });
+  await act(async () => { resolveBlob(new Blob(['old before ACL reset'])); });
+  expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); expect(signal.aborted).toBe(true); h.client.clear();
+});
+
+test.each(['基準原本を確認', '対象原本を確認'])('Document ACL送信後の詳細routeで%sのBlobと成功receiptが同tickでも保存しない', async label => {
+  const api = mockApi(); const { client, router } = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: '受入手順' });
+  let resolveReceipt!: (value: { operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }) => void;
+  const receipt = new Promise<{ operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }>(resolve => { resolveReceipt = resolve; });
+  const running = sendDocumentAccessPolicyOperation({ store: documentAccessPolicyOperations(client), targetDocumentId: documentId, context: { documentId, title: '資料', view: 'published' }, request: { operationId: 'policy', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' }, send: () => receipt, invalidate: () => refreshFolderMoveReads(client) });
+  await act(async () => { await router.navigate({ to: '/documents/$documentId', params: { documentId }, search: validateDetailSearch({ view: 'published', tab: 'compare' }) }); });
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: label }));
+  api.getDocument.mockRejectedValue(new Error('current read denied'));
+  await act(async () => { resolveReceipt({ operationId: 'policy', resourceId: documentId, resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }); resolveBlob(new Blob(['late'])); await running; });
+  expect(documentAccessPolicyOperations(client).get()?.status).toBe('succeeded'); expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); client.clear();
 });

@@ -5,13 +5,16 @@ import { readRuntimeContext } from './e2e-organization/support';
 const context = readRuntimeContext();
 const phase = process.env.KP_ORGANIZATION_RUNTIME_PHASE;
 const output = process.env.KP_ORGANIZATION_BROWSER_OUTPUT;
-if (!output || !['journey', 'persistence'].includes(phase ?? '')) {
-  throw new Error('Organization harness must supply its output directory and journey/persistence phase');
+// Two-principal phases plus the separate fresh-database six-principal policy, context, files and Agent Chat phases.
+// Exact basenames: `journey` must never also select `policy-journey` or `context-journey`.
+const specs: Record<string, RegExp> = { journey: /(?:^|[\\/])journey\.spec\.ts$/u, persistence: /(?:^|[\\/])persistence\.spec\.ts$/u, 'policy-journey': /(?:^|[\\/])policy-journey\.spec\.ts$/u, 'policy-persistence': /(?:^|[\\/])policy-persistence\.spec\.ts$/u, 'context-journey': /(?:^|[\\/])context-journey\.spec\.ts$/u, 'context-persistence': /(?:^|[\\/])context-persistence\.spec\.ts$/u, 'files-journey': /(?:^|[\\/])files-journey\.spec\.ts$/u, 'files-persistence': /(?:^|[\\/])files-persistence\.spec\.ts$/u, 'agent-chat-journey': /(?:^|[\\/])agent-chat-journey\.spec\.ts$/u, 'agent-chat-persistence': /(?:^|[\\/])agent-chat-persistence\.spec\.ts$/u };
+if (!output || !phase || !Object.hasOwn(specs, phase)) {
+  throw new Error('Organization harness must supply its output directory and a known phase');
 }
 // Raw standard JSON stays in the private harness directory; only a closed failure projection is logged.
 export default defineConfig({
   testDir: './e2e-organization',
-  testMatch: phase === 'journey' ? 'journey.spec.ts' : 'persistence.spec.ts',
+  testMatch: specs[phase]!,
   fullyParallel: false,
   workers: 1,
   retries: 0,

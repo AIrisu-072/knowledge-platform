@@ -1,3 +1,5 @@
+import { DocumentAccessPolicyRecovery } from '../components/document/DocumentAccessPolicy';
+import { documentAccessPolicyOperations } from '../application/document-access-policy';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
@@ -16,6 +18,8 @@ import { FolderRename } from '../components/document/FolderRename';
 import { folderRenameOperations } from '../application/document-folder-rename';
 import { DocumentMove } from '../components/document/DocumentMove';
 import { documentMoveOperations } from '../application/document-move';
+import { FolderAccessPolicy } from '../components/document/FolderAccessPolicy';
+import { folderAccessPolicyOperations } from '../application/document-folder-access-policy';
 import { FolderMove } from '../components/document/FolderMove';
 import { folderMoveOperations } from '../application/document-folder-move';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
@@ -40,14 +44,18 @@ export function DocumentHomePage() {
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
   const documentMoveStore = documentMoveOperations(queryClient);
   const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
+  const documentPolicyStore = documentAccessPolicyOperations(queryClient);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
+  const policyStore = folderAccessPolicyOperations(queryClient);
+  const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get);
   const moveStore = folderMoveOperations(queryClient);
   const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
   useEffect(() => {
-    if (move?.status !== 'succeeded' && documentMove?.status !== 'succeeded') return;
+    if (move?.status !== 'succeeded' && documentMove?.status !== 'succeeded' && policyOperation?.status !== 'succeeded' && documentPolicyOperation?.status !== 'succeeded') return;
     // Global authorization revision invalidates every query-external selection provenance.
     // Leave the current URL/navigation alone and require another actual tree selection.
     setChosenFolder(undefined); setFolderContext(undefined);
-  }, [move?.status, move?.request.operationId, documentMove?.status, documentMove?.request.operationId]);
+  }, [move?.status, move?.request.operationId, documentMove?.status, documentMove?.request.operationId, policyOperation?.status, policyOperation?.request.operationId, documentPolicyOperation?.status, documentPolicyOperation?.request.operationId]);
   useEffect(() => {
     if (rename?.status !== 'succeeded') return;
     const targetId = rename.targetFolderId;
@@ -368,6 +376,12 @@ export function DocumentHomePage() {
             capabilities: registrationFolderQuery.data?.capabilities },
           readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
         } : undefined} />
+      <FolderAccessPolicy root={rootQuery.data} contextKey={`${currentUrl}:${selectionGeneration}`}
+        selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
+          context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
+            capabilities: registrationFolderQuery.data?.capabilities },
+          readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
+        } : undefined} />
       <FolderMove root={rootQuery.data} contextKey={`${currentUrl}:${selectionGeneration}`}
         selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
           context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
@@ -412,6 +426,7 @@ export function DocumentHomePage() {
         }} />
       </div>
 
+      <DocumentAccessPolicyRecovery />
       <div className={styles.listLayout}>
         <section className={styles.listMain} aria-label="文書">
           <form className={styles.filterBar} onSubmit={(event) => {
