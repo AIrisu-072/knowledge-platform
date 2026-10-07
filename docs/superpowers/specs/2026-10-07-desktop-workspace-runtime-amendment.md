@@ -42,7 +42,7 @@
 
 設計は、同じinodeへの並行書込みで混在したsnapshotを返さないことを求めています。安全な取得ができない場合は `unavailable/conflict` にすることも求めています。
 
-- **Linux**：read lease（`F_SETLEASE F_RDLCK`）を取ります。取れるのは、書込みopen中のプロセスが無いときだけです。leaseを保持している間は、他プロセスの書込みopenとtruncateがkernelで待たされます。その状態で2回全体を読み、statx（btime・ナノ秒mtime/ctime・size・nlink）を3回比較して一致した場合だけ返します。lease-break通知はSIGURG（既定動作は無視）で受けます。所有者でない・FSが非対応などでleaseを取れない場合は `unavailable/safe_capture_unavailable` です。
+- **Linux**：まず `fstatfs` でローカルFSの許可一覧（ext2/3/4・xfs・btrfs・tmpfs・f2fs・vfat・exfat・ntfs3・zfs・bcachefs）にあることを確認する。network/FUSE/overlayは遠隔や下層からの書込みをleaseで排除できないため `unavailable/safe_capture_unavailable`。次にread lease（`F_SETLEASE F_RDLCK`）を取得できたとき（他プロセスが書込みopen中でない）だけ、lease保持中に2回全体を読み、statx（btime・ナノ秒mtime/ctime・size・nlink）を3回比較して一致した場合に返す。lease保持中は他プロセスの書込みopen/truncateがkernelで待たされる。lease-break通知はSIGURG（既定動作は無視。shellがSIGURG handlerを入れる場合はこの通知も受ける）。所有者でない等でleaseを取れない場合も `unavailable`。二重読込み＋stat比較だけでは途中停止したwriterの混在状態を返す反例が12回中3回出たため、lease方式に変更した（修正後の反復試験で混在0件）
   - 根拠：二重読込みとstat比較だけでは、途中で止まったwriterの混在状態を返す反例が12回中3回出ました。lease方式に変えた後は、繰返し試験で混在は0件です。
 - **macOS等**：書込みを強制的に排除する手段が無いため、読み取りは `unavailable` です。
 - **Windows**：未実装のため、全操作がfail-closed（`unavailable/unsupported_platform`）です。実装予定の方式は次のとおりで、Windows実機で検証するまで有効にしません。
@@ -59,7 +59,9 @@
   - 2つ以上の場所からリンクされたファイル（hardlink）
   - 特殊ファイル
   - broker自身の状態root
-- 作成は排他（`O_EXCL|O_NOFOLLOW`）で、上書きしません。作成後に親を辿り直し、同じディレクトリであることを確認します。違っていれば自分のファイルを消して `conflict` を返します。
+- 作成は排他（`O_EXCL|O_NOFOLLOW`）で、上書きしません。排他作成の直後に自分のファイルidentityを記録してから書き込み、再試行ではそのidentityのファイルだけを採用します（他者が作った同じ内容のファイルは採用しません。自分の書きかけファイルは削除して作り直します）。作成後に親を辿り直し、同じディレクトリであることを確認します。違っていれば自分のファイルを消して `conflict` を返し、削除を証明できない場合は `outcome_unknown` として記録を保持します。
+- ファイルは種類（通常ファイル）を確認してから開きます（FIFOのwriterの解放や、特殊ファイルを開く副作用を避けるため）。binding rootは、dev/inoに加えて作成時刻でも照合します。
+- registryの変更は複製へ適用し、保存に成功してから採用します。保存に失敗した場合はdiskの状態を読み直します。失敗した変更が、再試行で成功扱いになることも、再起動で巻き戻ることもありません。Workspace作成の操作記録は押し出さないため、同じ操作IDで2つ目のrootが作られることはありません。
 - 上限：一覧100件/頁、読み取り1回1MiB、snapshot 8MiB、同時に保持するhandle 4件・合計32MiB・期限5分、作成8MiB、名前255byte、深さ32、明示binding 32件、picker 1件。
 - read handleは、close・解除・期限切れ・再起動で無効になります。再起動しても復活しません。
 

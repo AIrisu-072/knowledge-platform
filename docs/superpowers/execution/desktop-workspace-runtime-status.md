@@ -1,5 +1,30 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-07 04:00 UTC — 独立reviewの指摘を修正（PR95）
+
+- [PR95](https://github.com/AIrisu-072/knowledge-platform/pull/95)（Draft）。初回head `592ba99` のCI run 37567267684では、rust-testを除く全job（security、policy、rust-static、desktop-runtime-bridge、document-poc-runtime、portability-macos等）がSUCCESSでした。rust-testは実行中のまま、次のpushで置き換えました。
+- 独立review（`d515aa3..5dbca37` を対象）で、実際に再現された欠陥が見つかりました。いずれもREDの反例試験を先に追加してから修正しています。
+  - Important：registryの保存に失敗したとき、解除・追加・名前変更がメモリにだけ反映され、再試行で成功扱いになり、再起動で巻き戻った。
+  - Important：操作記録が上限で押し出されると、同じ操作IDで2つ目のWorkspaceとmanaged rootが作られた。
+  - 修正済み：binding外へ移された親フォルダーへの作成で、ファイルが孤立して残った（592ba99）。
+  - Pending状態の作成の再試行で、contextを検査せず、他者の同一内容ファイルを採用し得た。
+- 再現前の指摘（suspected/Minor）のうち、PR範囲内のものも修正しました。
+  - network/FUSE/overlay上でのlease（ローカルFSの許可一覧に限定）
+  - readdirのerrorを終端と区別していなかった
+  - FIFO/特殊ファイルを種類確認の前に開いていた
+  - binding rootの識別にbtimeを追加
+  - 古いcontextのhandleが上限枠を占有していた
+  - pickerがpanicした場合のticket解放
+  - 画面移動で結果不明の操作が失われた（QueryClient単位のstoreで保持し、確定まで移動を止める）
+  - IPC応答の照合（offset／世代／長さ／eof、receiptの操作ID／ref／size、一覧の親locator）
+  - recoverWorkspaceをmutationとして扱う
+  - SIGURGの扱いは文書に明記しました。
+- 修正後のローカル検証：
+  - broker：単体11、統合37、wire 5、合計53件。clippy、fmt、architecture-lint、macOS/Windowsの `cargo check`。競合系6件は8回連続PASS。
+  - GUI：全59 suites／1441件、型検査4構成、本番build。
+  - 既存mock E2E 6件、desktop-bridge E2E 6件（いずれもChromium 1194、新しいbuild）。
+- 次のexact action：push → 新headの全必須CIを確認 → Draft解除と統合を判断 → 統合後のmain CIを確認。
+
 ## 2026-10-07 UTC — Runtime側の実装と検証（Tauri shellは判断待ち）
 
 - 基点main：`d515aa38085c9ed7e41f8103d9c1a6c576025fd4`（引継ぎ時と同じで、作業開始時に再確認済み）。branch：`claude/upbeat-tesla-qcu94x`。計画は[こちら](../plans/2026-10-07-desktop-workspace-runtime.md)、契約差分は[こちら](../specs/2026-10-07-desktop-workspace-runtime-amendment.md)。
