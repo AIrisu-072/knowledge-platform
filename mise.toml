@@ -406,6 +406,7 @@ run = [
   "cargo clippy --locked --all-targets -- -D warnings",
   "cargo test --locked",
   "cargo deny check",
+  "node --test ../e2e/transport-shim.test.mjs",
 ]
 
 [tasks."desktop:build"]

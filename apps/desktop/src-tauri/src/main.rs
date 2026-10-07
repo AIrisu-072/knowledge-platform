@@ -12,7 +12,7 @@ mod picker;
 mod protocol;
 mod proxy;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use local_workspace_runtime::{
@@ -60,16 +60,14 @@ async fn local_workspace_runtime(
     }
 }
 
-/// Only the bundled app's own URLs may load in the main window.
+/// Only the bundled app's own URLs may load in the main window: exactly the
+/// app origin (scheme, host and default port), without userinfo. On Windows
+/// WebView2 intercepts only `http://tauri.*`, so `https`, another port or
+/// userinfo would reach the network instead of the app.
 fn is_app_url(url: &Url) -> bool {
-    match url.scheme() {
-        "tauri" => url.host_str() == Some("localhost"),
-        "http" | "https" => {
-            cfg!(any(target_os = "windows", target_os = "android"))
-                && url.host_str() == Some("tauri.localhost")
-        }
-        _ => false,
-    }
+    url.username().is_empty()
+        && url.password().is_none()
+        && proxy::serialized_origin(url).as_deref() == Some(protocol::APP_ORIGIN)
 }
 
 /// A `blob:` URL minted by the bundled app itself.
@@ -93,6 +91,51 @@ fn allow_download(url: &Url, destination: &Path, downloads: Option<&Path>) -> bo
     is_app_blob(url) && inside
 }
 
+/// Where an allowed download is saved. The WebView's proposal is kept when it
+/// is already inside Downloads; otherwise (for example WebKitGTK falling back
+/// to the working directory when no XDG download dir is set) the same file
+/// name is placed in Downloads, de-duplicated as `name (n).ext` like the
+/// WebView does. `None` cancels the download.
+fn download_target(
+    url: &Url,
+    proposed: &Path,
+    downloads: Option<&Path>,
+    exists: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let dir = downloads?;
+    if allow_download(url, proposed, Some(dir)) {
+        return Some(proposed.to_path_buf());
+    }
+    if !is_app_blob(url) {
+        return None;
+    }
+    let name = proposed.file_name()?.to_str()?;
+    let (base, ext) = name
+        .split_once('.')
+        .map_or((name, String::new()), |(base, ext)| {
+            (base, format!(".{ext}"))
+        });
+    let mut candidate = dir.join(name);
+    let mut counter = 1;
+    while exists(&candidate) {
+        candidate = dir.join(format!("{base} ({counter}){ext}"));
+        counter += 1;
+    }
+    Some(candidate)
+}
+
+/// The user's Downloads folder; `~/Downloads` when the platform has none
+/// configured (it must already exist; nothing is created).
+fn downloads_dir(app: &tauri::App) -> Option<PathBuf> {
+    app.path().download_dir().ok().or_else(|| {
+        app.path()
+            .home_dir()
+            .ok()
+            .map(|home| home.join("Downloads"))
+            .filter(|dir| dir.is_dir())
+    })
+}
+
 fn open_broker(app: &tauri::App) -> Result<LocalWorkspaceRuntime, RuntimeError> {
     let root = app
         .path()
@@ -112,7 +155,7 @@ fn main() {
             let runtime = open_broker(app);
             let picker = picker::NativePicker::new(app.handle().clone(), MAIN_WINDOW);
             app.manage(Arc::new(Broker { runtime, picker }));
-            let downloads = app.path().download_dir().ok();
+            let downloads = downloads_dir(app);
             WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("/".into()))
                 .title("Knowledge Platform")
                 .inner_size(1280.0, 800.0)
@@ -122,7 +165,14 @@ fn main() {
                 .on_new_window(|_, _| NewWindowResponse::Deny)
                 .on_download(move |_, event| match event {
                     DownloadEvent::Requested { url, destination } => {
-                        allow_download(&url, destination, downloads.as_deref())
+                        match download_target(&url, destination, downloads.as_deref(), Path::exists)
+                        {
+                            Some(target) => {
+                                *destination = target;
+                                true
+                            }
+                            None => false,
+                        }
                     }
                     _ => true,
                 })
@@ -160,6 +210,25 @@ mod tests {
     }
 
     #[test]
+    fn only_the_exact_app_origin_counts_as_the_app() {
+        // WebView2 intercepts only http://tauri.* (default scheme), so https,
+        // other ports or userinfo would reach the network instead of the app.
+        let app = format!("{}/documents", protocol::APP_ORIGIN);
+        assert!(is_app_url(&Url::parse(&app).unwrap()));
+        for url in [
+            "https://tauri.localhost/",
+            "https://tauri.localhost:8443/x",
+            "http://tauri.localhost:1234/",
+            "http://x@tauri.localhost/",
+            "http://x:y@tauri.localhost/",
+            "tauri://x@localhost/",
+            "tauri://localhost:8080/",
+        ] {
+            assert!(!is_app_url(&Url::parse(url).unwrap()), "{url}");
+        }
+    }
+
+    #[test]
     fn navigation_allows_the_app_and_its_own_blob_downloads_only() {
         let own_blob = format!("blob:{}/0b5c", protocol::APP_ORIGIN);
         assert!(may_navigate(
@@ -175,6 +244,43 @@ mod tests {
         ] {
             assert!(!may_navigate(&Url::parse(url).unwrap()), "{url}");
         }
+    }
+
+    #[test]
+    fn downloads_go_into_the_downloads_folder_even_when_the_webview_proposed_elsewhere() {
+        let downloads = Path::new("/home/u/Downloads");
+        let blob = Url::parse(&format!("blob:{}/0b5c", protocol::APP_ORIGIN)).unwrap();
+        let taken = |path: &Path| {
+            path == Path::new("/home/u/Downloads/a.txt")
+                || path == Path::new("/home/u/Downloads/a (1).txt")
+        };
+        // WebKit fell back to the working directory (no XDG download dir).
+        assert_eq!(
+            download_target(&blob, Path::new("/cwd/a.txt"), Some(downloads), taken),
+            Some(downloads.join("a (2).txt"))
+        );
+        assert_eq!(
+            download_target(&blob, Path::new("/cwd/b.tar.gz"), Some(downloads), taken),
+            Some(downloads.join("b.tar.gz"))
+        );
+        // Already de-duplicated by the WebView inside Downloads: kept as is.
+        assert_eq!(
+            download_target(&blob, &downloads.join("a (1).txt"), Some(downloads), |_| {
+                true
+            }),
+            Some(downloads.join("a (1).txt"))
+        );
+        assert_eq!(
+            download_target(&blob, Path::new("/cwd/a.txt"), None, taken),
+            None
+        );
+        let foreign = Url::parse("blob:https://evil.example/0b5c").unwrap();
+        assert_eq!(
+            download_target(&foreign, &downloads.join("a.txt"), Some(downloads), |_| {
+                false
+            }),
+            None
+        );
     }
 
     #[test]

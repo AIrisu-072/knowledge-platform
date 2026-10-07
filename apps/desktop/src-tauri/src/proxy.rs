@@ -60,14 +60,19 @@ pub fn parse_backend_origin(raw: Option<&str>) -> Result<Url, OriginError> {
         .filter(|value| !value.is_empty())
         .ok_or(OriginError::Missing)?;
     let url = Url::parse(raw).map_err(|_| OriginError::Invalid)?;
+    // The text must be exactly `http://<host>:<port>` (an explicit port, even
+    // the default 80), so nothing else in it can change where requests go.
+    let canonical = match (url.host_str(), url.port_or_known_default()) {
+        (Some(host), Some(port)) => format!("http://{host}:{port}"),
+        _ => return Err(OriginError::Invalid),
+    };
     if url.scheme() != "http"
         || !url.username().is_empty()
         || url.password().is_some()
-        || url.port().is_none()
         || url.path() != "/"
         || url.query().is_some()
         || url.fragment().is_some()
-        || raw.trim_end_matches('/') != url.as_str().trim_end_matches('/')
+        || raw.trim_end_matches('/') != canonical
     {
         return Err(OriginError::Invalid);
     }
@@ -182,6 +187,17 @@ pub fn problem(status: StatusCode, detail: &str, app_origin: &str) -> Response<V
     response
 }
 
+/// The answer for every `/v1` request when no usable backend is configured.
+pub fn unconfigured(error: OriginError, app_origin: &str) -> Response<Vec<u8>> {
+    let detail = match error {
+        OriginError::Missing => "サーバーの接続先が設定されていません。",
+        OriginError::Invalid | OriginError::NotLoopback => {
+            "サーバーの接続先の形式が正しくありません（http://127.0.0.1:<port> の形で指定してください）。"
+        }
+    };
+    problem(StatusCode::SERVICE_UNAVAILABLE, detail, app_origin)
+}
+
 pub fn secure_headers(headers: &mut HeaderMap, app_origin: &str) {
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
@@ -215,18 +231,30 @@ impl Proxy {
     }
 
     pub fn from_env(app_origin: &'static str) -> Self {
-        Self::new(
-            parse_backend_origin(std::env::var(ORIGIN_ENV).ok().as_deref()),
-            app_origin,
-        )
+        let origin = parse_backend_origin(std::env::var(ORIGIN_ENV).ok().as_deref());
+        // Local configuration only (no secret): say once why /v1 will fail.
+        match origin {
+            Err(OriginError::Missing) => eprintln!(
+                "knowledge-platform-desktop: {ORIGIN_ENV} is not set; /v1 requests answer 503"
+            ),
+            Err(_) => eprintln!(
+                "knowledge-platform-desktop: {ORIGIN_ENV} must be exactly http://127.0.0.1:<port> or http://[::1]:<port>; /v1 requests answer 503"
+            ),
+            Ok(_) => {}
+        }
+        Self::new(origin, app_origin)
     }
 
     pub async fn forward(&self, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         let app_origin = self.app_origin;
-        let (Ok(origin), Some(client)) = (&self.origin, &self.client) else {
+        let origin = match &self.origin {
+            Ok(origin) => origin,
+            Err(error) => return unconfigured(*error, app_origin),
+        };
+        let Some(client) = &self.client else {
             return problem(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "サーバーの接続先が設定されていません。",
+                "サーバーへの接続を準備できません。",
                 app_origin,
             );
         };
@@ -349,6 +377,12 @@ mod tests {
         assert!(parse_backend_origin(Some("http://127.0.0.1:8080")).is_ok());
         assert!(parse_backend_origin(Some("http://127.0.0.1:8080/")).is_ok());
         assert!(parse_backend_origin(Some("http://[::1]:9000")).is_ok());
+        // An explicit default port is still an explicit port.
+        let port80 = parse_backend_origin(Some("http://127.0.0.1:80")).unwrap();
+        assert_eq!(
+            api_target(&port80, "/v1/x").unwrap().as_str(),
+            "http://127.0.0.1/v1/x"
+        );
         assert_eq!(parse_backend_origin(None), Err(OriginError::Missing));
         assert_eq!(parse_backend_origin(Some("  ")), Err(OriginError::Missing));
         for invalid in [
@@ -531,6 +565,25 @@ mod tests {
             names,
             ["cache-control", "content-disposition", "content-type"]
         );
+    }
+
+    #[test]
+    fn a_wrong_origin_is_reported_as_wrong_not_as_missing() {
+        let missing = unconfigured(OriginError::Missing, "tauri://localhost");
+        let wrong = unconfigured(OriginError::NotLoopback, "tauri://localhost");
+        let invalid = unconfigured(OriginError::Invalid, "tauri://localhost");
+        let detail = |response: &Response<Vec<u8>>| {
+            serde_json::from_slice::<serde_json::Value>(response.body()).unwrap()["detail"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!(detail(&missing), "サーバーの接続先が設定されていません。");
+        assert!(detail(&wrong).contains("http://127.0.0.1:<port>"));
+        assert_eq!(detail(&wrong), detail(&invalid));
+        for response in [&missing, &wrong, &invalid] {
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        }
     }
 
     #[test]

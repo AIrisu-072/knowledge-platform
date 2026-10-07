@@ -74,15 +74,15 @@ async function rootShot(name) {
   current.screenshots.push(file.slice(directory.length + 1));
 }
 
-function appEnvironment({ apiOrigin }) {
+function appEnvironment({ apiOrigin, homeDir = home }) {
   const env = {
     PATH: process.env.PATH,
     DISPLAY: display.display,
-    HOME: home,
-    XDG_CONFIG_HOME: join(home, '.config'),
-    XDG_DATA_HOME: join(home, '.local/share'),
-    XDG_CACHE_HOME: join(home, '.cache'),
-    XDG_RUNTIME_DIR: join(home, '.runtime'),
+    HOME: homeDir,
+    XDG_CONFIG_HOME: join(homeDir, '.config'),
+    XDG_DATA_HOME: join(homeDir, '.local/share'),
+    XDG_CACHE_HOME: join(homeDir, '.cache'),
+    XDG_RUNTIME_DIR: join(homeDir, '.runtime'),
     LANG: 'C.UTF-8',
     NO_AT_BRIDGE: '1',
   };
@@ -662,6 +662,27 @@ scenario('reduced motion：GTKのアニメーション無効設定がページ�
   } finally {
     await quit(s);
     await rm(settings);
+  }
+});
+
+scenario('XDGのダウンロード先が無い端末でも、原本は ~/Downloads へ保存される', async () => {
+  const bare = join(directory, 'home-without-xdg-dirs');
+  for (const path of ['.config', '.local/share', '.cache', '.runtime', 'Downloads']) await mkdir(join(bare, path), { recursive: true, mode: 0o700 });
+  const driver = await startDriver('no-xdg-dirs', appEnvironment({ apiOrigin: backend.origin, homeDir: bare }));
+  const s = await Session.create(driver.url, binary);
+  try {
+    await s.waitFor(async () => (await s.url()).startsWith('tauri://localhost/'), { message: 'app' });
+    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    check('user-dirs.dirsが無い', !(await stat(join(bare, '.config/user-dirs.dirs')).catch(() => undefined)));
+    await (await s.waitForText('button', 'ファイルを取得')).click();
+    const saved = join(bare, 'Downloads', 'desktop-reference.txt');
+    await s.waitFor(async () => (await stat(saved).catch(() => undefined))?.size > 0, { message: 'fallback download' });
+    check('~/Downloads に保存され、内容が一致', (await readFile(saved, 'utf8')) === '【合成データ】デスクトップ版の画面確認に使う共有資料です。\n');
+    // tauri-driver (and so the app) runs in the repository root.
+    check('作業フォルダーには保存しない', !(await readdir(root)).includes('desktop-reference.txt'));
+  } finally {
+    await s.delete();
+    driver.stop();
   }
 });
 

@@ -16,9 +16,11 @@
     }
   };
   window.fetch = async function fetch(input, init) {
+    // Building the Request may take over the body of a Request input, so the
+    // pass-through sends this Request rather than the original arguments.
     const request = new Request(input, init);
     if (request.method === 'GET' || request.method === 'HEAD' || !sameOrigin(request.url)) {
-      return nativeFetch(input, init);
+      return nativeFetch(request);
     }
     const body = await request.arrayBuffer();
     return nativeFetch(request.url, {

@@ -13,7 +13,7 @@
 
 - Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません
 - broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eは[PR95](https://github.com/AIrisu-072/knowledge-platform/pull/95)でmainに統合済み
-- 07:30追補：依頼者が[判断5項目](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)に合意。main `04076b1` から作り直した同名branchで、Tauri shell（`apps/desktop/src-tauri`、独立Cargo workspace）を実装し、実アプリのGUIをtauri-driver＋Xvfb＋xdotool＋実backendで16シナリオ確認（ローカル専用、CIにはしない）。Windows実機は未実施。次は独立review→Draft PR→exact-head CI→統合
+- 07:30追補：依頼者が[判断5項目](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)に合意。main `04076b1` から作り直した同名branchで、Tauri shell（`apps/desktop/src-tauri`、独立Cargo workspace）を実装し、実アプリのGUIをtauri-driver＋Xvfb＋xdotool＋実backendで17シナリオ確認（ローカル専用、CIにはしない）。Windows実機は未実施。次は独立review→Draft PR→exact-head CI→統合
 
 ---
 
