@@ -30,7 +30,14 @@
 | HTTP | 全pass（新規3件：8 MiB境界と1 byte超過・header・media type、添付応答header、503と404、作成/外す/取込みのcommand） |
 | GUI | 1572/1572（66 suites）、型検査、organization runtime型検査。新規：画面5件・client 4件（変異確認：未登録ファイルでの提出不可・保存領域拒否の確定失敗扱い・固定ファイルの世代必須・取込みボタンの条件を外すとRED） |
 | runner node試験・API contract・OpenAPI lint | pass |
-| 実browser（ローカル） | 実行中 |
+| 実browser（ローカル、PostgreSQL 18.6公式image、system Chromium） | 20 stageすべてpassed（既存2名・6名policy・文脈の各stageに加え files-journey／files-restart／files-persistence、cleanup完了） |
+
+### 実装中に見つけて直したもの
+
+- 内容登録を作成の直後に続けて開始すると、結果の照合が前のrenderの操作（作成）を参照して「応答と操作が一致しません」になる。照合を各requestに束縛して修正し、GUI試験で確認
+- 受入済み2名journeyのsession確認が `fileUpload: false` を前提にしていた。保存領域を構成したため期待値を `true` に更新（hintであり操作ごとにserverが再確認する）
+- 実browserで、Playwrightの既定（`journey` 以外は添付の保存を許可しない）により取得が保存されなかった。審査担当のcontextで明示的に許可
+- この実行環境（`LANG` 未設定）のChromiumは日本語の保存名を `download` に置き換える（`C.UTF-8` では元の名前）。受入はserverの添付header（RFC 5987の名前）とbytes・SHA-256で確認する
 
 ### 新しい判断（承認済みとは扱わない）
 
@@ -48,6 +55,5 @@
 
 ### 次のexact action
 
-1. 実browser受入（ローカル、20 stage）の結果確認
-2. 独立review
+1. 独立reviewの結果を確認し、指摘を修正
 3. U2統合後、同名branchを最新mainから作り直してU3 commitを移し、PR作成・exact-head CI
