@@ -2,6 +2,13 @@
 
 Status: ACTIVE
 
+## 2026-10-07 23:11 UTC — 手順headの全CI合格と最新mainの追従
+
+- 公開head e08365562987b098e175904688c37035b311f940 / tree0788260d407d364910279429b6aeaab5a323e035の[CI37698468205](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37698468205)は終端SUCCESS。14 jobs全成功、19checks16成功・既存skip3、artifact0。Document/Organization/summaryの3step成功。Rust実ログ113055908096で1980成功/13skip＋21成功/0skip＋7成功/1skipを確認した。checkoutはmerge ref26fe02401a674412d6ac67cf27552cf7e6557118で、headと同tree、parentsは旧main a7cf93d53とe0836556である
+- 導入4手順のsource/日本語レビューGO、旧pin/main資格の残存表記と履歴日時labelを補修して同PRへ保存済み。製品cbe65d14へのpinは保持する。大runtime stdoutは個別未読で、公式stepと固定sourceの失敗伝播による評価・未資格の境界は変わらない
+- CI確認中に別担当のAudit Infrastructure単位A/PR98がmain643cc85d47b5bcc48ad7b6f19f05fa2f653902a1へ統合されていたことが分かり、PR106がdirtyとなった。新mainは33fileで、重なるのはactive.md先頭の追記のみ。Audit側32fileは新mainのbytesを保持し、activeは双方の節を削除せず併記する。Document/GUI/既存受入/導入手順の追加変更はしない
+- 次のexact action: 同じPR106へmain追従のmerge commitを保存し、新しい組合せheadの通常CIを終端まで確認する。旧baseでの合格を新組合せへ転用しない。mergeは親担当、実server反映は依頼者の手動操作
+
 ## 2026-10-07 22:38 UTC — 製品headの通常CI合格と導入手順の更新
 
 - 公開head `cbe65d140852cbacd7fea4a8fed7830f0757ea4b` / tree `b2cb1cba60bfc29c4407335faec8f30a6d1c9740` / base `a7cf93d53a1b1627ace31d079fd222d7400d8673` をGitHubから再確認した。[CI37692284389](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389)は終端SUCCESS。通常14 jobsすべて成功、全19 checksは16成功・既存skip3、公開artifact0件。mainは同baseを保持している

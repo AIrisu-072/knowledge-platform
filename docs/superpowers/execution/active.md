@@ -1,5 +1,19 @@
 # Active Execution Pointer
 
+## 2026-10-07 23:11 UTC — PR106の手順head合格後に最新mainを保持して追従
+
+- 手順head e0836556 / tree0788260dの通常CI37698468205は14 jobs全成功、全19checks16成功・既存skip3。導入4手順の独立レビューもGO。CI確認中のmain643cc85d（Audit単位A/PR98）更新によりactive先頭だけが競合したため、双方の節を保持して解消する
+- Audit側の32fileは新mainと完全同一のまま取り込み、Document製品/試験/導入4手順はe0836556から変えない。導入pinは資格済み製品cbe65d14を保持する。再開は[状況](document-view-read-state-status.md)へ。次はこの統合headの通常全CI、親のmerge判定と統合後CI。旧baseの成功を新組合せの資格にはしない
+
+---
+
+## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
+- branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+
+---
+
 ## 2026-10-07 22:38 UTC — 自動既読・未読戻しの製品資格と導入手順
 
 - [PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の製品head cbe65d14 / tree b2cb1cbaの通常CI37692284389は14 jobs全成功、全19checksは16成功・既存skip3。新Rust/DBを実ログ確認し、Document/Organization/summaryも公式step成功。詳細な根拠と取得制限は[状況](document-view-read-state-status.md)へ記録
