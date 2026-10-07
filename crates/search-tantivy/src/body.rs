@@ -228,7 +228,7 @@ fn metadata_json(unit: &KnowledgeUnit) -> Result<String, LexicalIndexError> {
 }
 
 pub(crate) fn build_unit_index(
-    units: &[KnowledgeUnit],
+    units: &[&KnowledgeUnit],
     tokenizer: &str,
 ) -> Result<UnitIndex, LexicalIndexError> {
     let (schema, fields) = unit_schema(tokenizer);
@@ -236,7 +236,7 @@ pub(crate) fn build_unit_index(
 }
 
 pub(crate) fn build_unit_index_at(
-    units: &[KnowledgeUnit],
+    units: &[&KnowledgeUnit],
     dir: &std::path::Path,
     tokenizer: &str,
 ) -> Result<UnitIndex, LexicalIndexError> {
@@ -253,7 +253,7 @@ pub(crate) fn build_unit_index_at(
 /// `None` (and leaves no files) when `base` cannot serve as a base; the caller
 /// then builds from nothing. Merging is off, so linked segments stay shared.
 pub(crate) fn build_unit_index_from_base(
-    units: &[KnowledgeUnit],
+    units: &[&KnowledgeUnit],
     base: &Path,
     dir: &Path,
     tokenizer: &str,
@@ -352,7 +352,7 @@ fn unit_document(
 fn fill_unit_index(
     index: Index,
     fields: UnitFields,
-    units: &[KnowledgeUnit],
+    units: &[&KnowledgeUnit],
 ) -> Result<UnitIndex, LexicalIndexError> {
     crate::analyzer::register(&index);
     let mut writer = index.writer(15_000_000)?;
@@ -448,8 +448,9 @@ fn optional(hasher: &mut Sha256, value: Option<&str>) {
 pub fn lexical_input_digest(
     input: &LexicalBuildInput,
 ) -> Result<LexicalInputDigest, LexicalIndexError> {
-    let entries = input
-        .body_units()
+    let units = input.body_units();
+    let entries = units
+        .as_deref()
         .unwrap_or(&[])
         .iter()
         .map(|unit| {
@@ -460,7 +461,7 @@ pub fn lexical_input_digest(
         })
         .collect::<Result<Vec<_>, LexicalIndexError>>()?;
     lexical_digest(
-        input.body_units().is_some(),
+        units.is_some(),
         input.analyzer_version(),
         input.documents(),
         &entries,

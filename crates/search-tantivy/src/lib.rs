@@ -16,5 +16,6 @@ pub use body::{
 pub use index::UnitIndexFault;
 pub use index::{
     LexicalBuildInput, LexicalDocument, LexicalIndexError, SourceSuppliedBody, TantivyLexicalIndex,
+    UnitSource,
 };
 pub use persist::PersistedLexical;

@@ -60,7 +60,7 @@ pub struct LexicalBuildInput {
     projection_schema_version: String,
     lens_version: u32,
     documents: Vec<LexicalDocument>,
-    body_units: Option<Vec<KnowledgeUnit>>,
+    body_units: Option<BodyUnits>,
     /// The analyzer this input is indexed with; it must equal the manifest's.
     analyzer_version: String,
     /// A committed Unit index of an earlier generation to start from.
@@ -107,7 +107,14 @@ impl LexicalBuildInput {
     /// Make the generation body-ready (schema-2) with exactly these verified
     /// Units. An empty collection is still body-ready: every item had no text.
     pub fn with_body_units(mut self, units: Vec<KnowledgeUnit>) -> Self {
-        self.body_units = Some(units);
+        self.body_units = Some(BodyUnits(Arc::new(units)));
+        self
+    }
+
+    /// [`Self::with_body_units`] over Units the caller keeps owning (T12): the
+    /// build reads them in place instead of a copy.
+    pub fn with_body_unit_source(mut self, units: Arc<dyn UnitSource>) -> Self {
+        self.body_units = Some(BodyUnits(units));
         self
     }
 
@@ -115,10 +122,40 @@ impl LexicalBuildInput {
         &self.documents
     }
 
-    pub(crate) fn body_units(&self) -> Option<&[KnowledgeUnit]> {
-        self.body_units.as_deref()
+    pub(crate) fn body_units(&self) -> Option<Vec<&KnowledgeUnit>> {
+        self.body_units.as_ref().map(|units| units.0.units())
     }
 }
+
+/// Units a lexical build reads without owning them.
+pub trait UnitSource: Send + Sync {
+    /// Every Unit, in the caller's order.
+    fn units(&self) -> Vec<&KnowledgeUnit>;
+}
+
+impl UnitSource for Vec<KnowledgeUnit> {
+    fn units(&self) -> Vec<&KnowledgeUnit> {
+        self.iter().collect()
+    }
+}
+
+/// The body Units of one build input; equal when they hold the same Units.
+#[derive(Clone)]
+struct BodyUnits(Arc<dyn UnitSource>);
+
+impl std::fmt::Debug for BodyUnits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BodyUnits").field(&self.0.units()).finish()
+    }
+}
+
+impl PartialEq for BodyUnits {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.units() == other.0.units()
+    }
+}
+
+impl Eq for BodyUnits {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum LexicalIndexError {
@@ -296,7 +333,8 @@ impl TantivyLexicalIndex {
                 }
             }
         }
-        if let Some(units) = &input.body_units {
+        let body_units = input.body_units();
+        if let Some(units) = &body_units {
             if !units.is_empty()
                 && (source.retention_mode != RetentionMode::PersistentResource
                     || !source.supports(DiscoveryMode::LocalContentSearch))
@@ -309,7 +347,7 @@ impl TantivyLexicalIndex {
                 .map(|document| document.resource_ref)
                 .collect();
             let mut seen = std::collections::BTreeSet::new();
-            for unit in units {
+            for unit in units.iter() {
                 if unit.version.source_id != key.source_id {
                     return Err(LexicalIndexError::UnitSourceMismatch);
                 }
@@ -324,8 +362,7 @@ impl TantivyLexicalIndex {
         if let Some(dir) = dir {
             crate::persist::write_sidecar(dir, &manifest, source, &input)?;
         }
-        let unit_index = input
-            .body_units
+        let unit_index = body_units
             .as_deref()
             .map(|units| match dir {
                 Some(dir) => {
@@ -509,7 +546,10 @@ impl TantivyLexicalIndex {
                     )
                 })
                 .collect(),
-            units: Some(build_unit_index(&rebuilt, current.tokenizer)?),
+            units: Some(build_unit_index(
+                &rebuilt.iter().collect::<Vec<_>>(),
+                current.tokenizer,
+            )?),
             tokenizer: current.tokenizer,
         };
         generations.insert(key, Arc::new(replaced));

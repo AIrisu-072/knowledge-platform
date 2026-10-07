@@ -1498,14 +1498,11 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             lexical_documents,
         )
         .with_analyzer_version(self.config.analyzer_version.clone());
+        // The lexical build reads the Units in place; once it is done this
+        // is again the only owner and the manifest moves on uncopied.
+        let body = body.map(|(unit_manifest, coverage)| (Arc::new(unit_manifest), coverage));
         if let Some((unit_manifest, _)) = &body {
-            lexical_input = lexical_input.with_body_units(
-                unit_manifest
-                    .entries
-                    .iter()
-                    .flat_map(|entry| entry.units.iter().cloned())
-                    .collect(),
-            );
+            lexical_input = lexical_input.with_body_unit_source(unit_manifest.clone());
         }
         if let Err(error) = self.runtime.build_lexical_generation(
             manifest.clone(),
@@ -1529,6 +1526,8 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         }
         let mut bundle_receipt = None;
         if let Some((unit_manifest, coverage)) = body {
+            let unit_manifest =
+                Arc::try_unwrap(unit_manifest).unwrap_or_else(|shared| (*shared).clone());
             let validated = async {
                 self.runtime.stage_body_unit_manifest(unit_manifest).await?;
                 self.runtime.stage_body_coverage(coverage).await?;
