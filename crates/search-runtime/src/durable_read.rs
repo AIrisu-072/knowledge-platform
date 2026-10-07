@@ -43,7 +43,7 @@ use search_source_document::{
 };
 use search_tantivy::TantivyLexicalIndex;
 use sqlx::PgPool;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, watch};
 use uuid::Uuid;
 
 use crate::api::{ActorPorts, ActorPortsFactory};
@@ -52,7 +52,7 @@ use crate::payload::{PgPayloadStore, RestoredPayloadV1};
 use crate::recovery::{CurrentState, PgStartupRecovery};
 
 /// Why a durable generation could not be loaded.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DurableReadError {
     /// The current key failed re-verification; it must not be served.
     Unusable(ProjectionGenerationKey),
@@ -111,8 +111,13 @@ pub struct DurableDocumentReadModel {
     lexical_root: PathBuf,
     source: DiscoverableSource,
     loaded: RwLock<Option<Arc<LoadedGeneration>>>,
-    loading: Mutex<()>,
+    /// The key being loaded and the outcome of its load task. The load runs
+    /// detached, so a request that gives up (e.g. at its operation deadline)
+    /// does not cancel it; later requests wait for the same outcome.
+    loading: Mutex<Option<(ProjectionGenerationKey, LoadOutcome)>>,
 }
+
+type LoadOutcome = watch::Receiver<Option<Result<Arc<LoadedGeneration>, DurableReadError>>>;
 
 impl DurableDocumentReadModel {
     pub fn new(pool: PgPool, lexical_root: impl Into<PathBuf>, source: DiscoverableSource) -> Self {
@@ -121,8 +126,17 @@ impl DurableDocumentReadModel {
             lexical_root: lexical_root.into(),
             source,
             loaded: RwLock::new(None),
-            loading: Mutex::new(()),
+            loading: Mutex::new(None),
         }
+    }
+
+    /// A model over the same Source, for a detached load task.
+    fn detached(&self) -> Self {
+        Self::new(
+            self.pool.clone(),
+            self.lexical_root.clone(),
+            self.source.clone(),
+        )
     }
 
     async fn current_key(&self) -> Result<Option<ProjectionGenerationKey>, DurableReadError> {
@@ -172,14 +186,42 @@ impl DurableDocumentReadModel {
         {
             return Ok(Some(loaded.clone()));
         }
-        let _loading = self.loading.lock().await;
-        if let Some(loaded) = self.loaded.read().await.as_ref()
-            && loaded.key == key
-        {
-            return Ok(Some(loaded.clone()));
+        let mut outcome = {
+            let mut loading = self.loading.lock().await;
+            if let Some(loaded) = self.loaded.read().await.as_ref()
+                && loaded.key == key
+            {
+                return Ok(Some(loaded.clone()));
+            }
+            match loading.as_ref() {
+                Some((pending, outcome)) if *pending == key => outcome.clone(),
+                _ => {
+                    let (sender, outcome) = watch::channel(None);
+                    let loader = self.detached();
+                    tokio::spawn(async move {
+                        let result = loader.load(key).await.map(Arc::new);
+                        let _ = sender.send(Some(result));
+                    });
+                    *loading = Some((key, outcome.clone()));
+                    outcome
+                }
+            }
+        };
+        let result = outcome
+            .wait_for(Option::is_some)
+            .await
+            .map_err(|_| store_error("load task", key))?
+            .clone()
+            .ok_or_else(|| store_error("load task", key))?;
+        let mut loading = self.loading.lock().await;
+        if loading.as_ref().is_some_and(|(pending, _)| *pending == key) {
+            *loading = None;
         }
-        let loaded = Arc::new(self.load(key).await?);
-        *self.loaded.write().await = Some(loaded.clone());
+        let loaded = result?;
+        let mut current = self.loaded.write().await;
+        if current.as_ref().is_none_or(|current| current.key != key) {
+            *current = Some(loaded.clone());
+        }
         Ok(Some(loaded))
     }
 
