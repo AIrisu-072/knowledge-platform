@@ -12,6 +12,7 @@
 // shows); 「IPC：」 = the broker command called from page script (as hostile or
 // replaying page code would); 「ページのscript：」 = other page script (fetch,
 // window/frame/navigation probes, media queries, the IPC call counter);
+// 「WebDriver：」 = state only WebDriver sees (window handles, document.title);
 // 「ディスク：」 = files the harness reads on disk; 「ログ：」 = the app's stderr;
 // 「準備：」 = a harness setup step.
 import assert from 'node:assert/strict';
@@ -80,7 +81,7 @@ function scenario(name, body) {
   });
 }
 
-const CHECK_KINDS = ['IPC・ディスク', 'IPC', 'ページのscript', 'ディスク', 'ログ', '準備'];
+const CHECK_KINDS = ['IPC・ディスク', 'IPC', 'ページのscript', 'WebDriver', 'ディスク', 'ログ', '準備'];
 
 function kindOf(label) {
   const prefix = /^([^：]+)：/.exec(label)?.[1];
@@ -500,8 +501,8 @@ scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳�
   try {
     await s.waitFor(async () => new URL(await s.url()).pathname === '/documents', { message: '/documents' });
     check('既存の文書一覧が実Document APIの合成文書を表示する', await s.waitForText('[role="row"]', 'デスクトップ確認用資料'));
-    check('ウィンドウはmain 1つだけ', (await s.handles()).length === 1, await s.handles());
-    check('文書画面のtitle', (await s.title()) === '文書管理 | Knowledge Platform', await s.title());
+    check('WebDriver：ウィンドウはmain 1つだけ', (await s.handles()).length === 1, await s.handles());
+    check('WebDriver：文書画面のdocument.title', (await s.title()) === '文書管理 | Knowledge Platform', await s.title());
     check('ヘッダーにデスクトップ実行の表示', (await s.bodyText()).includes('デスクトップで実行中'));
     await shot(s, 'documents');
     await clickText(s, 'button[data-document-id]', 'デスクトップ確認用資料');
@@ -509,9 +510,10 @@ scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳�
     await s.waitFor(async () => new URL(await s.url()).pathname === `/documents/${docId}`, { message: 'detail route' });
     check('詳細画面へRouterで遷移し、題名を表示', await s.waitForText('h1', 'デスクトップ確認用資料'));
     await shot(s, 'detail');
-    await s.back();
-    await s.waitFor(async () => new URL(await s.url()).pathname === '/documents', { message: 'history back' });
-    check('戻る操作で一覧へ戻る', await s.waitForText('[role="row"]', 'デスクトップ確認用資料'));
+    // The desktop window has no browser back button: use the screen's own.
+    await clickText(s, 'button', '← 一覧へ戻る');
+    await s.waitFor(async () => new URL(await s.url()).pathname === '/documents', { message: 'back to the list' });
+    check('画面の「← 一覧へ戻る」で一覧へ戻る', await s.waitForText('[role="row"]', 'デスクトップ確認用資料'));
   } finally {
     await quit(s);
   }
@@ -527,11 +529,11 @@ scenario('Router・Query：deep link（/tasks）と再読み込み、タスク�
       fetch('/v1/organization/tasks').then(async (r) => done({ status: r.status, title: (await r.json()).items?.[0]?.title }), (e) => done({ error: String(e) }));`);
     const firstTitle = api.title;
     check('ページのscript：タスク一覧のAPI（Work API）はshell経由で200', api.status === 200, api);
-    check('タスク画面がWork APIのタスクを表示（deep linkはindex.htmlへfallback）', firstTitle && await s.waitForText('[aria-label="タスク一覧"]', firstTitle), firstTitle);
+    check('ページのscript：URLで /tasks を直接開いても（index.htmlへfallback）、タスク画面がWork APIのタスクを表示', firstTitle && await s.waitForText('[aria-label="タスク一覧"]', firstTitle), firstTitle);
     await s.execute('window.__kpBeforeReload = true; window.location.reload();');
     // A new document has no marker; only then is the reload proven.
     await s.waitFor(async () => (await s.execute('return document.readyState === "complete" && window.__kpBeforeReload === undefined;')), { message: 'reloaded document' });
-    check('/tasksで再読み込みしても同じ画面を復元', new URL(await s.url()).pathname === '/tasks' && await s.waitForText('[aria-label="タスク一覧"]', firstTitle));
+    check('ページのscript：/tasksで再読み込み（location.reload）しても同じ画面を復元', new URL(await s.url()).pathname === '/tasks' && await s.waitForText('[aria-label="タスク一覧"]', firstTitle));
     await shot(s, 'tasks');
     await clickText(s, 'nav a', '検索');
     await s.waitFor(async () => new URL(await s.url()).pathname === '/search', { message: '/search' });
@@ -855,10 +857,10 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
     await (await s.find('textarea[aria-label="内容"]')).type('二重送信の確認（合成）');
     check('準備：IPCの計測を設定', await instrumentIpc(s));
     await s.execute(`const form = document.querySelector(arguments[0]); form.requestSubmit(); form.requestSubmit();`, [FILE_FORM]);
-    check('連続した2回の送信でも作成は1回', await notice(s, 'ファイル「二重送信.txt」を作成しました。'));
+    check('ページのscript：同じ処理の中で2回送信（requestSubmit）しても、作成の通知は1回', await notice(s, 'ファイル「二重送信.txt」を作成しました。'));
     const fileCalls = callsOf(await ipcState(s), 'file.create');
     check('ページのscript：file.createのIPCは1回だけ', fileCalls.length === 1, fileCalls);
-    check('二重作成による「既にあります」の表示はない', !(await s.bodyText()).includes('同じ名前のファイルが既にあります'));
+    check('ページのscript：2回送信でも「既にあります」の表示はない', !(await s.bodyText()).includes('同じ名前のファイルが既にあります'));
     check('ディスク：ディスク上も1件', (await readdir(managedDir)).filter((name) => name === '二重送信.txt').length === 1);
 
     await clickText(s, 'button', '新しいWorkspace');
@@ -900,7 +902,7 @@ scenario('ネイティブのフォルダー選択（実GTKダイアログ）：�
     await X.chooseFolder(folders.folder);
     check('選択したフォルダーを追加（参照のみ）', await notice(s, 'フォルダー「資料フォルダー」を追加しました。'));
     const attached = (await workspaces(s)).find((item) => item.name === workspaceName);
-    check('IPC応答に絶対pathを含まない', !JSON.stringify(attached).includes(fixtures), attached.bindings.map((item) => item.label));
+    check('IPC：応答に絶対pathを含まない', !JSON.stringify(attached).includes(fixtures), attached.bindings.map((item) => item.label));
     await clickText(s, 'button', 'フォルダーを追加');
     await X.chooseFolder(folders.folder);
     check('同じフォルダーの再追加は拒否', await alertText(s, 'このフォルダーは既に追加されています。'));
@@ -1424,6 +1426,9 @@ scenario('接続先が未設定のshell：/v1は503で、外部へは出ない',
     const api = await pageFetch(s, '/v1/organization/session');
     check('ページのscript：/v1は503 problem', api.status === 503 && api.body.includes('サーバーの接続先が設定されていません。'), api);
     check('文書画面は失敗を表示', await s.waitForText('[role="alert"]', '読み込みに失敗しました', { timeout: 30_000 }));
+    await s.execute('window.location.assign("/tasks")');
+    check('タスク画面は「タスクを開けません」と接続の確認を表示', await s.waitForText('h1', 'タスクを開けません', { timeout: 30_000 })
+      && await s.waitForText('[role="alert"]', 'サーバーから結果を取得できませんでした。接続を確認して再読込してください。'));
     check('ログ：起動時にstderrへ1行だけ理由を出す', (await readFile(driver.logFile, 'utf8')).split('\n').filter((line) => line.includes('KNOWLEDGE_PLATFORM_API_ORIGIN is not set')).length === 1);
     await shot(s, 'no-origin');
   } finally {
