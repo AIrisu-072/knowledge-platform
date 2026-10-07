@@ -6,6 +6,7 @@ import { DocumentHomePage } from '../src/routes/DocumentHomePage';
 import { rootFolderOperations } from '../src/application/document-root-folder';
 import { folderRenameOperations } from '../src/application/document-folder-rename';
 import { documentMoveOperations } from '../src/application/document-move';
+import { folderAccessPolicyOperations } from '../src/application/document-folder-access-policy';
 import { folderMoveOperations } from '../src/application/document-folder-move';
 import { validateListSearch } from '../src/application/search-state';
 
@@ -301,4 +302,21 @@ test.each(['create', 'rename', 'move'])('文書移動UNKNOWNと既存Folder %s�
   fireEvent.click(screen.getByRole('button', { name: kind === 'create' ? 'System Rootにフォルダーを作成' : kind === 'rename' ? '選択したフォルダー名を変更' : title })); const dialog = await screen.findByRole('dialog');
   fireEvent.click(within(dialog).getByRole('button', { name: '同じ内容で再試行' })); await within(dialog).findByText(/FORBIDDEN.*初回/);
   expect(method.mock.calls[0]![kind === 'create' ? 0 : 1]).toBe(fixed); expect(store.get()?.status).toBe('unknown'); expect(documentMoveOperations(client).get()).toBe(documentFixed);
+});
+
+test.each(['create', 'rename', 'move'])('新Folder %sのfresh read中にアクセス設定UNKNOWNが発生したら送信前に止める', async kind => {
+  const { api, client } = setup(); await choose();
+  let dialog: HTMLElement;
+  if (kind === 'move') { dialog = await openMove(); await destination(dialog); fill(dialog); }
+  else {
+    fireEvent.click(screen.getByRole('button', { name: kind === 'create' ? 'System Rootにフォルダーを作成' : '選択したフォルダー名を変更' })); dialog = await screen.findByRole('dialog');
+    const nameLabel = kind === 'create' ? 'フォルダー名' : '変更先のフォルダー名'; await waitFor(() => expect(within(dialog).getByLabelText(nameLabel)).toBeEnabled());
+    fireEvent.change(within(dialog).getByLabelText(nameLabel), { target: { value: '新資料' } }); fireEvent.change(within(dialog).getByLabelText(kind === 'create' ? '作成理由' : '変更理由'), { target: { value: '理由' } });
+  }
+  const read = deferred<FolderChildren>(); const rootRead = deferred<Awaited<ReturnType<typeof documentApi.getRootFolder>>>();
+  if (kind === 'create') api.getRootFolder.mockReturnValue(rootRead.promise); else api.listFolderChildren.mockImplementation(id => id === g.folderId ? read.promise : Promise.resolve(page(id === rootId ? [g, d] : [])));
+  fireEvent.submit(within(dialog).getByRole('button', { name: kind === 'create' ? '作成する' : kind === 'rename' ? '変更を保存する' : '移動する' }).closest('form')!);
+  act(() => folderAccessPolicyOperations(client).put({ status: 'unknown', targetFolderId: p.folderId, context: { kind: 'selected', folderId: p.folderId, sourceParentId: g.folderId, pageLimit: 1, name: p.name }, expectedChanged: true, request: { operationId: 'policy', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' } }));
+  await act(async () => { if (kind === 'create') rootRead.resolve({ folderId: rootId, name: 'System Root', parentFolderId: null, revision: 17, capabilities: page([]).capabilities }); else read.resolve(page([p])); });
+  expect(kind === 'create' ? api.createFolder : kind === 'rename' ? api.renameFolder : api.moveFolder).not.toHaveBeenCalled();
 });
