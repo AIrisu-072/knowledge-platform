@@ -13,6 +13,7 @@ download path is checked separately).
 
 Scoring (per question, tuning split unless --split final):
   cited documents  answer.documents in order -> Recall@1/5/10, MRR
+  answer           the expected answer string appears in the answer (when given)
   evidence         each quoted passage is verbatim in the cited document
   no_answer        a false positive when documents are cited
   cost             tool calls, LLM turns, prompt/completion tokens, seconds
@@ -30,6 +31,7 @@ import re
 import statistics
 import sys
 import time
+import unicodedata
 import urllib.request
 from pathlib import Path
 
@@ -241,6 +243,17 @@ def run_question(question, args, corpus, system_prompt, tools):
     return trace
 
 
+def answer_matches(expected, actual):
+    """Every part of the expected answer (split on 、) appears in the answer.
+
+    A lenient string check; misses are reviewed by hand before reporting.
+    """
+    def norm(text):
+        return unicodedata.normalize("NFKC", text or "").replace(" ", "")
+    parts = [p for p in norm(expected).split("、") if p]
+    return all(p in norm(actual) for p in parts)
+
+
 def score(question, trace, keys, corpus):
     record = {"qid": question["qid"], "type": question["type"], "split": question["split"],
               "verification": question["verification"], "tool_calls": len(trace["calls"]),
@@ -256,6 +269,8 @@ def score(question, trace, keys, corpus):
                      and e["quote"].strip() in corpus.text(e["id"])) for e in evidence]
     record["evidence_verbatim"] = round(sum(verbatim) / len(verbatim), 3) if verbatim else None
     record["declared_no_answer"] = bool(final.get("no_answer"))
+    if question.get("answer"):
+        record["answer_match"] = answer_matches(question["answer"], final.get("answer"))
     if not question["gold"]:
         record["outcome"] = "false_positive" if documents and not final.get("no_answer") else "correct_empty"
         return record
@@ -285,6 +300,9 @@ def summarize(records):
         if negatives:
             entry["false_positive_rate"] = round(
                 sum(r["outcome"] == "false_positive" for r in negatives) / len(negatives), 3)
+        answered = [r["answer_match"] for r in items if "answer_match" in r]
+        if answered:
+            entry["answer_match"] = round(sum(answered) / len(answered), 3)
         verbatim = [r["evidence_verbatim"] for r in items if r.get("evidence_verbatim") is not None]
         if verbatim:
             entry["evidence_verbatim"] = round(statistics.mean(verbatim), 3)

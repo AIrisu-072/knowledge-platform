@@ -9,7 +9,7 @@
 | 原本（ダンプ、法令API応答） | `~/kp-validation-data/raw/` | 入れない |
 | 検索入力・来歴・正解候補 | `~/kp-validation-data/corpus/<名前>/` | 入れない |
 | 自動生成した評価質問 | `~/kp-validation-data/eval/` | 入れない（生成手順だけ） |
-| LLMが書いた評価質問（未確認） | `questions/` | 入れる（短い引用だけ） |
+| LLMが書いた評価質問（未確認）、アシスタントが本文で確認した質問（`assistant_verified`、人は未確認） | `questions/` | 入れる（短い引用だけ） |
 | 実行環境（DB、原本保存、索引、秘密） | OrbStack Linux machine `kpval` の `~/kpval/` | 入れない |
 | 手順と集計結果 | `scripts/`、`host/`、状態記録 | 入れる |
 
@@ -45,6 +45,16 @@ python scripts/build_questions.py --corpus <jawiki> <laws> --links <jawiki>/trut
   --absent-titles <titles> --out ~/kp-validation-data/eval/stage1-auto.jsonl
 python3 scripts/evaluate.py --questions <auto> questions/stage1-llm.jsonl \
   --corpus <jawiki> <laws> --ingest ~/kpval/ingest/*.jsonl --out results.jsonl
+
+# 7. ローカルLLMによる自律検索（OpenAI互換のLLM、tool calling）
+AGENT_LLM_ENDPOINT=<base URL> python3 agent/agent_loop.py --variant <名前> \
+  --system agent/prompts/system-strategy.md --tools agent/prompts/tools-rich.json \
+  --skill agent/prompts/skill-search-mcp.md --questions questions/stage1-bridge.jsonl \
+  --corpus <jawiki> <laws> --ingest ~/kpval/ingest/*.jsonl --out ~/kp-validation-data/results/agent
+
+# 8. ページ画像の読取り（画像を扱えるLLM）
+python3 scripts/vlm_ocr_probe.py --endpoint <base URL> --model <名前> --no-thinking \
+  --image <page.png> --reference <書き起こし.txt> --out <result.json>
 ```
 
 ## 出典と帰属
