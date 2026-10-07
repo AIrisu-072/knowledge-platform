@@ -5,10 +5,11 @@
 mod common;
 
 use audit_core::catalog::DOCUMENT_SOURCE;
+use audit_core::port::precheck_ingest;
 use audit_core::{
-    BoundedCode, Catalog, LEGACY_ADAPTER_VERSION, Origin, ProbeExpectation, ReceiptIdentity,
-    ReconcileCounts, ReconcileMode, RelayControl, RelayControlKind, SourceMismatchCode,
-    validate_envelope,
+    AuditEnvelope, BoundedCode, Catalog, IngestRow, LEGACY_ADAPTER_VERSION, Origin, OutageCode,
+    ProbeExpectation, ReceiptIdentity, ReconcileCounts, ReconcileMode, RelayControl,
+    RelayControlKind, SourceMismatchCode, StoreError, validate_envelope,
 };
 use common::*;
 use serde_json::{Value, json};
@@ -135,4 +136,57 @@ fn probe_expectation_lists_the_registered_types_of_a_source() {
         .is_none(),
         "control sources are never ingested"
     );
+}
+
+fn ingest_row(status: &str, code: Option<&str>) -> IngestRow {
+    IngestRow {
+        status: status.to_owned(),
+        seq: None,
+        envelope_digest: None,
+        adapter_version: None,
+        code: code.map(str::to_owned),
+    }
+}
+
+#[test]
+fn terminal_errors_are_only_decoded_from_store_verdict_rows() {
+    // Outside the crate a terminal error can only come from a decoded row
+    // (constructing `StoreError::Conflict { .. }` directly does not compile;
+    // see the compile_fail example on `StoreError`).
+    let conflict = ingest_row("conflict", None)
+        .into_result()
+        .expect_err("verdict");
+    assert!(matches!(conflict, StoreError::Conflict { .. }));
+    assert!(conflict.is_terminal());
+    let rejected = ingest_row("rejected", Some("invalid_envelope"))
+        .into_result()
+        .expect_err("verdict");
+    match &rejected {
+        StoreError::Rejected { code, .. } => assert_eq!(code.as_str(), "invalid_envelope"),
+        other => panic!("expected a rejection, got {other:?}"),
+    }
+    // A SQL failure is classified, never a verdict.
+    let outage = StoreError::outage(audit_core::classify_sqlstate("23505"));
+    assert!(outage.is_outage());
+    assert_eq!(outage.outage_code(), Some(OutageCode::Other));
+}
+
+#[test]
+fn ingest_refuses_non_relay_envelopes_without_a_round_trip() {
+    let relay = audit_core::project(&fixture_named("document.created").row).expect("projects");
+    assert_eq!(relay.origin(), Origin::Relay);
+    assert_eq!(precheck_ingest(&relay), Ok(()));
+    for (name, origin, value) in control_envelopes() {
+        let envelope =
+            AuditEnvelope::from_value(value, origin).unwrap_or_else(|r| panic!("{name}: {r}"));
+        assert_eq!(envelope.origin(), origin, "{name}: the validated path");
+        let error = precheck_ingest(&envelope).expect_err("control envelopes are not ingested");
+        assert!(error.is_terminal(), "{name}");
+        match error {
+            StoreError::Rejected { code, .. } => {
+                assert_eq!(code.as_str(), "control_type_forbidden", "{name}");
+            }
+            other => panic!("{name}: {other:?}"),
+        }
+    }
 }

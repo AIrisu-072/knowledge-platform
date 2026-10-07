@@ -9,12 +9,12 @@
 ## 単位A：event契約（PR #98）
 
 1. `crates/audit-core` を新設し、workspaceと `dependency-rules.toml` の境界に登録する。
-2. `spec/telemetry/audit-event-catalog.json`：Document 21種とcontrol 12種を収める。kind、subject形、correlation写像、reason扱いを定める。
+2. `spec/telemetry/audit-event-catalog.json`：Document 21種とcontrol 14種を収める（control種別数は設計改訂3 §4.5で12→14に更新済み。正本はcatalog）。kind、subject形、correlation写像、reason扱いを定める。
 3. envelope（CloudEvents 1.0.2 structured JSON、閉じた属性集合、重複key拒否、上限）、payload v1、catalog駆動のvalidator。
 4. legacy投影：claim projection（SQL側でreasonを除去したrow）から `AuditEnvelope` を作るか、quarantine codeを返す。
 5. chain/genesis計算、export検証（RawValueでの原文hash、連続chain、checkpoint照合）。
 6. `spec/telemetry/audit-event.schema.json` の生成と再現性試験。Rust⊂schemaの関係を確かめる。
-7. 互換試験：main producerの全payload形をacceptし、機微key・未知key・型違反・上限超過・重複key・correlation違反・control偽装を拒否する。`legacy_time` の形を固定する。
+7. 互換試験：main producerの全payload形をacceptし、機微key・未知key・型違反・上限超過・重複key・correlation違反・control偽装を拒否する。`legacy_time` の形を固定する。投影の出力を `spec/telemetry/audit-adapter-golden.json` に (source_format, adapter_version) ごとに固定する（golden pin。entryは `<fixture>@<入力行hash>` で追加のみ、旧sectionは試験内のdigestで凍結）。版の上げ忘れと既存sectionの編集を試験で検出する。
 8. `mise.toml` / CIにおけるcontract検査の位置を確認する（workspaceのnextestで実行されることを確認する）。
 
 ## 単位B：Store・配送

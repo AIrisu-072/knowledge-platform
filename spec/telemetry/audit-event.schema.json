@@ -32,6 +32,11 @@
       "minimum": 0,
       "type": "integer"
     },
+    "db_role": {
+      "description": "Control events only: a PostgreSQL role name that needs no quoting",
+      "pattern": "^[a-z_][a-z0-9_$]{0,62}$",
+      "type": "string"
+    },
     "digest": {
       "items": {
         "maximum": 255,
@@ -246,7 +251,7 @@
                   "$ref": "#/$defs/counter"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 }
               },
               "required": [
@@ -385,7 +390,7 @@
                   ]
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 }
               },
               "required": [
@@ -487,10 +492,10 @@
                   "$ref": "#/$defs/utc_timestamp"
                 },
                 "filter_actor_issuer": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/principal_ref"
                 },
                 "filter_actor_principal_id": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/principal_ref"
                 },
                 "filter_digest": {
                   "$ref": "#/$defs/hex_digest"
@@ -499,7 +504,7 @@
                   "$ref": "#/$defs/uuid_list"
                 },
                 "filter_event_types": {
-                  "$ref": "#/$defs/identifier_list"
+                  "$ref": "#/$defs/event_type_list"
                 },
                 "filter_occurred_from": {
                   "$ref": "#/$defs/utc_timestamp"
@@ -508,7 +513,7 @@
                   "$ref": "#/$defs/utc_timestamp"
                 },
                 "filter_resource_id": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/resource_ref"
                 },
                 "filter_resource_type": {
                   "enum": [
@@ -525,7 +530,11 @@
                   "$ref": "#/$defs/positive_counter"
                 },
                 "filter_source": {
-                  "$ref": "#/$defs/identifier"
+                  "enum": [
+                    "urn:knowledge-platform:audit-relay",
+                    "urn:knowledge-platform:audit-store",
+                    "urn:knowledge-platform:document-platform"
+                  ]
                 },
                 "include_control": {
                   "$ref": "#/$defs/boolean"
@@ -545,7 +554,7 @@
                   "$ref": "#/$defs/positive_counter"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "token_digest": {
                   "$ref": "#/$defs/hex_digest"
@@ -675,16 +684,16 @@
                   ]
                 },
                 "db_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "target_issuer": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/principal_ref"
                 },
                 "target_principal_id": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/principal_ref"
                 }
               },
               "required": [
@@ -791,7 +800,7 @@
                   ]
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "target_event_id": {
                   "$ref": "#/$defs/uuid"
@@ -903,7 +912,7 @@
                   "$ref": "#/$defs/code"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 }
               },
               "required": [
@@ -1029,7 +1038,7 @@
                   "$ref": "#/$defs/positive_counter"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "submitted_adapter_version": {
                   "$ref": "#/$defs/positive_counter"
@@ -1145,7 +1154,7 @@
                   ]
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 }
               },
               "required": [
@@ -1255,6 +1264,9 @@
                 "head_epoch": {
                   "$ref": "#/$defs/positive_counter"
                 },
+                "head_seq": {
+                  "$ref": "#/$defs/counter"
+                },
                 "outcome": {
                   "enum": [
                     "ok",
@@ -1262,7 +1274,7 @@
                   ]
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "to_seq": {
                   "$ref": "#/$defs/counter"
@@ -1323,6 +1335,7 @@
                 "to_seq",
                 "watermark",
                 "checked",
+                "head_seq",
                 "head_epoch",
                 "head_chain",
                 "outcome",
@@ -1452,6 +1465,9 @@
                 "count_quarantined_stored": {
                   "$ref": "#/$defs/counter"
                 },
+                "count_relay_catalog_skew": {
+                  "$ref": "#/$defs/counter"
+                },
                 "count_replay_record_lost": {
                   "$ref": "#/$defs/counter"
                 },
@@ -1489,7 +1505,7 @@
                   "$ref": "#/$defs/uuid"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "watermark": {
                   "$ref": "#/$defs/counter"
@@ -1513,6 +1529,7 @@
                 "count_store_only",
                 "count_unaudited_replay",
                 "count_replay_record_lost",
+                "count_relay_catalog_skew",
                 "repaired_delivered_missing",
                 "repaired_quarantined_stored",
                 "repaired_unregistered"
@@ -1616,6 +1633,7 @@
                     "ahead",
                     "store_behind",
                     "mismatch",
+                    "epoch_mismatch",
                     null
                   ]
                 },
@@ -1645,28 +1663,28 @@
                   "$ref": "#/$defs/counter"
                 },
                 "new_database_oid": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/int8_text"
                 },
                 "new_epoch": {
                   "$ref": "#/$defs/positive_counter"
                 },
                 "new_system_identifier": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/int8_text"
                 },
                 "new_timeline": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/int8_text"
                 },
                 "old_database_oid": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/int8_text"
                 },
                 "old_epoch": {
                   "$ref": "#/$defs/positive_counter"
                 },
                 "old_system_identifier": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/int8_text"
                 },
                 "old_timeline": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/int8_text"
                 },
                 "regression_head_seq": {
                   "$ref": "#/$defs/nullable_counter"
@@ -1675,7 +1693,7 @@
                   "$ref": "#/$defs/nullable_utc_timestamp"
                 },
                 "regression_reported_by": {
-                  "$ref": "#/$defs/nullable_identifier"
+                  "$ref": "#/$defs/nullable_db_role"
                 },
                 "regression_reported_digest": {
                   "$ref": "#/$defs/nullable_hex_digest"
@@ -1696,7 +1714,7 @@
                   "$ref": "#/$defs/counter"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 }
               },
               "required": [
@@ -1838,10 +1856,10 @@
                   ]
                 },
                 "retain_days": {
-                  "$ref": "#/$defs/nullable_counter"
+                  "$ref": "#/$defs/nullable_positive_counter"
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "tx_time": {
                   "$ref": "#/$defs/utc_timestamp"
@@ -1999,13 +2017,23 @@
                   "uniqueItems": true
                 },
                 "selector_event_types": {
-                  "$ref": "#/$defs/identifier_list"
+                  "$ref": "#/$defs/event_type_list"
                 },
                 "selector_sources": {
-                  "$ref": "#/$defs/identifier_list"
+                  "items": {
+                    "enum": [
+                      "urn:knowledge-platform:audit-relay",
+                      "urn:knowledge-platform:audit-store",
+                      "urn:knowledge-platform:document-platform"
+                    ]
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 },
                 "tx_time": {
                   "$ref": "#/$defs/utc_timestamp"
@@ -2120,7 +2148,7 @@
                   "$ref": "#/$defs/code"
                 },
                 "retain_days": {
-                  "$ref": "#/$defs/nullable_counter"
+                  "$ref": "#/$defs/nullable_positive_counter"
                 },
                 "revision": {
                   "$ref": "#/$defs/positive_counter"
@@ -2147,13 +2175,23 @@
                   "uniqueItems": true
                 },
                 "selector_event_types": {
-                  "$ref": "#/$defs/identifier_list"
+                  "$ref": "#/$defs/event_type_list"
                 },
                 "selector_sources": {
-                  "$ref": "#/$defs/identifier_list"
+                  "items": {
+                    "enum": [
+                      "urn:knowledge-platform:audit-relay",
+                      "urn:knowledge-platform:audit-store",
+                      "urn:knowledge-platform:document-platform"
+                    ]
+                  },
+                  "maxItems": 3,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
                 },
                 "session_role": {
-                  "$ref": "#/$defs/identifier"
+                  "$ref": "#/$defs/db_role"
                 }
               },
               "required": [
@@ -4706,6 +4744,21 @@
         }
       }
     },
+    "event_type": {
+      "description": "Control events only: an event type name in the catalog grammar",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+      "type": "string"
+    },
+    "event_type_list": {
+      "items": {
+        "$ref": "#/$defs/event_type"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
     "extensions": {
       "maxProperties": 0,
       "type": "object"
@@ -4714,21 +4767,10 @@
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
     },
-    "identifier": {
-      "description": "Control events only: a Store-chosen name",
-      "maxLength": 256,
-      "minLength": 1,
-      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$",
+    "int8_text": {
+      "description": "Control events only: canonical decimal text of an int8 (the i64 range is checked in Rust)",
+      "pattern": "^(0|-?[1-9][0-9]{0,18})$",
       "type": "string"
-    },
-    "identifier_list": {
-      "items": {
-        "$ref": "#/$defs/identifier"
-      },
-      "maxItems": 16,
-      "minItems": 1,
-      "type": "array",
-      "uniqueItems": true
     },
     "legacy_time": {
       "description": "time 0.3 serde tuple [year, ordinal, hour, minute, second, nanosecond, offset_h, offset_m, offset_s]; not RFC 3339",
@@ -4794,6 +4836,16 @@
         }
       ]
     },
+    "nullable_db_role": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/db_role"
+        }
+      ]
+    },
     "nullable_digest": {
       "anyOf": [
         {
@@ -4814,13 +4866,13 @@
         }
       ]
     },
-    "nullable_identifier": {
+    "nullable_positive_counter": {
       "anyOf": [
         {
           "type": "null"
         },
         {
-          "$ref": "#/$defs/identifier"
+          "$ref": "#/$defs/positive_counter"
         }
       ]
     },
@@ -4870,6 +4922,10 @@
       "minLength": 1,
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$",
       "type": "string"
+    },
+    "principal_ref": {
+      "$ref": "#/$defs/principal_part",
+      "description": "Control events only: one principal part (rust_only:principal_charset applies)"
     },
     "provenance.audit-relay-control-v1": {
       "additionalProperties": false,
@@ -4953,6 +5009,17 @@
         "text_retained"
       ],
       "type": "object"
+    },
+    "resource_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/canonical_uuid"
+        },
+        {
+          "const": "audit-store"
+        }
+      ],
+      "description": "Control events only: a resource id (canonical UUID, nil included, or audit-store)"
     },
     "utc_timestamp": {
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$",

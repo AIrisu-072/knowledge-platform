@@ -525,7 +525,8 @@ fn row_columns_are_validated() {
     cases.push(("trace nil", r, trace));
     let mut r = base();
     r.resource_id = NIL.to_owned();
-    cases.push(("nil resource", r, at(C::NilClientId, "data.resource.id")));
+    // Document ids are server-generated: a nil one is not a client id.
+    cases.push(("nil document resource", r, resource));
     let mut r = base();
     r.resource_version_id = Some(NIL.to_owned());
     cases.push((
@@ -671,12 +672,13 @@ fn row_columns_are_validated() {
 }
 
 #[test]
-fn nil_resource_is_only_for_authorization_denied() {
+fn nil_resource_ids_are_nil_client_id_only_where_clients_choose_them() {
     project(&fixture_named("authorization.denied/management").row).expect("nil allowed");
+    // Folder ids are chosen by clients (CreateFolder.folderId).
     for name in [
-        "document.created",
         "folder.created",
-        "access_policy.changed/document",
+        "folder.renamed",
+        "access_policy.changed/folder_inherit",
     ] {
         let mut row = fixture_named(name).row;
         row.resource_id = NIL.to_owned();
@@ -686,16 +688,42 @@ fn nil_resource_is_only_for_authorization_denied() {
             "{name}"
         );
     }
+    // Document ids are server-generated UUIDv7: a nil one is not
+    // producer-reachable.
+    for name in ["document.created", "access_policy.changed/document"] {
+        let mut row = fixture_named(name).row;
+        row.resource_id = NIL.to_owned();
+        assert_eq!(
+            reject(&row),
+            at(C::InvalidResource, "data.resource"),
+            "{name}"
+        );
+    }
+    // Version ids may be chosen by clients (VersionWrite.targetVersionId).
+    for name in [
+        "document.version.created/later",
+        "document.version.read_confirmed",
+        "document.diff.result_access_granted/compare",
+    ] {
+        let mut row = fixture_named(name).row;
+        row.resource_version_id = Some(NIL.to_owned());
+        assert_eq!(
+            reject(&row),
+            at(C::NilClientId, "data.resource.version_id"),
+            "{name}"
+        );
+    }
 }
 
 #[test]
 fn nil_client_chosen_ids_are_quarantined_as_nil_client_id() {
-    let cases: [(&str, &str); 8] = [
+    let cases: [(&str, &str); 10] = [
         ("folder.created", "parent_folder_id"),
         ("folder.moved", "from_parent_id"),
         ("folder.moved", "to_parent_id"),
         ("document.moved", "to_folder_id"),
         ("document.version.created/later", "baseDocumentVersionId"),
+        ("document.version.created/later", "documentVersionId"),
         (
             "document.version.withdrawn/restored",
             "resultingCurrentVersionId",
@@ -704,16 +732,33 @@ fn nil_client_chosen_ids_are_quarantined_as_nil_client_id() {
             "document.diff.result_access_granted/compare",
             "base_version_id",
         ),
-        (
-            "document.revision_comparison.result_access_granted/same_version",
-            "target_revision_id",
-        ),
+        ("document.version.read_confirmed", "document_version_id"),
+        ("access_policy.changed/folder_inherit", "target_id"),
     ];
     for (name, field) in cases {
         let row = with_data(name, |data| {
             data.insert(field.to_owned(), json!(NIL));
         });
         assert_eq!(reject(&row), at(C::NilClientId, field), "{name}/{field}");
+    }
+    // Server-generated or UUIDv7-validated ids: a nil one is an invalid
+    // field, not a producer-reachable client id.
+    let server: [(&str, &str); 6] = [
+        ("document.created", "documentId"),
+        (
+            "document.revision_comparison.result_access_granted/same_version",
+            "target_revision_id",
+        ),
+        ("document.file.access_granted/download", "content_item_id"),
+        ("access_policy.changed/document", "policy_id"),
+        ("document.version.published/manual", "publishOperationId"),
+        ("document.metadata.changed", "operation_id"),
+    ];
+    for (name, field) in server {
+        let row = with_data(name, |data| {
+            data.insert(field.to_owned(), json!(NIL));
+        });
+        assert_eq!(reject(&row), at(C::InvalidField, field), "{name}/{field}");
     }
     // A nil folder id that is also the resource id fails at the resource.
     let mut row = fixture_named("folder.renamed").row;

@@ -1,5 +1,7 @@
 //! Field kinds of the audit catalog and the primitive checks behind them.
-//! There is deliberately no free-text kind.
+//! There is deliberately no free-text kind: every string kind is a closed
+//! grammar or a closed set, including the control-only kinds that record
+//! reader-supplied filters and Store-chosen names.
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -10,12 +12,14 @@ pub const MAX_STRING_BYTES: usize = 512;
 pub const MAX_PRINCIPAL_PART_BYTES: usize = 256;
 /// Upper bound for `uuid_list` values.
 pub const MAX_UUID_LIST: usize = 100;
-/// Upper bound for `identifier` values (control events), in UTF-8 bytes.
-pub const MAX_IDENTIFIER_BYTES: usize = 256;
-/// Upper bound for `identifier_list` values (control events). With 16 items
-/// every catalog entry's maximal envelope stays under the 32 KiB jsonb limit
-/// (design §10.3 also caps intent filter event types at 16).
-pub const MAX_IDENTIFIER_LIST: usize = 16;
+/// Upper bound for `event_type_list` and `source_list` values (control
+/// events), as for intent filter event types (design §10.3). Retention
+/// selectors are bounded by it too.
+pub const MAX_CONTROL_LIST: usize = 16;
+/// Upper bound for `db_role` values: PostgreSQL's NAMEDATALEN - 1.
+pub const MAX_DB_ROLE_BYTES: usize = 63;
+/// Upper bound for event type names, in bytes.
+pub const MAX_EVENT_TYPE_BYTES: usize = 128;
 /// Upper bound for `code` values (`[a-z0-9_]{1,64}`).
 pub const MAX_CODE_BYTES: usize = 64;
 /// The nil UUID in canonical form.
@@ -43,14 +47,35 @@ pub enum Kind {
     HexDigest,
     NullableHexDigest,
     NullableUtcTimestamp,
-    /// Control events only: a bounded name chosen by the Store (database role,
-    /// event type, source URN, issuer). Non-empty, at most 256 bytes, no
-    /// control characters.
-    Identifier,
-    /// Control events only: `identifier` or null.
-    NullableIdentifier,
-    /// Control events only: 1 to 16 distinct `identifier` values.
-    IdentifierList,
+    /// Null or at least 1.
+    NullablePositiveCounter,
+    /// Control events only: a resource id as it appears in envelopes, a
+    /// canonical lowercase UUID (nil included: `authorization.denied` rows)
+    /// or exactly `audit-store`.
+    ResourceRef,
+    /// Control events only: an event type name in the catalog grammar
+    /// `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, at most 128 bytes (grammar only,
+    /// for version skew).
+    EventType,
+    /// Control events only: 1 to 16 distinct `event_type` values.
+    EventTypeList,
+    /// Control events only: one of the catalog's sources (every adapter
+    /// source plus the two control sources). The loader derives the closed
+    /// set; the catalog entry lists no values.
+    SourceUrn,
+    /// Control events only: 1 to 16 distinct `source_urn` values.
+    SourceList,
+    /// Control events only: a PostgreSQL role name that needs no quoting,
+    /// `[a-z_][a-z0-9_$]{0,62}` (the Store refuses other login names).
+    DbRole,
+    /// Control events only: `db_role` or null.
+    NullableDbRole,
+    /// Control events only: one part (issuer or principal id) of a principal,
+    /// under the principal charset rule ([`is_principal_part`]).
+    PrincipalRef,
+    /// Control events only: the canonical decimal text of a PostgreSQL int8
+    /// (`0` or `-?[1-9][0-9]*` within the i64 range), for fingerprint parts.
+    Int8Text,
     /// Control events only: a machine code `[a-z0-9_]{1,64}`.
     Code,
 }
@@ -76,31 +101,54 @@ impl Kind {
             Self::HexDigest => "hex_digest",
             Self::NullableHexDigest => "nullable_hex_digest",
             Self::NullableUtcTimestamp => "nullable_utc_timestamp",
-            Self::Identifier => "identifier",
-            Self::NullableIdentifier => "nullable_identifier",
-            Self::IdentifierList => "identifier_list",
+            Self::NullablePositiveCounter => "nullable_positive_counter",
+            Self::ResourceRef => "resource_ref",
+            Self::EventType => "event_type",
+            Self::EventTypeList => "event_type_list",
+            Self::SourceUrn => "source_urn",
+            Self::SourceList => "source_list",
+            Self::DbRole => "db_role",
+            Self::NullableDbRole => "nullable_db_role",
+            Self::PrincipalRef => "principal_ref",
+            Self::Int8Text => "int8_text",
             Self::Code => "code",
         }
     }
 
-    /// Whether the kind requires a non-empty `values` list.
+    /// Whether the kind requires a non-empty `values` list in the catalog.
     pub const fn takes_values(self) -> bool {
         matches!(self, Self::Enum | Self::NullableEnum | Self::EnumList)
     }
 
-    /// Kinds reserved for control events built by the Store or relay. They
-    /// carry Store-chosen names, never source payload text, so relay-origin
-    /// entries must not use them.
+    /// Whether the loader derives the kind's `values` (the catalog's
+    /// sources) instead of reading them from the entry.
+    pub const fn derives_values(self) -> bool {
+        matches!(self, Self::SourceUrn | Self::SourceList)
+    }
+
+    /// Kinds reserved for control events built by the Store or relay. Relay
+    /// entries keep their own vocabulary, so they must not use them.
     pub const fn is_control_only(self) -> bool {
         matches!(
             self,
-            Self::Identifier | Self::NullableIdentifier | Self::IdentifierList | Self::Code
+            Self::ResourceRef
+                | Self::EventType
+                | Self::EventTypeList
+                | Self::SourceUrn
+                | Self::SourceList
+                | Self::DbRole
+                | Self::NullableDbRole
+                | Self::PrincipalRef
+                | Self::Int8Text
+                | Self::Code
         )
     }
 
-    /// Checks `value` against this kind. `values` is the closed set for enum kinds.
+    /// Checks `value` against this kind. `values` is the closed set for enum
+    /// and source kinds.
     pub fn accepts(self, values: &[String], value: &Value) -> bool {
         let in_set = |v: &Value| v.as_str().is_some_and(|s| values.iter().any(|x| x == s));
+        let text = |check: fn(&str) -> bool| value.as_str().is_some_and(check);
         match self {
             Self::Uuid => value.as_str().is_some_and(is_uuid),
             Self::NullableUuid => value.is_null() || value.as_str().is_some_and(is_uuid),
@@ -137,30 +185,71 @@ impl Kind {
             Self::NullableUtcTimestamp => {
                 value.is_null() || value.as_str().is_some_and(is_utc_timestamp)
             }
-            Self::Identifier => value.as_str().is_some_and(is_identifier),
-            Self::NullableIdentifier => {
-                value.is_null() || value.as_str().is_some_and(is_identifier)
+            Self::NullablePositiveCounter => {
+                value.is_null() || value.as_i64().is_some_and(|n| n >= 1)
             }
-            Self::IdentifierList => value.as_array().is_some_and(|items| {
-                !items.is_empty()
-                    && items.len() <= MAX_IDENTIFIER_LIST
-                    && items
-                        .iter()
-                        .all(|item| item.as_str().is_some_and(is_identifier))
-                    && items
-                        .iter()
-                        .enumerate()
-                        .all(|(i, item)| !items[..i].contains(item))
-            }),
-            Self::Code => value.as_str().is_some_and(is_code),
+            Self::ResourceRef => text(is_resource_ref),
+            Self::EventType => text(is_event_type),
+            Self::EventTypeList => {
+                is_control_list(value, |item| item.as_str().is_some_and(is_event_type))
+            }
+            Self::SourceUrn => in_set(value),
+            Self::SourceList => is_control_list(value, in_set),
+            Self::DbRole => text(is_db_role),
+            Self::NullableDbRole => value.is_null() || text(is_db_role),
+            Self::PrincipalRef => text(is_principal_part),
+            Self::Int8Text => text(is_int8_text),
+            Self::Code => text(is_code),
         }
     }
 }
 
-/// A control-event identifier: non-empty, at most 256 bytes, no control
-/// characters.
-pub fn is_identifier(text: &str) -> bool {
-    !text.is_empty() && is_bounded_text(text, MAX_IDENTIFIER_BYTES)
+/// 1 to [`MAX_CONTROL_LIST`] distinct items that all pass `item`.
+fn is_control_list(value: &Value, item: impl Fn(&Value) -> bool) -> bool {
+    value.as_array().is_some_and(|items| {
+        !items.is_empty()
+            && items.len() <= MAX_CONTROL_LIST
+            && items.iter().all(item)
+            && items
+                .iter()
+                .enumerate()
+                .all(|(i, member)| !items[..i].contains(member))
+    })
+}
+
+/// A resource id as recorded in envelopes: a canonical lowercase UUID (nil
+/// included) or exactly `audit-store`.
+pub fn is_resource_ref(text: &str) -> bool {
+    is_canonical_uuid(text) || text == crate::catalog::AUDIT_STORE_RESOURCE_ID
+}
+
+/// A PostgreSQL role name that needs no quoting:
+/// `[a-z_][a-z0-9_$]{0,62}`.
+pub fn is_db_role(text: &str) -> bool {
+    let mut bytes = text.bytes();
+    text.len() <= MAX_DB_ROLE_BYTES
+        && bytes
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b == b'_')
+        && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'$')
+}
+
+/// The canonical decimal rendering of an int8 (what PostgreSQL's
+/// `int8::text` produces).
+pub fn is_int8_text(text: &str) -> bool {
+    text.parse::<i64>().is_ok_and(|n| n.to_string() == text)
+}
+
+/// An event type name in the catalog grammar
+/// `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, at most 128 bytes.
+pub fn is_event_type(text: &str) -> bool {
+    text.len() <= MAX_EVENT_TYPE_BYTES
+        && text.split('.').count() >= 2
+        && text.split('.').all(|part| {
+            let mut bytes = part.bytes();
+            bytes.next().is_some_and(|b| b.is_ascii_lowercase())
+                && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        })
 }
 
 /// A machine code: `[a-z0-9_]{1,64}`.
@@ -444,24 +533,155 @@ mod tests {
     }
 
     #[test]
-    fn control_kinds_are_bounded() {
-        assert!(Kind::Identifier.accepts(&[], &json!("audit_store_reader")));
-        assert!(Kind::Identifier.accepts(&[], &json!("é".repeat(128))));
-        assert!(!Kind::Identifier.accepts(&[], &json!("é".repeat(129))));
-        assert!(!Kind::Identifier.accepts(&[], &json!("")));
-        assert!(!Kind::Identifier.accepts(&[], &json!("a\nb")));
-        assert!(!Kind::Identifier.accepts(&[], &json!(1)));
-        assert!(Kind::IdentifierList.accepts(&[], &json!(["a", "b"])));
-        assert!(!Kind::IdentifierList.accepts(&[], &json!([])));
-        assert!(!Kind::IdentifierList.accepts(&[], &json!(["a", "a"])));
-        let many: Vec<String> = (0..=MAX_IDENTIFIER_LIST).map(|i| i.to_string()).collect();
-        assert!(!Kind::IdentifierList.accepts(&[], &json!(many)));
-        assert!(Kind::Code.accepts(&[], &json!("delivery_unknown_at_limit")));
-        assert!(!Kind::Code.accepts(&[], &json!("Upper")));
-        assert!(!Kind::Code.accepts(&[], &json!("has space")));
-        assert!(!Kind::Code.accepts(&[], &json!("a".repeat(65))));
-        assert!(Kind::NullableIdentifier.accepts(&[], &Value::Null));
-        assert!(Kind::NullableIdentifier.is_control_only());
+    fn control_kinds_are_closed() {
+        let none: &[String] = &[];
+        let accepts = |kind: Kind, value: Value| kind.accepts(none, &value);
+        // resource_ref: a canonical UUID (nil included) or exactly "audit-store".
+        for ok in [
+            json!("audit-store"),
+            json!(NIL_UUID),
+            json!("0199a1b2-0000-7000-8000-00000000000a"),
+        ] {
+            assert!(accepts(Kind::ResourceRef, ok.clone()), "{ok}");
+        }
+        for bad in [
+            json!("Audit-Store"),
+            json!("audit-store/x"),
+            json!("0199A1B2-0000-7000-8000-00000000000A"),
+            json!("Customer ACME merger codename FALCON, card 4111 1111 1111 1111"),
+            json!(""),
+            json!(1),
+        ] {
+            assert!(!accepts(Kind::ResourceRef, bad.clone()), "{bad}");
+        }
+        // event_type / event_type_list: the catalog grammar, at most 128 bytes.
+        let longest = format!("{}.{}", "a".repeat(63), "b".repeat(64));
+        assert!(accepts(Kind::EventType, json!("document.created")));
+        assert!(accepts(Kind::EventType, json!(longest)));
+        for bad in [
+            "document",
+            "Document.created",
+            "document.created ",
+            "a\u{2028}.b",
+            &format!("{longest}c"),
+        ] {
+            assert!(!accepts(Kind::EventType, json!(bad)), "{bad:?}");
+        }
+        assert!(accepts(
+            Kind::EventTypeList,
+            json!(["document.created", "folder.moved"])
+        ));
+        let full: Vec<String> = (0..MAX_CONTROL_LIST).map(|i| format!("t.e{i}")).collect();
+        assert!(accepts(Kind::EventTypeList, json!(full)));
+        let over: Vec<String> = (0..=MAX_CONTROL_LIST).map(|i| format!("t.e{i}")).collect();
+        for bad in [
+            json!([]),
+            json!(["document.created", "document.created"]),
+            json!(over),
+            json!(["a sentence of free text that a reader typed into the filter"]),
+            json!("document.created"),
+        ] {
+            assert!(!accepts(Kind::EventTypeList, bad.clone()), "{bad}");
+        }
+        // db_role: a PostgreSQL identifier that needs no quoting.
+        for ok in ["audit_store_reader", "_x", "a$b", &"r".repeat(63)] {
+            assert!(accepts(Kind::DbRole, json!(ok)), "{ok:?}");
+        }
+        for bad in [
+            "",
+            "Audit",
+            "1abc",
+            "a b",
+            "a-b",
+            "op\u{202e}",
+            "$a",
+            &"r".repeat(64),
+        ] {
+            assert!(!accepts(Kind::DbRole, json!(bad)), "{bad:?}");
+        }
+        assert!(accepts(Kind::NullableDbRole, Value::Null));
+        assert!(!accepts(Kind::NullableDbRole, json!("Odd Role")));
+        // principal_ref: the principal charset rule.
+        for ok in ["poc-human", "名前", "synthetic-idp"] {
+            assert!(accepts(Kind::PrincipalRef, json!(ok)), "{ok:?}");
+        }
+        for bad in [
+            "admin\u{202e}nimda",
+            "\u{feff}",
+            " x",
+            "poc\u{e0041}",
+            "a\u{2028}b",
+            "",
+        ] {
+            assert!(!accepts(Kind::PrincipalRef, json!(bad)), "{bad:?}");
+        }
+        // int8_text: the canonical decimal rendering of an int8.
+        for ok in [
+            "0",
+            "1",
+            "-1",
+            "4294967295",
+            "9223372036854775807",
+            "-9223372036854775808",
+        ] {
+            assert!(accepts(Kind::Int8Text, json!(ok)), "{ok:?}");
+        }
+        for bad in [
+            "",
+            "01",
+            "-0",
+            "+1",
+            "1.0",
+            "1e3",
+            " 1",
+            "9223372036854775808",
+            "0x10",
+        ] {
+            assert!(!accepts(Kind::Int8Text, json!(bad)), "{bad:?}");
+        }
+        assert!(!accepts(Kind::Int8Text, json!(1)));
+        // Source kinds use the closed set the loader derives from the catalog.
+        let sources = vec![
+            "urn:knowledge-platform:audit-store".to_owned(),
+            "urn:knowledge-platform:document-platform".to_owned(),
+        ];
+        assert!(Kind::SourceUrn.accepts(&sources, &json!(sources[1])));
+        assert!(
+            !Kind::SourceUrn.accepts(&sources, &json!("urn:knowledge-platform:search-platform"))
+        );
+        assert!(!Kind::SourceUrn.accepts(&[], &json!(sources[1])));
+        assert!(Kind::SourceList.accepts(&sources, &json!(sources)));
+        for bad in [
+            json!([]),
+            json!([sources[0], sources[0]]),
+            json!(["urn:other"]),
+        ] {
+            assert!(!Kind::SourceList.accepts(&sources, &bad), "{bad}");
+        }
+        // nullable_positive_counter: null or at least 1.
+        assert!(accepts(Kind::NullablePositiveCounter, Value::Null));
+        assert!(accepts(Kind::NullablePositiveCounter, json!(1)));
+        assert!(!accepts(Kind::NullablePositiveCounter, json!(0)));
+        // code.
+        assert!(accepts(Kind::Code, json!("delivery_unknown_at_limit")));
+        assert!(!accepts(Kind::Code, json!("Upper")));
+        assert!(!accepts(Kind::Code, json!("has space")));
+        assert!(!accepts(Kind::Code, json!("a".repeat(65))));
+        for kind in [
+            Kind::ResourceRef,
+            Kind::EventType,
+            Kind::EventTypeList,
+            Kind::SourceUrn,
+            Kind::SourceList,
+            Kind::DbRole,
+            Kind::NullableDbRole,
+            Kind::PrincipalRef,
+            Kind::Int8Text,
+            Kind::Code,
+        ] {
+            assert!(kind.is_control_only(), "{kind:?}");
+        }
+        assert!(!Kind::NullablePositiveCounter.is_control_only());
         assert!(!Kind::NullableHexDigest.is_control_only());
         assert!(Kind::NullableHexDigest.accepts(&[], &Value::Null));
         assert!(!Kind::NullableHexDigest.accepts(&[], &json!("ab")));

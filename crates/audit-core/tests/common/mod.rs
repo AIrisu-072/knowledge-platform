@@ -27,6 +27,8 @@ pub const NIL: &str = "00000000-0000-0000-0000-000000000000";
 pub const OCCURRED: &str = "2026-10-07T01:02:03.456789Z";
 pub const ISSUER: &str = "poc";
 pub const PRINCIPAL: &str = "poc-human";
+/// The `session_user` recorded by synthetic control events.
+pub const SESSION_ROLE: &str = "audit_store_reader";
 
 pub fn commitment() -> String {
     "ab".repeat(32)
@@ -696,7 +698,10 @@ pub fn kind_sample(field: &audit_core::catalog::FieldSpec) -> Value {
     use audit_core::kinds::Kind;
     match field.kind {
         Kind::Uuid | Kind::NullableUuid => json!(EVENT_ID),
-        Kind::Counter | Kind::NullableCounter | Kind::PositiveCounter => json!(7),
+        Kind::Counter
+        | Kind::NullableCounter
+        | Kind::PositiveCounter
+        | Kind::NullablePositiveCounter => json!(7),
         Kind::Boolean => json!(true),
         Kind::Enum | Kind::NullableEnum => json!(field.values[0]),
         Kind::EnumList => json!([field.values[0]]),
@@ -707,8 +712,14 @@ pub fn kind_sample(field: &audit_core::catalog::FieldSpec) -> Value {
         Kind::UuidList => json!([EVENT_ID, DOC]),
         Kind::HexDigest | Kind::NullableHexDigest => json!(commitment()),
         Kind::NullableUtcTimestamp => json!(OCCURRED),
-        Kind::Identifier | Kind::NullableIdentifier => json!("audit_store_reader"),
-        Kind::IdentifierList => json!(["document.created", "folder.moved"]),
+        Kind::ResourceRef => json!(DOC),
+        Kind::EventType => json!("document.created"),
+        Kind::EventTypeList => json!(["document.created", "folder.moved"]),
+        Kind::SourceUrn => json!(DOCUMENT_SOURCE),
+        Kind::SourceList => json!([DOCUMENT_SOURCE]),
+        Kind::DbRole | Kind::NullableDbRole => json!(SESSION_ROLE),
+        Kind::PrincipalRef => json!(PRINCIPAL),
+        Kind::Int8Text => json!("7301234567890123456"),
         Kind::Code => json!("delivery_unknown_at_limit"),
     }
 }
@@ -1191,9 +1202,22 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
             charset,
         ),
         case(
-            "resource_nil_id",
+            // Document ids are server-generated: not a client id.
+            "resource_nil_server_id",
             set(doc_created(), "/data/resource/id", json!(NIL)),
+            at(C::InvalidResource, resource),
+            None,
+        ),
+        case(
+            "resource_nil_folder_id",
+            set(folder_created(), "/data/resource/id", json!(NIL)),
             at(C::NilClientId, "data.resource.id"),
+            None,
+        ),
+        case(
+            "nil_server_detail",
+            set(doc_created(), "/data/details/documentId", json!(NIL)),
+            at(C::InvalidField, "documentId"),
             None,
         ),
         case(
@@ -1540,5 +1564,141 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
         expected: at(C::ControlTypeForbidden, "type"),
         rust_only: Some("origin_path"),
     });
+    cases.extend(control_rejections());
     cases
+}
+
+/// A full control envelope of `event_type` with one detail replaced.
+pub fn control_with(event_type: &str, field: &str, value: Value) -> Value {
+    let spec = audit_core::Catalog::embedded()
+        .get(event_type)
+        .unwrap_or_else(|| panic!("{event_type}"));
+    let mut envelope = control_envelope(spec, true);
+    envelope["data"]["details"][field] = value;
+    envelope
+}
+
+/// Store-path rejections: reader-supplied filters and principal-valued
+/// control fields admit no free text (S2 P5 values), and control events
+/// never use the producer-facing `nil_client_id`.
+fn control_rejections() -> Vec<EnvelopeCase> {
+    use audit_core::RejectionCode as C;
+    let intent = "audit.access.intent_opened";
+    let store = |name, envelope: Value, field, rust_only| EnvelopeCase {
+        name,
+        input: Input::Value(envelope),
+        path: Origin::Store,
+        expected: at(C::InvalidField, field),
+        rust_only,
+    };
+    let charset = Some("principal_charset");
+    let prose = "a sentence of free text that a reader typed into the filter";
+    vec![
+        store(
+            "filter_principal_bidi_and_tags",
+            control_with(
+                intent,
+                "filter_actor_principal_id",
+                json!("admin\u{202e}nimda\u{e0041}\u{e0042}"),
+            ),
+            "filter_actor_principal_id",
+            charset,
+        ),
+        store(
+            "filter_issuer_bom",
+            control_with(intent, "filter_actor_issuer", json!("\u{feff}")),
+            "filter_actor_issuer",
+            charset,
+        ),
+        store(
+            "filter_resource_prose",
+            control_with(
+                intent,
+                "filter_resource_id",
+                json!("Customer ACME merger codename FALCON, card 4111 1111 1111 1111"),
+            ),
+            "filter_resource_id",
+            None,
+        ),
+        store(
+            "filter_event_types_prose",
+            control_with(intent, "filter_event_types", json!([prose])),
+            "filter_event_types",
+            None,
+        ),
+        store(
+            "filter_source_line_separator",
+            control_with(
+                intent,
+                "filter_source",
+                json!(" not a urn \u{2028} line sep"),
+            ),
+            "filter_source",
+            None,
+        ),
+        store(
+            "filter_source_unknown_urn",
+            control_with(
+                intent,
+                "filter_source",
+                json!("urn:knowledge-platform:search-platform"),
+            ),
+            "filter_source",
+            None,
+        ),
+        store(
+            "target_principal_bidi",
+            control_with(
+                "audit.access_policy.changed",
+                "target_principal_id",
+                json!("admin\u{202e}nimda"),
+            ),
+            "target_principal_id",
+            charset,
+        ),
+        store(
+            "session_role_not_an_identifier",
+            control_with("audit.access.denied", "session_role", json!("Odd Role")),
+            "session_role",
+            None,
+        ),
+        store(
+            "selector_source_unknown",
+            control_with(
+                "audit.retention.policy_changed",
+                "selector_sources",
+                json!(["urn:knowledge-platform:search-platform"]),
+            ),
+            "selector_sources",
+            None,
+        ),
+        store(
+            "policy_retain_days_zero",
+            control_with("audit.retention.policy_changed", "retain_days", json!(0)),
+            "retain_days",
+            None,
+        ),
+        store(
+            "fingerprint_not_decimal",
+            control_with(
+                "audit.recovery.epoch_started",
+                "new_timeline",
+                json!("timeline two"),
+            ),
+            "new_timeline",
+            None,
+        ),
+        store(
+            "control_nil_target_event_id",
+            control_with("audit.body.purged", "target_event_id", json!(NIL)),
+            "target_event_id",
+            None,
+        ),
+        store(
+            "control_nil_in_event_id_filter",
+            control_with(intent, "filter_event_ids", json!([EVENT_ID, NIL])),
+            "filter_event_ids",
+            None,
+        ),
+    ]
 }

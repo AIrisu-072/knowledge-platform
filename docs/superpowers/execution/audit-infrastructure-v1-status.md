@@ -27,8 +27,16 @@
   - `cargo metadata --locked`：PASS
 - hosted CI：PR98のexact-head `f369261` で、CI run 37619375294がrequired-checkを含む全項目SUCCESS（Organization D2系はskip）。
 - 計画からの逸脱（承認状態）：
-  - control typeは12→14種：`access.closed`、`retention.expire_refused`。checkpointは `integrity.verified` の trigger=checkpoint で表す。fingerprint_reboundは改訂3で廃止。設計§4.5を正本の要約として更新済み。
-  - 識別子listの上限は16（32 KiB上限を守るため）。
+  - control typeは12→14種：`access.closed`、`retention.expire_refused`。checkpointは `integrity.verified` の trigger=checkpoint で表す。fingerprint_reboundは改訂3で廃止。設計§4.5を正本の要約として更新済み。計画単位A手順2も14種へ修正済み。
+    - 承認状態：依頼者の実装指示の範囲内で本trackが採用、設計改訂3・独立reviewで確認済み（依頼者による個別承認ではない）。
+  - control eventのlist kind（`event_type_list`、`source_list`）の上限は16（32 KiB上限と設計§10.3のfilter event_types≤16に合わせる）。retention selectorも16件までになる（設計§9とREADME §kindに記載）。当初の自由文字列 `identifier_list` は、独立検証の指摘S2により閉じたkindへ置換した。
+    - 承認状態：依頼者の実装指示の範囲内で本trackが採用、設計改訂3・独立reviewで確認済み（依頼者による個別承認ではない）。
+  - golden pin：計画単位A手順7に追記（entryを `<fixture>@<入力行hash>` に変更、旧sectionはdigestで凍結）。現在のsection 1はkey形式だけを移行し、全31件のdigestは不変。
+    - 承認状態：依頼者の実装指示の範囲内で本trackが採用、設計改訂3・独立reviewで確認済み（依頼者による個別承認ではない）。
+  - DB外判定の厳格化（独立検証の指摘S1・S3への修正で追加。設計§8:457より厳しい）：`unverified_expiry_evidence > 0` または認証範囲外の失効証拠があるreportは `Authentic` にしない（`UnverifiedExpiry`）。headより前のcheckpointだけでは `AuthenticThrough { seq }`。
+    - 承認状態：依頼者の修正指示の範囲内で本trackが採用。設計本文（§8）へ反映済み。修正後の確認は単位Aの最終確認reviewで行う。
+  - 束縛主体の無いcontrol event（unboundの拒否、bootstrap）のactorを `{issuer: "db_role", principal_id: session_user}` と定めた（設計§10.2とREADME §control eventに記載）。
+    - 承認状態：依頼者の修正指示の範囲内で本trackが採用。設計本文へ反映済み。修正後の確認は単位Aの最終確認reviewで行う。
 - 単位B（Store・relay）：
   - Store crate（39件）とrelay crate（36件）は別worktreeで実装済み。
   - 改訂3と新しいcore APIへの追従は、別worktreeで実施中（未push）。

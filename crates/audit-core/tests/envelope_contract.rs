@@ -4,7 +4,7 @@
 mod common;
 
 use audit_core::catalog::FieldSpec;
-use audit_core::kinds::{Kind, MAX_IDENTIFIER_LIST, MAX_UUID_LIST};
+use audit_core::kinds::{Kind, MAX_CONTROL_LIST, MAX_DB_ROLE_BYTES, MAX_UUID_LIST};
 use audit_core::{
     AuditEnvelope, Catalog, EventSpec, JSONB_TEXT_LIMIT, Origin, RejectionCode as C,
     jsonb_text_len, parse_unique, validate_envelope,
@@ -106,9 +106,14 @@ fn maximal_value(field: &FieldSpec, salt: usize) -> Value {
         text
     };
     let uuid = |n: usize| format!("0199a1b2-0000-7000-8000-{n:012x}");
+    // The longest event type name (128 bytes), distinct per index.
+    let event_type = |n: usize| format!("{}.x{:0>63}", "e".repeat(63), n);
     match field.kind {
         Kind::Uuid | Kind::NullableUuid => json!(uuid(salt + 1)),
-        Kind::Counter | Kind::NullableCounter | Kind::PositiveCounter => json!(i64::MAX),
+        Kind::Counter
+        | Kind::NullableCounter
+        | Kind::PositiveCounter
+        | Kind::NullablePositiveCounter => json!(i64::MAX),
         Kind::Boolean => json!(false),
         Kind::Enum | Kind::NullableEnum => {
             json!(field.values.iter().max_by_key(|v| v.len()).expect("values"))
@@ -127,12 +132,14 @@ fn maximal_value(field: &FieldSpec, salt: usize) -> Value {
                 .collect::<Vec<_>>()
         ),
         Kind::HexDigest | Kind::NullableHexDigest => json!("f".repeat(64)),
-        Kind::Identifier | Kind::NullableIdentifier => json!(escaped(256, salt)),
-        Kind::IdentifierList => json!(
-            (0..MAX_IDENTIFIER_LIST)
-                .map(|i| escaped(256, i))
-                .collect::<Vec<_>>()
-        ),
+        Kind::ResourceRef => json!(uuid(salt + 1)),
+        Kind::EventType => json!(event_type(salt)),
+        Kind::EventTypeList => json!((0..MAX_CONTROL_LIST).map(event_type).collect::<Vec<_>>()),
+        Kind::SourceUrn => json!(field.values.iter().max_by_key(|v| v.len()).expect("values")),
+        Kind::SourceList => json!(field.values),
+        Kind::DbRole | Kind::NullableDbRole => json!("r".repeat(MAX_DB_ROLE_BYTES)),
+        Kind::PrincipalRef => json!(escaped(256, salt)),
+        Kind::Int8Text => json!(i64::MIN.to_string()),
         Kind::Code => json!("c".repeat(64)),
     }
 }
@@ -195,6 +202,7 @@ fn maximal_envelope(spec: &EventSpec) -> Value {
 #[test]
 fn maximal_envelopes_of_every_entry_fit_the_jsonb_limit() {
     let mut largest = 0;
+    let mut largest_control = 0;
     for spec in Catalog::embedded().events() {
         let value = maximal_envelope(spec);
         if let Err(rejection) = validate_envelope(&value, spec.origin) {
@@ -207,11 +215,17 @@ fn maximal_envelopes_of_every_entry_fit_the_jsonb_limit() {
         assert!(len <= JSONB_TEXT_LIMIT, "{}: {len} bytes", spec.event_type);
         if spec.origin == Origin::Relay {
             largest = largest.max(len);
+        } else {
+            largest_control = largest_control.max(len);
         }
     }
     assert!(
         largest * 2 < JSONB_TEXT_LIMIT,
         "relay envelopes keep a 2x margin ({largest} bytes)"
+    );
+    assert!(
+        largest_control * 2 < JSONB_TEXT_LIMIT,
+        "closed control kinds keep a 2x margin ({largest_control} bytes)"
     );
 }
 
@@ -377,28 +391,97 @@ fn control_envelopes_are_closed() {
             "{name}"
         );
     }
-    let mut nil_target = control_envelope(
-        audit_core::Catalog::embedded()
-            .get("audit.body.purged")
-            .expect("purged"),
-        false,
-    );
-    nil_target["data"]["details"]["target_event_id"] = json!(NIL);
+    // Control events carry no client-chosen ids: a nil UUID is an invalid
+    // field, never the producer-facing nil_client_id.
     assert_eq!(
-        validate_envelope(&nil_target, Origin::Store),
-        Err(at(C::NilClientId, "target_event_id"))
+        validate_envelope(
+            &control_with("audit.body.purged", "target_event_id", json!(NIL)),
+            Origin::Store
+        ),
+        Err(at(C::InvalidField, "target_event_id"))
     );
-    let mut nil_in_list = control_envelope(
-        audit_core::Catalog::embedded()
-            .get("audit.access.intent_opened")
-            .expect("intent"),
-        true,
-    );
-    nil_in_list["data"]["details"]["filter_event_ids"] = json!([EVENT_ID, NIL]);
     assert_eq!(
-        validate_envelope(&nil_in_list, Origin::Store),
-        Err(at(C::NilClientId, "filter_event_ids"))
+        validate_envelope(
+            &control_with(
+                "audit.access.intent_opened",
+                "filter_event_ids",
+                json!([EVENT_ID, NIL])
+            ),
+            Origin::Store
+        ),
+        Err(at(C::InvalidField, "filter_event_ids"))
     );
+}
+
+#[test]
+fn closed_control_kinds_accept_the_values_the_store_records() {
+    let intent = "audit.access.intent_opened";
+    for (field, value) in [
+        // authorization.denied rows have a nil resource id.
+        ("filter_resource_id", json!(NIL)),
+        ("filter_resource_id", json!("audit-store")),
+        ("filter_resource_id", json!(DOC)),
+        (
+            "filter_source",
+            json!(audit_core::catalog::AUDIT_STORE_SOURCE),
+        ),
+        ("filter_source", json!(audit_core::catalog::DOCUMENT_SOURCE)),
+        (
+            "filter_event_types",
+            json!(["audit.access.denied", "document.created"]),
+        ),
+        ("filter_actor_issuer", json!("名前")),
+    ] {
+        let value = control_with(intent, field, value);
+        validate_envelope(&value, Origin::Store).unwrap_or_else(|r| panic!("{field}: {r}"));
+    }
+    for retain_days in [Value::Null, json!(1)] {
+        let value = control_with("audit.retention.policy_changed", "retain_days", retain_days);
+        validate_envelope(&value, Origin::Store).expect("NULL or a positive number of days");
+    }
+}
+
+#[test]
+fn unbound_control_actors_are_their_session_role() {
+    // Store events without a bound principal (unbound denials, bootstrap
+    // from an owner login) record actor {issuer: "db_role", principal_id:
+    // session_user}.
+    let denied = |actor_role: &str, session_role: &str| {
+        let mut value = control_with("audit.access.denied", "session_role", json!(session_role));
+        value["data"]["actor"] = json!({"issuer": "db_role", "principal_id": actor_role});
+        value
+    };
+    validate_envelope(
+        &denied("audit_store_reader", "audit_store_reader"),
+        Origin::Store,
+    )
+    .expect("db_role actor");
+    assert_eq!(
+        validate_envelope(&denied("other_login", "audit_store_reader"), Origin::Store),
+        Err(at(C::InvalidActor, "data.actor")),
+        "the db_role actor is the session role"
+    );
+    assert_eq!(
+        validate_envelope(&denied("Odd Role", "audit_store_reader"), Origin::Store),
+        Err(at(C::InvalidActor, "data.actor"))
+    );
+    assert_eq!(
+        validate_envelope(&denied("Odd Role", "Odd Role"), Origin::Store),
+        Err(at(C::InvalidField, "session_role")),
+        "an odd login name is refused before it is recorded"
+    );
+    let relay_control = control_with(
+        "audit.delivery.replay_requested",
+        "session_role",
+        json!("audit_relay_service"),
+    );
+    let mut bound = relay_control.clone();
+    bound["data"]["actor"] = json!({"issuer": "db_role", "principal_id": "audit_relay_service"});
+    validate_envelope(&bound, Origin::RelayControl).expect("relay control db_role actor");
+    // Relay envelopes are producer data: the rule does not apply.
+    let mut relay = envelope_of("document.created");
+    relay["data"]["actor"] = json!({"issuer": "db_role", "principal_id": "Any Name"});
+    validate_envelope(&relay, Origin::Relay).expect("relay actor");
 }
 
 /// A test catalog whose relay adapter allows `trace_id` and makes the

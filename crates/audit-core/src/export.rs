@@ -10,12 +10,20 @@
 //!
 //! Authenticity is only claimed for contiguous verification from a trusted
 //! anchor (genesis or an out-of-band checkpoint) whose head then matches an
-//! out-of-band checkpoint. Filtered subsets are reported as unanchored.
+//! out-of-band checkpoint (design §8). A checkpoint behind the head
+//! authenticates the path only up to its own seq ([`ChainVerdict::AuthenticThrough`]):
+//! the chain is public sha256, so anyone holding an export can extend it.
+//! Filtered subsets are reported as unanchored.
+//!
 //! `origin`, `recovery_epoch`, `expired` and `expired_by_seq` are not part of
 //! the chain; in anchored body exports they are attested by chained bodies
 //! (origin against the body's catalog type and source, expiry against
 //! `audit.retention.expired` / `audit.body.purged`, epoch changes against
 //! `audit.recovery.epoch_started`). Identity-chain exports cannot attest them.
+//! Offline expiry verification proves set consistency (count, seq range,
+//! `expired_set_digest`, purge target), never retention eligibility: the
+//! selector, the cutoff and the identity columns are neither exported nor
+//! chained.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -87,6 +95,10 @@ pub struct ExportReport {
     /// set reaches before the anchor, or the export carries no bodies
     /// (identity chain, unanchored subset). Never silently zero.
     pub unverified_expiry_evidence: u64,
+    /// Attested epoch transitions whose restored head lies before the
+    /// anchor, so its chain could not be compared on this path (anchored
+    /// body exports). Verify from an earlier anchor to check them.
+    pub unverified_restored_heads: u64,
     /// Whether `recovery_epoch` values are attested: true only for anchored
     /// body exports, where every epoch change landed on a verified
     /// `audit.recovery.epoch_started` body. Identity-chain exports and
@@ -96,14 +108,23 @@ pub struct ExportReport {
     chains: Vec<[u8; 32]>,
     /// Recovery epoch changes along the verified path (anchored only).
     transitions: Vec<EpochTransition>,
+    /// Every expired row and its evidence, in seq order.
+    expiries: Vec<ExpiredRowEvidence>,
 }
 
 impl ExportReport {
-    /// Recovery epoch changes observed along the verified path, as
-    /// `(first seq, old epoch, new epoch)`. Every one of them is listed for
-    /// human review (design §8).
+    /// Recovery epoch changes observed along the verified path. Every one
+    /// of them is listed for human review (design §8).
     pub fn epoch_transitions(&self) -> &[EpochTransition] {
         &self.transitions
+    }
+
+    /// Every expired row of the export with the seq of the evidence that
+    /// removed its body and whether that evidence was verified here, in seq
+    /// order. [`assess_recovery`] compares the evidence seqs with the
+    /// checkpoints.
+    pub fn expired_rows(&self) -> &[ExpiredRowEvidence] {
+        &self.expiries
     }
 
     /// The recovery epoch of the row at `seq` (the anchor's epoch at the
@@ -149,8 +170,10 @@ impl fmt::Debug for ExportReport {
                 "unverified_expiry_evidence",
                 &self.unverified_expiry_evidence,
             )
+            .field("unverified_restored_heads", &self.unverified_restored_heads)
             .field("epochs_authenticated", &self.epochs_authenticated)
             .field("transitions", &self.transitions)
+            .field("expiries", &self.expiries)
             .finish_non_exhaustive()
     }
 }
@@ -163,6 +186,55 @@ pub struct EpochTransition {
     pub seq: i64,
     pub old_epoch: i64,
     pub new_epoch: i64,
+    /// What the chained `audit.recovery.epoch_started` body at `seq` claims
+    /// (anchored body exports only; `None` for identity-chain exports).
+    pub attestation: Option<EpochAttestation>,
+}
+
+/// The details of a verified `audit.recovery.epoch_started` body. The lost
+/// range is `(restored_head_seq, lost_upper_seq]`, so `lost_from_seq` is
+/// always `restored_head_seq + 1` and `lost_upper_seq >= restored_head_seq`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EpochAttestation {
+    pub restored_head_seq: i64,
+    pub restored_head_chain: [u8; 32],
+    pub lost_from_seq: i64,
+    pub lost_upper_seq: i64,
+    pub classification: RecoveryClassification,
+}
+
+/// `audit.recovery.epoch_started` `classification`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RecoveryClassification {
+    Restore,
+    PlannedMove,
+    Regression,
+}
+
+impl RecoveryClassification {
+    pub const ALL: [Self; 3] = [Self::Restore, Self::PlannedMove, Self::Regression];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Restore => "restore",
+            Self::PlannedMove => "planned_move",
+            Self::Regression => "regression",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.as_str() == value)
+    }
+}
+
+/// An expired row and the seq of the control event that removed its body.
+/// `verified` is true only when that evidence row lies inside the export and
+/// its count, range and `expired_set_digest` (or purge target) match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpiredRowEvidence {
+    pub seq: i64,
+    pub evidence_seq: i64,
+    pub verified: bool,
 }
 
 /// The operator's out-of-band record of an epoch transition (design §8,
@@ -181,14 +253,34 @@ pub struct RecoveryRecord {
 }
 
 impl RecoveryRecord {
-    /// Whether this record describes `transition` on the verified path. The
-    /// restored head must precede the transition, and when it lies on the
-    /// verified path its chain must match.
+    /// Whether this record describes `transition` on the verified path:
+    ///
+    /// - the epochs are equal, `0 <= restored_head_seq < transition.seq`;
+    /// - every row between the restored head and the transition lies inside
+    ///   the lost range (`transition.seq - 1 <= lost_upper`; for a planned
+    ///   move, which loses nothing, this forces
+    ///   `transition.seq == restored_head_seq + 1`);
+    /// - in body exports, the restored head, its chain and the lost upper
+    ///   bound equal the chained `epoch_started` body, and a body classified
+    ///   `planned_move` has an empty lost range;
+    /// - when the restored head lies on the verified path, its chain matches.
     fn matches(&self, transition: &EpochTransition, report: &ExportReport) -> bool {
-        self.old_epoch == transition.old_epoch
+        let Some(last_before) = transition.seq.checked_sub(1) else {
+            return false;
+        };
+        let shape = self.old_epoch == transition.old_epoch
             && self.new_epoch == transition.new_epoch
+            && self.restored_head_seq >= 0
             && self.restored_head_seq < transition.seq
-            && self.lost_upper >= self.restored_head_seq
+            && self.lost_upper >= last_before;
+        let attested = transition.attestation.is_none_or(|body| {
+            body.restored_head_seq == self.restored_head_seq
+                && body.restored_head_chain == self.restored_head_chain
+                && body.lost_upper_seq == self.lost_upper
+                && (body.classification != RecoveryClassification::PlannedMove || !self.loses())
+        });
+        shape
+            && attested
             && report
                 .chain_at(self.restored_head_seq)
                 .is_none_or(|chain| chain == self.restored_head_chain)
@@ -202,9 +294,20 @@ impl RecoveryRecord {
 /// Overall offline verdict (design §8). Ordered from best to worst.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ChainVerdict {
-    /// Contiguous from a trusted anchor, every out-of-band checkpoint lies on
-    /// the verified path, and no recovery lost rows.
+    /// Contiguous from a trusted anchor, the head equals an out-of-band
+    /// checkpoint (seq, chain and epoch), no recovery lost rows, and every
+    /// expired row's evidence was verified inside the authenticated range.
     Authentic,
+    /// The path is confirmed by an out-of-band checkpoint only up to `seq`,
+    /// which lies before the head. Rows after `seq` are not authenticated
+    /// (anyone can extend the public chain). Not an authenticity claim for
+    /// the export.
+    AuthenticThrough { seq: i64 },
+    /// The path is confirmed, but the removal of some authenticated row's
+    /// body is not: its evidence lies past the authenticated range or
+    /// outside the export, its set reaches before the anchor, or the export
+    /// has no bodies. See [`RecoveryAssessment::unconfirmed_expiries`].
+    UnverifiedExpiry,
     /// Verified from a trusted anchor, but no out-of-band checkpoint confirms
     /// the path. Authenticity is not claimed.
     NoCheckpoint,
@@ -228,9 +331,15 @@ pub enum ChainVerdict {
 pub struct EpochReview {
     pub transition: EpochTransition,
     pub record: Option<RecoveryRecord>,
+    /// Whether the restored head (of the record, else of the attesting body)
+    /// lies on the verified path with a matching chain. False when it lies
+    /// before the anchor: the epoch is then unverified on this path.
+    pub restored_head_verified: bool,
 }
 
 /// How one out-of-band checkpoint relates to the verified path.
+/// `BeforeAnchor` findings are neutral: their verdict (`NoCheckpoint`, they
+/// confirm nothing) does not enter the overall verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckpointFinding {
     pub checkpoint: Checkpoint,
@@ -244,54 +353,93 @@ pub struct CheckpointFinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryAssessment {
     pub verdict: ChainVerdict,
+    /// The highest seq at which an out-of-band checkpoint confirms the
+    /// verified path (`Match` or `Ahead`), or `None` when nothing confirms
+    /// it. Equal to the head seq only for a `Match` at the head.
+    pub authenticated_through: Option<i64>,
     pub epochs: Vec<EpochReview>,
     pub findings: Vec<CheckpointFinding>,
-    /// Out-of-band records that match no epoch on the verified path.
+    /// Out-of-band records that match no epoch on the verified path although
+    /// their epoch comes after the anchor's.
     pub unmatched_records: Vec<RecoveryRecord>,
+    /// Out-of-band records of recoveries that precede the anchor
+    /// (`new_epoch <= anchor.epoch`): neutral, listed for review only.
+    pub records_before_anchor: Vec<RecoveryRecord>,
+    /// Expired rows at or below `authenticated_through` whose removal is not
+    /// confirmed: their evidence lies past `authenticated_through` or could
+    /// not be verified in the export. Rows past `authenticated_through` are
+    /// covered by `AuthenticThrough` instead.
+    pub unconfirmed_expiries: u64,
 }
 
 /// Assesses a verified, anchored export against the out-of-band checkpoints
 /// and recovery records (design §8 "recovery epochの扱い").
 ///
+/// - Authenticity: `Authentic` needs a checkpoint that `Match`es the head; a
+///   checkpoint behind the head (`Ahead`) gives at most
+///   `AuthenticThrough { seq }`; with neither, `NoCheckpoint`. Checkpoints
+///   before the anchor are neutral.
+/// - Expiry: an expired row at or below `authenticated_through` whose
+///   evidence is unverified or lies past it makes the verdict at least
+///   `UnverifiedExpiry`. `Authentic` is never returned while
+///   `report.unverified_expiry_evidence > 0`.
 /// - A difference at or below a documented restored head is tampering.
 /// - A difference inside a documented lost range is `Lost`.
 /// - A difference past an undocumented recovery epoch, an undocumented epoch,
-///   a record that matches no epoch, or a checkpoint whose chain matches but
-///   whose epoch differs is `UnverifiedRecovery`.
+///   a record that matches no epoch (and does not precede the anchor), a
+///   restored head that cannot be checked on this path, or a checkpoint
+///   whose chain matches but whose epoch differs is `UnverifiedRecovery`.
 /// - Any other difference is `Tampered`.
 pub fn assess_recovery(
     report: &ExportReport,
     checkpoints: &[Checkpoint],
     records: &[RecoveryRecord],
 ) -> RecoveryAssessment {
-    if !report.anchored {
+    let Some(anchor) = report.anchor.filter(|_| report.anchored) else {
         return RecoveryAssessment {
             verdict: ChainVerdict::Unanchored,
+            authenticated_through: None,
             epochs: Vec::new(),
             findings: Vec::new(),
             unmatched_records: records.to_vec(),
+            records_before_anchor: Vec::new(),
+            unconfirmed_expiries: 0,
         };
-    }
+    };
     let epochs: Vec<EpochReview> = report
         .transitions
         .iter()
-        .map(|transition| EpochReview {
-            transition: *transition,
-            record: records
+        .map(|transition| {
+            let record = records
                 .iter()
                 .find(|r| r.matches(transition, report))
-                .copied(),
+                .copied();
+            let restored_head = record
+                .map(|r| (r.restored_head_seq, r.restored_head_chain))
+                .or_else(|| {
+                    transition
+                        .attestation
+                        .map(|a| (a.restored_head_seq, a.restored_head_chain))
+                });
+            EpochReview {
+                transition: *transition,
+                record,
+                restored_head_verified: restored_head
+                    .is_some_and(|(seq, chain)| report.chain_at(seq) == Some(chain)),
+            }
         })
         .collect();
-    let unmatched_records: Vec<RecoveryRecord> = records
-        .iter()
-        .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
-        .copied()
-        .collect();
+    let (records_before_anchor, unmatched_records): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) =
+        records
+            .iter()
+            .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
+            .copied()
+            .partition(|record| record.new_epoch <= anchor.epoch);
     let mut worst = ChainVerdict::Authentic;
     for epoch in &epochs {
         let verdict = match epoch.record {
             None => ChainVerdict::UnverifiedRecovery,
+            Some(_) if !epoch.restored_head_verified => ChainVerdict::UnverifiedRecovery,
             Some(record) if record.loses() => ChainVerdict::Lost,
             Some(_) => ChainVerdict::Authentic,
         };
@@ -300,40 +448,65 @@ pub fn assess_recovery(
     if !unmatched_records.is_empty() {
         worst = worst.max(ChainVerdict::UnverifiedRecovery);
     }
-    let mut confirmed = false;
-    let findings: Vec<CheckpointFinding> = checkpoints
-        .iter()
-        .map(|checkpoint| {
-            let comparison = compare_checkpoint(report, checkpoint);
-            let (verdict, explained_by) = match comparison {
-                CheckpointComparison::Match | CheckpointComparison::Ahead => {
-                    confirmed = true;
-                    (ChainVerdict::Authentic, None)
-                }
-                CheckpointComparison::BeforeAnchor => (ChainVerdict::NoCheckpoint, None),
-                CheckpointComparison::Unanchored => (ChainVerdict::Unanchored, None),
-                CheckpointComparison::EpochMismatch => (ChainVerdict::UnverifiedRecovery, None),
-                CheckpointComparison::Mismatch | CheckpointComparison::StoreBehind => {
-                    classify_difference(checkpoint, &epochs)
-                }
-            };
-            worst = worst.max(verdict);
-            CheckpointFinding {
-                checkpoint: *checkpoint,
-                comparison,
-                verdict,
-                explained_by,
+    let mut authenticated_through: Option<i64> = None;
+    let mut findings = Vec::with_capacity(checkpoints.len());
+    for checkpoint in checkpoints {
+        let comparison = compare_checkpoint(report, checkpoint);
+        let (verdict, explained_by) = match comparison {
+            CheckpointComparison::Match => (ChainVerdict::Authentic, None),
+            CheckpointComparison::Ahead => (
+                ChainVerdict::AuthenticThrough {
+                    seq: checkpoint.seq,
+                },
+                None,
+            ),
+            CheckpointComparison::BeforeAnchor => (ChainVerdict::NoCheckpoint, None),
+            CheckpointComparison::Unanchored => (ChainVerdict::Unanchored, None),
+            CheckpointComparison::EpochMismatch => (ChainVerdict::UnverifiedRecovery, None),
+            CheckpointComparison::Mismatch | CheckpointComparison::StoreBehind => {
+                classify_difference(checkpoint, &epochs)
             }
-        })
-        .collect();
-    if !confirmed {
-        worst = worst.max(ChainVerdict::NoCheckpoint);
+        };
+        match comparison {
+            CheckpointComparison::Match | CheckpointComparison::Ahead => {
+                authenticated_through = authenticated_through.max(Some(checkpoint.seq));
+            }
+            CheckpointComparison::BeforeAnchor => {}
+            _ => worst = worst.max(verdict),
+        }
+        findings.push(CheckpointFinding {
+            checkpoint: *checkpoint,
+            comparison,
+            verdict,
+            explained_by,
+        });
+    }
+    let confirmed = match authenticated_through {
+        None => ChainVerdict::NoCheckpoint,
+        Some(seq) if seq == report.head.seq => ChainVerdict::Authentic,
+        Some(seq) => ChainVerdict::AuthenticThrough { seq },
+    };
+    worst = worst.max(confirmed);
+    let unconfirmed_expiries = authenticated_through.map_or(0, |through| {
+        report
+            .expiries
+            .iter()
+            .filter(|row| row.seq <= through && (!row.verified || row.evidence_seq > through))
+            .count() as u64
+    });
+    if unconfirmed_expiries > 0
+        || (worst == ChainVerdict::Authentic && report.unverified_expiry_evidence > 0)
+    {
+        worst = worst.max(ChainVerdict::UnverifiedExpiry);
     }
     RecoveryAssessment {
         verdict: worst,
+        authenticated_through,
         epochs,
         findings,
         unmatched_records,
+        records_before_anchor,
+        unconfirmed_expiries,
     }
 }
 
@@ -382,9 +555,11 @@ pub enum CheckpointComparison {
     /// metadata or the checkpoint log was altered.
     EpochMismatch,
     /// The checkpoint is beyond the verified head: rows were lost or the
-    /// Store was restored to an older state.
+    /// Store was restored to an older state. Pass only checkpoints up to the
+    /// export head when verifying a prefix (`seq_through`).
     StoreBehind,
     /// The verified path passes through the checkpoint and continues past it.
+    /// It authenticates the path only up to the checkpoint.
     Ahead,
     /// The checkpoint precedes the verification anchor; verify from an
     /// earlier anchor to compare.
@@ -428,23 +603,44 @@ pub enum ExportError {
     EpochSkipped { line: usize },
     #[error("export line {line}: epoch change without a matching epoch_started record")]
     UnattestedEpochChange { line: usize },
+    #[error("export line {line}: epoch_started record without an epoch change")]
+    EpochStartedWithoutTransition { line: usize },
+    #[error("export ends at seq {head}, not at the manifest watermark {watermark}")]
+    WatermarkMismatch { watermark: i64, head: i64 },
 }
 
 /// Verifies a full (body-carrying) export contiguously from `start`.
+/// Expiry evidence past the export's head is counted in
+/// `unverified_expiry_evidence`.
 pub fn verify_export(text: &str, start: Anchor) -> Result<ExportReport, ExportError> {
-    verify(text, Some(start), Mode::Bodies)
+    verify(text, Some(start), Mode::Bodies, None)
+}
+
+/// Verifies a complete body export up to the manifest `watermark`
+/// (design §10.3 W): like [`verify_export`], but the head must be exactly
+/// `watermark` ([`ExportError::WatermarkMismatch`]) and no row may name
+/// expiry evidence past it ([`ExportError::ExpiryEvidenceMissing`]). A
+/// complete export therefore carries every evidence row it references, which
+/// closes origin relabelling of expired control rows (their evidence must be
+/// a retention or purge body, and those only expire relay rows).
+pub fn verify_export_complete(
+    text: &str,
+    start: Anchor,
+    watermark: i64,
+) -> Result<ExportReport, ExportError> {
+    verify(text, Some(start), Mode::Bodies, Some(watermark))
 }
 
 /// Verifies an identity-chain export (`envelope` always null) from `start`.
 /// Epochs and expiry are reported as unauthenticated.
 pub fn verify_identity_chain(text: &str, start: Anchor) -> Result<ExportReport, ExportError> {
-    verify(text, Some(start), Mode::IdentityChain)
+    verify(text, Some(start), Mode::IdentityChain, None)
 }
 
 /// Checks a filtered export row by row (digest, id, origin, self-consistent
 /// chain step, increasing seq). The result is never anchored.
 pub fn verify_export_subset(text: &str) -> Result<ExportReport, ExportError> {
-    verify(text, None, Mode::Bodies)
+    verify(text, None, Mode::Bodies, None)
 }
 
 /// Compares a verified report with an out-of-band checkpoint, including its
@@ -526,6 +722,9 @@ enum Evidence {
         new_epoch: Option<i64>,
         restored_head_seq: Option<i64>,
         restored_head_chain: Option<[u8; 32]>,
+        lost_from_seq: Option<i64>,
+        lost_upper_seq: Option<i64>,
+        classification: Option<RecoveryClassification>,
     },
 }
 
@@ -582,6 +781,12 @@ fn evidence(event_type: &str, details: &Value) -> Option<Evidence> {
             new_epoch: int("new_epoch"),
             restored_head_seq: int("restored_head_seq"),
             restored_head_chain: hex(details.get("restored_head_chain")),
+            lost_from_seq: int("lost_from_seq"),
+            lost_upper_seq: int("lost_upper_seq"),
+            classification: details
+                .get("classification")
+                .and_then(Value::as_str)
+                .and_then(RecoveryClassification::parse),
         }),
         _ => None,
     }
@@ -673,29 +878,57 @@ fn split_lines(text: &str) -> Vec<&str> {
 }
 
 /// An expired row, by the seq of the evidence it names.
-struct ExpiredRow {
+struct PendingExpiry {
     seq: i64,
     event_id: Uuid,
     line: usize,
 }
 
-/// Expiry bookkeeping for anchored body exports.
+/// Expiry bookkeeping.
 #[derive(Default)]
 struct ExpiryLedger {
     /// Expired rows grouped by `expired_by_seq`.
-    by_evidence: BTreeMap<i64, Vec<ExpiredRow>>,
+    by_evidence: BTreeMap<i64, Vec<PendingExpiry>>,
     /// Retention and purge bodies by seq, with their line.
     evidence: BTreeMap<i64, (usize, Evidence)>,
 }
 
 impl ExpiryLedger {
-    /// Checks every expiry against its evidence and returns the number of
-    /// expired rows whose evidence could not be verified.
-    fn settle(self, anchor_seq: i64, head_seq: i64) -> Result<u64, ExportError> {
-        let mut unverified = 0_u64;
+    /// Every expired row, unverified (exports without bodies, subsets).
+    fn unverified(self) -> Vec<ExpiredRowEvidence> {
+        let mut rows: Vec<ExpiredRowEvidence> = self
+            .by_evidence
+            .into_iter()
+            .flat_map(|(evidence_seq, rows)| {
+                rows.into_iter().map(move |row| ExpiredRowEvidence {
+                    seq: row.seq,
+                    evidence_seq,
+                    verified: false,
+                })
+            })
+            .collect();
+        rows.sort_by_key(|row| row.seq);
+        rows
+    }
+
+    /// Checks every expiry of an anchored body export against its evidence
+    /// and returns each expired row with whether its evidence was verified.
+    fn settle(
+        self,
+        anchor_seq: i64,
+        head_seq: i64,
+    ) -> Result<Vec<ExpiredRowEvidence>, ExportError> {
+        let mut settled = Vec::new();
+        let mut record = |rows: &[PendingExpiry], evidence_seq: i64, verified: bool| {
+            settled.extend(rows.iter().map(|row| ExpiredRowEvidence {
+                seq: row.seq,
+                evidence_seq,
+                verified,
+            }));
+        };
         for (evidence_seq, rows) in &self.by_evidence {
             if *evidence_seq > head_seq {
-                unverified += rows.len() as u64;
+                record(rows, *evidence_seq, false);
                 continue;
             }
             let first_line = rows.first().map_or(0, |row| row.line);
@@ -703,7 +936,7 @@ impl ExpiryLedger {
                 return Err(ExportError::ExpiryEvidenceMissing { line: first_line });
             }
         }
-        let none: Vec<ExpiredRow> = Vec::new();
+        let none: Vec<PendingExpiry> = Vec::new();
         for (evidence_seq, (line, evidence)) in &self.evidence {
             let rows = self.by_evidence.get(evidence_seq).unwrap_or(&none);
             let mismatch = ExportError::ExpiryEvidenceMismatch { line: *line };
@@ -731,7 +964,7 @@ impl ExpiryLedger {
                         if !fits {
                             return Err(mismatch);
                         }
-                        unverified += seqs.len() as u64;
+                        record(rows, *evidence_seq, false);
                         continue;
                     }
                     let exact = usize::try_from(*count).is_ok_and(|c| seqs.len() == c)
@@ -741,6 +974,7 @@ impl ExpiryLedger {
                     if !exact {
                         return Err(mismatch);
                     }
+                    record(rows, *evidence_seq, true);
                 }
                 Evidence::Purge {
                     target_seq,
@@ -758,38 +992,75 @@ impl ExpiryLedger {
                     if !ok {
                         return Err(mismatch);
                     }
+                    record(rows, *evidence_seq, true);
                 }
                 Evidence::EpochStarted { .. } => {}
             }
         }
-        Ok(unverified)
+        settled.sort_by_key(|row| row.seq);
+        Ok(settled)
     }
 }
 
-fn attests_transition(line: &Line<'_>, old_epoch: i64, report: &ExportReport) -> bool {
-    let Some(body) = &line.body else {
-        return false;
-    };
+/// The attestation of an epoch change by the line's body: an origin=store
+/// `audit.recovery.epoch_started` whose epochs equal the change, whose
+/// restored head precedes the line (`0 <= restored_head_seq < seq`), whose
+/// lost range `(restored_head_seq, lost_upper_seq]` is well formed, and
+/// whose restored head chain matches the verified path when the head lies on
+/// it.
+fn attest_transition(
+    line: &Line<'_>,
+    old_epoch: i64,
+    report: &ExportReport,
+) -> Option<EpochAttestation> {
+    let body = line.body.as_ref()?;
     let Some(Evidence::EpochStarted {
         old_epoch: Some(recorded_old),
         new_epoch: Some(recorded_new),
         restored_head_seq: Some(restored_seq),
         restored_head_chain: Some(restored_chain),
-    }) = &body.evidence
+        lost_from_seq: Some(lost_from),
+        lost_upper_seq: Some(lost_upper),
+        classification: Some(classification),
+    }) = body.evidence
     else {
-        return false;
+        return None;
     };
-    line.origin == Origin::Store
+    let attested = line.origin == Origin::Store
         && body.event_type.as_deref() == Some(EPOCH_STARTED)
-        && *recorded_old == old_epoch
-        && *recorded_new == line.epoch
-        && *restored_seq < line.seq
+        && recorded_old == old_epoch
+        && recorded_new == line.epoch
+        && restored_seq >= 0
+        && restored_seq < line.seq
+        && restored_seq.checked_add(1) == Some(lost_from)
+        && lost_upper >= restored_seq
         && report
-            .chain_at(*restored_seq)
-            .is_none_or(|chain| chain == *restored_chain)
+            .chain_at(restored_seq)
+            .is_none_or(|chain| chain == restored_chain);
+    attested.then_some(EpochAttestation {
+        restored_head_seq: restored_seq,
+        restored_head_chain: restored_chain,
+        lost_from_seq: lost_from,
+        lost_upper_seq: lost_upper,
+        classification,
+    })
 }
 
-fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport, ExportError> {
+/// Whether the line carries an origin=store `audit.recovery.epoch_started`.
+fn is_epoch_started(line: &Line<'_>) -> bool {
+    line.origin == Origin::Store
+        && line
+            .body
+            .as_ref()
+            .is_some_and(|body| body.event_type.as_deref() == Some(EPOCH_STARTED))
+}
+
+fn verify(
+    text: &str,
+    start: Option<Anchor>,
+    mode: Mode,
+    watermark: Option<i64>,
+) -> Result<ExportReport, ExportError> {
     let anchor = start.map(Anchor::checkpoint);
     let anchored = anchor.is_some();
     let mut head = anchor.unwrap_or(Checkpoint::GENESIS);
@@ -801,9 +1072,11 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
         bodies: 0,
         expired: 0,
         unverified_expiry_evidence: 0,
+        unverified_restored_heads: 0,
         epochs_authenticated: anchored && mode == Mode::Bodies,
         chains: Vec::new(),
         transitions: Vec::new(),
+        expiries: Vec::new(),
     };
     let mut ledger = ExpiryLedger::default();
     for (index, text) in split_lines(text).into_iter().enumerate() {
@@ -848,7 +1121,7 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
             if line.origin != Origin::Relay {
                 return Err(ExportError::ExpiryOnControlEvent { line: number });
             }
-            if evidence_seq <= line.seq {
+            if evidence_seq <= line.seq || watermark.is_some_and(|w| evidence_seq > w) {
                 return Err(ExportError::ExpiryEvidenceMissing { line: number });
             }
         }
@@ -868,15 +1141,26 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
             (Mode::Bodies, Some(_), None) | (Mode::IdentityChain, _, None) => {}
             _ => return Err(ExportError::BodyState { line: number }),
         }
+        let attests = anchored && mode == Mode::Bodies;
         if transition {
-            if mode == Mode::Bodies && !attests_transition(&line, head.epoch, &report) {
-                return Err(ExportError::UnattestedEpochChange { line: number });
-            }
+            let attestation = if attests {
+                let attestation = attest_transition(&line, head.epoch, &report)
+                    .ok_or(ExportError::UnattestedEpochChange { line: number })?;
+                if anchor.is_some_and(|a| attestation.restored_head_seq < a.seq) {
+                    report.unverified_restored_heads += 1;
+                }
+                Some(attestation)
+            } else {
+                None
+            };
             report.transitions.push(EpochTransition {
                 seq: line.seq,
                 old_epoch: head.epoch,
                 new_epoch: line.epoch,
+                attestation,
             });
+        } else if attests && is_epoch_started(&line) {
+            return Err(ExportError::EpochStartedWithoutTransition { line: number });
         }
         if let Some(evidence_seq) = line.expired_by_seq {
             report.expired += 1;
@@ -884,7 +1168,7 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
                 .by_evidence
                 .entry(evidence_seq)
                 .or_default()
-                .push(ExpiredRow {
+                .push(PendingExpiry {
                     seq: line.seq,
                     event_id: line.event_id,
                     line: number,
@@ -911,9 +1195,19 @@ fn verify(text: &str, start: Option<Anchor>, mode: Mode) -> Result<ExportReport,
         }
     }
     report.head = head;
-    report.unverified_expiry_evidence = match (anchor, mode) {
+    if let Some(watermark) = watermark
+        && head.seq != watermark
+    {
+        return Err(ExportError::WatermarkMismatch {
+            watermark,
+            head: head.seq,
+        });
+    }
+    report.expiries = match (anchor, mode) {
         (Some(anchor), Mode::Bodies) => ledger.settle(anchor.seq, head.seq)?,
-        _ => report.expired,
+        _ => ledger.unverified(),
     };
+    report.unverified_expiry_evidence =
+        report.expiries.iter().filter(|row| !row.verified).count() as u64;
     Ok(report)
 }
