@@ -37,6 +37,58 @@ fn outage(code: OutageCode) -> StoreError {
     StoreError::outage(code)
 }
 
+/// The Store's closed set of control types (event type filters accept
+/// registered relay types and these) is the catalog's control entries.
+#[tokio::test]
+async fn control_types_equal_the_catalog_control_types() {
+    let db = TestDb::start().await;
+    let source: String = sqlx::query_scalar(
+        "SELECT p.prosrc FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid = p.pronamespace \
+         WHERE n.nspname = 'audit_store' AND p.proname = 'is_control_type'",
+    )
+    .fetch_one(&db.admin)
+    .await
+    .expect("is_control_type");
+    let listed: BTreeSet<String> = source
+        .split('\'')
+        .filter(|part| part.starts_with("audit."))
+        .map(str::to_owned)
+        .collect();
+    let catalog = Catalog::embedded();
+    let control: BTreeSet<String> = catalog
+        .events()
+        .iter()
+        .filter(|spec| spec.origin != Origin::Relay)
+        .map(|spec| spec.event_type.clone())
+        .collect();
+    assert_eq!(listed, control);
+    assert_eq!(control.len(), 14);
+    for spec in catalog.events() {
+        let is_control: bool = sqlx::query_scalar("SELECT audit_store.is_control_type($1)")
+            .bind(&spec.event_type)
+            .fetch_one(&db.admin)
+            .await
+            .expect("call");
+        let is_registered: bool = sqlx::query_scalar("SELECT audit_store.is_registered_type($1)")
+            .bind(&spec.event_type)
+            .fetch_one(&db.admin)
+            .await
+            .expect("call");
+        assert_eq!(
+            is_control,
+            spec.origin != Origin::Relay,
+            "{}",
+            spec.event_type
+        );
+        assert_eq!(
+            is_registered,
+            spec.origin == Origin::Relay,
+            "{}",
+            spec.event_type
+        );
+    }
+}
+
 #[tokio::test]
 async fn registered_types_equal_the_catalog_registered_types() {
     let db = TestDb::start().await;

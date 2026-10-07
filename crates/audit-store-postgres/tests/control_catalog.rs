@@ -193,8 +193,7 @@ async fn every_sql_built_control_event_conforms_to_the_catalog() {
         .declare_recovery_pending("incident_1")
         .await
         .expect("declared");
-    maintainer
-        .begin_recovery_epoch(Some(&checkpoint), None)
+    start_recovery_epoch(&maintainer, Some(&checkpoint), None)
         .await
         .expect("epoch");
 

@@ -53,7 +53,7 @@ audit-relay replay --event-id <uuid>             # Storeへ replay_requested を
 - relayのcatalogより新しいtype・fieldは `relay_catalog_skew` として保留し、healthで警報する。reconcileはこの保留を独立したclass `relay_catalog_skew`（pendingとは別、`count_relay_catalog_skew`）として数え、警報を出す（`audit_relay.delivery_view` の `last_error_code` で判定する）。
 - `outage_streak` は、audit-coreが残余とするoutage（`store_internal`、`store_other`。`OutageCode::counts_toward_outage_streak`）が、別の配送の成功を挟んで続いた場合だけ数える。上限で `outage_suspected_event_specific` としてquarantineする。
 - claimの前のgate（`BreakerAdmission`）：catalogの期待（source、adapter_version、type一覧。`ProbeExpectation::from_catalog`）と、Storeの現在のrecovery epochで最後にackしたreceiptを渡してprobeする。epochが前回と違えばそのepochのack headで2回目のprobeをする。順序は、同じepochで検知済みの後退（sticky）→ Storeの状態（recovery mode、posture、read-only）→ 後退 → 未登録type（`store_unregistered_type`）。
-- 後退（operationalなStoreが最後にackしたreceiptを解決できない。fingerprintで見えないin-place restoreなど）を検知すると、`audit_store.report_regression` で報告し（Storeが再確認して `recovery_pending` にする）、recovery epochが変わるまでclaimを止める。fingerprintで検知されたrestoreはrecovery modeとして止まり、operatorが `begin-recovery-epoch --relay-max-seq` でrelayの最大seqを記録する。
+- 後退（operationalなStoreが最後にackしたreceiptを解決できない。fingerprintで見えないin-place restoreなど）を検知すると、`audit_store.report_regression` で報告し（Storeが再確認して `recovery_pending` にする）、recovery epochが変わるまでclaimを止める。fingerprintで検知されたrestoreはrecovery modeとして止まり、operatorが `begin-recovery-epoch --relay-max-seq` でrelayの最大seqを記録する（`--preview` で確認した復元head・消失範囲を帯域外の記録に書き、その値を `--expect-*` で渡す。Storeは食い違う記録を拒否する）。
 
 ## 限界
 

@@ -538,6 +538,29 @@ SET search_path = pg_catalog, pg_temp AS $is_source_urn$
         FALSE)
 $is_source_urn$;
 
+-- The control event types of the catalog (origin store / relay_control,
+-- spec/telemetry/audit-event-catalog.json; a test pins the equality).
+CREATE FUNCTION audit_store.is_control_type(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_control_type$
+    SELECT coalesce(p_value IN (
+        'audit.access.intent_opened', 'audit.access.denied', 'audit.access.closed',
+        'audit.access_policy.changed', 'audit.retention.policy_changed',
+        'audit.retention.expired', 'audit.retention.expire_refused', 'audit.body.purged',
+        'audit.integrity.verified', 'audit.integrity.conflict_detected',
+        'audit.recovery.epoch_started', 'audit.delivery.replay_requested',
+        'audit.reconciliation.completed', 'audit.integrity.source_mismatch_detected'), FALSE)
+$is_control_type$;
+
+-- A relay event type the Store accepts (registered for some source and
+-- adapter version).
+CREATE FUNCTION audit_store.is_registered_type(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $is_registered_type$
+    SELECT coalesce(EXISTS (SELECT 1 FROM audit_store.registered_types AS r
+                            WHERE r.event_type = p_value), FALSE)
+$is_registered_type$;
+
 -- One export line (design §10.4): the 10 keys, built from text without a
 -- serde round trip. `envelope` is the jsonb text verbatim or null.
 CREATE FUNCTION audit_store.export_line(e audit_store.events, p_envelope JSONB)
@@ -1759,8 +1782,12 @@ BEGIN
                       WHERE jsonb_typeof(t) <> 'string') THEN
             RETURN NULL;
         END IF;
+        -- Only registered relay types and catalog control types (design
+        -- §10.2): an unknown name is invalid_input and is never recorded.
         IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(f -> 'event_types') AS t
-                   WHERE NOT audit_store.is_event_type(t)) THEN
+                   WHERE NOT audit_store.is_event_type(t)
+                      OR NOT (audit_store.is_registered_type(t)
+                              OR audit_store.is_control_type(t))) THEN
             RETURN NULL;
         END IF;
         SELECT array_agg(DISTINCT t ORDER BY t) INTO v_types
@@ -2649,8 +2676,11 @@ BEGIN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, v_auth.denial;
         RETURN;
     END IF;
+    -- The db_role issuer names unbound sessions in control events; it is
+    -- never a principal that holds capabilities (bind refuses it too).
     IF NOT audit_store.is_principal_part(p_issuer)
        OR NOT audit_store.is_principal_part(p_principal_id)
+       OR p_issuer = 'db_role'
        OR p_capability IS NULL
        OR p_capability NOT IN ('investigate', 'export', 'verify', 'administer', 'maintain')
        OR p_action IS NULL OR p_action NOT IN ('grant', 'revoke') THEN
@@ -3001,8 +3031,8 @@ $confirm_retention_reapplied$;
 -- ---------------------------------------------------------------------------
 
 -- Validates and normalizes a selector; NULL when invalid. Lists are sorted
--- and de-duplicated (1..16 items, the identifier_list bound); at least one
--- dimension is required.
+-- and de-duplicated (1..16 items, the event_type_list / source_list bound
+-- MAX_CONTROL_LIST); at least one dimension is required.
 CREATE FUNCTION audit_store.normalize_selector(p_selector JSONB)
 RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $normalize_selector$
@@ -3028,11 +3058,13 @@ BEGIN
                       WHERE jsonb_typeof(t) <> 'string') THEN
             RETURN NULL;
         END IF;
-        -- Closed grammars: relay event types (never audit.*), the eight
-        -- classes, and registered relay sources (never the control sources).
+        -- Closed sets: registered relay event types (never audit.*: only
+        -- relay events expire), the eight classes, and registered relay
+        -- sources (never the control sources).
         IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(p_selector -> k) AS t
                    WHERE (k = 'event_types'
-                          AND (NOT audit_store.is_event_type(t) OR t LIKE 'audit.%'))
+                          AND (NOT audit_store.is_event_type(t) OR t LIKE 'audit.%'
+                               OR NOT audit_store.is_registered_type(t)))
                       OR (k = 'event_classes' AND t NOT IN (
                           'SECURITY', 'PRIVILEGED_OPERATION', 'CONTENT_LIFECYCLE',
                           'ACCESS_POLICY', 'DATA_ACCESS', 'SEARCH_ACCESS',
@@ -3318,12 +3350,23 @@ $declare_recovery_pending$;
 -- evidence, old/new fingerprint), sets the new fingerprint and
 -- access_reapply_pending. A planned move is an epoch whose checkpoint equals
 -- the restored head and whose lost range is empty.
+--
+-- The operator states what the out-of-band recovery record says (design
+-- §8): the old epoch, the restored head (seq and chain) and the claimed
+-- upper bound of the lost range. The epoch starts only when all four equal
+-- the Store's actual values; otherwise it is refused ('expectation_mismatch')
+-- and nothing changes. Without any expectation the call is a preview
+-- ('expectation_required'): it returns the actual values and changes
+-- nothing. Refusals in recovery mode are not recorded (the head must not
+-- move).
 CREATE FUNCTION audit_store.begin_recovery_epoch(
     p_checkpoint_epoch BIGINT, p_checkpoint_seq BIGINT, p_checkpoint_chain TEXT,
-    p_relay_max_seq BIGINT)
-RETURNS TABLE (status TEXT, seq BIGINT, new_epoch BIGINT, restored_head_seq BIGINT,
-               classification TEXT, checkpoint_classification TEXT, lost_from_seq BIGINT,
-               lost_upper_seq BIGINT, code TEXT)
+    p_relay_max_seq BIGINT, p_expected_old_epoch BIGINT, p_expected_head_seq BIGINT,
+    p_expected_head_chain TEXT, p_expected_lost_upper BIGINT)
+RETURNS TABLE (status TEXT, seq BIGINT, old_epoch BIGINT, new_epoch BIGINT,
+               restored_head_seq BIGINT, restored_head_chain TEXT, classification TEXT,
+               checkpoint_classification TEXT, lost_from_seq BIGINT, lost_upper_seq BIGINT,
+               lost_upper_known BOOLEAN, code TEXT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET lock_timeout = '5s'
@@ -3337,6 +3380,7 @@ DECLARE
     v_head BIGINT;
     s record;
     v_has_checkpoint BOOLEAN;
+    v_preview BOOLEAN;
     v_chain_at BYTEA;
     v_epoch_at BIGINT;
     v_cp_class TEXT;
@@ -3359,18 +3403,27 @@ BEGIN
                                                     'audit_store_maintainer', 'maintain');
     IF NOT v_auth.ok THEN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, NULL::bigint,
-                            NULL::text, NULL::text, NULL::bigint, NULL::bigint, v_auth.denial;
+                            NULL::bigint, NULL::text, NULL::text, NULL::text, NULL::bigint,
+                            NULL::bigint, NULL::boolean, v_auth.denial;
         RETURN;
     END IF;
     v_has_checkpoint := p_checkpoint_seq IS NOT NULL;
+    v_preview := p_expected_old_epoch IS NULL AND p_expected_head_seq IS NULL
+                 AND p_expected_head_chain IS NULL AND p_expected_lost_upper IS NULL;
     IF (p_checkpoint_epoch IS NULL) <> (p_checkpoint_seq IS NULL)
        OR (p_checkpoint_chain IS NULL) <> (p_checkpoint_seq IS NULL)
        OR (v_has_checkpoint AND (p_checkpoint_epoch < 1 OR p_checkpoint_seq < 0
                                  OR NOT audit_store.is_hex64(p_checkpoint_chain)))
-       OR coalesce(p_relay_max_seq, 0) < 0 THEN
+       OR coalesce(p_relay_max_seq, 0) < 0
+       OR (NOT v_preview
+           AND (p_expected_old_epoch IS NULL OR p_expected_old_epoch < 1
+                OR p_expected_head_seq IS NULL OR p_expected_head_seq < 0
+                OR NOT audit_store.is_hex64(p_expected_head_chain)
+                OR p_expected_lost_upper IS NULL
+                OR p_expected_lost_upper < p_expected_head_seq)) THEN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, NULL::bigint,
-                            NULL::text, NULL::text, NULL::bigint, NULL::bigint,
-                            'invalid_input'::text;
+                            NULL::bigint, NULL::text, NULL::text, NULL::text, NULL::bigint,
+                            NULL::bigint, NULL::boolean, 'invalid_input'::text;
         RETURN;
     END IF;
     -- Re-verify the restored chain under the head lock.
@@ -3411,6 +3464,18 @@ BEGIN
     v_class := CASE WHEN h.pending_reason = 'regression' THEN 'regression'
                     WHEN v_cp_class = 'match' AND v_upper = v_head THEN 'planned_move'
                     ELSE 'restore' END;
+    IF v_preview
+       OR p_expected_old_epoch <> h.recovery_epoch
+       OR p_expected_head_seq <> v_head
+       OR decode(p_expected_head_chain, 'hex') <> s.head_chain
+       OR p_expected_lost_upper <> v_upper THEN
+        RETURN QUERY SELECT 'refused'::text, NULL::bigint, h.recovery_epoch,
+                            h.recovery_epoch + 1, v_head, encode(s.head_chain, 'hex'), v_class,
+                            v_cp_class, v_head + 1, v_upper, v_known,
+                            CASE WHEN v_preview THEN 'expectation_required'
+                                 ELSE 'expectation_mismatch' END::text;
+        RETURN;
+    END IF;
     SELECT sha256('kp-audit-identity-range-v1'::bytea
                   || coalesce(string_agg(int8send(e.seq) || uuid_send(e.event_id)
                                          || e.envelope_digest || e.chain, ''::bytea
@@ -3456,8 +3521,9 @@ BEGIN
     UPDATE audit_store.publication_head AS x
     SET access_reapply_pending = TRUE, reapply_from_seq = v_seq, updated_at = clock_timestamp()
     WHERE x.singleton;
-    RETURN QUERY SELECT 'epoch_started'::text, v_seq, h.recovery_epoch + 1, v_head, v_class,
-                        v_cp_class, v_head + 1, v_upper, NULL::text;
+    RETURN QUERY SELECT 'epoch_started'::text, v_seq, h.recovery_epoch, h.recovery_epoch + 1,
+                        v_head, encode(s.head_chain, 'hex'), v_class, v_cp_class, v_head + 1,
+                        v_upper, v_known, NULL::text;
 END
 $begin_recovery_epoch$;
 

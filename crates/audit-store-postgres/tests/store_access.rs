@@ -5,7 +5,7 @@ mod support;
 
 use std::collections::BTreeSet;
 
-use audit_core::AuditStore;
+use audit_core::{AuditStore, Catalog};
 use audit_store_postgres::AdminError;
 
 use audit_store_postgres::admin::{AccessChange, AccessOperation};
@@ -133,7 +133,8 @@ const CALLS: &[(&str, &[&str])] = &[
         &["audit_store_maintainer"],
     ),
     (
-        "SELECT * FROM audit_store.begin_recovery_epoch(1, 0, repeat('0', 64), 0)",
+        "SELECT * FROM audit_store.begin_recovery_epoch(1, 0, repeat('0', 64), 0, \
+         NULL, NULL, NULL, NULL)",
         &["audit_store_maintainer"],
     ),
     (
@@ -1331,6 +1332,10 @@ async fn filters_and_selectors_outside_the_closed_grammars_are_refused() {
         json!({"event_types": ["Document.Created"]}),
         json!({"event_types": [format!("{}.b", "a".repeat(130))]}),
         json!({"event_types": (0..17).map(|n| format!("t.e{n}")).collect::<Vec<_>>()}),
+        // In the grammar, but neither a registered relay type nor a catalog
+        // control type (design §10.2): readable text is never recorded.
+        json!({"event_types": ["customer.merger.codename"]}),
+        json!({"event_types": ["document.created", "audit.secret.note"]}),
         json!({"event_ids": [ids[0].to_string().to_uppercase()]}),
         json!({"seq_through": watermark + 1000}),
         json!({"seq_after": 3, "seq_through": 3}),
@@ -1355,6 +1360,15 @@ async fn filters_and_selectors_outside_the_closed_grammars_are_refused() {
         json!({"resource": {"type": "AuditStore", "id": "audit-store"}}),
         json!({"actor": {"issuer": "poc", "principal_id": "名前 a\u{200d}b"}}),
         json!({"event_types": ["document.created"], "seq_after": 1, "seq_through": 2}),
+        // Registered relay types and catalog control types, 16 at most.
+        json!({"event_types": ["folder.moved", "audit.access.denied",
+                               "audit.reconciliation.completed"]}),
+        json!({"event_types": Catalog::embedded()
+            .registered_types()
+            .into_iter()
+            .map(|(_, t, _)| t)
+            .take(16)
+            .collect::<Vec<_>>()}),
     ] {
         reader
             .open_access(AccessOperation::Investigate, &filter, 10, 1)
@@ -1385,6 +1399,7 @@ async fn filters_and_selectors_outside_the_closed_grammars_are_refused() {
         json!({"event_types": ["audit.access.denied"]}),
         json!({"event_types": ["Not A Type"]}),
         json!({"event_types": (0..17).map(|n| format!("t.e{n}")).collect::<Vec<_>>()}),
+        json!({"event_types": ["customer.merger.codename"]}),
         json!({"event_classes": ["UNKNOWN"]}),
     ] {
         assert_eq!(
@@ -1412,13 +1427,25 @@ async fn filters_and_selectors_outside_the_closed_grammars_are_refused() {
             denied("invalid_input")
         );
     }
-    assert_eq!(
-        admin
-            .change_access(ISSUER, "\u{2028}x", "investigate", AccessChange::Grant)
-            .await
-            .expect_err("refused"),
-        denied("invalid_input")
-    );
+    for (issuer, principal) in [(ISSUER, "\u{2028}x"), ("db_role", "someone")] {
+        assert_eq!(
+            admin
+                .change_access(issuer, principal, "investigate", AccessChange::Grant)
+                .await
+                .expect_err("refused"),
+            denied("invalid_input"),
+            "{issuer}/{principal}"
+        );
+    }
+    // Registered relay types are valid selectors.
+    admin
+        .set_retention_policy(
+            "folders",
+            &json!({"event_types": ["folder.created", "folder.moved"]}),
+            Some(1),
+        )
+        .await
+        .expect("registered relay types");
     // No refused value was echoed into any control event.
     let bodies: Vec<String> = sqlx::query_scalar(
         "SELECT b.envelope::text FROM audit_store.event_bodies AS b \
@@ -1433,6 +1460,8 @@ async fn filters_and_selectors_outside_the_closed_grammars_are_refused() {
         "Not A Type",
         "UNKNOWN",
         "search-platform",
+        "codename",
+        "secret",
     ] {
         assert!(bodies.iter().all(|b| !b.contains(needle)), "{needle}");
     }

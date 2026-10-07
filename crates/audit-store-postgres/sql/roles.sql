@@ -90,7 +90,7 @@ GRANT EXECUTE ON FUNCTION
 GRANT EXECUTE ON FUNCTION
     audit_store.expire(text, integer, timestamptz, integer),
     audit_store.purge_body(uuid, text),
-    audit_store.begin_recovery_epoch(bigint, bigint, text, bigint),
+    audit_store.begin_recovery_epoch(bigint, bigint, text, bigint, bigint, bigint, text, bigint),
     audit_store.declare_recovery_pending(text),
     audit_store.confirm_retention_reapplied()
     TO audit_store_maintainer;

@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use audit_core::catalog::DOCUMENT_SOURCE;
 use audit_core::{AuditEnvelope, DocumentStagingProjection, Origin, chain_next, project};
-use audit_store_postgres::admin::AuditAdmin;
+use audit_store_postgres::admin::{AuditAdmin, EpochStarted};
 use audit_store_postgres::{PRIVILEGES_SQL, PostgresAuditStore, ROLES_SQL, migrate};
 use serde_json::{Value, json};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -557,4 +557,39 @@ pub async fn control_events(pool: &PgPool, event_type: &str) -> Vec<(i64, Value)
     .iter()
     .map(|row| (row.get("seq"), row.get("details")))
     .collect()
+}
+
+/// Starts a recovery epoch the way an operator does (design §8, §11):
+/// preview the Store's restored head and lost range, write them to the
+/// out-of-band record, then start the epoch with that record as the
+/// expectation. Returns the record with the result.
+pub async fn start_recovery_epoch(
+    maintainer: &AuditAdmin,
+    checkpoint: Option<&audit_core::Checkpoint>,
+    relay_max_seq: Option<i64>,
+) -> Result<(EpochStarted, audit_core::RecoveryRecord), audit_store_postgres::AdminError> {
+    let preview = maintainer
+        .preview_recovery_epoch(checkpoint, relay_max_seq)
+        .await?;
+    assert_eq!(preview.status, "preview");
+    let expected = preview.expectation().expect("preview chain");
+    let started = maintainer
+        .begin_recovery_epoch(checkpoint, relay_max_seq, &expected)
+        .await?;
+    assert_eq!(
+        (
+            started.old_epoch,
+            started.restored_head_seq,
+            started.restored_head_chain.as_str(),
+            started.lost_upper_seq
+        ),
+        (
+            preview.old_epoch,
+            preview.restored_head_seq,
+            preview.restored_head_chain.as_str(),
+            preview.lost_upper_seq
+        ),
+        "the epoch records exactly what the preview showed"
+    );
+    Ok((started, expected.record()))
 }

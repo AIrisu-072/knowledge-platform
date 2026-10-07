@@ -14,7 +14,9 @@ use std::fmt;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use audit_store_postgres::admin::{AccessChange, AccessOperation, AuditAdmin, parse_utc_text};
+use audit_store_postgres::admin::{
+    AccessChange, AccessOperation, AuditAdmin, RecoveryExpectation, parse_utc_text,
+};
 use audit_store_postgres::files::{
     CheckpointFile, ExportRequest, export_identity_chain_recovery, export_to_dir, write_checkpoint,
 };
@@ -46,10 +48,12 @@ commands:
   expire --policy-id ID --expected-revision N --cutoff YYYY-MM-DDTHH:MM:SS.ffffffZ --limit N
   purge-body --event-id UUID --reason-code CODE
   declare-recovery-pending --incident-code CODE
-  begin-recovery-epoch [--checkpoint FILE] [--relay-max-seq N]";
+  begin-recovery-epoch [--checkpoint FILE] [--relay-max-seq N]
+         (--preview | --expect-old-epoch N --expect-head-seq N
+          --expect-head-chain HEX --expect-lost-upper N)";
 
 /// Flags that take no value.
-const SWITCHES: [&str; 2] = ["identity-chain", "recovery"];
+const SWITCHES: [&str; 3] = ["identity-chain", "recovery", "preview"];
 
 /// A database URL that never appears in Debug output or logs.
 struct SecretUrl(String);
@@ -232,6 +236,20 @@ fn checkpoint_arg(args: &Args) -> Result<Option<audit_core::Checkpoint>, CliErro
                 .ok_or_else(|| CliError::Failed("invalid checkpoint file".into()))
         })
         .transpose()
+}
+
+/// The out-of-band recovery record the Store must confirm before an epoch
+/// starts (`--expect-*`; take the values from `--preview`).
+fn recovery_expectation(args: &Args) -> Result<RecoveryExpectation, CliError> {
+    let chain = args.get("expect-head-chain")?;
+    Ok(RecoveryExpectation {
+        old_epoch: args.number("expect-old-epoch", None)?,
+        restored_head_seq: args.number("expect-head-seq", None)?,
+        restored_head_chain: audit_store_postgres::hex::decode32(chain).ok_or_else(|| {
+            CliError::Usage("--expect-head-chain must be 64 lowercase hex digits".into())
+        })?,
+        lost_upper: args.number("expect-lost-upper", None)?,
+    })
 }
 
 /// The export filter: `--filter` plus the `--seq-after` / `--seq-through`
@@ -460,12 +478,21 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
         ),
         "begin-recovery-epoch" => {
             let checkpoint = checkpoint_arg(&args)?;
+            let relay_max_seq = args.optional_number("relay-max-seq")?;
+            let admin = operator(&config).await?;
+            if args.switch("preview") {
+                return print(
+                    &admin
+                        .preview_recovery_epoch(checkpoint.as_ref(), relay_max_seq)
+                        .await?,
+                );
+            }
             print(
-                &operator(&config)
-                    .await?
+                &admin
                     .begin_recovery_epoch(
                         checkpoint.as_ref(),
-                        args.optional_number("relay-max-seq")?,
+                        relay_max_seq,
+                        &recovery_expectation(&args)?,
                     )
                     .await?,
             )

@@ -26,7 +26,7 @@ use audit_relay::reconcile::Reconciler;
 use audit_relay::relay::{Relay, RelayParts};
 use audit_relay::replay::{ReplayError, replay};
 use audit_relay::store::RelayStore;
-use audit_store_postgres::admin::AuditAdmin;
+use audit_store_postgres::admin::{AuditAdmin, EpochStarted};
 use audit_store_postgres::{PRIVILEGES_SQL, PostgresAuditStore};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
@@ -642,6 +642,22 @@ async fn relay_max_seq(env: &Env) -> i64 {
         .expect("acked")
 }
 
+/// Starts a recovery epoch as an operator does: preview the Store's
+/// restored state, record it out of band, start the epoch with that record.
+async fn start_epoch(
+    maintainer: &AuditAdmin,
+    checkpoint: &audit_core::Checkpoint,
+    relay_max_seq: i64,
+) -> Result<EpochStarted, audit_store_postgres::AdminError> {
+    let preview = maintainer
+        .preview_recovery_epoch(Some(checkpoint), Some(relay_max_seq))
+        .await?;
+    let expected = preview.expectation().expect("preview chain");
+    maintainer
+        .begin_recovery_epoch(Some(checkpoint), Some(relay_max_seq), &expected)
+        .await
+}
+
 async fn store_pool(env: &Env, login: &Login, database: &str) -> PgPool {
     connect_with_retry(&env.cluster.url(&login.role, database), 4).await
 }
@@ -786,8 +802,8 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     let maintainer = AuditAdmin::connect(store_pool(&env, &env.maintainer, restored).await)
         .await
         .expect("maintainer");
-    let started = maintainer
-        .begin_recovery_epoch(Some(&c1), Some(relay_max_seq(&env).await))
+    let relay_max = relay_max_seq(&env).await;
+    let started = start_epoch(&maintainer, &c1, relay_max)
         .await
         .expect("epoch");
     assert_eq!(started.new_epoch, 2);
@@ -895,8 +911,7 @@ async fn an_in_place_restore_is_detected_as_store_regressed() {
     let maintainer = AuditAdmin::connect(store_pool(&env, &env.maintainer, STORE_DB).await)
         .await
         .expect("maintainer");
-    let started = maintainer
-        .begin_recovery_epoch(Some(&c1), Some(acked))
+    let started = start_epoch(&maintainer, &c1, acked)
         .await
         .expect("epoch after regression");
     assert_eq!(started.new_epoch, 2);

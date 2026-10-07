@@ -322,17 +322,55 @@ async fn chain_exports_and_recovery_commands_run_end_to_end() {
     assert_eq!(refused.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&refused.stderr).contains("requires recovery"));
 
-    // The epoch, then access and retention re-application.
-    let started = json_lines(&audit_admin(
+    // The epoch: preview the restored state, then start it with the
+    // out-of-band record; a record that disagrees is refused.
+    let preview = json_lines(&audit_admin(
         Some(&maintainer),
         &[
             "begin-recovery-epoch",
             "--checkpoint",
             &path("checkpoint.json"),
+            "--preview",
         ],
     ));
+    let preview = &preview[0];
+    assert_eq!(preview["status"], "preview");
+    assert_eq!(preview["checkpoint_classification"], "match");
+    let text = |value: &Value| match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    let expect = |lost_upper: &str| {
+        audit_admin(
+            Some(&maintainer),
+            &[
+                "begin-recovery-epoch",
+                "--checkpoint",
+                &path("checkpoint.json"),
+                "--expect-old-epoch",
+                &text(&preview["old_epoch"]),
+                "--expect-head-seq",
+                &text(&preview["restored_head_seq"]),
+                "--expect-head-chain",
+                &text(&preview["restored_head_chain"]),
+                "--expect-lost-upper",
+                lost_upper,
+            ],
+        )
+    };
+    let wrong = (preview["lost_upper_seq"].as_i64().expect("upper") + 1).to_string();
+    let refused = expect(&wrong);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("expectation_mismatch"));
+    let missing = audit_admin(Some(&maintainer), &["begin-recovery-epoch"]);
+    assert_eq!(missing.status.code(), Some(2), "expectations are required");
+    let started = json_lines(&expect(&text(&preview["lost_upper_seq"])));
     assert_eq!(started[0]["new_epoch"], 2);
     assert_eq!(started[0]["checkpoint_classification"], "match");
+    assert_eq!(
+        started[0]["restored_head_chain"],
+        preview["restored_head_chain"]
+    );
     let closed = audit_admin(Some(&cast.reader.url), &["investigate"]);
     assert_eq!(closed.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&closed.stderr).contains("access_reapply_pending"));

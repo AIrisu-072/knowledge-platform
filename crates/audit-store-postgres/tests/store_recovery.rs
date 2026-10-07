@@ -16,7 +16,9 @@ use audit_core::{
     RecoveryRecord, RelayControl, RelayControlKind, SourceMismatchCode, StoreError, StoreState,
     assess_recovery,
 };
-use audit_store_postgres::admin::{AccessChange, AccessOperation, AuditAdmin, parse_utc_text};
+use audit_store_postgres::admin::{
+    AccessChange, AccessOperation, AuditAdmin, RecoveryExpectation, parse_utc_text,
+};
 use audit_store_postgres::files::{ExportRequest, export_identity_chain_recovery, export_to_dir};
 use audit_store_postgres::{AdminError, PRIVILEGES_SQL, PostgresAuditStore};
 use serde_json::{Value, json};
@@ -286,7 +288,7 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
     // privileges.sql is not part of the dump: the posture gate refuses.
     assert_eq!(
         r.maintainer
-            .begin_recovery_epoch(Some(&c2), Some(relay_max_seq))
+            .preview_recovery_epoch(Some(&c2), Some(relay_max_seq))
             .await,
         Err(AdminError::PostureInvalid)
     );
@@ -299,11 +301,93 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
     // The latest out-of-band checkpoint (c2) lies beyond the restored head;
     // the lost range reaches the higher of it and the relay's ack.
     assert!(c2.seq > relay_max_seq);
-    let started = r
+    // The operator's out-of-band record must equal the Store's actual
+    // restored state: every mismatched expectation is refused and changes
+    // nothing (design §8, §11).
+    let preview = r
         .maintainer
-        .begin_recovery_epoch(Some(&c2), Some(relay_max_seq))
+        .preview_recovery_epoch(Some(&c2), Some(relay_max_seq))
         .await
-        .expect("epoch started");
+        .expect("preview");
+    assert_eq!(
+        (
+            preview.old_epoch,
+            preview.restored_head_seq,
+            preview.restored_head_chain.as_str(),
+            preview.lost_upper_seq,
+            preview.classification.as_str(),
+            preview.checkpoint_classification.as_deref()
+        ),
+        (
+            1,
+            dump_head,
+            hex(&c1.chain).as_str(),
+            c2.seq,
+            "restore",
+            Some("store_behind")
+        )
+    );
+    let honest = preview.expectation().expect("expectation");
+    for wrong in [
+        RecoveryExpectation {
+            old_epoch: 2,
+            ..honest
+        },
+        RecoveryExpectation {
+            restored_head_seq: dump_head - 1,
+            ..honest
+        },
+        RecoveryExpectation {
+            restored_head_chain: [0xee; 32],
+            ..honest
+        },
+        RecoveryExpectation {
+            lost_upper: relay_max_seq,
+            ..honest
+        },
+    ] {
+        assert_eq!(
+            r.maintainer
+                .begin_recovery_epoch(Some(&c2), Some(relay_max_seq), &wrong)
+                .await,
+            Err(AdminError::Denied {
+                code: "expectation_mismatch".into()
+            }),
+            "{wrong:?}"
+        );
+    }
+    // A lost upper bound below the restored head is not a record at all.
+    assert_eq!(
+        r.maintainer
+            .begin_recovery_epoch(
+                Some(&c2),
+                Some(relay_max_seq),
+                &RecoveryExpectation {
+                    lost_upper: dump_head - 1,
+                    ..honest
+                }
+            )
+            .await,
+        Err(AdminError::Denied {
+            code: "invalid_input".into()
+        })
+    );
+    assert_eq!(
+        head(&r.admin).await,
+        restored_head,
+        "refusals change nothing"
+    );
+    assert!(
+        r.verifier
+            .store_status()
+            .await
+            .expect("status")
+            .recovery_mode
+    );
+    let (started, epoch_record) =
+        start_recovery_epoch(&r.maintainer, Some(&c2), Some(relay_max_seq))
+            .await
+            .expect("epoch started");
     assert_eq!(
         started.seq,
         dump_head + 1,
@@ -344,7 +428,9 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
     assert_ne!(details["old_database_oid"], details["new_database_oid"]);
     // Not in recovery any more.
     assert_eq!(
-        r.maintainer.begin_recovery_epoch(Some(&c1), None).await,
+        r.maintainer
+            .begin_recovery_epoch(Some(&c1), None, &honest)
+            .await,
         Err(rejected("not_in_recovery"))
     );
     assert_eq!(
@@ -420,6 +506,7 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
         lost_upper: started.lost_upper_seq,
         ..short
     };
+    assert_eq!(record, epoch_record, "the record the Store confirmed");
     let assessment = assess_recovery(&export.report, &checkpoints, &[record]);
     assert_eq!(assessment.verdict, ChainVerdict::Lost);
     assert_eq!(assessment.epochs[0].record, Some(record));
@@ -453,9 +540,7 @@ async fn planned_move_is_an_epoch_with_an_empty_lost_range() {
         .execute(&r.admin)
         .await
         .expect("privileges");
-    let started = r
-        .maintainer
-        .begin_recovery_epoch(Some(&c), None)
+    let (started, _) = start_recovery_epoch(&r.maintainer, Some(&c), None)
         .await
         .expect("planned move");
     assert_eq!(
@@ -582,8 +667,7 @@ async fn a_regression_report_enters_recovery_until_a_regression_epoch() {
     // Only begin_recovery_epoch clears it; the regression is classified and
     // its evidence recorded.
     let maintainer = cast.maintainer.admin().await;
-    let started = maintainer
-        .begin_recovery_epoch(None, None)
+    let (started, _) = start_recovery_epoch(&maintainer, None, None)
         .await
         .expect("regression epoch");
     assert_eq!(started.classification, "regression");
@@ -787,7 +871,7 @@ async fn declared_recovery_mode_allows_exactly_the_recovery_allowlist() {
         Err(rejected("not_in_recovery"))
     );
     assert_eq!(
-        maintainer.begin_recovery_epoch(None, None).await,
+        maintainer.preview_recovery_epoch(None, None).await,
         Err(rejected("not_in_recovery"))
     );
     // Incident codes follow the code grammar (recorded denial outside
@@ -884,8 +968,7 @@ async fn declared_recovery_mode_allows_exactly_the_recovery_allowlist() {
     assert_eq!(head(&db.admin).await, frozen, "nothing was appended");
 
     // begin_recovery_epoch: a declared restore without claims.
-    let started = maintainer
-        .begin_recovery_epoch(None, None)
+    let (started, _) = start_recovery_epoch(&maintainer, None, None)
         .await
         .expect("epoch");
     assert_eq!(started.classification, "restore");

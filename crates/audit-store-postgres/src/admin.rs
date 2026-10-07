@@ -179,15 +179,84 @@ pub struct ExpireOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EpochStarted {
     pub seq: i64,
+    pub old_epoch: i64,
     pub new_epoch: i64,
     pub restored_head_seq: i64,
+    pub restored_head_chain: String,
     /// `restore`, `planned_move` or `regression`.
     pub classification: String,
-    /// `match` / `ahead` / `store_behind` / `mismatch`, or `None` without a
-    /// checkpoint.
+    /// `match` / `ahead` / `store_behind` / `mismatch` / `epoch_mismatch`,
+    /// or `None` without a checkpoint.
     pub checkpoint_classification: Option<String>,
     pub lost_from_seq: i64,
     pub lost_upper_seq: i64,
+    pub lost_upper_known: bool,
+}
+
+/// What `begin_recovery_epoch` would record, as computed by the Store under
+/// the head lock (a preview: nothing changed). The operator writes these
+/// values to the out-of-band recovery record and passes them back as a
+/// [`RecoveryExpectation`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RecoveryPreview {
+    /// `preview` (no expectation given) or `expectation_mismatch`.
+    pub status: String,
+    pub old_epoch: i64,
+    pub new_epoch: i64,
+    pub restored_head_seq: i64,
+    pub restored_head_chain: String,
+    pub classification: String,
+    pub checkpoint_classification: Option<String>,
+    pub lost_from_seq: i64,
+    pub lost_upper_seq: i64,
+    pub lost_upper_known: bool,
+}
+
+/// The operator's out-of-band recovery record (design §8, §11): the epoch
+/// starts only when the Store's old epoch, restored head (seq and chain) and
+/// lost upper bound equal these values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecoveryExpectation {
+    pub old_epoch: i64,
+    pub restored_head_seq: i64,
+    pub restored_head_chain: [u8; 32],
+    pub lost_upper: i64,
+}
+
+impl From<&audit_core::RecoveryRecord> for RecoveryExpectation {
+    fn from(record: &audit_core::RecoveryRecord) -> Self {
+        Self {
+            old_epoch: record.old_epoch,
+            restored_head_seq: record.restored_head_seq,
+            restored_head_chain: record.restored_head_chain,
+            lost_upper: record.lost_upper,
+        }
+    }
+}
+
+impl RecoveryExpectation {
+    /// The out-of-band record of this transition (`new_epoch = old + 1`).
+    pub fn record(&self) -> audit_core::RecoveryRecord {
+        audit_core::RecoveryRecord {
+            old_epoch: self.old_epoch,
+            new_epoch: self.old_epoch + 1,
+            restored_head_seq: self.restored_head_seq,
+            restored_head_chain: self.restored_head_chain,
+            lost_upper: self.lost_upper,
+        }
+    }
+}
+
+impl RecoveryPreview {
+    /// The expectation that starts exactly this epoch.
+    pub fn expectation(&self) -> Option<RecoveryExpectation> {
+        Some(RecoveryExpectation {
+            old_epoch: self.old_epoch,
+            restored_head_seq: self.restored_head_seq,
+            restored_head_chain: hex::decode32(&self.restored_head_chain)?,
+            lost_upper: self.lost_upper_seq,
+        })
+    }
 }
 
 /// A `(status, code)` outcome.
@@ -633,30 +702,74 @@ impl AuditAdmin {
         lines(&rows)
     }
 
+    async fn call_begin_recovery_epoch(
+        &self,
+        checkpoint: Option<&Checkpoint>,
+        relay_max_seq: Option<i64>,
+        expected: Option<&RecoveryExpectation>,
+    ) -> Result<PgRow, AdminError> {
+        Ok(sqlx::query(
+            "SELECT * FROM audit_store.begin_recovery_epoch($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(checkpoint.map(|c| c.epoch))
+        .bind(checkpoint.map(|c| c.seq))
+        .bind(checkpoint.map(|c| hex::encode(&c.chain)))
+        .bind(relay_max_seq)
+        .bind(expected.map(|e| e.old_epoch))
+        .bind(expected.map(|e| e.restored_head_seq))
+        .bind(expected.map(|e| hex::encode(&e.restored_head_chain)))
+        .bind(expected.map(|e| e.lost_upper))
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    /// What [`Self::begin_recovery_epoch`] would record with these inputs:
+    /// the Store's restored head, lost range and classifications, computed
+    /// under the head lock. Changes nothing.
+    pub async fn preview_recovery_epoch(
+        &self,
+        checkpoint: Option<&Checkpoint>,
+        relay_max_seq: Option<i64>,
+    ) -> Result<RecoveryPreview, AdminError> {
+        let row = self
+            .call_begin_recovery_epoch(checkpoint, relay_max_seq, None)
+            .await?;
+        let status: String = get(&row, "status")?;
+        let code: Option<String> = get(&row, "code")?;
+        if status != "refused" || code.as_deref() != Some("expectation_required") {
+            denied(&row)?;
+            return Err(AdminError::Protocol("unexpected status"));
+        }
+        recovery_preview(&row, "preview")
+    }
+
     /// Starts a recovery epoch (design §11). `checkpoint` is the latest
     /// out-of-band checkpoint (for a planned move: the head before the move);
-    /// `relay_max_seq` the relay's highest acknowledged store seq, if known.
+    /// `relay_max_seq` the relay's highest acknowledged store seq, if known;
+    /// `expected` the out-of-band recovery record. The Store refuses with
+    /// `expectation_mismatch` (nothing changes) unless the record equals its
+    /// actual old epoch, restored head and lost upper bound.
     pub async fn begin_recovery_epoch(
         &self,
         checkpoint: Option<&Checkpoint>,
         relay_max_seq: Option<i64>,
+        expected: &RecoveryExpectation,
     ) -> Result<EpochStarted, AdminError> {
-        let row = sqlx::query("SELECT * FROM audit_store.begin_recovery_epoch($1, $2, $3, $4)")
-            .bind(checkpoint.map(|c| c.epoch))
-            .bind(checkpoint.map(|c| c.seq))
-            .bind(checkpoint.map(|c| hex::encode(&c.chain)))
-            .bind(relay_max_seq)
-            .fetch_one(&self.pool)
+        let row = self
+            .call_begin_recovery_epoch(checkpoint, relay_max_seq, Some(expected))
             .await?;
         denied(&row)?;
         Ok(EpochStarted {
             seq: required(get(&row, "seq")?)?,
+            old_epoch: required(get(&row, "old_epoch")?)?,
             new_epoch: required(get(&row, "new_epoch")?)?,
             restored_head_seq: required(get(&row, "restored_head_seq")?)?,
+            restored_head_chain: required(get(&row, "restored_head_chain")?)?,
             classification: required(get(&row, "classification")?)?,
             checkpoint_classification: get(&row, "checkpoint_classification")?,
             lost_from_seq: required(get(&row, "lost_from_seq")?)?,
             lost_upper_seq: required(get(&row, "lost_upper_seq")?)?,
+            lost_upper_known: required(get(&row, "lost_upper_known")?)?,
         })
     }
 
@@ -675,6 +788,21 @@ impl AuditAdmin {
             code: get(&row, "code")?,
         })
     }
+}
+
+fn recovery_preview(row: &PgRow, status: &str) -> Result<RecoveryPreview, AdminError> {
+    Ok(RecoveryPreview {
+        status: status.to_owned(),
+        old_epoch: required(get(row, "old_epoch")?)?,
+        new_epoch: required(get(row, "new_epoch")?)?,
+        restored_head_seq: required(get(row, "restored_head_seq")?)?,
+        restored_head_chain: required(get(row, "restored_head_chain")?)?,
+        classification: required(get(row, "classification")?)?,
+        checkpoint_classification: get(row, "checkpoint_classification")?,
+        lost_from_seq: required(get(row, "lost_from_seq")?)?,
+        lost_upper_seq: required(get(row, "lost_upper_seq")?)?,
+        lost_upper_known: required(get(row, "lost_upper_known")?)?,
+    })
 }
 
 fn lines(rows: &[PgRow]) -> Result<Vec<ExportLine>, AdminError> {
