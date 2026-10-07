@@ -1,5 +1,23 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-07 10:10 UTC — 2回目の独立reviewの修正
+
+- 2回目の独立review（4観点＋反証の検証＋completeness critic）の指摘を修正（`6a7fae8`、`3abfeca`）。
+- shell：
+  - Tauriが実際に使う設定を固定：`tauri.<platform>.conf.json` 等の上書きファイルが無いこと、build時の `TAURI_CONFIG` を拒否（build.rs）、解決後の設定（CSP・capability・window・asset protocol等）、`cargo metadata` で解決したTauriのfeature。上書きファイルを置くと、ファイル一覧の試験と（再build時に）解決後の設定の試験が失敗することを確認。
+  - 転送の上限を値として持たせ、loopbackの試験用serverで413・502（宣言・逐次の超過、途中切断、接続不可）・504・正常応答（データ化とheader）を単体試験。main window以外の拒否も試験。それまで手順書は「単体試験あり」としていたが、実際は判定関数だけだった（review指摘）。
+  - 変異21件（前回の15件＋上限・時間切れ・途中切断・main window判定）をすべて検出。
+- 画面：「開く」で同じ場所を開き直しても作成フォームの入力を消さない（作り直さず、一覧の取り直しと表示のリセットだけ）。自動の再取得で状況変更の説明をすぐ消さない。ダイアログ内の無効なボタンも無効表示。いずれも画面試験を先に追加してRED→GREEN、一覧の再取得失敗時にプレビューを隠す試験は該当行を外すと失敗することを確認。
+- 実GUI確認（harness）：画面の状態の確認は画面で判定し、IPCで記録を見る確認は「IPC：」、ページのscriptで試す確認は「ページのscript：」と明記。強制終了は書き込みの途中で止まるまで最大3回試行。応答の置き換えは「型の無い失敗応答」と記述し、応答が永久に返らない場合は未対応として手順書に記録。開いているフォルダーの解除、再読み込みの印、IPC応答の絶対path検査、停止済みprocess groupへ再送しない、docker run中の中断でもcontainerを残さない（Ctrl-Cで確認）、中断の後片付け中はdriverを起動しない（中断試験でdriverが1つ残ったため）、staleness判定の入力追加。
+- 文書：手順書（未確認一覧の追加と訂正、debug buildの開発者ツール、GTKの選択画面が存在しないフォルダーを作る仕様、Windows項目4・5）、計画のW2番号、実装差分、dependency-rulesの説明。
+- 前回の記録の訂正：`1a393d7` の時点では、手順書の24シナリオの結果と「証拠とした実行」は存在せず（その時点の唯一の実行 `run-uYeNzS` は失敗）、後のcommitで揃えた。`baad3bc` での2回目の実行（`run-bcbfgy`）は、`xdotool type` が「第」を落とし、GTKの選択画面が「二フォルダー」を作って返したため4シナリオが失敗（harnessの問題。`1193ace` で貼り付けに変更）。
+- 検証（ローカル、Linux）：
+  - 実GUI：`run-YnbwvF`・`run-VDyd9g`（commit `3abfeca`、連続2回）で24シナリオ・205項目がすべて成功、どちらも `qualifying: true`。
+  - shell：単体23件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`、変異21件をすべて検出。architecture-lint成功。
+  - 画面：ローカルWorkspace画面の試験21件、型検査、本番build。
+- 未検証：Windows実機・WebView2・MSVC build（依頼者が実施）、Windows版broker（未実装、fail-closed）、macOSでの実行、手順書の「Linuxで未確認」の項目（応答が永久に返らない場合を含む）。
+- 次のexact action：push → exact-head CI → 2回目reviewの残りの検証結果とcriticを確認 → Draft解除と統合 → 統合後のmain CIを確認。
+
 ## 2026-10-07 09:20 UTC — 独立review（1回目）の修正と、実GUI確認の拡充
 
 - PR：[#103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。前回の記録以降のcommit：`0075241`（tauri-driverをmiseの `[tools]` から外す。CIの `mise install rust` が追跡対象の `mise.lock` を書き換え、作業ツリー検査が失敗していたため）、`38be3f8`（1回目reviewの修正：遷移元originの完全一致、transport shimの素通し、XDGの無い端末のダウンロード先、接続先の形式誤りの表示）、`a621559`、`1a393d7`、`ef53c5c`、`d2d9fea`、`baad3bc`。

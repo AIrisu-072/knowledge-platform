@@ -135,9 +135,10 @@ mise run desktop:gui:e2e
 
 ### 証拠とした実行
 
-- 2026-10-07 09:12–09:16 UTC、`run-43HUha`：commit `baad3bc`（作業ツリーはcommit済み、絞り込み無し）で24シナリオ・197項目がすべて成功し、`qualifying: true`。そのうち「IPC：」の項目は35です。
-- 実行ファイル（debug build）のsha256は `2e9807218607569ee2aab14de9e7e874331a716d9318d14b6494f84a81ae76de`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、Node 22.22.0、PostgreSQL 18.6。
-- 強制終了は8MiB中4MiBを書いた時点で起き、同じ操作IDの再送で完全な1件に収束しました。
+- 2026-10-07 09:51–09:59 UTC、`run-YnbwvF` と `run-VDyd9g`（連続2回）：commit `3abfeca`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも24シナリオ・205項目がすべて成功し、`qualifying: true`。205項目のうち「IPC：」は42、「ページのscript：」は3、残りは画面の操作と表示（およびディスク上の確認）です。
+- 実行ファイル（debug build）のsha256は `d3ab66b9d177c1c44e37779ba78bed9c702cf70e9943969612672ad82e527f7a`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、Node 22.22.0、PostgreSQL 18.6。
+- 強制終了は、どちらの実行も1回目の試行で8MiB中4MiBを書いた時点で起き、同じ操作IDの再送で完全な1件に収束しました。
+- 途中で失敗した実行もあります（いずれもharness側の問題で、直してから上の実行を行いました）：二重クリックがmodalの裏のボタンを押していた、`xdotool type` が「第」を落としてGTKの選択画面が別名のフォルダーを作った、skip linkの確認が直前のfocus位置に左右された。経緯は[実行状況](../superpowers/execution/desktop-workspace-runtime-status.md)にあります。
 - 証跡（report.jsonとスクリーンショット）はクラウド環境の `apps/desktop/e2e/.state/`（git管理外）にあり、環境の終了とともに消えます。手元で再現するときは `mise run desktop:gui:e2e` を実行してください。
 
 ## 状態の保存場所と復旧
