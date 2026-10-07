@@ -1391,3 +1391,108 @@ fn stored_workspace_ids(op: &OperationRecord) -> RuntimeResult<(String, String)>
         _ => Err(RuntimeError::new(RuntimeErrorCode::OutcomeUnknown)),
     }
 }
+
+#[cfg(all(test, unix))]
+mod crash_recovery_tests {
+    use super::*;
+
+    fn pending(rt: &LocalWorkspaceRuntime, record: OperationRecord) {
+        let mut state = lock(&rt.state);
+        state.registry.upsert_operation(record);
+        rt.persist(&state).unwrap();
+    }
+
+    #[test]
+    fn pending_workspace_creation_recovers_the_reserved_root_once_after_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = temp.path().join("state");
+        {
+            // Crash after reserving identities, before the managed root exists.
+            let rt = LocalWorkspaceRuntime::open(&state).unwrap();
+            pending(
+                &rt,
+                OperationRecord {
+                    id: "op-crash".into(),
+                    kind: OperationKind::CreateWorkspace,
+                    digest: operation_digest(
+                        OperationKind::CreateWorkspace,
+                        serde_json::json!("名前"),
+                    ),
+                    state: OperationState::Pending,
+                    result: serde_json::json!({"workspaceId": "w_reserved", "managedBindingId": "b_reserved", "name": "名前"}),
+                },
+            );
+        }
+        let rt = LocalWorkspaceRuntime::open(&state).unwrap();
+        assert!(rt.list_workspaces().unwrap().is_empty());
+        match rt.recover_workspace("op-crash") {
+            RuntimeWorkspaceOutcome::Ready { receipt } => {
+                assert_eq!(receipt.workspace_id, "w_reserved");
+                assert_eq!(receipt.managed_binding_id, "b_reserved");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        let again = rt.create_workspace("名前", "op-crash").unwrap();
+        assert_eq!(again.receipt.managed_binding_id, "b_reserved");
+        assert_eq!(rt.list_workspaces().unwrap().len(), 1);
+        assert_eq!(
+            std::fs::read_dir(state.join(MANAGED_DIR)).unwrap().count(),
+            1
+        );
+    }
+
+    #[test]
+    fn pending_file_creation_adopts_only_the_exact_recorded_content() {
+        let temp = tempfile::tempdir().unwrap();
+        let rt = LocalWorkspaceRuntime::open(temp.path().join("state")).unwrap();
+        let created = rt.create_workspace("w", "op-w").unwrap().workspace;
+        let context = ContextRef {
+            workspace_id: created.workspace_id.clone(),
+            effective_context_revision: created.effective_context_revision.clone(),
+        };
+        let parent = LocalRef {
+            binding_id: created.managed_binding_id.clone(),
+            locator: vec![],
+        };
+        let root = rt.managed_path(&created.managed_binding_id);
+        let record = |op: &str, name: &str, bytes: &[u8]| {
+            let mut target = parent.clone();
+            target.locator.push(name.to_owned());
+            OperationRecord {
+                id: op.into(),
+                kind: OperationKind::CreateFile,
+                digest: operation_digest(
+                    OperationKind::CreateFile,
+                    serde_json::json!([
+                        created.workspace_id,
+                        target,
+                        sha256_hex(bytes),
+                        bytes.len()
+                    ]),
+                ),
+                state: OperationState::Pending,
+                result: serde_json::Value::Null,
+            }
+        };
+        // Written before the crash with exactly the requested bytes: adopted.
+        pending(&rt, record("op-same", "same.txt", b"abc"));
+        std::fs::write(root.join("same.txt"), b"abc").unwrap();
+        let receipt = rt
+            .create_file(&context, &parent, "same.txt", b"abc", "op-same")
+            .unwrap();
+        assert_eq!(receipt.size_bytes, 3);
+        // A different file under that name is never claimed as ours.
+        pending(&rt, record("op-other", "other.txt", b"abc"));
+        std::fs::write(root.join("other.txt"), b"partial").unwrap();
+        let error = rt
+            .create_file(&context, &parent, "other.txt", b"abc", "op-other")
+            .unwrap_err();
+        assert_eq!(error.code, RuntimeErrorCode::Conflict);
+        assert_eq!(std::fs::read(root.join("other.txt")).unwrap(), b"partial");
+        // Nothing was written before the crash: the create proceeds once.
+        pending(&rt, record("op-none", "none.txt", b"xyz"));
+        rt.create_file(&context, &parent, "none.txt", b"xyz", "op-none")
+            .unwrap();
+        assert_eq!(std::fs::read(root.join("none.txt")).unwrap(), b"xyz");
+    }
+}
