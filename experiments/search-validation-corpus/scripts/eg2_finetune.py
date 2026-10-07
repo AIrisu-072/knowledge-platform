@@ -29,10 +29,16 @@ QUERY = "task: search result | query: "
 DOCUMENT = "title: none | text: "
 
 
+# Training and retention inputs are cut at the same length as the benchmark.
+MAX_TOKENS = 512
+
+
 def load(model_id: str):
-    return SentenceTransformer(
+    model = SentenceTransformer(
         model_id, device="cuda", model_kwargs={"torch_dtype": torch.bfloat16},
         config_kwargs={"vision_config": None, "audio_config": None})
+    model.max_seq_length = MAX_TOKENS
+    return model
 
 
 def triplets(max_per_config: int, seed: int) -> Dataset:
@@ -69,7 +75,7 @@ def main():
     teacher = load("google/embeddinggemma-2")
     sample = train.shuffle(seed=args.seed + 1).select(range(min(args.retention_samples, len(train))))
     texts = list(sample["positive"])
-    targets = teacher.encode(texts, batch_size=256, normalize_embeddings=True, convert_to_numpy=True)
+    targets = teacher.encode(texts, batch_size=64, normalize_embeddings=True, convert_to_numpy=True)
     retention = Dataset.from_dict({"text": texts, "label": [t.tolist() for t in targets]})
     del teacher
     torch.cuda.empty_cache()
