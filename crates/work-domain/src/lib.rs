@@ -3,10 +3,16 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 mod agent;
+mod agent_result;
+mod context;
 mod evidence;
+mod files;
 mod organization;
 pub use agent::*;
+pub use agent_result::*;
+pub use context::*;
 pub use evidence::*;
+pub use files::*;
 pub use organization::*;
 use time::OffsetDateTime;
 
@@ -156,6 +162,11 @@ pub enum WorkError {
     CursorStale,
     #[error("ORGANIZATION_RECORD_NOT_FOUND")]
     OrganizationRecordNotFound,
+    #[error("WORK_CONTEXT_NOT_FOUND")]
+    WorkContextNotFound,
+    /// The Work artifact store could not confirm a stored generation.
+    #[error("WORK_ARTIFACT_UNAVAILABLE")]
+    WorkArtifactUnavailable,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -184,8 +195,16 @@ pub struct WorkingArtifact {
     pub attempt_id: Uuid,
     pub revision: i64,
     pub schema_id: String,
-    pub value: TextValue,
+    /// Text drafts only; the stored text-draft JSON keeps exactly this shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<TextValue>,
     pub visibility: String,
+    /// Work files only: display label and current immutable generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<WorkFile>,
+    /// Set when explicitly imported from a prior submission after a return.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<DerivedFrom>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -193,7 +212,11 @@ pub struct PinnedArtifact {
     pub artifact_id: Uuid,
     pub revision: i64,
     pub schema_id: String,
-    pub value: TextValue,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<TextValue>,
+    /// The pinned immutable generation, never a live draft pointer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<WorkFile>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -281,6 +304,18 @@ pub struct TaskSummary {
     /// Disclosed only to the current assignee and to a current `work.assign` holder.
     #[serde(default)]
     pub assignment: Option<TaskAssignmentView>,
+    #[serde(default)]
+    pub work_type_id: Uuid,
+    #[serde(default)]
+    pub work_type_label: String,
+    #[serde(default)]
+    pub due_at: Option<String>,
+    /// Derived attention; acknowledging it never completes the task.
+    #[serde(default)]
+    pub attention: Vec<Attention>,
+    /// Only for an owner-unit `context.read` holder or a current assignee.
+    #[serde(default)]
+    pub context_title: Option<String>,
     #[serde(default = "first_attempt")]
     pub attempt_number: u32,
     #[serde(default)]
@@ -290,7 +325,9 @@ pub struct TaskSummary {
     #[serde(default)]
     pub return_transition: Option<ReturnTransition>,
     pub id: Uuid,
-    pub context_id: Uuid,
+    /// Opaque context identity, disclosed exactly where `context_title` is.
+    #[serde(default)]
+    pub context_id: Option<Uuid>,
     pub attempt_id: Uuid,
     pub revision: i64,
     pub title: String,
@@ -337,6 +374,10 @@ pub struct WorkAssignmentRecord {
 pub struct PolicyAuthority {
     policy: Option<std::sync::Arc<OrganizationPolicy>>,
     evaluated_at: Option<OffsetDateTime>,
+    /// The evaluating actor's acknowledged assignment periods (presentation only).
+    acknowledged: Option<std::sync::Arc<(VerifiedActor, std::collections::BTreeSet<Uuid>)>>,
+    /// Server verification of stored file generations for one commit.
+    generations: GenerationReceipts,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -367,6 +408,9 @@ pub struct TaskDetail {
 pub struct WorkItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_instruction_id: Option<Uuid>,
+    /// Explicit attempt due instant; absent unless the fixture defines one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_at: Option<String>,
     pub id: Uuid,
     pub workflow_instance_id: Uuid,
     pub step_id: Uuid,
@@ -387,6 +431,11 @@ pub struct WorkItem {
 pub struct Workflow {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_executions: Vec<AgentExecution>,
+    /// Private Agent draft candidates and typed suggestions (U4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generated_artifacts: Vec<GeneratedArtifact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggested_actions: Vec<SuggestedAction>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<EvidenceRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -530,6 +579,35 @@ pub enum Command {
         task_id: Uuid,
         context: CommandContext,
     },
+    /// A private work file record; content is registered separately.
+    CreateFileArtifact {
+        task_id: Uuid,
+        context: CommandContext,
+        file_name: String,
+        media_type: String,
+    },
+    /// Records a server-stored immutable generation (its ID is the operation ID).
+    WriteArtifactContent {
+        task_id: Uuid,
+        artifact_id: Uuid,
+        context: CommandContext,
+        expected_artifact_revision: i64,
+        generation: GenerationInput,
+    },
+    /// Removes an unsubmitted record from the draft; stored bytes stay.
+    DiscardArtifact {
+        task_id: Uuid,
+        artifact_id: Uuid,
+        context: CommandContext,
+        expected_artifact_revision: i64,
+    },
+    /// Explicit import of the submission a returned attempt refers to.
+    ImportSubmission {
+        task_id: Uuid,
+        context: CommandContext,
+        expected_attempt_id: Uuid,
+        snapshot_id: Uuid,
+    },
     Submit {
         task_id: Uuid,
         context: CommandContext,
@@ -556,6 +634,10 @@ impl Command {
             | Self::RegisterFinding { context, .. }
             | Self::RecordDecision { context, .. }
             | Self::SaveDraft { context, .. }
+            | Self::CreateFileArtifact { context, .. }
+            | Self::WriteArtifactContent { context, .. }
+            | Self::DiscardArtifact { context, .. }
+            | Self::ImportSubmission { context, .. }
             | Self::Claim { context, .. }
             | Self::Submit { context, .. }
             | Self::Assign { context, .. }
@@ -573,6 +655,10 @@ impl Command {
             | Self::RegisterFinding { task_id, .. }
             | Self::RecordDecision { task_id, .. }
             | Self::SaveDraft { task_id, .. }
+            | Self::CreateFileArtifact { task_id, .. }
+            | Self::WriteArtifactContent { task_id, .. }
+            | Self::DiscardArtifact { task_id, .. }
+            | Self::ImportSubmission { task_id, .. }
             | Self::Claim { task_id, .. }
             | Self::Submit { task_id, .. }
             | Self::Assign { task_id, .. }
@@ -593,7 +679,11 @@ impl Command {
             Self::RecordDecision { .. } => PolicyAction::DecisionRecord,
             Self::Return { .. } => PolicyAction::WorkReturn,
             Self::Assign { .. } => PolicyAction::WorkAssign,
-            Self::SaveDraft { .. } => PolicyAction::WorkEdit,
+            Self::SaveDraft { .. }
+            | Self::CreateFileArtifact { .. }
+            | Self::WriteArtifactContent { .. }
+            | Self::DiscardArtifact { .. }
+            | Self::ImportSubmission { .. } => PolicyAction::WorkEdit,
             Self::Claim { .. } => PolicyAction::WorkClaim,
             Self::Submit { .. } => PolicyAction::WorkSubmit,
         }
@@ -641,6 +731,23 @@ pub enum MutationResult {
     DraftSaved {
         task: TaskSummary,
         artifact: WorkingArtifact,
+    },
+    ArtifactCreated {
+        task: TaskSummary,
+        artifact: WorkingArtifact,
+    },
+    ArtifactContentWritten {
+        task: TaskSummary,
+        artifact: WorkingArtifact,
+    },
+    ArtifactDiscarded {
+        task: TaskSummary,
+        #[serde(rename = "artifactId")]
+        artifact_id: Uuid,
+    },
+    SubmissionImported {
+        task: TaskSummary,
+        artifacts: Vec<WorkingArtifact>,
     },
     Claimed {
         task: TaskSummary,
@@ -692,6 +799,8 @@ impl Workflow {
     pub fn synthetic(document_id: Option<Uuid>) -> Self {
         Self {
             agent_executions: vec![],
+            generated_artifacts: vec![],
+            suggested_actions: vec![],
             evidence: vec![],
             findings: vec![],
             decisions: vec![],
@@ -705,11 +814,14 @@ impl Workflow {
             authority: PolicyAuthority {
                 policy: Some(std::sync::Arc::new(OrganizationPolicy::synthetic())),
                 evaluated_at: None,
+                acknowledged: None,
+                generations: GenerationReceipts::None,
             },
             context_id: CONTEXT_ID,
             revision: 0,
             source: WorkItem {
                 return_instruction_id: None,
+                due_at: None,
                 id: SALES_TASK_ID,
                 workflow_instance_id: WORKFLOW_ID,
                 step_id: SALES_STEP_ID,
@@ -758,6 +870,8 @@ impl Workflow {
         self.authority = PolicyAuthority {
             policy: Some(policy),
             evaluated_at: Some(at),
+            acknowledged: None,
+            generations: GenerationReceipts::None,
         };
     }
     pub fn with_authority(mut self, policy: OrganizationPolicy, at: OffsetDateTime) -> Self {
@@ -765,14 +879,14 @@ impl Workflow {
         self
     }
     /// A workflow evaluated without an attached policy grants nothing.
-    fn policy(&self) -> &OrganizationPolicy {
+    pub(crate) fn policy(&self) -> &OrganizationPolicy {
         static EMPTY: std::sync::OnceLock<OrganizationPolicy> = std::sync::OnceLock::new();
         self.authority
             .policy
             .as_deref()
             .unwrap_or_else(|| EMPTY.get_or_init(OrganizationPolicy::empty))
     }
-    fn evaluated_at(&self) -> OffsetDateTime {
+    pub(crate) fn evaluated_at(&self) -> OffsetDateTime {
         self.authority
             .evaluated_at
             .unwrap_or_else(OffsetDateTime::now_utc)
@@ -786,6 +900,7 @@ impl Workflow {
         match item.step_id {
             SALES_STEP_ID => Some(ROLE_SALES_ID),
             OFFICE_STEP_ID => Some(ROLE_PROCESSING_ID),
+            REVIEW_STEP_ID => Some(ROLE_REVIEWING_ID),
             _ => None,
         }
     }
@@ -825,7 +940,7 @@ impl Workflow {
     }
     // Historical participation is never an authority to read an attempt-private
     // draft: the assignee's recorded acting responsibility must be effective now.
-    fn can_read(&self, actor: VerifiedActor, item: &WorkItem) -> bool {
+    pub(crate) fn can_read(&self, actor: VerifiedActor, item: &WorkItem) -> bool {
         self.can_act(actor, item, PolicyAction::WorkRead)
     }
     fn can_act(&self, actor: VerifiedActor, item: &WorkItem, action: PolicyAction) -> bool {
@@ -843,17 +958,54 @@ impl Workflow {
             })
     }
     /// Minimal disclosure check used only to choose 403 over hidden 404.
-    fn visible(&self, actor: VerifiedActor, item: &WorkItem) -> bool {
+    pub(crate) fn visible(&self, actor: VerifiedActor, item: &WorkItem) -> bool {
         self.can_read(actor, item)
             || (item.state == TaskState::Ready
                 && item.assignee.is_none()
                 && self.eligible(actor, item, PolicyAction::QueueRead))
             || (item.state != TaskState::Completed && self.assigning_in(actor, None).is_some())
-            || self
-                .policy()
-                .responsibilities(actor, self.evaluated_at())
-                .iter()
-                .any(|value| value.allows(PolicyAction::ContextProgressRead))
+            || self.continuity_in(actor, None)
+    }
+    /// Context-progress continuity over this instance's owner unit.
+    fn continuity_in(&self, actor: VerifiedActor, scope: Option<Uuid>) -> bool {
+        let Ok(plan) = self.plan() else {
+            return false;
+        };
+        self.policy()
+            .responsibilities(actor, self.evaluated_at())
+            .iter()
+            .any(|value| {
+                scope.is_none_or(|id| value.id == id)
+                    && value.unit_id == plan.owner_unit_id
+                    && value.allows(PolicyAction::ContextProgressRead)
+            })
+    }
+    fn is_next(&self, item: &WorkItem) -> bool {
+        self.plan()
+            .is_ok_and(|plan| item.id == plan.next_task_id && item.step_id == plan.next_step_id)
+    }
+    fn returnable(&self) -> bool {
+        matches!(
+            self.definition_version_id,
+            RETURN_DEFINITION_VERSION_ID
+                | COMPLETE_DEFINITION_VERSION_ID
+                | HOLD_RESUME_DEFINITION_VERSION_ID
+                | REVIEW_DEFINITION_VERSION_ID
+        )
+    }
+    fn completable(&self) -> bool {
+        matches!(
+            self.definition_version_id,
+            COMPLETE_DEFINITION_VERSION_ID
+                | HOLD_RESUME_DEFINITION_VERSION_ID
+                | REVIEW_DEFINITION_VERSION_ID
+        )
+    }
+    fn pausable(&self) -> bool {
+        matches!(
+            self.definition_version_id,
+            HOLD_RESUME_DEFINITION_VERSION_ID | REVIEW_DEFINITION_VERSION_ID
+        )
     }
     fn assignment_view(&self, item: &WorkItem) -> Option<TaskAssignmentView> {
         let principal = item.assignee?;
@@ -875,12 +1027,8 @@ impl Workflow {
         })
     }
     fn return_transition(&self, actor: VerifiedActor, item: &WorkItem) -> Option<ReturnTransition> {
-        if !matches!(
-            self.definition_version_id,
-            RETURN_DEFINITION_VERSION_ID
-                | COMPLETE_DEFINITION_VERSION_ID
-                | HOLD_RESUME_DEFINITION_VERSION_ID
-        ) || item.id != OFFICE_TASK_ID
+        if !self.returnable()
+            || !self.is_next(item)
             || !self.can_act(actor, item, PolicyAction::WorkReturn)
             || item.state != TaskState::Active
             || self.source.state != TaskState::Completed
@@ -901,11 +1049,8 @@ impl Workflow {
         })
     }
     fn completion_action(&self, actor: VerifiedActor, item: &WorkItem) -> Option<Uuid> {
-        (matches!(
-            self.definition_version_id,
-            COMPLETE_DEFINITION_VERSION_ID | HOLD_RESUME_DEFINITION_VERSION_ID
-        ) && item.id == OFFICE_TASK_ID
-            && item.step_id == OFFICE_STEP_ID
+        (self.completable()
+            && self.is_next(item)
             && self.can_act(actor, item, PolicyAction::WorkComplete)
             && item.state == TaskState::Active)
             .then_some(COMPLETE_ACTION_ID)
@@ -921,11 +1066,8 @@ impl Workflow {
         } else {
             PolicyAction::WorkHold
         };
-        (self.definition_version_id == HOLD_RESUME_DEFINITION_VERSION_ID
-            && matches!(
-                (item.id, item.step_id),
-                (SALES_TASK_ID, SALES_STEP_ID) | (OFFICE_TASK_ID, OFFICE_STEP_ID)
-            )
+        (self.pausable()
+            && ((item.id == self.source.id && item.step_id == SALES_STEP_ID) || self.is_next(item))
             && self.can_act(actor, item, action)
             && item.work_assignment_id.is_some()
             && item.state == state)
@@ -948,11 +1090,7 @@ impl Workflow {
         let active = item.state == TaskState::Active;
         let readable = self.can_read(actor, item);
         let editable = source && active && self.can_act(actor, item, PolicyAction::WorkEdit);
-        let label = if source {
-            "営業内容整理"
-        } else {
-            "事務内容確認"
-        };
+        let label = step_label(item.step_id);
         let return_transition = self.return_transition(actor, item);
         let completion_action_id = self.completion_action(actor, item);
         let hold_action_id = self.pause_action(actor, item, false);
@@ -962,6 +1100,7 @@ impl Workflow {
             .flatten();
         let can_assign =
             item.state != TaskState::Completed && self.assigning_in(actor, scope).is_some();
+        let context_title = self.context_title_for(actor, scope);
         TaskSummary {
             can_hold: hold_action_id.is_some(),
             hold_action_id,
@@ -992,6 +1131,12 @@ impl Workflow {
             assignment: (item.assignee == Some(actor) || can_assign)
                 .then(|| self.assignment_view(item))
                 .flatten(),
+            work_type_id: item.work_type_id,
+            work_type_label: work_type_label(item.work_type_id).into(),
+            due_at: item.due_at.clone(),
+            attention: self.attention_for(actor, item),
+            context_id: context_title.is_some().then_some(self.context_id),
+            context_title,
             attempt_number: item.attempt_number,
             can_return: return_transition.is_some(),
             // Submission and return identifiers belong to the assignee's projection;
@@ -999,7 +1144,6 @@ impl Workflow {
             return_instruction_id: readable.then_some(item.return_instruction_id).flatten(),
             return_transition,
             id: item.id,
-            context_id: self.context_id,
             attempt_id: item.attempt_id,
             revision: item.revision,
             title: label.into(),
@@ -1040,10 +1184,7 @@ impl Workflow {
         let manages = responsibilities
             .iter()
             .any(|value| value.allows(PolicyAction::WorkAssign));
-        let continuity = view == TaskView::Context
-            && responsibilities
-                .iter()
-                .any(|value| value.allows(PolicyAction::ContextProgressRead));
+        let continuity = view == TaskView::Context && self.continuity_in(actor, scope);
         let mut items = vec![];
         for item in std::iter::once(&self.source).chain(self.next.iter()) {
             let role = self.step_role(item);
@@ -1169,19 +1310,23 @@ impl Workflow {
     /// One current pointer per stable task, unique attempt identities/numbers,
     /// and completed-only archives, checked before and after every transition.
     pub fn validate_integrity(&self) -> Result<(), WorkError> {
-        if self.id != WORKFLOW_ID
-            || self.source.id != SALES_TASK_ID
-            || !matches!(
-                self.definition_version_id,
-                DEFINITION_VERSION_ID
-                    | RETURN_DEFINITION_VERSION_ID
-                    | COMPLETE_DEFINITION_VERSION_ID
-                    | HOLD_RESUME_DEFINITION_VERSION_ID
-            )
-            || self
-                .next
-                .as_ref()
-                .is_some_and(|item| item.id != OFFICE_TASK_ID)
+        let plan = self.plan()?;
+        if self.context_id != plan.context_id
+            || self.source.id != plan.source_task_id
+            || !plan
+                .accepted_definitions
+                .contains(&self.definition_version_id)
+            || self.next.as_ref().is_some_and(|item| {
+                item.id != plan.next_task_id || item.step_id != plan.next_step_id
+            })
+            || std::iter::once(&self.source)
+                .chain(self.next.iter())
+                .chain(self.completed_attempts.iter())
+                .any(|item| {
+                    item.due_at
+                        .as_deref()
+                        .is_some_and(|due| parse_instant(due).is_err())
+                })
         {
             return Err(WorkError::IntegrityViolation);
         }
@@ -1233,6 +1378,7 @@ impl Workflow {
             }
         }
         self.validate_agent_integrity()?;
+        self.validate_candidate_integrity()?;
         Ok(())
     }
     pub fn authorize_command(
@@ -1282,6 +1428,16 @@ impl Workflow {
                         return Err(WorkError::WorkArtifactNotFound);
                     }
                 }
+            }
+            Command::WriteArtifactContent { artifact_id, .. }
+            | Command::DiscardArtifact { artifact_id, .. } => {
+                self.authorize_assigned(actor, item, acting, action)?;
+                if self.artifact(actor, *artifact_id)?.task_id != item.id {
+                    return Err(WorkError::WorkArtifactNotFound);
+                }
+            }
+            Command::CreateFileArtifact { .. } | Command::ImportSubmission { .. } => {
+                self.authorize_assigned(actor, item, acting, action)?
             }
             Command::Hold { .. }
             | Command::Resume { .. }
@@ -1340,8 +1496,18 @@ impl Workflow {
             } => {
                 self.return_instruction(actor, return_instruction.id)?;
             }
-            MutationResult::DraftSaved { artifact, .. } => {
+            MutationResult::DraftSaved { artifact, .. }
+            | MutationResult::ArtifactCreated { artifact, .. }
+            | MutationResult::ArtifactContentWritten { artifact, .. } => {
                 self.artifact(actor, artifact.id)?;
+            }
+            MutationResult::ArtifactDiscarded { task, .. } => {
+                self.detail(actor, task.id)?;
+            }
+            MutationResult::SubmissionImported { artifacts, .. } => {
+                for artifact in artifacts {
+                    self.artifact(actor, artifact.id)?;
+                }
             }
             MutationResult::Held { task }
             | MutationResult::Resumed { task }
@@ -1549,6 +1715,7 @@ impl Workflow {
                 self.completed_attempts.push(self.source.clone());
                 self.source = WorkItem {
                     return_instruction_id: Some(instruction.id),
+                    due_at: None,
                     id: self.source.id,
                     workflow_instance_id: self.id,
                     step_id: self.source.step_id,
@@ -1592,6 +1759,10 @@ impl Workflow {
                 })
             }
 
+            Command::CreateFileArtifact { .. }
+            | Command::WriteArtifactContent { .. }
+            | Command::DiscardArtifact { .. }
+            | Command::ImportSubmission { .. } => self.apply_files(actor, command, now),
             Command::SaveDraft {
                 task_id,
                 artifact_id,
@@ -1610,11 +1781,15 @@ impl Workflow {
                         .iter_mut()
                         .find(|artifact| artifact.id == *id)
                         .ok_or(WorkError::WorkArtifactNotFound)?;
+                    // A text save never targets a file record.
+                    if artifact.schema_id != TEXT_SCHEMA_ID {
+                        return Err(WorkError::ValidationFailed);
+                    }
                     artifact.revision = artifact
                         .revision
                         .checked_add(1)
                         .ok_or(WorkError::IntegrityViolation)?;
-                    artifact.value = value.clone();
+                    artifact.value = Some(value.clone());
                     artifact.clone()
                 } else {
                     if self
@@ -1632,8 +1807,10 @@ impl Workflow {
                         attempt_id: self.source.attempt_id,
                         revision: 0,
                         schema_id: TEXT_SCHEMA_ID.into(),
-                        value: value.clone(),
+                        value: Some(value.clone()),
                         visibility: "work_item_private".into(),
+                        file: None,
+                        derived_from: None,
                     };
                     self.artifacts.push(artifact.clone());
                     artifact
@@ -1812,13 +1989,8 @@ impl Workflow {
                         .next
                         .as_ref()
                         .is_some_and(|item| item.state != TaskState::Completed)
-                    || (self.next.is_some()
-                        && !matches!(
-                            self.definition_version_id,
-                            RETURN_DEFINITION_VERSION_ID
-                                | COMPLETE_DEFINITION_VERSION_ID
-                                | HOLD_RESUME_DEFINITION_VERSION_ID
-                        ))
+                    // Resubmission after a return exists only in returnable definitions.
+                    || (self.next.is_some() && !self.returnable())
                 {
                     return Err(WorkError::HandoffNotReady);
                 }
@@ -1837,17 +2009,33 @@ impl Workflow {
                     }
                     if artifact.task_id != self.source.id
                         || artifact.attempt_id != self.source.attempt_id
-                        || artifact.schema_id != TEXT_SCHEMA_ID
                     {
                         return Err(WorkError::HandoffNotReady);
+                    }
+                    match artifact.schema_id.as_str() {
+                        TEXT_SCHEMA_ID if artifact.value.is_some() && artifact.file.is_none() => {}
+                        FILE_SCHEMA_ID if artifact.value.is_none() => {
+                            // Only a generation the server verified in the store is pinned.
+                            let generation = artifact
+                                .file
+                                .as_ref()
+                                .and_then(|file| file.generation.as_ref())
+                                .ok_or(WorkError::HandoffNotReady)?;
+                            if !self.generation_verified(generation.id) {
+                                return Err(WorkError::WorkArtifactUnavailable);
+                            }
+                        }
+                        _ => return Err(WorkError::HandoffNotReady),
                     }
                     pinned.push(PinnedArtifact {
                         artifact_id: artifact.id,
                         revision: artifact.revision,
                         schema_id: artifact.schema_id,
                         value: artifact.value,
+                        file: artifact.file,
                     });
                 }
+                let plan = self.plan()?;
                 let snapshot = HandoffSnapshot {
                     evidence_revision_refs: evidence_revision_refs.clone(),
                     finding_revision_refs: finding_revision_refs.clone(),
@@ -1868,7 +2056,7 @@ impl Workflow {
                     acting_assignment_id: command.context().acting_assignment_id,
                     source_task_id: self.source.id,
                     source_attempt_id: self.source.attempt_id,
-                    target_task_id: OFFICE_TASK_ID,
+                    target_task_id: plan.next_task_id,
                     created_at: now.into(),
                     artifacts: pinned,
                 };
@@ -1894,14 +2082,15 @@ impl Workflow {
                         Uuid::now_v7(),
                     )
                 } else {
-                    (1, 0, OFFICE_ATTEMPT_ID)
+                    (1, 0, plan.next_attempt_id)
                 };
                 let next = WorkItem {
                     return_instruction_id: self.source.return_instruction_id,
-                    id: OFFICE_TASK_ID,
-                    workflow_instance_id: WORKFLOW_ID,
-                    step_id: OFFICE_STEP_ID,
-                    work_type_id: OFFICE_WORK_TYPE_ID,
+                    due_at: None,
+                    id: plan.next_task_id,
+                    workflow_instance_id: self.id,
+                    step_id: plan.next_step_id,
+                    work_type_id: plan.next_work_type_id,
                     attempt_number,
                     work_assignment_id: None,
                     acting_assignment_id: None,

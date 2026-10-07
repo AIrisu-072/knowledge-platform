@@ -1,3 +1,4 @@
+import { documentAccessPolicyOperations } from '../../application/document-access-policy';
 import { folderAccessPolicyOperations } from '../../application/document-folder-access-policy';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +31,8 @@ export function DocumentMove({ document, purpose = 'published', currentRead = fa
   document?: DocumentDetail; purpose?: 'published' | 'authoring'; currentRead?: boolean; contextKey: string;
 }) {
   const client = useQueryClient();
+  const documentPolicyStore = documentAccessPolicyOperations(client);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
   const policyStore = folderAccessPolicyOperations(client);
   const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get); const store = documentMoveOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
@@ -48,8 +51,8 @@ export function DocumentMove({ document, purpose = 'published', currentRead = fa
   const clearConfirmation = () => { impactConfirmed.current = false; setConfirmed(false); };
   useEffect(() => { generation.current += 1; destinationGeneration.current += 1; refreshing.current = false; destinationBusy.current = false; setReading(false); setDestinationReading(false); setOpen(false); }, [contextKey]);
   useEffect(() => () => { generation.current += 1; destinationGeneration.current += 1; }, []);
-  const otherUnresolved = [create, rename, folderMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [createStore.get(), renameStore.get(), folderStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolved = [documentPolicyOperation, create, rename, folderMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [documentPolicyStore.get(), createStore.get(), renameStore.get(), folderStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
   const pending = operation?.status === 'pending'; const unknown = operation?.status === 'unknown';
   const entryAllowed = currentRead && canMoveDocument(document) && !otherUnresolved;
   const allowed = !blocked && !staleSource && !staleDestination && !otherUnresolved && canMoveDocument(baseline) && Boolean(destinationBaseline);

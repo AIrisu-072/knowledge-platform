@@ -1,6 +1,8 @@
+import { TextEncoder } from 'node:util';
+Object.assign(globalThis, { TextEncoder });
 import { workApi, WorkApiError } from '../src/api/work-api';
 
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null, requiredRoleId: null, claimAssignmentId: null, canAssign: false, assignment: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null, requiredRoleId: null, claimAssignmentId: null, canAssign: false, assignment: null, workTypeId: 'work-type-1', workTypeLabel: '内容確認', dueAt: null, attention: [], contextTitle: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '文案' }, visibility: 'work_item_private' };
 const response = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body } as Response);
 let fetchMock: jest.Mock;
@@ -160,6 +162,43 @@ test('Agent execution decoding rejects swapped IDs and upgraded simulation or pr
   }
 });
 
+test('structured Agent results decode per-source use, candidates and typed proposals strictly', async () => {
+  const structured = { ...agentResult, sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'referenced' }], generatedArtifactIds: ['generated-1'], suggestedActionIds: ['suggested-1', 'suggested-2'] };
+  fetchMock.mockResolvedValue(response(structured));
+  await expect(workApi.getAgentResult(execution.id)).resolves.toEqual(structured);
+  // A bare suggestion without a Finding is a valid structured result.
+  fetchMock.mockResolvedValue(response({ ...structured, findingRevisionRefs: [] }));
+  await expect(workApi.getAgentResult(execution.id)).resolves.toMatchObject({ findingRevisionRefs: [] });
+  for (const changed of [
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'analyzed' }] },
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: 'other-evidence', revision: 1 }, outcome: 'referenced' }] },
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'unavailable' }] },
+    { sourceOutcomes: [{ evidenceRevisionRef: { id: evidence.id, revision: 1 }, outcome: 'verified' }] },
+    { generatedArtifactIds: ['a', 'b', 'c'] },
+    { suggestedActionIds: ['s', 's'] },
+    { findingRevisionRefs: [{ id: 'f1', revision: 1 }, { id: 'f2', revision: 1 }] },
+  ]) {
+    fetchMock.mockResolvedValue(response({ ...structured, ...changed }));
+    await expect(workApi.getAgentResult(execution.id)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  }
+  const generated = { id: 'generated-1', executionId: execution.id, contextId: task.contextId, workItemId: task.id, attemptId: task.attemptId, schemaId: 'organization.text-draft.v1', title: '確認メモの下書き（合成）', value: { text: '【合成】下書き' }, sourceRevisionRefs: [{ id: evidence.id, revision: 1 }], author: 'organization-synthetic/agent-01', simulated: true, visibility: 'agent_execution_private', createdAt: '2026-10-07T09:00:00Z' };
+  fetchMock.mockResolvedValue(response(generated));
+  await expect(workApi.getGeneratedArtifact('generated-1')).resolves.toEqual(generated);
+  expect(fetchMock.mock.lastCall?.[0]).toBe('/v1/organization/generated-artifacts/generated-1');
+  for (const changed of [{ id: 'other' }, { visibility: 'work_item_private' }, { schemaId: 'organization.work-file.v1' }, { title: '改行\nあり' }, { title: 'あ'.repeat(67) }, { value: { text: 'x'.repeat(8193) } }, { sourceRevisionRefs: [] }]) {
+    fetchMock.mockResolvedValue(response({ ...generated, ...changed }));
+    await expect(workApi.getGeneratedArtifact('generated-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+  const suggested = { id: 'suggested-1', executionId: execution.id, contextId: task.contextId, workItemId: task.id, attemptId: task.attemptId, action: { kind: 'review_finding', findingRevisionRef: { id: 'synthetic-finding', revision: 1 } }, rationale: '候補を確認してください', supportingRevisionRefs: [{ id: evidence.id, revision: 1 }], author: 'organization-synthetic/agent-01', visibility: 'agent_execution_private', createdAt: '2026-10-07T09:00:00Z' };
+  fetchMock.mockResolvedValue(response(suggested));
+  await expect(workApi.getSuggestedAction('suggested-1')).resolves.toEqual(suggested);
+  expect(fetchMock.mock.lastCall?.[0]).toBe('/v1/organization/suggested-actions/suggested-1');
+  for (const changed of [{ action: { kind: 'submit_task' } }, { action: { kind: 'review_finding' } }, { rationale: 'x'.repeat(1025) }, { id: 'other' }]) {
+    fetchMock.mockResolvedValue(response({ ...suggested, ...changed }));
+    await expect(workApi.getSuggestedAction('suggested-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+});
+
 test('an Agent cancellation response cannot substitute another execution from the same task', async () => {
   fetchMock.mockResolvedValue(response({ kind: 'agent_execution_cancelled', task, execution: { ...execution, id: 'other-execution', status: 'cancelled' } }));
   await expect(workApi.cancelAgentExecution(execution.id, { operationId: 'cancel-op', expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, taskId: task.id })).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
@@ -232,4 +271,111 @@ test.each([
     fetchMock.mockResolvedValue(response({ ...receipt, ...patch }));
     await expect(execute()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
   }
+});
+
+test('context, attention and profile decoders are closed and bound to the requested target', async () => {
+  const context = { id: 'context-c', kind: 'request', title: '合成依頼C', ownerUnitId: 'unit-sales', progress: [{ taskId: 'task-1', stepLabel: '営業内容整理', workTypeId: 'type-sales', state: 'ready', attemptNumber: 1, dueAt: '2026-10-07T08:00:00Z', assigned: false }], canReadHistory: true, ownTaskIds: [], attentionCount: 1 };
+  fetchMock.mockResolvedValue(response({ items: [context], nextCursor: null }));
+  expect((await workApi.listWorkContexts('assignment-sales')).items).toEqual([context]);
+  expect(fetchMock.mock.calls[0]![0]).toBe('/v1/organization/work-contexts?actingAssignmentId=assignment-sales');
+  for (const invalid of [{ ...context, kind: 'customer' }, { ...context, progress: [{ ...context.progress[0], state: 'returned' }] }, { ...context, progress: [{ ...context.progress[0], attemptNumber: 0 }] }]) {
+    fetchMock.mockResolvedValue(response({ items: [invalid], nextCursor: null }));
+    await expect(workApi.listWorkContexts()).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+  fetchMock.mockResolvedValue(response({ ...context, id: 'other' }));
+  await expect(workApi.getWorkContext(context.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ contextId: 'other', entries: [] }));
+  await expect(workApi.getWorkContextHistory(context.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  const attention = { taskId: 'task-1', attemptId: 'attempt-1', evaluatedAt: '2026-10-07T09:00:00Z', items: [{ kind: 'overdue', sourceId: null, dueAt: '2026-10-07T08:00:00Z' }] };
+  fetchMock.mockResolvedValue(response(attention));
+  expect(await workApi.markAttentionSeen('task-1', 'period-1')).toEqual(attention);
+  expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({ workAssignmentId: 'period-1' });
+  fetchMock.mockResolvedValue(response({ ...attention, items: [{ kind: 'blocked', sourceId: null, dueAt: null }] }));
+  await expect(workApi.getTaskAttention('task-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ ...attention, taskId: 'other' }));
+  await expect(workApi.getTaskAttention('task-1')).rejects.toMatchObject({ code: 'invalid_response' });
+  const profile = { id: 'p', key: 'review-queue', label: '審査', archetype: 'queue', primaryGrouping: 'work_type', defaultSort: 'due_at', initialModule: 'evidence', modules: [{ module: 'evidence', presentation: 'prominent' }] };
+  fetchMock.mockResolvedValue(response({ items: [profile], nextCursor: null }));
+  expect((await workApi.listWorkViewProfiles()).items).toEqual([profile]);
+  fetchMock.mockResolvedValue(response({ items: [{ ...profile, modules: [{ module: 'evidence', presentation: 'granted' }] }], nextCursor: null }));
+  await expect(workApi.listWorkViewProfiles()).rejects.toMatchObject({ code: 'invalid_response' });
+  // A filtered list never accepts rows outside the requested context.
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: 'other' }], nextCursor: null }));
+  await expect(workApi.listTasks('context', undefined, { contextId: 'context-1' })).rejects.toMatchObject({ code: 'invalid_response' });
+});
+
+test('an undisclosed context is null on rows; task and attempt still bind results and records', async () => {
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: null }], nextCursor: null }));
+  expect((await workApi.listTasks('queue')).items[0]!.contextId).toBeNull();
+  expect(fetchMock.mock.calls.at(-1)![0]).toBe('/v1/organization/tasks?view=queue&limit=100');
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: 7 }], nextCursor: null }));
+  await expect(workApi.listTasks('queue')).rejects.toMatchObject({ code: 'invalid_response' });
+  // A filter by context never accepts an undisclosed row.
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: null }], nextCursor: null }));
+  await expect(workApi.listTasks('context', undefined, { contextId: 'context-1' })).rejects.toMatchObject({ code: 'invalid_response' });
+  const { recordsMatchTask } = await import('../src/application/evidence-workspace');
+  const record = { id: 'e', revision: 1, taskId: task.id, attemptId: task.attemptId, contextId: 'context-1' };
+  expect(recordsMatchTask({ ...task, contextId: null }, { evidence: [record], findings: [], decisions: [] })).toBe(true);
+  expect(recordsMatchTask({ ...task, contextId: null }, { evidence: [{ ...record, attemptId: 'other' }], findings: [], decisions: [] })).toBe(false);
+  expect(recordsMatchTask(task, { evidence: [{ ...record, contextId: 'other' }], findings: [], decisions: [] })).toBe(false);
+});
+
+const generation = { id: '01990000-0000-7000-8000-0000000000f1', sizeBytes: 3, sha256: 'b'.repeat(64), storedAt: '2026-10-07T09:00:00Z', providerId: 'organization.work-artifacts' as const };
+const workFile = { id: 'file-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.work-file.v1', visibility: 'work_item_private', file: { fileName: '合成.txt', mediaType: 'text/plain', generation } };
+
+test('file artifacts decode as exactly one of a text value or a file, and pinned files need a generation', async () => {
+  fetchMock.mockResolvedValue(response({ ...task, inputResources: [], history: [], agentExecutionIds: [], workingArtifacts: [artifact, workFile] }));
+  expect((await workApi.getTask(task.id)).workingArtifacts).toEqual([artifact, workFile]);
+  for (const invalid of [{ ...workFile, value: { text: '本文' } }, { ...artifact, file: workFile.file }, { ...workFile, schemaId: 'organization.binary.v9' }, { ...workFile, file: { ...workFile.file, generation: { ...generation, sha256: 'B'.repeat(64) } } }, { ...workFile, file: { ...workFile.file, generation: { ...generation, sizeBytes: 8 * 1024 * 1024 + 1 } } }, { ...workFile, file: { ...workFile.file, generation: { ...generation, providerId: 'document' } } }]) {
+    fetchMock.mockResolvedValue(response({ ...task, inputResources: [], history: [], agentExecutionIds: [], workingArtifacts: [invalid] }));
+    await expect(workApi.getTask(task.id)).rejects.toMatchObject({ code: 'invalid_response' });
+  }
+  const snapshot = { id: 'snapshot-1', sourceTaskId: task.id, sourceAttemptId: task.attemptId, targetTaskId: 'task-2', createdAt: '2026-10-07T09:00:00Z', evidenceRevisionRefs: [], findingRevisionRefs: [], decisionRevisionRefs: [], artifacts: [{ artifactId: 'file-1', revision: 1, schemaId: 'organization.work-file.v1', file: workFile.file }] };
+  fetchMock.mockResolvedValue(response(snapshot));
+  expect((await workApi.getSnapshot('snapshot-1')).artifacts[0]).toEqual(snapshot.artifacts[0]);
+  fetchMock.mockResolvedValue(response({ ...snapshot, artifacts: [{ ...snapshot.artifacts[0], file: { ...workFile.file, generation: null } }] }));
+  await expect(workApi.getSnapshot('snapshot-1')).rejects.toMatchObject({ code: 'invalid_response' });
+});
+
+test('content upload carries identity in headers and binds the receipt to its operation and size', async () => {
+  const command = { operationId: generation.id, expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedArtifactRevision: 0 };
+  const content = new Blob(['abc']);
+  fetchMock.mockResolvedValue(response({ kind: 'artifact_content_written', task, artifact: workFile }));
+  expect(await workApi.writeArtifactContent('file-1', command, content)).toMatchObject({ kind: 'artifact_content_written', artifact: workFile });
+  const [url, init] = fetchMock.mock.calls[0]!;
+  expect(url).toBe('/v1/organization/working-artifacts/file-1/content');
+  expect(init).toMatchObject({ method: 'PUT', credentials: 'same-origin', cache: 'no-store', body: content, headers: { 'Content-Type': 'application/octet-stream', 'x-operation-id': generation.id, 'x-expected-revision': '2', 'x-acting-assignment-id': 'assignment-sales', 'x-expected-artifact-revision': '0' } });
+  expect(JSON.stringify(init.headers)).not.toMatch(/path|filename/i);
+  // A receipt for another generation or size is an unknown outcome, never success.
+  for (const other of [{ ...workFile, file: { ...workFile.file, generation: { ...generation, id: '01990000-0000-7000-8000-0000000000f2' } } }, { ...workFile, file: { ...workFile.file, generation: { ...generation, sizeBytes: 4 } } }]) {
+    fetchMock.mockResolvedValue(response({ kind: 'artifact_content_written', task, artifact: other }));
+    await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
+  }
+  // A 503 on a mutation stays unknown: the same operation may commit through another request.
+  fetchMock.mockResolvedValue(response({ code: 'WORK_ARTIFACT_UNAVAILABLE' }, 503));
+  await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ status: 503, code: 'WORK_ARTIFACT_UNAVAILABLE', outcomeUnknown: true });
+  fetchMock.mockResolvedValue(response({ code: 'COMMIT_OUTCOME_UNKNOWN' }, 503));
+  await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ outcomeUnknown: true });
+});
+
+test('content download returns the exact generation size or fails without content', async () => {
+  const binary = (bytes: string, status = 200) => ({ ok: status === 200, status, json: async () => ({ code: 'WORK_ARTIFACT_UNAVAILABLE' }), blob: async () => new Blob([bytes]) } as unknown as Response);
+  fetchMock.mockResolvedValue(binary('abc'));
+  expect((await workApi.readSnapshotContent('snapshot-1', 'file-1', generation)).size).toBe(3);
+  expect(fetchMock.mock.calls[0]![0]).toBe('/v1/organization/handoff-snapshots/snapshot-1/artifacts/file-1/content');
+  fetchMock.mockResolvedValue(binary('abcd'));
+  await expect(workApi.readArtifactContent('file-1', generation)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(binary('', 503));
+  await expect(workApi.readArtifactContent('file-1', generation)).rejects.toMatchObject({ status: 503, code: 'WORK_ARTIFACT_UNAVAILABLE' });
+});
+
+test('import and discard receipts are bound to their target and submission', async () => {
+  const imported = { ...workFile, id: 'file-2', revision: 0, derivedFrom: { snapshotId: 'snapshot-1', artifactId: 'file-1' } };
+  const command = { operationId: 'op', expectedRevision: 1, actingAssignmentId: 'assignment-sales', expectedAttemptId: task.attemptId, snapshotId: 'snapshot-1' };
+  fetchMock.mockResolvedValue(response({ kind: 'submission_imported', task, artifacts: [imported] }));
+  expect(await workApi.importSubmission(task.id, command)).toMatchObject({ kind: 'submission_imported', artifacts: [imported] });
+  fetchMock.mockResolvedValue(response({ kind: 'submission_imported', task, artifacts: [{ ...imported, derivedFrom: { snapshotId: 'other', artifactId: 'file-1' } }] }));
+  await expect(workApi.importSubmission(task.id, command)).rejects.toMatchObject({ code: 'invalid_response' });
+  fetchMock.mockResolvedValue(response({ kind: 'artifact_discarded', task, artifactId: 'other' }));
+  await expect(workApi.discardArtifact('file-1', { operationId: 'op', expectedRevision: 1, actingAssignmentId: 'a', expectedArtifactRevision: 1 })).rejects.toMatchObject({ code: 'invalid_response' });
 });

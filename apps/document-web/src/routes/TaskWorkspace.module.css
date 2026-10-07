@@ -31,3 +31,11 @@
 @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .collection { border-bottom: 1px solid var(--color-border); } .work { padding: 16px; } }
 
 .shareChoice { display: block; padding: 10px 0; overflow-wrap: anywhere; line-height: 1.6; }
+/* U2: context groups, derived attention (text, not colour alone) and step progress. */
+.contextGroup { margin: 0 0 12px; padding: 0 0 6px; border-bottom: 1px solid var(--color-border); }
+.contextGroup h3 { font-size: 13px; margin: 8px 0 6px; }
+.contextGroup > button:not(:first-child) { margin-left: 10px; width: calc(100% - 10px); }
+.attention { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 8px 0; list-style: none; }
+.attention li { padding: 3px 8px; border: 1px solid var(--color-warning); border-radius: 4px; background: var(--color-warning-soft); font-size: 12px; }
+.progress { padding-left: 20px; }
+.progress li { margin-bottom: 6px; }

@@ -1,3 +1,5 @@
+import { DocumentAccessPolicy, DocumentAccessPolicyRecovery } from '../components/document/DocumentAccessPolicy';
+import { validateDocumentPolicy } from '../application/document-access-policy';
 import { createdRangeRouteError, documentListUrlError } from '../application/document-created-range';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -5,13 +7,9 @@ import { defaultParseSearch, useLocation, useNavigate, useParams, useSearch } fr
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import {
   documentApi,
-  type AccessPolicyRead,
-  type CommandsPolicyExplicit,
-  type CommandsPolicyInherit,
   type DocumentDetail,
   type DocumentRevisionSummary,
   type FileList,
-  type PolicyGrantInput,
   type RevisionComparisonResponse,
   type Version,
   type VersionDetail,
@@ -91,7 +89,7 @@ export function DocumentDetailPage() {
   const historyRead = useDocumentHistory(documentId, Boolean(document && activeTab === 'history'));
   const accessQuery = useQuery({
     queryKey: ['document-access-policy', documentId],
-    queryFn: () => documentApi.getDocumentAccessPolicy(documentId),
+    queryFn: async () => { const policy = await documentApi.getDocumentAccessPolicy(documentId); if (!validateDocumentPolicy(policy, documentId)) throw new Error('最新の文書とアクセス設定を確認できません。'); return policy; },
     enabled: Boolean(document && canManageAccess && activeTab === 'access'),
   });
   const versionItems = versionsQuery.data?.items ?? [];
@@ -205,6 +203,7 @@ export function DocumentDetailPage() {
       headerContext={<><span>文書</span>{document?.folderName && <>　/　{document.folderName}</>}</>}
       showContextPanel={Boolean(document && showContextPanel)}
     >
+          <DocumentAccessPolicyRecovery />
           {search.workflow || activeTab === 'compare' ? (
             <header className={styles.workflowHeader}>
               <button type="button" onClick={() => search.workflow ? updateSearch({ workflow: undefined }) : updateSearch({ tab: 'versions' })}>{search.workflow ? '← 版の一覧へ戻る' : '← 版・改訂へ戻る'}</button>
@@ -293,7 +292,7 @@ export function DocumentDetailPage() {
                 {activeTab === 'overview' && <OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} />}
                 {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{search.view === 'authoring' && selectedVersion && (!search.versionId || search.versionId === selectedVersion.versionId) && <DocumentWorkingComparison key={`working-comparison:${location.href}:${selectedVersion.versionId}`} documentId={documentId} versionId={selectedVersion.versionId} /> }<DocumentContentHistory key={location.href} documentId={documentId} />{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <DocumentEventHistory read={historyRead} />}
-                {activeTab === 'access' && canManageAccess && <AccessTab documentId={documentId} documentTitle={document.title} documentFolderId={document.folderId ?? null} folderName={document.folderName ?? null} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} onRetry={() => void accessQuery.refetch()} />}
+                {activeTab === 'access' && canManageAccess && <DocumentAccessPolicy document={document} view={search.view} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} />}
               </section>
             </>
           )}
@@ -744,180 +743,6 @@ function DownloadSourceButton({ documentId, purpose, versionId, evidence, label,
     }
   }
   return <span className={styles.originalAction}><button type="button" disabled={pending} onClick={() => void download()}>{pending ? '取得中…' : label}</button>{Boolean(error) && <ApiFeedback error={error} />}</span>;
-}
-
-
-const policyActions = ['read', 'readHistory', 'write', 'publish', 'administer'] as const;
-const policyActionLabels: Record<typeof policyActions[number], string> = {
-  read: '閲覧',
-  readHistory: '履歴閲覧',
-  write: '編集',
-  publish: '公開',
-  administer: 'アクセス管理',
-};
-
-function EffectiveGrantTable({ grants }: { grants: AccessPolicyRead['effectiveGrants'] }) {
-  return (
-    <table className={styles.grantMatrix}>
-      <thead><tr><th scope="col">対象</th>{policyActions.map((action) => <th key={action} scope="col">{policyActionLabels[action]}</th>)}</tr></thead>
-      <tbody>
-        {grants.map((grant) => {
-          const label = grant.presentation.displayName ?? grant.subjectId;
-          return (
-            <tr key={`${grant.identityProvider}:${grant.subjectKind}:${grant.subjectId}`}>
-              <th scope="row"><strong>{label}</strong><small>{grant.subjectKind} · {grant.identityProvider}</small></th>
-              {policyActions.map((action) => <td key={action}>{grant.actions.includes(action) ? '許可' : '—'}</td>)}
-            </tr>
-          );
-        })}
-        {grants.length === 0 && <tr><td colSpan={policyActions.length + 1}>有効な主体はありません。</td></tr>}
-      </tbody>
-    </table>
-  );
-}
-
-function AccessTab({ documentId, documentTitle, documentFolderId, folderName, policy, loading, error, onRetry }: { documentId: string; documentTitle: string; documentFolderId: string | null; folderName: string | null; policy?: AccessPolicyRead; loading: boolean; error: unknown; onRetry: () => void }) {
-  const queryClient = useQueryClient();
-  const [mode, setMode] = useState<'inherit' | 'explicit'>('inherit');
-  const [draft, setDraft] = useState<PolicyGrantInput[]>([]);
-  const [reason, setReason] = useState('');
-  const [operationId, setOperationId] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [mutationError, setMutationError] = useState<unknown>(null);
-  const [success, setSuccess] = useState(false);
-
-  useEffect(() => {
-    if (!policy) return;
-    setMode(policy.bindingMode);
-    setDraft(policy.effectiveGrants.map((grant) => ({
-      subjectKind: grant.subjectKind,
-      identityProvider: grant.identityProvider,
-      subjectId: grant.subjectId,
-      actions: [...grant.actions],
-    })));
-    setOperationId(null);
-  }, [policy]);
-
-  function changeDraft(update: (current: PolicyGrantInput[]) => PolicyGrantInput[]) {
-    setDraft(update);
-    setOperationId(null);
-    setMutationError(null);
-    setSuccess(false);
-  }
-
-  function toggleAction(index: number, action: typeof policyActions[number], checked: boolean) {
-    changeDraft((current) => current.map((grant, grantIndex) => {
-      if (grantIndex !== index) return grant;
-      const actions = new Set(grant.actions);
-      if (checked) actions.add(action);
-      else actions.delete(action);
-      return { ...grant, actions: [...actions] };
-    }).filter((grant) => grant.actions.length > 0));
-  }
-
-  async function save(event?: React.FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    if (!policy || !reason.trim()) return;
-    const id = operationId ?? createOperationId();
-    setOperationId(id);
-    setPending(true);
-    setMutationError(null);
-    try {
-      const body: CommandsPolicyExplicit | CommandsPolicyInherit = mode === 'inherit'
-        ? { operationId: id, expectedPolicyRevision: policy.policyRevision, reason: reason.trim(), mode: 'inherit' }
-        : { operationId: id, expectedPolicyRevision: policy.policyRevision, reason: reason.trim(), mode: 'explicit', grants: draft };
-      await documentApi.setDocumentAccessPolicy(documentId, body);
-      setSuccess(true);
-      setOperationId(null);
-      setReason('');
-      await queryClient.invalidateQueries({ queryKey: ['document-access-policy', documentId] });
-    } catch (caught) {
-      setMutationError(caught);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <section>
-      <div className={styles.sectionHeading}><div><h2>アクセス設定</h2><p>既存の主体に付与された権限を表示します。</p></div></div>
-      {loading && <LoadingState label="アクセス設定を読み込み中" />}
-      {Boolean(error) && <ApiFeedback error={error} onRetry={onRetry} />}
-      {policy && (
-        <>
-          <dl className={styles.resultFacts}>
-            <dt>設定方式</dt><dd>{policy.bindingMode === 'inherit' ? '上位フォルダーから継承' : 'この文書に明示'}</dd>
-            <dt>適用元</dt><dd>{policy.effectiveSource.kind === 'folder' ? (policy.effectiveSource.id === documentFolderId && folderName ? folderName : '上位フォルダー') : documentTitle}</dd>
-          </dl>
-          <fieldset className={styles.policyModes} disabled={pending}>
-            <legend>設定方法</legend>
-            <label><input type="radio" name="policy-mode" value="inherit" checked={mode === 'inherit'} onChange={() => { setMode('inherit'); setOperationId(null); setMutationError(null); setSuccess(false); }} />親フォルダーのアクセス権を継承</label>
-            <p>{policy.effectiveSource.kind === 'folder' ? (policy.effectiveSource.id === documentFolderId && folderName ? `${folderName} から継承しています。` : '上位フォルダーから継承しています。') : '文書固有の設定です。'}</p>
-            <label><input type="radio" name="policy-mode" value="explicit" checked={mode === 'explicit'} onChange={() => { setMode('explicit'); setOperationId(null); setMutationError(null); setSuccess(false); }} />この文書だけに個別設定</label>
-            <p>対象と閲覧・編集・履歴・公開・管理の権限を設定します。</p>
-          </fieldset>
-          <section className={styles.effectivePolicy} aria-labelledby="effective-policy-heading">
-            <h3 id="effective-policy-heading">現在有効なアクセス権</h3>
-            <EffectiveGrantTable grants={policy.effectiveGrants} />
-          </section>
-          {policy.bindingMode === 'inherit' && mode === 'inherit' && (
-            <div className={styles.inheritedNotice}>
-              <p>継承された設定は読み取り専用です。個別設定へ切り替えると、表示中の有効権限を変更案として編集できます。</p>
-            </div>
-          )}
-          {mode === 'explicit' && (
-            <form className={styles.policyForm} onSubmit={(event) => void save(event)}>
-              <p className={styles.muted}>新しいユーザーやグループは追加できません。既存の有効権限だけを編集します。</p>
-              {draft.length === 0 && <p className={styles.statusWarning}>編集できる主体がありません。Identity directoryから主体を選べるAPIが用意されるまで、明示設定は保存できません。</p>}
-              <ul className={styles.grantList}>
-                {draft.map((grant, index) => {
-                  const resolved = policy.effectiveGrants.find((candidate) => candidate.subjectId === grant.subjectId && candidate.identityProvider === grant.identityProvider);
-                  const presentation = resolved?.presentation;
-                  return (
-                    <li key={`${grant.identityProvider}:${grant.subjectKind}:${grant.subjectId}`}>
-                      <div className={styles.grantHeading}>
-                        <strong>{presentation?.displayName ?? grant.subjectId}</strong>
-                        <span>{grant.subjectKind} · {grant.identityProvider}</span>
-                      </div>
-                      {presentation?.secondaryText && <small>{presentation.secondaryText}</small>}
-                      {presentation?.resolution === 'notFound' && <small>ディレクトリに存在しません</small>}
-                      {presentation?.resolution === 'unavailable' && <small>表示名を取得できません</small>}
-                      <div className={styles.actionChecks}>
-                        {policyActions.map((action) => <label key={action}><input type="checkbox" checked={grant.actions.includes(action)} onChange={(event) => toggleAction(index, action, event.target.checked)} />{policyActionLabels[action]}</label>)}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-              <label className={workspaceStyles.formField}>変更理由
-                <textarea value={reason} onChange={(event) => { setReason(event.target.value); setOperationId(null); }} required minLength={1} rows={3} />
-              </label>
-              {Boolean(mutationError) && <ApiFeedback error={mutationError} onRetry={() => void save()} />}
-              {success && <p role="status" className={styles.noticeSuccess}>アクセス設定を保存しました。</p>}
-              <div className={styles.actionRow}>
-                <button type="submit" disabled={pending || !reason.trim() || draft.length === 0}>{pending ? '保存中…' : mutationError ? '同じ内容で再試行' : 'アクセス設定を保存'}</button>
-                <button type="button" onClick={() => { setMode(policy.bindingMode); setDraft(policy.effectiveGrants.map((grant) => ({ subjectKind: grant.subjectKind, identityProvider: grant.identityProvider, subjectId: grant.subjectId, actions: [...grant.actions] }))); setOperationId(null); setMutationError(null); }}>変更を破棄</button>
-              </div>
-            </form>
-          )}
-          {mode === 'inherit' && policy.bindingMode === 'explicit' && (
-            <form className={styles.policyForm} onSubmit={(event) => void save(event)}>
-              <p>保存すると、この文書の明示設定を解除し、上位フォルダーのアクセス設定を適用します。</p>
-              <label className={workspaceStyles.formField}>変更理由
-                <textarea value={reason} onChange={(event) => { setReason(event.target.value); setOperationId(null); }} required minLength={1} rows={3} />
-              </label>
-              {Boolean(mutationError) && <ApiFeedback error={mutationError} onRetry={() => void save()} />}
-              {success && <p role="status" className={styles.noticeSuccess}>アクセス設定を保存しました。</p>}
-              <div className={styles.actionRow}>
-                <button type="submit" disabled={pending || !reason.trim()}>{pending ? '保存中…' : mutationError ? '同じ内容で再試行' : 'アクセス設定を保存'}</button>
-                <button type="button" onClick={() => { setMode('explicit'); setOperationId(null); setMutationError(null); }}>キャンセル</button>
-              </div>
-            </form>
-          )}
-        </>
-      )}
-    </section>
-  );
 }
 
 

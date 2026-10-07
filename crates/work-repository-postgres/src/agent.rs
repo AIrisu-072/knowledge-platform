@@ -10,25 +10,27 @@ impl PostgresWorkRepository {
             pool,
             evidence_source: Some(evidence_source),
             agent_source: Some(agent_source),
+            artifact_store: None,
         }
     }
     pub(super) async fn authorize_agent_context(
         &self,
         context: AgentDispatchContext,
-        revision: i64,
+        observed: Observed,
     ) -> Result<(), WorkError> {
-        self.authorize_agent_context_started(context, revision, Instant::now())
+        self.authorize_agent_context_started(context, observed, Instant::now())
             .await
     }
     async fn authorize_agent_context_started(
         &self,
         context: AgentDispatchContext,
-        revision: i64,
+        (workflow_id, revision): Observed,
         started: Instant,
     ) -> Result<(), WorkError> {
         context.validate_scope()?;
+        let actor = context.execution.requested_by;
         for reference in &context.execution.evidence_revision_refs {
-            if self.load().await?.revision != revision {
+            if self.load_id(actor, workflow_id).await?.revision != revision {
                 return Err(WorkError::WorkContextStale);
             }
             let remaining = PREFLIGHT_LIFETIME
@@ -39,7 +41,7 @@ impl PostgresWorkRepository {
                 .ok_or(WorkError::DependencyUnavailable)?
                 .authorize(context.clone(), reference.clone(), remaining)
                 .await?;
-            if self.load().await?.revision != revision {
+            if self.load_id(actor, workflow_id).await?.revision != revision {
                 return Err(WorkError::WorkContextStale);
             }
             fresh(started)?;
@@ -50,7 +52,7 @@ impl PostgresWorkRepository {
         &self,
         w: &Workflow,
         findings: &[Finding],
-        revision: i64,
+        observed: Observed,
     ) -> Result<(), WorkError> {
         let started = Instant::now();
         let ids: std::collections::BTreeSet<_> = findings
@@ -61,7 +63,7 @@ impl PostgresWorkRepository {
             fresh(started)?;
             self.authorize_agent_context_started(
                 w.agent_disclosure_context(id)?,
-                revision,
+                observed,
                 started,
             )
             .await?;
@@ -72,7 +74,7 @@ impl PostgresWorkRepository {
         &self,
         w: &Workflow,
         snapshot: &HandoffSnapshot,
-        revision: i64,
+        observed: Observed,
     ) -> Result<(), WorkError> {
         let findings = w
             .findings
@@ -85,22 +87,22 @@ impl PostgresWorkRepository {
             })
             .cloned()
             .collect::<Vec<_>>();
-        self.verify_agent_origins(w, &findings, revision).await
+        self.verify_agent_origins(w, &findings, observed).await
     }
     pub(super) async fn verify_result_agent_sources(
         &self,
         w: &Workflow,
         result: &MutationResult,
-        revision: i64,
+        observed: Observed,
     ) -> Result<(), WorkError> {
         match result {
             MutationResult::AgentExecutionRequested { execution, .. }
             | MutationResult::AgentExecutionCancelled { execution, .. } => {
-                self.authorize_agent_context(w.agent_disclosure_context(execution.id)?, revision)
+                self.authorize_agent_context(w.agent_disclosure_context(execution.id)?, observed)
                     .await
             }
             MutationResult::FindingRegistered { finding, .. } => {
-                self.verify_agent_origins(w, std::slice::from_ref(finding), revision)
+                self.verify_agent_origins(w, std::slice::from_ref(finding), observed)
                     .await
             }
             MutationResult::DecisionRecorded { decision, .. } => {
@@ -109,11 +111,11 @@ impl PostgresWorkRepository {
                     .iter()
                     .find(|f| f.id == decision.finding_id)
                     .ok_or(WorkError::IntegrityViolation)?;
-                self.verify_agent_origins(w, std::slice::from_ref(finding), revision)
+                self.verify_agent_origins(w, std::slice::from_ref(finding), observed)
                     .await
             }
             MutationResult::Submitted { snapshot, .. } => {
-                self.verify_snapshot_agent_sources(w, snapshot, revision)
+                self.verify_snapshot_agent_sources(w, snapshot, observed)
                     .await
             }
             _ => Ok(()),
@@ -124,29 +126,54 @@ impl PostgresWorkRepository {
         actor: VerifiedActor,
         id: Uuid,
     ) -> Result<AgentExecution, WorkError> {
-        let w = self.load().await?;
+        let w = self.load_for(actor, WorkTarget::AgentExecution(id)).await?;
         let e = w.agent_execution(actor, id)?;
         let started = Instant::now();
-        self.authorize_agent_context(w.agent_disclosure_context(id)?, w.revision)
+        self.authorize_agent_context(w.agent_disclosure_context(id)?, observed(&w))
             .await?;
-        let current = self.load().await?;
+        let current = self.load_id(actor, w.id).await?;
         if current.revision != w.revision || current.agent_execution(actor, id)? != e {
             return Err(WorkError::WorkContextStale);
         }
         fresh(started)?;
         Ok(e)
     }
+    /// Candidate reads follow the execution read: domain scope, provider
+    /// recheck of every selected source, then an unchanged re-read.
+    pub(super) async fn read_candidate<T: PartialEq>(
+        &self,
+        actor: VerifiedActor,
+        target: WorkTarget,
+        read: impl Fn(&Workflow) -> Result<(Uuid, T), WorkError>,
+    ) -> Result<T, WorkError> {
+        let w = self.load_for(actor, target).await?;
+        let (execution, record) = read(&w)?;
+        let started = Instant::now();
+        self.authorize_agent_context(w.agent_disclosure_context(execution)?, observed(&w))
+            .await?;
+        let current = self.load_id(actor, w.id).await?;
+        if current.revision != w.revision || read(&current)?.1 != record {
+            return Err(WorkError::WorkContextStale);
+        }
+        fresh(started)?;
+        Ok(record)
+    }
     pub(super) async fn current_agent_context(
         &self,
         actor: VerifiedActor,
         id: Uuid,
     ) -> Result<AgentDispatchContext, WorkError> {
-        let observed = self.load().await?;
-        let context = observed.build_agent_context(actor, id)?;
+        let w = self.load_for(actor, WorkTarget::AgentExecution(id)).await?;
+        let context = w.build_agent_context(actor, id)?;
         let started = Instant::now();
-        self.authorize_agent_context(context.clone(), observed.revision)
+        self.authorize_agent_context(context.clone(), observed(&w))
             .await?;
-        if self.load().await?.build_agent_context(actor, id)? != context {
+        if self
+            .load_id(actor, w.id)
+            .await?
+            .build_agent_context(actor, id)?
+            != context
+        {
             return Err(WorkError::WorkContextStale);
         }
         fresh(started)?;
@@ -157,17 +184,17 @@ impl PostgresWorkRepository {
         actor: VerifiedActor,
         id: Uuid,
     ) -> Result<Option<AgentDispatchContext>, WorkError> {
-        let observed = self.load().await?;
-        let mut preview = observed.clone();
+        let current = self.load_for(actor, WorkTarget::AgentExecution(id)).await?;
+        let mut preview = current.clone();
         let Some(context) = preview.start_agent_execution(actor, id, &timestamp()?)? else {
             return Ok(None);
         };
         let started = Instant::now();
-        self.authorize_agent_context(context, observed.revision)
+        self.authorize_agent_context(context, observed(&current))
             .await?;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
-        let mut w = locked(&mut tx).await?;
-        if w.revision != observed.revision {
+        let mut w = locked(&mut tx, current.id).await?;
+        if w.revision != current.revision {
             return Err(WorkError::WorkContextStale);
         }
         let Some(context) = w.start_agent_execution(actor, id, &timestamp()?)? else {
@@ -184,20 +211,20 @@ impl PostgresWorkRepository {
     pub(super) async fn finish_agent(
         &self,
         context: AgentDispatchContext,
-        output: AgentFindingOutput,
+        output: AgentOutput,
     ) -> Result<AgentExecution, WorkError> {
         let actor = context.execution.requested_by;
         let id = context.execution.id;
-        let observed = self.load().await?;
-        if observed.build_agent_context(actor, id)? != context {
+        let current = self.load_for(actor, WorkTarget::AgentExecution(id)).await?;
+        if current.build_agent_context(actor, id)? != context {
             return Err(WorkError::WorkContextStale);
         }
         let started = Instant::now();
-        self.authorize_agent_context(context.clone(), observed.revision)
+        self.authorize_agent_context(context.clone(), observed(&current))
             .await?;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
-        let mut w = locked(&mut tx).await?;
-        if w.revision != observed.revision {
+        let mut w = locked(&mut tx, current.id).await?;
+        if w.revision != current.revision {
             return Err(WorkError::WorkContextStale);
         }
         let execution = w.finish_agent_execution(&context, output, &timestamp()?)?;
@@ -219,9 +246,13 @@ impl PostgresWorkRepository {
         command: &Command,
         digest: &[u8],
     ) -> Result<(), WorkError> {
+        let owner = self
+            .load_for(actor, WorkTarget::Task(command.task_id()))
+            .await?
+            .id;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
-        let mut w = locked(&mut tx).await?;
-        let receipt:Option<(String,Vec<u8>,Json<MutationResult>)>=sqlx::query_as("SELECT principal_id,command_digest,outcome FROM work.operation_ledger WHERE operation_id=$1 AND workflow_id=$2").bind(command.context().operation_id).bind(WORKFLOW_ID).fetch_optional(&mut *tx).await.map_err(database_error)?;
+        let mut w = locked(&mut tx, owner).await?;
+        let receipt:Option<(String,Vec<u8>,Json<MutationResult>)>=sqlx::query_as("SELECT principal_id,command_digest,outcome FROM work.operation_ledger WHERE operation_id=$1 AND workflow_id=$2").bind(command.context().operation_id).bind(owner).fetch_optional(&mut *tx).await.map_err(database_error)?;
         let Some((principal, stored_digest, Json(outcome))) = receipt else {
             return Ok(());
         };
@@ -250,8 +281,12 @@ impl PostgresWorkRepository {
         id: Uuid,
         code: AgentFailureCode,
     ) -> Result<AgentExecution, WorkError> {
+        let owner = self
+            .load_for(actor, WorkTarget::AgentExecution(id))
+            .await?
+            .id;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
-        let mut w = locked(&mut tx).await?;
+        let mut w = locked(&mut tx, owner).await?;
         let before = w.revision;
         let execution = w.fail_agent_execution(actor, id, code, &timestamp()?)?;
         if w.revision != before {
@@ -273,28 +308,48 @@ impl PostgresWorkRepository {
         Ok(execution)
     }
     pub(super) async fn interrupt_agents(&self, actor: VerifiedActor) -> Result<usize, WorkError> {
-        let mut tx = self.pool.begin().await.map_err(database_error)?;
         // Bootstrap starts the servers before the explicit seed-work command.
         // Only this interruption sweep treats an absent fixture as no work to stop.
-        let Some(mut w) = locked_optional(&mut tx).await? else {
-            tx.rollback().await.map_err(database_error)?;
-            return Ok(0);
-        };
-        let ids: Vec<_> = w
-            .agent_executions
-            .iter()
-            .filter(|e| e.requested_by == actor && e.status.is_active())
-            .map(|e| e.id)
-            .collect();
-        for id in &ids {
-            let e =
-                w.fail_agent_execution(actor, *id, AgentFailureCode::Interrupted, &timestamp()?)?;
-            persist(&mut tx, &w, &e, "agent_execution_interrupted").await?;
+        let instances: Vec<Uuid> =
+            sqlx::query_scalar("SELECT id FROM work.workflow_instances ORDER BY id LIMIT $1")
+                .bind(
+                    i64::try_from(MAX_WORK_CONTEXTS + 1)
+                        .map_err(|_| WorkError::IntegrityViolation)?,
+                )
+                .fetch_all(&self.pool)
+                .await
+                .map_err(database_error)?;
+        if instances.len() > MAX_WORK_CONTEXTS {
+            return Err(WorkError::IntegrityViolation);
         }
-        tx.commit()
-            .await
-            .map_err(|_| WorkError::CommitOutcomeUnknown)?;
-        Ok(ids.len())
+        let mut interrupted = 0;
+        for instance in instances {
+            let mut tx = self.pool.begin().await.map_err(database_error)?;
+            let Some(mut w) = locked_optional(&mut tx, instance).await? else {
+                tx.rollback().await.map_err(database_error)?;
+                continue;
+            };
+            let ids: Vec<_> = w
+                .agent_executions
+                .iter()
+                .filter(|e| e.requested_by == actor && e.status.is_active())
+                .map(|e| e.id)
+                .collect();
+            for id in &ids {
+                let e = w.fail_agent_execution(
+                    actor,
+                    *id,
+                    AgentFailureCode::Interrupted,
+                    &timestamp()?,
+                )?;
+                persist(&mut tx, &w, &e, "agent_execution_interrupted").await?;
+            }
+            tx.commit()
+                .await
+                .map_err(|_| WorkError::CommitOutcomeUnknown)?;
+            interrupted += ids.len();
+        }
+        Ok(interrupted)
     }
 }
 fn fresh(started: Instant) -> Result<(), WorkError> {
@@ -309,13 +364,17 @@ fn timestamp() -> Result<String, WorkError> {
         .format(&Rfc3339)
         .map_err(|_| WorkError::IntegrityViolation)
 }
-async fn locked(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Workflow, WorkError> {
-    locked_optional(tx)
+async fn locked(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    id: Uuid,
+) -> Result<Workflow, WorkError> {
+    locked_optional(tx, id)
         .await?
         .ok_or(WorkError::DependencyUnavailable)
 }
 async fn locked_optional(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    id: Uuid,
 ) -> Result<Option<Workflow>, WorkError> {
     // Same lock order as Human commands: policy (share) before workflow (update).
     let policy: Option<Json<OrganizationPolicy>> =
@@ -326,7 +385,7 @@ async fn locked_optional(
             .map_err(database_error)?;
     let row: Option<Json<Workflow>> =
         sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1 FOR UPDATE")
-            .bind(WORKFLOW_ID)
+            .bind(id)
             .fetch_optional(&mut **tx)
             .await
             .map_err(database_error)?;
@@ -346,22 +405,45 @@ async fn persist(
     action: &str,
 ) -> Result<(), WorkError> {
     sqlx::query("UPDATE work.workflow_instances SET revision=$2,body=$3 WHERE id=$1")
-        .bind(WORKFLOW_ID)
+        .bind(w.id)
         .bind(w.revision)
         .bind(Json(w))
         .execute(&mut **tx)
         .await
         .map_err(database_error)?;
-    stage(tx, e, action).await
+    stage(tx, w.id, e, action).await
 }
 pub(super) async fn stage(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workflow_id: Uuid,
     e: &AgentExecution,
     action: &str,
 ) -> Result<(), WorkError> {
-    let payload = serde_json::json!({"schemaVersion":1,"resourceType":"agent_execution","executionId":e.id,"status":e.status,"executedBy":e.executed_by,"executorInvocationKind":e.executor_invocation_kind,"providerPrincipalBindings":e.provider_principal_bindings});
+    let mut payload = serde_json::json!({"schemaVersion":1,"resourceType":"agent_execution","executionId":e.id,"status":e.status,"executedBy":e.executed_by,"executorInvocationKind":e.executor_invocation_kind,"providerPrincipalBindings":e.provider_principal_bindings});
+    // Structured results add references only: no title, text, rationale or purpose.
+    if let Some(result) = &e.result {
+        for (key, value) in [
+            (
+                "sourceOutcomes",
+                serde_json::to_value(&result.source_outcomes),
+            ),
+            (
+                "generatedArtifactIds",
+                serde_json::to_value(&result.generated_artifact_ids),
+            ),
+            (
+                "suggestedActionIds",
+                serde_json::to_value(&result.suggested_action_ids),
+            ),
+        ] {
+            let value = value.map_err(|_| WorkError::IntegrityViolation)?;
+            if value.as_array().is_some_and(|items| !items.is_empty()) {
+                payload[key] = value;
+            }
+        }
+    }
     sqlx::query("INSERT INTO work.event_staging(id,operation_id,workflow_id,principal_id,acting_assignment_id,task_id,action,occurred_at,payload) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$8)")
-        .bind(Uuid::now_v7()).bind(WORKFLOW_ID).bind(e.requested_by.principal_id()).bind(e.requester_responsibility).bind(e.work_item_id).bind(action).bind(OffsetDateTime::now_utc()).bind(Json(payload)).execute(&mut **tx).await.map_err(database_error)?;
+        .bind(Uuid::now_v7()).bind(workflow_id).bind(e.requested_by.principal_id()).bind(e.requester_responsibility).bind(e.work_item_id).bind(action).bind(OffsetDateTime::now_utc()).bind(Json(payload)).execute(&mut **tx).await.map_err(database_error)?;
     Ok(())
 }
 

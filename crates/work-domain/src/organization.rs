@@ -164,6 +164,9 @@ pub struct Responsibility {
     pub source_assignment_id: Option<Uuid>,
     #[serde(with = "principal_serde::option")]
     pub delegator: Option<VerifiedActor>,
+    /// Presentation default derived from role override and unit; never a grant.
+    #[serde(default)]
+    pub work_view_profile_id: Uuid,
 }
 impl Responsibility {
     pub fn allows(&self, action: PolicyAction) -> bool {
@@ -502,6 +505,7 @@ impl OrganizationPolicy {
             valid_until: value.valid_until.clone(),
             source_assignment_id: None,
             delegator: None,
+            work_view_profile_id: profile_for(role.id, unit.id),
         })
     }
     fn delegation_responsibility(&self, value: &Delegation) -> Option<Responsibility> {

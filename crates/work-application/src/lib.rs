@@ -5,10 +5,11 @@ use uuid::Uuid;
 mod agent;
 pub use agent::*;
 use work_domain::{
-    AgentDispatchContext, AgentExecution, AgentFailureCode, AgentFindingOutput, AgentResult,
-    Command, EvidenceRecord, EvidenceSource, Finding, HandoffSnapshot, HumanDecision,
-    MutationResult, OrganizationView, PolicyCommand, ReturnInstruction, TaskDetail, TaskSummary,
-    TaskView, VerifiedActor, WorkError, WorkingArtifact,
+    AgentDispatchContext, AgentExecution, AgentFailureCode, AgentOutput, AgentResult, Command,
+    CommandContext, EvidenceRecord, EvidenceSource, FileGeneration, Finding, GeneratedArtifact,
+    HandoffSnapshot, HumanDecision, MutationResult, OrganizationView, PolicyCommand,
+    ReturnInstruction, SuggestedAction, TaskAttention, TaskDetail, TaskSummary, TaskView,
+    VerifiedActor, WorkContextHistory, WorkContextView, WorkError, WorkFile, WorkingArtifact,
 };
 
 pub type WorkFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, WorkError>> + Send + 'a>>;
@@ -27,7 +28,71 @@ pub trait EvidenceSourcePort: Send + Sync {
         purpose: EvidenceSourcePurpose,
     ) -> WorkFuture<'_, ()>;
 }
+/// Content identity computed by the server from received bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredGeneration {
+    pub size_bytes: u64,
+    pub sha256: String,
+}
+pub fn content_identity(bytes: &[u8]) -> StoredGeneration {
+    use sha2::{Digest, Sha256};
+    StoredGeneration {
+        size_bytes: bytes.len() as u64,
+        sha256: Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    }
+}
+/// The Work-owned shared artifact store (Domain §7): a namespace of its own over
+/// the selected file storage, never static-served and never a Document or path.
+pub trait WorkArtifactStore: Send + Sync {
+    /// Store exactly these bytes as one immutable generation. The same bytes again
+    /// are idempotent; different bytes for an existing generation are
+    /// `OPERATION_CONFLICT`. Unavailable storage is `WORK_ARTIFACT_UNAVAILABLE`.
+    fn put(&self, generation_id: Uuid, bytes: Vec<u8>) -> WorkFuture<'_, StoredGeneration>;
+    /// Read and match the recorded size and hash; a missing or altered
+    /// generation is `WORK_ARTIFACT_UNAVAILABLE` and returns no bytes.
+    fn read(&self, generation: FileGeneration) -> WorkFuture<'_, Vec<u8>>;
+    /// Server-side receipt before a generation is pinned into a handoff.
+    fn verify(&self, generation: FileGeneration) -> WorkFuture<'_, ()> {
+        Box::pin(async move { self.read(generation).await.map(|_| ()) })
+    }
+}
 pub trait WorkRepository: Send + Sync {
+    /// Capability hint only: whether a Work artifact store is composed.
+    fn artifact_store_available(&self) -> bool {
+        false
+    }
+    /// Authorize, store the received bytes as a new generation, then commit the
+    /// content-write command with the server-computed identity.
+    fn write_artifact_content(
+        &self,
+        _actor: VerifiedActor,
+        _artifact_id: Uuid,
+        _context: CommandContext,
+        _expected_artifact_revision: i64,
+        _bytes: Vec<u8>,
+    ) -> WorkFuture<'_, MutationResult> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// A current assignee's private draft file, verified against its generation.
+    fn artifact_content(
+        &self,
+        _actor: VerifiedActor,
+        _artifact_id: Uuid,
+    ) -> WorkFuture<'_, (WorkFile, Vec<u8>)> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// A pinned file of a readable submission, verified against its generation.
+    fn snapshot_content(
+        &self,
+        _actor: VerifiedActor,
+        _snapshot_id: Uuid,
+        _artifact_id: Uuid,
+    ) -> WorkFuture<'_, (WorkFile, Vec<u8>)> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
     fn request_agent_execution(
         &self,
         _actor: VerifiedActor,
@@ -39,6 +104,22 @@ pub trait WorkRepository: Send + Sync {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
     fn agent_result(&self, _actor: VerifiedActor, _id: Uuid) -> WorkFuture<'_, AgentResult> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Private Agent draft candidate, read under the execution's current scope.
+    fn generated_artifact(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, GeneratedArtifact> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Typed non-executable proposal, read under the execution's current scope.
+    fn suggested_action(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, SuggestedAction> {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
     fn start_agent_execution(
@@ -58,7 +139,7 @@ pub trait WorkRepository: Send + Sync {
     fn finish_agent_execution(
         &self,
         _context: AgentDispatchContext,
-        _output: AgentFindingOutput,
+        _output: AgentOutput,
     ) -> WorkFuture<'_, AgentExecution> {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
@@ -123,6 +204,41 @@ pub trait WorkRepository: Send + Sync {
         }
     }
     fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>>;
+    /// Authorized WorkContext projection (owner-unit readers and current assignees).
+    fn list_work_contexts(
+        &self,
+        _actor: VerifiedActor,
+        _scope: Option<Uuid>,
+    ) -> WorkFuture<'_, Vec<WorkContextView>> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn work_context(&self, _actor: VerifiedActor, _id: Uuid) -> WorkFuture<'_, WorkContextView> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn work_context_history(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, WorkContextHistory> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Derived attention with the same visibility as the task's list row.
+    fn task_attention(
+        &self,
+        _actor: VerifiedActor,
+        _task_id: Uuid,
+    ) -> WorkFuture<'_, TaskAttention> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Idempotent acknowledgment of the actor's own current assignment period.
+    fn acknowledge_attention(
+        &self,
+        _actor: VerifiedActor,
+        _task_id: Uuid,
+        _work_assignment_id: Uuid,
+    ) -> WorkFuture<'_, TaskAttention> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
     fn task(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, TaskDetail>;
     fn artifact(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact>;
     fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot>;
@@ -219,6 +335,15 @@ mod tests {
                 .unwrap()
             );
         }
+    }
+    #[test]
+    fn content_identity_is_the_lowercase_sha256_of_the_exact_bytes() {
+        let identity = content_identity(b"abc");
+        assert_eq!(identity.size_bytes, 3);
+        assert_eq!(
+            identity.sha256,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
     #[test]
     fn legacy_submit_serialization_preserves_existing_operation_digest() {

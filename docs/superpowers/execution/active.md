@@ -1,5 +1,61 @@
 # Active Execution Pointer
 
+## 2026-10-07 08:40 UTC — Organization 複数担当PoC（U1〜U4）完了
+
+- U4は[PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104)でmain `d92ca6d` へ統合済み（[U4状況](organization-agent-chat-status.md)）。U1〜U4の4単位（複数担当・役割・委任、複数文脈・注意・表示Profile、作業ファイル・Handoff・差戻し後の作業、Agentの構造化結果・Agent Chat）はすべてmainへ統合し、各統合前のexact-head CIと統合後のmain CIで確認済み（U4の統合後CIは本記録のPRで確認する）
+- 合成Identityのみ。本番接続・実データ・サーバー反映・本番Identity方式の選定は行っていない。各単位の実装追補に記録した「新しい判断」は承認済みとして扱わない
+- 未着手の候補（新しいsessionが選ぶ。進捗を会話から再構成しない）：
+  - 提出済み内容のDocument Platformへの昇格（既存Document APIでの明示操作）
+  - ローカルWorkspace（Tauri/native）からの作業ファイル選択（Runtime Contractの読取りhandle→既存の内容登録API）
+  - 作業ファイル・下書き候補・提案の保持期間・削除・orphan回収、保存容量の上限
+  - 実Agent/MCPの接続（[利用手順](../../operations/organization-browser-poc.md#実agentmcpへの接続依頼者向け本pocでは実施しない)の依頼者判断が前提）、Agentへ渡す文脈の追加、工程操作の提案
+- 再開する場合は、最新mainから新しいbranchを作り、該当specと各単位の状況・追補を確認してから始める
+
+---
+
+## 2026-10-07 08:10 UTC — Organization Agentの構造化結果・Agent Chat・executor adapter境界（U4）
+
+- U3は[PR #102](https://github.com/AIrisu-072/knowledge-platform/pull/102)でmain `3b06421` へ統合済み（[U3状況](organization-work-files-status.md)）。U4の再開先は[状況](organization-agent-chat-status.md)、[実装追補](../specs/2026-10-07-organization-agent-chat-amendment.md)、[小計画](../plans/2026-10-07-organization-agent-chat.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `3b06421` から作り直し、U4 commitを移した。AgentResultの構造化（下書き候補・型付き提案・根拠ごとの利用結果）、`AgentExecutorPort`（合成executorは実装の一つ）、Agent Chat（時系列、候補は読み直して未保存の文案へ、提案は読み直して通常の画面へ）
+- ローカルで全Rust・実PostgreSQL・GUI 1642件・実browser 23 stageが成功。新しい判断10点は承認済みとして扱わない
+- 次は独立review→修正→PR→exact-head CI→main統合→統合後CI
+
+---
+
+## 2026-10-07 07:20 UTC — Organization 作業ファイル・共有provider・Handoff・差戻し後の作業（U3）
+
+- U2は[PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)でmain `240bfd2` へ統合済み（[U2状況](organization-work-context-status.md)）。U3の再開先は[状況](organization-work-files-status.md)、[実装追補](../specs/2026-10-07-organization-work-files-handoff-amendment.md)、[小計画](../plans/2026-10-07-organization-work-files.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `240bfd2` から作り直し、U3 commitを移した。作業ファイル（Work所有の共有保存領域 `work-artifacts/`）、提出時の世代固定と受領者の取得、差戻し後の明示的な取込み
+- 独立reviewはGO。Important 1件（外した記録への操作が閲覧拒否扱い）と軽微事項を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 20 stageが成功。新しい判断10点は承認済みとして扱わない
+- 次はPR作成→exact-head CI→main統合→統合後CI→同名branchを作り直してU4（AgentExecutionの構造化結果・Agent Chat・adapter境界）
+
+---
+
+## 2026-10-07 06:10 UTC — Organization 複数文脈・注意・表示Profile（U2）
+
+- U1は[PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)でmain `04076b1` へ統合済み（[U1状況](organization-multi-principal-status.md)）。U2の再開先は[状況](organization-work-context-status.md)、[実装追補](../specs/2026-10-07-organization-work-context-attention-amendment.md)、[小計画](../plans/2026-10-07-organization-work-context.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `04076b1` から作り直した。合成文脈3件・文脈ごとのworkflow instance・Attention（導出）・確認済み（Work mutationではない）・表示Profile 3種・営業型の文脈一覧/事務型のWorkType別キュー
+- 独立reviewのNO-GO（審査文脈の差戻し後に再提出できない、差戻し注意の対象、注意APIの閲覧範囲ほか）を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 17 stageが成功。新しい判断は承認済みとして扱わない
+- [PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)。再reviewはGO、軽微事項の修正後head `48efcfe` で全CI成功。main `4a71e56`（PR100 文書アクセス設定）を通常mergeで取り込み、組合せheadのCI合格後にmainへ統合する。次は統合後CI→同名branchを作り直してU3
+
+---
+
+## 2026-10-07 04:36 UTC — 文書アクセス設定の回復補修
+
+- PR97統合main bba1d6ddを基点に、既に接続済みDocument ACLの結果不明要求の固定・往復保持・関連read失効を優先する。[状況](document-access-policy-recovery-status.md)と[限定計画](../plans/2026-10-07-document-access-policy-recovery.md)が再開先
+- operationIdが変わる実route反例から、Folder側の既存パターンを再利用する。権限/継承/本文の意味、新主体、backendを増やさず合成fixtureだけで検証する。既読capability・原本構成・旧版取下げは別候補として保留
+- branchはfix/document-access-policy-recovery-20261007。PR97の最終合格/未取得境界は同PR本文へ保存済み。main自身のruntime3stepは成功し、残CIを独立監視中。次はTDD・独立review・同機能PRでの実受入
+
+05:00追補：実wireでoperationId/bodyが変わるREDから、Document固定store・Home/Detail回復入口・同期read失効へ補修。途中全1580/62合格後、管理可否を通常読取の失敗にしない正規observer再利用とJST表示の反例を追加修正し、最終全体検証/独立reviewへ進む。受入2filesと導入4docsを同機能へ保持。main bba自身の全CI/DB/artifact0は確認済み、今回のhostedは未資格。
+
+05:08追補：最終GUI1583/62・focused307/5・schema/型/buildと独立全体レビューが成功。公開前mainがPR95統合93947f3dへ進んだため、他担当のRuntime/Shell/CIをそのまま保持し、Active両記録だけを通常統合して組合せ確認へ進む。新headのhostedはまだ未資格。
+
+05:38追補：PR100 head0936a93dのDocument composition/summaryがFAIL、Org未実行。初回logはTransport closedで実失敗caseは未取得。別途、本番fresh cacheでは正常往復時にGETが増えないDOM反例を確認したため、追加受入のGET必須待受だけを限定補修する。旧head失敗と根因未確定を保持し、次sourceのCIで確認する。
+
+06:12追補：補修head ddc27de3は新CI14jobs/19checks合格、DB40とartifact0を確認。runtime stdout未取得の境界と旧FAILは保持する。mainがPR96統合04076b1fへ進んだため、Org source/受入をそのまま保持し、共有2文書の双方記録を通常統合。組合せレビュー/GUI/同PR通常CIを新たに確認する。
+
+---
+
 ## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
 
 - main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先

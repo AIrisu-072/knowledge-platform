@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Separate Work schema, migration ledger and atomic workflow/operation/event transaction.
 mod agent;
+mod files;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row, types::Json};
 use std::{
@@ -11,11 +12,19 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 use work_application::{
     AgentExecutionAcceptance, AgentSourcePort, EvidenceSourcePort, EvidenceSourcePurpose,
-    WorkFuture, WorkRepository, command_digest, policy_command_digest,
+    WorkArtifactStore, WorkFuture, WorkRepository, command_digest, policy_command_digest,
 };
 use work_domain::*;
 
 type StoredOperation = (Json<Workflow>, String, Vec<u8>, Json<MutationResult>);
+/// The instance and revision a provider check observed before taking locks.
+pub(crate) type Observed = (Uuid, i64);
+pub(crate) fn observed(workflow: &Workflow) -> Observed {
+    (workflow.id, workflow.revision)
+}
+fn observed_of(workflow: &Workflow) -> Observed {
+    observed(workflow)
+}
 
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../migrations/0001_work.sql")),
@@ -25,6 +34,8 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (5, include_str!("../migrations/0005_complete.sql")),
     (6, include_str!("../migrations/0006_hold_resume.sql")),
     (7, include_str!("../migrations/0007_organization.sql")),
+    (8, include_str!("../migrations/0008_attention.sql")),
+    (9, include_str!("../migrations/0009_work_files.sql")),
 ];
 const MIGRATION_LOCK: i64 = 0x574F524B504F4301;
 #[derive(Clone)]
@@ -32,6 +43,7 @@ pub struct PostgresWorkRepository {
     pool: PgPool,
     evidence_source: Option<Arc<dyn EvidenceSourcePort>>,
     agent_source: Option<Arc<dyn AgentSourcePort>>,
+    artifact_store: Option<Arc<dyn WorkArtifactStore>>,
 }
 impl PostgresWorkRepository {
     pub fn new(pool: PgPool) -> Self {
@@ -39,6 +51,7 @@ impl PostgresWorkRepository {
             pool,
             evidence_source: None,
             agent_source: None,
+            artifact_store: None,
         }
     }
     pub fn with_evidence_source(
@@ -49,6 +62,7 @@ impl PostgresWorkRepository {
             pool,
             evidence_source: Some(evidence_source),
             agent_source: None,
+            artifact_store: None,
         }
     }
     async fn load_policy(&self) -> Result<OrganizationPolicy, WorkError> {
@@ -62,19 +76,78 @@ impl PostgresWorkRepository {
         policy.validate_integrity()?;
         Ok(policy)
     }
+    /// The actor's acknowledged assignment periods (presentation state only),
+    /// optionally for one instance. Never read while a row lock is held.
+    async fn acknowledgements(
+        &self,
+        actor: VerifiedActor,
+        workflow_id: Option<Uuid>,
+    ) -> Result<std::collections::BTreeSet<Uuid>, WorkError> {
+        let ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT work_assignment_id FROM work.attention_acknowledgements WHERE principal_id=$1 AND ($2::uuid IS NULL OR workflow_id=$2)",
+        )
+        .bind(actor.principal_id())
+        .bind(workflow_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(database_error)?;
+        Ok(ids.into_iter().collect())
+    }
     /// Every read evaluates the current Organization policy at the current server
-    /// instant; a stored workflow never carries its own authorization.
-    async fn load(&self) -> Result<Workflow, WorkError> {
-        let Json(workflow): Json<Workflow> =
+    /// instant; a stored workflow never carries its own authorization. The PoC
+    /// reads every (bounded) instance for one projection.
+    async fn load_all(&self, actor: VerifiedActor) -> Result<Vec<Workflow>, WorkError> {
+        let rows: Vec<Json<Workflow>> =
+            sqlx::query_scalar("SELECT body FROM work.workflow_instances ORDER BY id LIMIT $1")
+                .bind(
+                    i64::try_from(MAX_WORK_CONTEXTS + 1)
+                        .map_err(|_| WorkError::IntegrityViolation)?,
+                )
+                .fetch_all(&self.pool)
+                .await
+                .map_err(database_error)?;
+        if rows.is_empty() {
+            return Err(WorkError::DependencyUnavailable);
+        }
+        if rows.len() > MAX_WORK_CONTEXTS {
+            return Err(WorkError::IntegrityViolation);
+        }
+        let policy = Arc::new(self.load_policy().await?);
+        let acknowledged = self.acknowledgements(actor, None).await?;
+        let now = OffsetDateTime::now_utc();
+        rows.into_iter()
+            .map(|Json(mut workflow)| {
+                workflow.validate_integrity()?;
+                workflow.attach_authority(policy.clone(), now);
+                workflow.attach_acknowledgements(actor, acknowledged.clone());
+                Ok(workflow)
+            })
+            .collect()
+    }
+    /// The instance that stores `target`; when none does, the first instance so
+    /// the domain answers with its usual not-found error (no existence oracle).
+    async fn load_for(
+        &self,
+        actor: VerifiedActor,
+        target: WorkTarget,
+    ) -> Result<Workflow, WorkError> {
+        let mut all = self.load_all(actor).await?;
+        let index = all.iter().position(|w| w.owns(target)).unwrap_or(0);
+        Ok(all.swap_remove(index))
+    }
+    async fn load_id(&self, actor: VerifiedActor, id: Uuid) -> Result<Workflow, WorkError> {
+        let Json(mut workflow): Json<Workflow> =
             sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id = $1")
-                .bind(WORKFLOW_ID)
+                .bind(id)
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(database_error)?
                 .ok_or(WorkError::DependencyUnavailable)?;
         workflow.validate_integrity()?;
         let policy = self.load_policy().await?;
-        Ok(workflow.with_authority(policy, OffsetDateTime::now_utc()))
+        workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
+        workflow.attach_acknowledgements(actor, self.acknowledgements(actor, Some(id)).await?);
+        Ok(workflow)
     }
     async fn authorize_sources(
         &self,
@@ -109,7 +182,7 @@ impl PostgresWorkRepository {
     async fn verify_read_sources(
         &self,
         actor: VerifiedActor,
-        workflow_revision: i64,
+        (workflow_id, workflow_revision): Observed,
         evidence: Vec<EvidenceRecord>,
     ) -> Result<(), WorkError> {
         let sources = source_set(&evidence);
@@ -121,7 +194,7 @@ impl PostgresWorkRepository {
             .await?;
         // Providers are checked outside Work locks; immediately recheck current
         // local authority by revision before disclosure, never use the snapshot as ACL.
-        if self.load().await?.revision != workflow_revision
+        if self.load_id(actor, workflow_id).await?.revision != workflow_revision
             || started.elapsed() > PREFLIGHT_LIFETIME
         {
             return Err(WorkError::DependencyUnavailable);
@@ -130,37 +203,35 @@ impl PostgresWorkRepository {
     }
     async fn operation(
         &self,
+        actor: VerifiedActor,
         operation_id: Uuid,
     ) -> Result<Option<(Workflow, String, Vec<u8>, MutationResult)>, WorkError> {
         let row: Option<StoredOperation> = sqlx::query_as(
             "SELECT workflow.body, ledger.principal_id, ledger.command_digest, ledger.outcome FROM work.operation_ledger AS ledger \
              JOIN work.workflow_instances AS workflow ON workflow.id = ledger.workflow_id \
-             WHERE ledger.operation_id = $1 AND workflow.id = $2")
-            .bind(operation_id).bind(WORKFLOW_ID).fetch_optional(&self.pool).await.map_err(database_error)?;
+             WHERE ledger.operation_id = $1")
+            .bind(operation_id).fetch_optional(&self.pool).await.map_err(database_error)?;
         let Some((Json(workflow), principal, digest, Json(outcome))) = row else {
             return Ok(None);
         };
         workflow.validate_integrity()?;
-        let policy = self.load_policy().await?;
-        Ok(Some((
-            workflow.with_authority(policy, OffsetDateTime::now_utc()),
-            principal,
-            digest,
-            outcome,
-        )))
+        // Re-read through the ordinary path so authority and acknowledgments attach.
+        let workflow = self.load_id(actor, workflow.id).await?;
+        Ok(Some((workflow, principal, digest, outcome)))
     }
     async fn disclose_result(
         &self,
         actor: VerifiedActor,
+        workflow_id: Uuid,
         result: MutationResult,
     ) -> Result<MutationResult, WorkError> {
         let started = Instant::now();
-        let workflow = self.load().await?;
+        let workflow = self.load_id(actor, workflow_id).await?;
         let evidence = workflow.result_evidence(actor, &result)?;
-        self.verify_result_agent_sources(&workflow, &result, workflow.revision)
+        self.verify_result_agent_sources(&workflow, &result, observed(&workflow))
             .await
             .map_err(|_| WorkError::CommitOutcomeUnknown)?;
-        self.verify_read_sources(actor, workflow.revision, evidence)
+        self.verify_read_sources(actor, observed(&workflow), evidence)
             .await
             .map_err(|_| WorkError::CommitOutcomeUnknown)?;
         validate_disclosure_freshness(started, Instant::now())
@@ -178,7 +249,7 @@ impl PostgresWorkRepository {
         // Existing committed operations use their exact digest and current output
         // authority, independently of a now-closed command attempt.
         if let Some((workflow, principal, previous_digest, outcome)) =
-            self.operation(operation_id).await?
+            self.operation(actor, operation_id).await?
         {
             if principal != actor.principal_id() {
                 return Err(WorkError::WorkItemNotFound);
@@ -188,18 +259,23 @@ impl PostgresWorkRepository {
             }
             workflow.authorize_recovery(actor, &outcome)?;
             return Ok(AgentExecutionAcceptance {
-                outcome: self.disclose_result(actor, outcome).await?,
+                outcome: self.disclose_result(actor, workflow.id, outcome).await?,
                 dispatch: false,
             });
         }
-        let observed = self.load().await?;
+        let observed = self
+            .load_for(actor, WorkTarget::Task(command.task_id()))
+            .await?;
         let mut preview = observed.clone();
+        // Store receipts are taken after the full preview, outside any lock.
+        preview.defer_generation_receipts();
         let timestamp = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|_| WorkError::IntegrityViolation)?;
         // Full Work scope, bounds, OCC and selection closure precede provider fanout.
         let preview_result = preview.apply(actor, &command, &timestamp)?;
         validate_record_collections(&preview)?;
+        let verified = self.verify_generations(&preview_result).await;
         let sources = source_set(&preview.result_evidence(actor, &preview_result)?);
         let receipt = EvidencePreflight {
             started: Instant::now(),
@@ -215,30 +291,37 @@ impl PostgresWorkRepository {
         };
         if matches!(&command, Command::RequestAgentExecution { .. }) {
             let id = command.context().operation_id;
-            self.authorize_agent_context(preview.agent_disclosure_context(id)?, observed.revision)
-                .await?;
+            self.authorize_agent_context(
+                preview.agent_disclosure_context(id)?,
+                observed_of(&observed),
+            )
+            .await?;
         } else if !matches!(&command, Command::CancelAgentExecution { .. }) {
             self.authorize_sources(actor, &receipt.sources, purpose)
                 .await?;
-            self.verify_result_agent_sources(&preview, &preview_result, observed.revision)
+            self.verify_result_agent_sources(&preview, &preview_result, observed_of(&observed))
                 .await?;
         }
         let checked_at = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|_| WorkError::IntegrityViolation)?;
+        // Presentation-only acknowledgments are read before any row lock is taken.
+        let acknowledged = self.acknowledgements(actor, Some(observed.id)).await?;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
         // Lock order: policy (share) before workflow (update). Policy writers take
         // the policy update lock, so authority cannot change before this commit.
         let policy = lock_policy(&mut tx, "FOR SHARE").await?;
         let Json(mut workflow): Json<Workflow> =
             sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1 FOR UPDATE")
-                .bind(WORKFLOW_ID)
+                .bind(observed.id)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(database_error)?
                 .ok_or(WorkError::DependencyUnavailable)?;
         workflow.validate_integrity()?;
         workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
+        workflow.attach_acknowledgements(actor, acknowledged);
+        workflow.attach_verified_generations(verified);
         let previous=sqlx::query("SELECT principal_id,command_digest,outcome FROM work.operation_ledger WHERE operation_id=$1")
             .bind(operation_id).fetch_optional(&mut *tx).await.map_err(database_error)?;
         if let Some(previous) = previous {
@@ -256,8 +339,16 @@ impl PostgresWorkRepository {
             workflow.authorize_recovery(actor, &outcome)?;
             // Explicit rollback releases the lock before any provider disclosure.
             tx.rollback().await.map_err(database_error)?;
+            let owner = sqlx::query_scalar::<_, Option<Uuid>>(
+                "SELECT workflow_id FROM work.operation_ledger WHERE operation_id=$1",
+            )
+            .bind(operation_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(database_error)?
+            .ok_or(WorkError::WorkItemNotFound)?;
             return Ok(AgentExecutionAcceptance {
-                outcome: self.disclose_result(actor, outcome).await?,
+                outcome: self.disclose_result(actor, owner, outcome).await?,
                 dispatch: false,
             });
         }
@@ -283,7 +374,7 @@ impl PostgresWorkRepository {
                     .iter()
                     .find(|e| e.id == before.id && e.status == AgentExecutionStatus::Failed)
             {
-                agent::stage(&mut tx, after, "agent_execution_failed").await?;
+                agent::stage(&mut tx, workflow.id, after, "agent_execution_failed").await?;
             }
         }
         validate_record_collections(&workflow)?;
@@ -296,6 +387,10 @@ impl PostgresWorkRepository {
             MutationResult::FindingRegistered { .. } => "finding_registered",
             MutationResult::DecisionRecorded { .. } => "decision_recorded",
             MutationResult::DraftSaved { .. } => "draft_saved",
+            MutationResult::ArtifactCreated { .. } => "artifact_created",
+            MutationResult::ArtifactContentWritten { .. } => "artifact_content_written",
+            MutationResult::ArtifactDiscarded { .. } => "artifact_discarded",
+            MutationResult::SubmissionImported { .. } => "submission_imported",
             MutationResult::Claimed { .. } => "claimed",
             MutationResult::Submitted { .. } => "submitted",
             MutationResult::Returned { .. } => "returned",
@@ -311,25 +406,27 @@ impl PostgresWorkRepository {
             }
         };
         sqlx::query("UPDATE work.workflow_instances SET revision=$2,body=$3 WHERE id=$1")
-            .bind(WORKFLOW_ID)
+            .bind(workflow.id)
             .bind(workflow.revision)
             .bind(Json(&workflow))
             .execute(&mut *tx)
             .await
             .map_err(database_error)?;
+        // Instances lock independently: the same operation ID committed first for a
+        // different instance is an operation conflict, not an unavailable dependency.
         sqlx::query("INSERT INTO work.operation_ledger(operation_id,workflow_id,principal_id,acting_assignment_id,command_digest,outcome) VALUES($1,$2,$3,$4,$5,$6)")
-            .bind(operation_id).bind(WORKFLOW_ID).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(&digest).bind(Json(&result)).execute(&mut *tx).await.map_err(database_error)?;
+            .bind(operation_id).bind(workflow.id).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(&digest).bind(Json(&result)).execute(&mut *tx).await.map_err(ledger_error)?;
         // Candidate/decision records are not workflow transitions.
         if matches!(
             action,
             "submitted" | "claimed" | "returned" | "completed" | "held" | "resumed" | "assigned"
         ) {
             sqlx::query("INSERT INTO work.workflow_history(id,workflow_id,operation_id,kind,occurred_at) VALUES($1,$2,$3,$4,$5)")
-                .bind(Uuid::now_v7()).bind(WORKFLOW_ID).bind(operation_id).bind(action).bind(now).execute(&mut *tx).await.map_err(database_error)?;
+                .bind(Uuid::now_v7()).bind(workflow.id).bind(operation_id).bind(action).bind(now).execute(&mut *tx).await.map_err(database_error)?;
         }
         let payload = work_event_payload(&workflow, operation_id, &command, &result);
         sqlx::query("INSERT INTO work.event_staging(id,operation_id,workflow_id,principal_id,acting_assignment_id,task_id,action,occurred_at,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
-            .bind(Uuid::now_v7()).bind(operation_id).bind(WORKFLOW_ID).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(command.task_id()).bind(action).bind(now).bind(Json(payload)).execute(&mut *tx).await.map_err(database_error)?;
+            .bind(Uuid::now_v7()).bind(operation_id).bind(workflow.id).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(command.task_id()).bind(action).bind(now).bind(Json(payload)).execute(&mut *tx).await.map_err(database_error)?;
         // Final local/freshness check under the same lock, with no remote call.
         receipt.validate(actor, observed.revision, &digest, &actual_sources)?;
         if tx.commit().await.is_err() {
@@ -341,7 +438,7 @@ impl PostgresWorkRepository {
             return Err(WorkError::CommitOutcomeUnknown);
         }
         let dispatch = matches!(&command, Command::RequestAgentExecution { .. });
-        match self.disclose_result(actor, result).await {
+        match self.disclose_result(actor, workflow.id, result).await {
             Ok(outcome) => Ok(AgentExecutionAcceptance { dispatch, outcome }),
             Err(error) => {
                 // Commit is known here, but no owned dispatch has been admitted.
@@ -497,9 +594,12 @@ fn policy_event(
 /// including claim/resubmit introducing received membership. This fixed two-person
 /// PoC is deliberately bounded, rather than pretending to provide pagination.
 fn validate_record_collections(workflow: &Workflow) -> Result<(), WorkError> {
+    let tasks: Vec<Uuid> = std::iter::once(workflow.source.id)
+        .chain(workflow.next.as_ref().map(|item| item.id))
+        .collect();
     for (actor, task) in VerifiedActor::ALL
         .into_iter()
-        .flat_map(|actor| [(actor, SALES_TASK_ID), (actor, OFFICE_TASK_ID)])
+        .flat_map(|actor| tasks.iter().map(move |task| (actor, *task)))
     {
         if workflow.detail(actor, task).is_ok() {
             let evidence = workflow.list_evidence(actor, task)?;
@@ -566,6 +666,7 @@ fn work_event_payload(
         payload["assigneeResponsibilityId"] = serde_json::json!(assignment.acting_assignment_id);
         payload["attemptId"] = serde_json::json!(assignment.attempt_id);
     }
+    files::stage_payload(&mut payload, result);
     payload
 }
 fn validate_collection_bytes(
@@ -628,6 +729,12 @@ impl EvidencePreflight {
 fn database_error(_: sqlx::Error) -> WorkError {
     WorkError::DependencyUnavailable
 }
+fn ledger_error(error: sqlx::Error) -> WorkError {
+    match error.as_database_error() {
+        Some(value) if value.is_unique_violation() => WorkError::OperationConflict,
+        _ => WorkError::DependencyUnavailable,
+    }
+}
 fn validate_migration_records(records: &[(i64, Vec<u8>)], complete: bool) -> Result<(), WorkError> {
     if records.len() > MIGRATIONS.len() || (complete && records.len() != MIGRATIONS.len()) {
         return Err(WorkError::IntegrityViolation);
@@ -679,7 +786,7 @@ pub async fn check_schema_compatibility(pool: &PgPool) -> Result<(), WorkError> 
             .await
             .map_err(database_error)?;
     validate_migration_records(&records, true)?;
-    let ready: bool = sqlx::query_scalar("SELECT to_regclass('work.workflow_instances') IS NOT NULL AND to_regclass('work.operation_ledger') IS NOT NULL AND to_regclass('work.workflow_history') IS NOT NULL AND to_regclass('work.event_staging') IS NOT NULL AND to_regclass('work.organization_policies') IS NOT NULL")
+    let ready: bool = sqlx::query_scalar("SELECT to_regclass('work.workflow_instances') IS NOT NULL AND to_regclass('work.operation_ledger') IS NOT NULL AND to_regclass('work.workflow_history') IS NOT NULL AND to_regclass('work.event_staging') IS NOT NULL AND to_regclass('work.organization_policies') IS NOT NULL AND to_regclass('work.attention_acknowledgements') IS NOT NULL")
         .fetch_one(pool).await.map_err(database_error)?;
     if !ready {
         return Err(WorkError::IntegrityViolation);
@@ -694,9 +801,38 @@ pub async fn seed_synthetic(pool: &PgPool, document_id: Option<Uuid>) -> Result<
     let policy = OrganizationPolicy::synthetic();
     sqlx::query("INSERT INTO work.organization_policies(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
         .bind(ORGANIZATION_POLICY_ID).bind(Json(policy)).execute(pool).await.map_err(database_error)?;
-    let workflow = Workflow::synthetic(document_id);
-    sqlx::query("INSERT INTO work.workflow_instances(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
-        .bind(WORKFLOW_ID).bind(Json(workflow)).execute(pool).await.map_err(database_error)?;
+    insert_fixtures(pool, document_id, &CONTEXT_FIXTURES[..1]).await
+}
+/// Explicit, separately invoked seed of the additional synthetic WorkContexts
+/// (U2). The original single-context fixture and its accepted journeys stay as
+/// they were; an existing instance and its progress are never overwritten.
+pub async fn seed_synthetic_contexts(
+    pool: &PgPool,
+    document_id: Option<Uuid>,
+) -> Result<(), WorkError> {
+    check_schema_compatibility(pool).await?;
+    let present: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM work.organization_policies WHERE id=$1)")
+            .bind(ORGANIZATION_POLICY_ID)
+            .fetch_one(pool)
+            .await
+            .map_err(database_error)?;
+    if !present {
+        return Err(WorkError::DependencyUnavailable);
+    }
+    insert_fixtures(pool, document_id, &CONTEXT_FIXTURES[1..]).await
+}
+async fn insert_fixtures(
+    pool: &PgPool,
+    document_id: Option<Uuid>,
+    fixtures: &[ContextFixture],
+) -> Result<(), WorkError> {
+    let seeded_at = OffsetDateTime::now_utc();
+    for fixture in fixtures {
+        let workflow = Workflow::from_fixture(fixture, document_id, seeded_at)?;
+        sqlx::query("INSERT INTO work.workflow_instances(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
+            .bind(workflow.id).bind(Json(&workflow)).execute(pool).await.map_err(database_error)?;
+    }
     Ok(())
 }
 impl WorkRepository for PostgresWorkRepository {
@@ -724,6 +860,26 @@ impl WorkRepository for PostgresWorkRepository {
             e.result.ok_or(WorkError::IntegrityViolation)
         })
     }
+    fn generated_artifact(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, GeneratedArtifact> {
+        Box::pin(
+            self.read_candidate(actor, WorkTarget::GeneratedArtifact(id), move |w| {
+                let record = w.generated_artifact(actor, id)?;
+                Ok((record.execution_id, record))
+            }),
+        )
+    }
+    fn suggested_action(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, SuggestedAction> {
+        Box::pin(
+            self.read_candidate(actor, WorkTarget::SuggestedAction(id), move |w| {
+                let record = w.suggested_action(actor, id)?;
+                Ok((record.execution_id, record))
+            }),
+        )
+    }
     fn start_agent_execution(
         &self,
         actor: VerifiedActor,
@@ -741,7 +897,7 @@ impl WorkRepository for PostgresWorkRepository {
     fn finish_agent_execution(
         &self,
         context: AgentDispatchContext,
-        output: AgentFindingOutput,
+        output: AgentOutput,
     ) -> WorkFuture<'_, AgentExecution> {
         Box::pin(self.finish_agent(context, output))
     }
@@ -763,18 +919,18 @@ impl WorkRepository for PostgresWorkRepository {
         task_id: Uuid,
     ) -> WorkFuture<'_, Vec<EvidenceRecord>> {
         Box::pin(async move {
-            let w = self.load().await?;
+            let w = self.load_for(actor, WorkTarget::Task(task_id)).await?;
             let evidence = w.list_evidence(actor, task_id)?;
-            self.verify_read_sources(actor, w.revision, evidence.clone())
+            self.verify_read_sources(actor, observed(&w), evidence.clone())
                 .await?;
             Ok(evidence)
         })
     }
     fn evidence(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, EvidenceRecord> {
         Box::pin(async move {
-            let w = self.load().await?;
+            let w = self.load_for(actor, WorkTarget::Evidence(id)).await?;
             let evidence = w.evidence_record(actor, id)?;
-            self.verify_read_sources(actor, w.revision, vec![evidence.clone()])
+            self.verify_read_sources(actor, observed(&w), vec![evidence.clone()])
                 .await?;
             Ok(evidence)
         })
@@ -782,14 +938,15 @@ impl WorkRepository for PostgresWorkRepository {
     fn list_findings(&self, actor: VerifiedActor, task_id: Uuid) -> WorkFuture<'_, Vec<Finding>> {
         Box::pin(async move {
             let started = Instant::now();
-            let w = self.load().await?;
+            let w = self.load_for(actor, WorkTarget::Task(task_id)).await?;
             let findings = w.list_findings(actor, task_id)?;
-            self.verify_agent_origins(&w, &findings, w.revision).await?;
+            self.verify_agent_origins(&w, &findings, observed(&w))
+                .await?;
             let mut evidence = vec![];
             for f in &findings {
                 evidence.extend(w.resolve_evidence(actor, &f.evidence_revision_refs)?);
             }
-            self.verify_read_sources(actor, w.revision, evidence)
+            self.verify_read_sources(actor, observed(&w), evidence)
                 .await?;
             validate_disclosure_freshness(started, Instant::now())?;
             Ok(findings)
@@ -798,13 +955,13 @@ impl WorkRepository for PostgresWorkRepository {
     fn finding(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, Finding> {
         Box::pin(async move {
             let started = Instant::now();
-            let w = self.load().await?;
+            let w = self.load_for(actor, WorkTarget::Finding(id)).await?;
             let finding = w.finding(actor, id)?;
-            self.verify_agent_origins(&w, std::slice::from_ref(&finding), w.revision)
+            self.verify_agent_origins(&w, std::slice::from_ref(&finding), observed(&w))
                 .await?;
             self.verify_read_sources(
                 actor,
-                w.revision,
+                observed(&w),
                 w.resolve_evidence(actor, &finding.evidence_revision_refs)?,
             )
             .await?;
@@ -819,16 +976,18 @@ impl WorkRepository for PostgresWorkRepository {
     ) -> WorkFuture<'_, Vec<HumanDecision>> {
         Box::pin(async move {
             let started = Instant::now();
-            let w = self.load().await?;
+            let w = self
+                .load_for(actor, WorkTarget::Finding(finding_id))
+                .await?;
             let finding = w.finding(actor, finding_id)?;
-            self.verify_agent_origins(&w, std::slice::from_ref(&finding), w.revision)
+            self.verify_agent_origins(&w, std::slice::from_ref(&finding), observed(&w))
                 .await?;
             let decisions = w.list_decisions(actor, finding_id)?;
             let mut evidence = w.resolve_evidence(actor, &finding.evidence_revision_refs)?;
             for d in &decisions {
                 evidence.extend(w.resolve_evidence(actor, &d.evidence_revision_refs)?);
             }
-            self.verify_read_sources(actor, w.revision, evidence)
+            self.verify_read_sources(actor, observed(&w), evidence)
                 .await?;
             validate_disclosure_freshness(started, Instant::now())?;
             Ok(decisions)
@@ -854,27 +1013,113 @@ impl WorkRepository for PostgresWorkRepository {
         view: TaskView,
         scope: Option<Uuid>,
     ) -> WorkFuture<'_, Vec<TaskSummary>> {
-        Box::pin(async move { self.load().await?.list_tasks_in(actor, view, scope) })
+        Box::pin(async move {
+            let mut items = vec![];
+            for workflow in self.load_all(actor).await? {
+                items.extend(workflow.list_tasks_in(actor, view, scope)?);
+            }
+            Ok(items)
+        })
     }
     fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>> {
-        Box::pin(async move { Ok(self.load().await?.list_tasks(actor, view)) })
+        self.list_tasks_in(actor, view, None)
+    }
+    fn list_work_contexts(
+        &self,
+        actor: VerifiedActor,
+        scope: Option<Uuid>,
+    ) -> WorkFuture<'_, Vec<WorkContextView>> {
+        Box::pin(async move {
+            if let Some(id) = scope
+                && self
+                    .load_policy()
+                    .await?
+                    .responsibility(actor, id, OffsetDateTime::now_utc())
+                    .is_none()
+            {
+                return Err(WorkError::Forbidden);
+            }
+            Ok(self
+                .load_all(actor)
+                .await?
+                .iter()
+                .filter_map(|workflow| workflow.context_view(actor, scope))
+                .collect())
+        })
+    }
+    fn work_context(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkContextView> {
+        Box::pin(async move {
+            let workflow = self.load_for(actor, WorkTarget::Context(id)).await?;
+            if !workflow.owns(WorkTarget::Context(id)) {
+                return Err(WorkError::WorkContextNotFound);
+            }
+            workflow
+                .context_view(actor, None)
+                .ok_or(WorkError::WorkContextNotFound)
+        })
+    }
+    fn work_context_history(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, WorkContextHistory> {
+        Box::pin(async move {
+            let workflow = self.load_for(actor, WorkTarget::Context(id)).await?;
+            if !workflow.owns(WorkTarget::Context(id)) {
+                return Err(WorkError::WorkContextNotFound);
+            }
+            workflow.context_history(actor)
+        })
+    }
+    fn task_attention(&self, actor: VerifiedActor, task_id: Uuid) -> WorkFuture<'_, TaskAttention> {
+        Box::pin(async move {
+            self.load_for(actor, WorkTarget::Task(task_id))
+                .await?
+                .attention(actor, task_id)
+        })
+    }
+    fn acknowledge_attention(
+        &self,
+        actor: VerifiedActor,
+        task_id: Uuid,
+        work_assignment_id: Uuid,
+    ) -> WorkFuture<'_, TaskAttention> {
+        Box::pin(async move {
+            let workflow = self.load_for(actor, WorkTarget::Task(task_id)).await?;
+            let acknowledged = workflow.acknowledge(actor, task_id, work_assignment_id)?;
+            // Presentation state only: no Work revision, ledger or business staging.
+            sqlx::query("INSERT INTO work.attention_acknowledgements(principal_id,work_assignment_id,workflow_id,task_id,attempt_id,acknowledged_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (principal_id, work_assignment_id) DO NOTHING")
+                .bind(actor.principal_id()).bind(acknowledged.work_assignment_id).bind(workflow.id).bind(acknowledged.task_id).bind(acknowledged.attempt_id).bind(OffsetDateTime::now_utc())
+                .execute(&self.pool).await.map_err(database_error)?;
+            self.load_id(actor, workflow.id)
+                .await?
+                .attention(actor, task_id)
+        })
     }
     fn task(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, TaskDetail> {
-        Box::pin(async move { self.load().await?.detail(actor, id) })
+        Box::pin(async move {
+            self.load_for(actor, WorkTarget::Task(id))
+                .await?
+                .detail(actor, id)
+        })
     }
     fn artifact(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact> {
-        Box::pin(async move { self.load().await?.artifact(actor, id) })
+        Box::pin(async move {
+            self.load_for(actor, WorkTarget::Artifact(id))
+                .await?
+                .artifact(actor, id)
+        })
     }
     fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot> {
         Box::pin(async move {
             let started = Instant::now();
-            let workflow = self.load().await?;
+            let workflow = self.load_for(actor, WorkTarget::Snapshot(id)).await?;
             let snapshot = workflow.snapshot(actor, id)?;
-            self.verify_snapshot_agent_sources(&workflow, &snapshot, workflow.revision)
+            self.verify_snapshot_agent_sources(&workflow, &snapshot, observed(&workflow))
                 .await?;
             self.verify_read_sources(
                 actor,
-                workflow.revision,
+                observed(&workflow),
                 workflow.snapshot_evidence(actor, id)?,
             )
             .await?;
@@ -887,7 +1132,51 @@ impl WorkRepository for PostgresWorkRepository {
         actor: VerifiedActor,
         id: Uuid,
     ) -> WorkFuture<'_, ReturnInstruction> {
-        Box::pin(async move { self.load().await?.return_instruction(actor, id) })
+        Box::pin(async move {
+            self.load_for(actor, WorkTarget::ReturnInstruction(id))
+                .await?
+                .return_instruction(actor, id)
+        })
+    }
+    fn artifact_store_available(&self) -> bool {
+        self.artifact_store.is_some()
+    }
+    fn write_artifact_content(
+        &self,
+        actor: VerifiedActor,
+        artifact_id: Uuid,
+        context: CommandContext,
+        expected_artifact_revision: i64,
+        bytes: Vec<u8>,
+    ) -> WorkFuture<'_, MutationResult> {
+        Box::pin(async move {
+            self.write_content(
+                actor,
+                artifact_id,
+                context,
+                expected_artifact_revision,
+                bytes,
+            )
+            .await
+        })
+    }
+    fn artifact_content(
+        &self,
+        actor: VerifiedActor,
+        artifact_id: Uuid,
+    ) -> WorkFuture<'_, (WorkFile, Vec<u8>)> {
+        Box::pin(async move { self.read_artifact_content(actor, artifact_id).await })
+    }
+    fn snapshot_content(
+        &self,
+        actor: VerifiedActor,
+        snapshot_id: Uuid,
+        artifact_id: Uuid,
+    ) -> WorkFuture<'_, (WorkFile, Vec<u8>)> {
+        Box::pin(async move {
+            self.read_snapshot_content(actor, snapshot_id, artifact_id)
+                .await
+        })
     }
     fn execute(&self, actor: VerifiedActor, command: Command) -> WorkFuture<'_, MutationResult> {
         Box::pin(async move { Ok(self.execute_command_receipt(actor, command).await?.outcome) })
@@ -901,14 +1190,14 @@ impl WorkRepository for PostgresWorkRepository {
                 return self.recover_policy(actor, outcome).await;
             }
             let (workflow, principal, _, outcome) = self
-                .operation(operation_id)
+                .operation(actor, operation_id)
                 .await?
                 .ok_or(WorkError::WorkItemNotFound)?;
             if principal != actor.principal_id() {
                 return Err(WorkError::WorkItemNotFound);
             }
             workflow.authorize_recovery(actor, &outcome)?;
-            self.disclose_result(actor, outcome).await
+            self.disclose_result(actor, workflow.id, outcome).await
         })
     }
 }

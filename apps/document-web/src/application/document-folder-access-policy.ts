@@ -17,11 +17,14 @@ export function canManageFolderPolicy(folder: FolderDetail | undefined, rootId?:
   return Boolean(folder?.folderId && folder.folderId !== rootId && folder.parentFolderId && Number.isSafeInteger(folder.revision) && folder.revision >= 0 && folder.capabilities?.manageAccess?.status === 'available');
 }
 export function validateFolderPolicy(policy: AccessPolicyRead | undefined, targetId: string): policy is AccessPolicyRead {
+  return validateAccessPolicy(policy, 'folder', targetId);
+}
+export function validateAccessPolicy(policy: AccessPolicyRead | undefined, kind: 'folder' | 'document', targetId: string): policy is AccessPolicyRead {
   const identity = (value: unknown) => typeof value === 'string' && Boolean(value.trim()) && !/[\p{Cc}\p{Cs}]/u.test(value);
-  return Boolean(policy && policy.target?.kind === 'folder' && policy.target.id === targetId
+  return Boolean(policy && policy.target?.kind === kind && policy.target.id === targetId
     && ['inherit', 'explicit'].includes(policy.bindingMode) && Number.isSafeInteger(policy.policyRevision) && policy.policyRevision >= 0
     && (policy.policyId === null || identity(policy.policyId)) && identity(policy.effectivePolicyId)
-    && policy.effectiveSource?.kind === 'folder' && identity(policy.effectiveSource.id)
+    && (policy.effectiveSource?.kind === 'folder' || kind === 'document' && policy.effectiveSource?.kind === 'document' && policy.effectiveSource.id === targetId) && identity(policy.effectiveSource.id)
     && Array.isArray(policy.effectiveGrants) && policy.effectiveGrants.length > 0
     && policy.effectiveGrants.every(grant => grant && ['principal', 'group', 'role'].includes(grant.subjectKind) && identity(grant.identityProvider) && identity(grant.subjectId)
       && Array.isArray(grant.actions) && grant.actions.length > 0 && new Set(grant.actions).size === grant.actions.length && grant.actions.every(action => policyActions.includes(action)))
@@ -29,10 +32,13 @@ export function validateFolderPolicy(policy: AccessPolicyRead | undefined, targe
 }
 export function policySnapshotEqual(a: FolderPolicySnapshot, b: FolderPolicySnapshot): boolean {
   return a.folder.folderId === b.folder.folderId && a.folder.parentFolderId === b.folder.parentFolderId && a.folder.revision === b.folder.revision && a.folder.name === b.folder.name
-    && a.policy.target.kind === b.policy.target.kind && a.policy.target.id === b.policy.target.id && a.policy.bindingMode === b.policy.bindingMode
-    && a.policy.policyId === b.policy.policyId && a.policy.policyRevision === b.policy.policyRevision && a.policy.effectivePolicyId === b.policy.effectivePolicyId
-    && a.policy.effectiveSource.kind === b.policy.effectiveSource.kind && a.policy.effectiveSource.id === b.policy.effectiveSource.id
-    && grantSet(a.policy.effectiveGrants) === grantSet(b.policy.effectiveGrants);
+    && policyReadEqual(a.policy, b.policy);
+}
+export function policyReadEqual(a: AccessPolicyRead, b: AccessPolicyRead): boolean {
+  return a.target.kind === b.target.kind && a.target.id === b.target.id && a.bindingMode === b.bindingMode
+    && a.policyId === b.policyId && a.policyRevision === b.policyRevision && a.effectivePolicyId === b.effectivePolicyId
+    && a.effectiveSource.kind === b.effectiveSource.kind && a.effectiveSource.id === b.effectiveSource.id
+    && grantSet(a.effectiveGrants) === grantSet(b.effectiveGrants);
 }
 export function policyChanged(baseline: AccessPolicyRead, request: FolderPolicyRequest): boolean {
   return baseline.bindingMode !== request.mode || request.mode === 'explicit' && grantSet(baseline.effectiveGrants) !== grantSet(request.grants);
@@ -59,7 +65,7 @@ function createStore() {
   };
 }
 export function folderAccessPolicyOperations(owner: object) { let store = stores.get(owner); if (!store) { store = createStore(); stores.set(owner, store); } return store; }
-function freezeRequest(request: FolderPolicyRequest): Readonly<FolderPolicyRequest> {
+export function freezePolicyRequest(request: FolderPolicyRequest): Readonly<FolderPolicyRequest> {
   if (request.mode === 'inherit') return Object.freeze({ operationId: request.operationId, expectedPolicyRevision: request.expectedPolicyRevision, reason: request.reason, mode: request.mode });
   const grants = request.grants.map(grant => { const fixed = policyGrantInput(grant); Object.freeze(fixed.actions); return Object.freeze(fixed); });
   Object.freeze(grants); return Object.freeze({ operationId: request.operationId, expectedPolicyRevision: request.expectedPolicyRevision, reason: request.reason, mode: request.mode, grants });
@@ -73,7 +79,7 @@ export async function sendFolderAccessPolicyOperation(input: {
   if (previous && previous.status !== 'unknown') return;
   const expectedChanged = previous?.expectedChanged ?? (input.baseline ? policyChanged(input.baseline, input.request) : true);
   if (!previous) { const error = policyRevisionError(input.request.expectedPolicyRevision, expectedChanged); if (error) throw new Error(error); }
-  const fixed = previous ?? { targetFolderId: input.targetFolderId, context: Object.freeze({ ...input.context }), request: freezeRequest(input.request), expectedChanged };
+  const fixed = previous ?? { targetFolderId: input.targetFolderId, context: Object.freeze({ ...input.context }), request: freezePolicyRequest(input.request), expectedChanged };
   store.put({ ...fixed, status: 'pending', error: undefined });
   let confirmed: FolderAccessPolicyOperation;
   try {

@@ -141,11 +141,11 @@ test('existing phase selection collects the separate Root folder cases with expl
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
   // Each phase selects exactly one spec basename; `journey` never also selects `policy-journey`.
   assert.match(config, /testMatch: specs\[phase\]!,/u);
-  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u \};/u);
+  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u, 'context-journey': \/(.+?)\/u, 'context-persistence': \/(.+?)\/u, 'files-journey': \/(.+?)\/u, 'files-persistence': \/(.+?)\/u, 'agent-chat-journey': \/(.+?)\/u, 'agent-chat-persistence': \/(.+?)\/u \};/u);
   assert.ok(specs);
-  const [journey, persistence, policyJourney, policyPersistence] = specs.slice(1).map(source => new RegExp(source, 'u'));
-  const files = ['e2e-organization/journey.spec.ts', 'e2e-organization/persistence.spec.ts', 'e2e-organization/policy-journey.spec.ts', 'e2e-organization/policy-persistence.spec.ts'];
-  for (const [pattern, expected] of [[journey, 0], [persistence, 1], [policyJourney, 2], [policyPersistence, 3]]) {
+  const patterns = specs.slice(1).map(source => new RegExp(source, 'u'));
+  const files = ['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence', 'files-journey', 'files-persistence', 'agent-chat-journey', 'agent-chat-persistence'].map(name => `e2e-organization/${name}.spec.ts`);
+  for (const [pattern, expected] of patterns.map((value, index) => [value, index])) {
     assert.deepEqual(files.filter(file => pattern.test(file)), [files[expected]]);
   }
   for (const phase of ['journey', 'persistence']) {
@@ -554,6 +554,10 @@ test('multi-principal policy phases retain only their fixed case, source locatio
     'policy-journey': '6名の合成担当で割当・担当変更・期限付き委任・同時引受・権限失効を実UIで確認する',
     'policy-persistence': '6 processの再起動後も割当・委任・担当変更・取消と非開示を保持する',
   };
+  Object.assign(policyTitles, {
+    'context-journey': '文脈・注意・業務Profileで複数の文脈を実画面で扱い、非開示と確認済みを保つ',
+    'context-persistence': '6 processの再起動後も文脈・確認済み・差戻しの注意と非開示を保持する',
+  });
   for (const [phase, title] of Object.entries(policyTitles)) {
     const raw = JSON.stringify({ suites: [{ specs: [{ title, file: `${phase}.spec.ts`, line: 10, column: 1, tests: [{ results: [{
       status: 'failed', annotations: [{ type: 'organization-stage', description: 'policy-reassign-office' }, { type: 'note', description: 'PRIVATE review-01 理由' }],
@@ -565,4 +569,20 @@ test('multi-principal policy phases retain only their fixed case, source locatio
     assert.doesNotMatch(JSON.stringify(actual), /PRIVATE|理由|review-01/u);
   }
   assert.deepEqual(browserFailureDiagnostics('{}', 'policy-unknown'), { availability: 'unavailable' });
+});
+
+test('Agent Chat phases retain only their fixed case, stage and source without private purpose or candidate text', () => {
+  const secret = 'PRIVATE_PURPOSE_OR_CANDIDATE';
+  const cases = [
+    ['agent-chat-journey', 'Agent Chatで構造化結果を確認し、提案から通常の画面で人間判断と文案の保存を行う', 'agent-chat-journey.spec.ts'],
+    ['agent-chat-persistence', '6 processの再起動後もAgentの構造化結果・下書き候補・提案と非開示を保持し、Chatの入力は残さない', 'agent-chat-support.ts'],
+  ];
+  for (const [phase, title, source] of cases) {
+    const raw = report({ status: 'failed', annotations: [{ type: 'organization-stage', description: 'agent-chat-draft', name: secret }],
+      error: { message: `expect(value).toBe(expected) ${secret}`, location: { file: source, line: 12, column: 3 }, matcherResult: { name: 'toBe', actual: secret, expected: secret } },
+      stdout: [secret] }, phase, { title, file: `${phase}.spec.ts` });
+    const failure = browserFailureDiagnostics(raw, phase).failure;
+    assert.deepEqual(failure, { test: phase, source, line: 12, column: 3, status: 'failed', errorCategory: 'assertion', matcher: 'toBe', currentAction: 'agent-chat-draft' });
+    assert.ok(!JSON.stringify(failure).includes(secret));
+  }
 });

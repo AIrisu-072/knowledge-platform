@@ -14,4 +14,6 @@ pub use bootstrap::{
 mod document_evidence;
 pub use document_evidence::{DocumentAgentSource, DocumentEvidenceSource};
 mod synthetic_agent;
-pub use synthetic_agent::OwnedAgentDispatcher;
+pub use synthetic_agent::{OwnedAgentDispatcher, SyntheticAgentExecutor};
+mod work_artifacts;
+pub use work_artifacts::{FileSystemWorkArtifactStore, WORK_ARTIFACT_NAMESPACE};

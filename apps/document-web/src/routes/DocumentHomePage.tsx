@@ -1,3 +1,5 @@
+import { DocumentAccessPolicyRecovery } from '../components/document/DocumentAccessPolicy';
+import { documentAccessPolicyOperations } from '../application/document-access-policy';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
@@ -42,16 +44,18 @@ export function DocumentHomePage() {
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
   const documentMoveStore = documentMoveOperations(queryClient);
   const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
+  const documentPolicyStore = documentAccessPolicyOperations(queryClient);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
   const policyStore = folderAccessPolicyOperations(queryClient);
   const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get);
   const moveStore = folderMoveOperations(queryClient);
   const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
   useEffect(() => {
-    if (move?.status !== 'succeeded' && documentMove?.status !== 'succeeded' && policyOperation?.status !== 'succeeded') return;
+    if (move?.status !== 'succeeded' && documentMove?.status !== 'succeeded' && policyOperation?.status !== 'succeeded' && documentPolicyOperation?.status !== 'succeeded') return;
     // Global authorization revision invalidates every query-external selection provenance.
     // Leave the current URL/navigation alone and require another actual tree selection.
     setChosenFolder(undefined); setFolderContext(undefined);
-  }, [move?.status, move?.request.operationId, documentMove?.status, documentMove?.request.operationId, policyOperation?.status, policyOperation?.request.operationId]);
+  }, [move?.status, move?.request.operationId, documentMove?.status, documentMove?.request.operationId, policyOperation?.status, policyOperation?.request.operationId, documentPolicyOperation?.status, documentPolicyOperation?.request.operationId]);
   useEffect(() => {
     if (rename?.status !== 'succeeded') return;
     const targetId = rename.targetFolderId;
@@ -422,6 +426,7 @@ export function DocumentHomePage() {
         }} />
       </div>
 
+      <DocumentAccessPolicyRecovery />
       <div className={styles.listLayout}>
         <section className={styles.listMain} aria-label="文書">
           <form className={styles.filterBar} onSubmit={(event) => {

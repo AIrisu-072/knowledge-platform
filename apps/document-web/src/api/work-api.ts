@@ -22,6 +22,9 @@ export type DecisionCommand = Generated.DecisionCommand;
 export type SubmitCommand = Generated.SubmitCommand;
 export type AgentExecution = Generated.AgentExecution;
 export type AgentResult = Generated.AgentResult;
+export type AgentSourceOutcome = Generated.AgentSourceOutcome;
+export type GeneratedArtifact = Generated.GeneratedArtifact;
+export type SuggestedAction = Generated.SuggestedAction;
 export type AgentExecutionRequest = Generated.AgentExecutionRequest;
 export type PolicyAction = Generated.PolicyAction;
 export type Responsibility = Generated.Responsibility;
@@ -35,11 +38,21 @@ export type RoleAssignmentCommand = Generated.RoleAssignmentCommand;
 export type DelegationCommand = Generated.DelegationCommand;
 export type RevokePolicyRecordCommand = Generated.RevokePolicyRecordCommand;
 export type AssignmentCommand = Generated.AssignmentCommand;
+export type Attention = Generated.Attention;
+export type TaskAttention = Generated.TaskAttention;
+export type WorkContext = Generated.WorkContext;
+export type WorkContextHistory = Generated.WorkContextHistory;
+export type WorkViewProfile = Generated.WorkViewProfile;
 export type PolicyResult = Generated.RoleAssignmentCreated | Generated.RoleAssignmentRevoked | Generated.DelegationCreated | Generated.DelegationRevoked;
 export const SYNTHETIC_PRINCIPALS = ['sales-01', 'office-01', 'review-01', 'approver-01', 'multi-role-01', 'delegate-01'] as const;
 export type SyntheticPrincipal = (typeof SYNTHETIC_PRINCIPALS)[number];
 export type CancelAgentExecution = Generated.CancelAgentExecution;
-export type WorkResult = Generated.Completed | Generated.Held | Generated.Resumed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | Generated.Assigned | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
+export type WorkFile = Generated.WorkFile;
+export type FileGeneration = Generated.FileGeneration;
+export type FileArtifactCommand = Generated.FileArtifactCommand;
+export type DiscardArtifactCommand = Generated.DiscardArtifactCommand;
+export type ImportSubmissionCommand = Generated.ImportSubmissionCommand;
+export type WorkResult = Generated.ArtifactCreated | Generated.ArtifactContentWritten | Generated.ArtifactDiscarded | Generated.SubmissionImported | Generated.Completed | Generated.Held | Generated.Resumed | Generated.AgentExecutionRequested | Generated.AgentExecutionCancelled | Generated.EvidenceRegistered | Generated.FindingRegistered | Generated.DecisionRecorded | Generated.Returned | Generated.DraftSaved | Generated.Claimed | Generated.Assigned | (Omit<Generated.Submitted, 'snapshot'> & { snapshot: HandoffSnapshot });
 export class WorkApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly outcomeUnknown = false) { super(code); this.name = 'WorkApiError'; }
 }
@@ -58,7 +71,22 @@ function policyAction(value: unknown): PolicyAction { const text = string(value)
 function responsibilityKind(value: unknown): 'role_assignment' | 'delegation' { if (value !== 'role_assignment' && value !== 'delegation') throw new Error('invalid_responsibility'); return value; }
 function responsibility(value: unknown): Responsibility {
   const item = object(value);
-  return { id: string(item.id), kind: responsibilityKind(item.kind), principal: principal(item.principal), roleId: string(item.roleId), roleLabel: string(item.roleLabel), unitId: string(item.unitId), unitLabel: string(item.unitLabel), actions: array(item.actions, policyAction), validFrom: string(item.validFrom), validUntil: nullable(item.validUntil, string), sourceAssignmentId: nullable(item.sourceAssignmentId, string), delegator: nullable(item.delegator, principal) };
+  return { id: string(item.id), kind: responsibilityKind(item.kind), principal: principal(item.principal), roleId: string(item.roleId), roleLabel: string(item.roleLabel), unitId: string(item.unitId), unitLabel: string(item.unitLabel), actions: array(item.actions, policyAction), validFrom: string(item.validFrom), validUntil: nullable(item.validUntil, string), sourceAssignmentId: nullable(item.sourceAssignmentId, string), delegator: nullable(item.delegator, principal), workViewProfileId: string(item.workViewProfileId) };
+}
+function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T { const text = string(value); if (!(allowed as readonly string[]).includes(text)) throw new Error('invalid_response'); return text as T; }
+const ATTENTION_KINDS = ['newly_assigned', 'returned', 'due_soon', 'overdue'] as const;
+const TASK_STATES = ['ready', 'active', 'held', 'completed'] as const;
+function attention(value: unknown): Attention { const item = object(value); return { kind: oneOf(item.kind, ATTENTION_KINDS), sourceId: nullable(item.sourceId, string), dueAt: nullable(item.dueAt, string) }; }
+function taskAttention(value: unknown): TaskAttention { const item = object(value); return { taskId: string(item.taskId), attemptId: string(item.attemptId), evaluatedAt: string(item.evaluatedAt), items: array(item.items, attention) }; }
+function workContext(value: unknown): WorkContext {
+  const item = object(value);
+  const progress = nullable(item.progress, (entry) => array(entry, (step) => { const value = object(step); if (revision(value.attemptNumber) < 1) throw new Error('invalid_attempt'); return { taskId: string(value.taskId), stepLabel: string(value.stepLabel), workTypeId: string(value.workTypeId), state: oneOf(value.state, TASK_STATES), attemptNumber: revision(value.attemptNumber), dueAt: nullable(value.dueAt, string), assigned: bool(value.assigned) }; }));
+  return { id: string(item.id), kind: oneOf(item.kind, ['case', 'routine_run', 'batch', 'request'] as const), title: string(item.title), ownerUnitId: string(item.ownerUnitId), progress, canReadHistory: bool(item.canReadHistory), ownTaskIds: array(item.ownTaskIds, string), attentionCount: revision(item.attentionCount) };
+}
+const MODULES = ['document', 'history', 'evidence', 'agent', 'search', 'resources', 'return'] as const;
+function workViewProfile(value: unknown): WorkViewProfile {
+  const item = object(value);
+  return { id: string(item.id), key: string(item.key), label: string(item.label), archetype: oneOf(item.archetype, ['context', 'queue'] as const), primaryGrouping: oneOf(item.primaryGrouping, ['context', 'work_type'] as const), defaultSort: oneOf(item.defaultSort, ['due_at'] as const), initialModule: oneOf(item.initialModule, MODULES), modules: array(item.modules, (entry) => { const module = object(entry); return { module: oneOf(module.module, MODULES), presentation: oneOf(module.presentation, ['hidden', 'available', 'visible', 'prominent'] as const) }; }) };
 }
 function assignmentView(value: unknown): TaskAssignmentView {
   const item = object(value);
@@ -86,12 +114,30 @@ function policyResult(value: unknown): PolicyResult {
   if (item.kind === 'delegation_created' || item.kind === 'delegation_revoked') return { kind: item.kind, delegation: delegation(item.delegation), policyRevision };
   throw new Error('invalid_result');
 }
-function schema(value: unknown): 'organization.text-draft.v1' { if (value !== 'organization.text-draft.v1') throw new Error('unsupported_schema'); return value; }
+const TEXT_SCHEMA = 'organization.text-draft.v1', FILE_SCHEMA = 'organization.work-file.v1';
+export const MAX_WORK_FILE_BYTES = 8 * 1024 * 1024;
+function schema(value: unknown): typeof TEXT_SCHEMA | typeof FILE_SCHEMA { if (value !== TEXT_SCHEMA && value !== FILE_SCHEMA) throw new Error('unsupported_schema'); return value; }
+function fileGeneration(value: unknown): FileGeneration {
+  const item = object(value); const sizeBytes = revision(item.sizeBytes); const sha256 = string(item.sha256);
+  if (sizeBytes < 1 || sizeBytes > MAX_WORK_FILE_BYTES || !/^[0-9a-f]{64}$/.test(sha256) || item.providerId !== 'organization.work-artifacts' || Number.isNaN(Date.parse(string(item.storedAt)))) throw new Error('invalid_file_generation');
+  return { id: string(item.id), sizeBytes, sha256, storedAt: string(item.storedAt), providerId: item.providerId };
+}
+function workFile(value: unknown): WorkFile { const item = object(value); return { fileName: string(item.fileName), mediaType: string(item.mediaType), generation: nullable(item.generation, fileGeneration) }; }
+/** A text draft carries only `value`; a work file carries only `file`. */
+function body(item: RecordValue, pinned: boolean): Pick<WorkingArtifact, 'schemaId' | 'value' | 'file'> {
+  const schemaId = schema(item.schemaId);
+  if (schemaId === TEXT_SCHEMA) { if (item.file !== undefined) throw new Error('invalid_artifact'); return { schemaId, value: textValue(item.value) }; }
+  if (item.value !== undefined) throw new Error('invalid_artifact');
+  const file = workFile(item.file);
+  // A submission pins an immutable generation, never a pending file.
+  if (pinned && !file.generation) throw new Error('invalid_artifact');
+  return { schemaId, file };
+}
 function task(value: unknown): TaskSummary {
   const item = object(value);
   if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
   if (!['ready', 'active', 'held', 'completed'].includes(string(item.state))) throw new Error('invalid_state');
-  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canHold: bool(item.canHold), holdActionId: item.holdActionId === null ? null : string(item.holdActionId), canResume: bool(item.canResume), resumeActionId: item.resumeActionId === null ? null : string(item.resumeActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId), requiredRoleId: nullable(item.requiredRoleId, string), claimAssignmentId: nullable(item.claimAssignmentId, string), canAssign: bool(item.canAssign), assignment: nullable(item.assignment, assignmentView) };
+  return { id: string(item.id), contextId: nullable(item.contextId, string), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canHold: bool(item.canHold), holdActionId: item.holdActionId === null ? null : string(item.holdActionId), canResume: bool(item.canResume), resumeActionId: item.resumeActionId === null ? null : string(item.resumeActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId), requiredRoleId: nullable(item.requiredRoleId, string), claimAssignmentId: nullable(item.claimAssignmentId, string), canAssign: bool(item.canAssign), assignment: nullable(item.assignment, assignmentView), workTypeId: string(item.workTypeId), workTypeLabel: string(item.workTypeLabel), dueAt: nullable(item.dueAt, string), attention: array(item.attention, attention), contextTitle: nullable(item.contextTitle, string) };
 }
 function returnTransition(value: unknown): TaskSummary['returnTransition'] {
   if (value === null) return null;
@@ -106,7 +152,8 @@ function returnInstruction(value: unknown): ReturnInstruction {
 function artifact(value: unknown): WorkingArtifact {
   const item = object(value);
   if (item.visibility !== 'work_item_private') throw new Error('invalid_visibility');
-  return { id: string(item.id), taskId: string(item.taskId), attemptId: string(item.attemptId), revision: revision(item.revision), schemaId: schema(item.schemaId), value: textValue(item.value), visibility: item.visibility };
+  const derived = item.derivedFrom === undefined ? undefined : object(item.derivedFrom);
+  return { id: string(item.id), taskId: string(item.taskId), attemptId: string(item.attemptId), revision: revision(item.revision), ...body(item, false), visibility: item.visibility, ...(derived ? { derivedFrom: { snapshotId: string(derived.snapshotId), artifactId: string(derived.artifactId) } } : {}) };
 }
 function reference(value: unknown): RevisionRef { const item = object(value); if (item.revision !== 1) throw new Error('invalid_record_revision'); return { id: string(item.id), revision: item.revision }; }
 function scope(value: unknown): RecordScope {
@@ -132,13 +179,42 @@ function policyPage<T>(value: unknown, decode: (value: unknown) => T): { items: 
 function exact<T extends { id: string }>(value: unknown, id: string, decode: (value: unknown) => T): T { const record = decode(value); if (record.id !== id) throw new Error('response_target_mismatch'); return record; }
 function snapshot(value: unknown): HandoffSnapshot {
   const item = object(value);
-  return { evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), findingRevisionRefs: array(item.findingRevisionRefs, reference), decisionRevisionRefs: array(item.decisionRevisionRefs, reference), id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), schemaId: schema(a.schemaId), value: textValue(a.value) }; }) };
+  return { evidenceRevisionRefs: array(item.evidenceRevisionRefs, reference), findingRevisionRefs: array(item.findingRevisionRefs, reference), decisionRevisionRefs: array(item.decisionRevisionRefs, reference), id: string(item.id), sourceTaskId: string(item.sourceTaskId), sourceAttemptId: string(item.sourceAttemptId), targetTaskId: string(item.targetTaskId), createdAt: string(item.createdAt), artifacts: array(item.artifacts, (entry) => { const a = object(entry); return { artifactId: string(a.artifactId), revision: revision(a.revision), ...body(a, true) }; }) };
 }
+const SOURCE_USES = ['referenced', 'analyzed', 'unavailable', 'unsupported'] as const;
+const optionalArray = <T>(value: unknown, decode: (item: unknown) => T): T[] => value === undefined ? [] : array(value, decode);
+const sameRef = (a: RevisionRef, b: RevisionRef | undefined) => Boolean(b) && a.id === b!.id && a.revision === b!.revision;
+const byteLength = (text: string) => new TextEncoder().encode(text).length;
 function agentResult(value: unknown): AgentResult {
   const item = object(value);
   const findings = array(item.findingRevisionRefs, reference), evidence = array(item.evidenceRevisionRefs, reference);
-  if (item.simulated !== true || item.bodyAnalyzed !== false || item.liveLlm !== false || item.mcpWireExecuted !== false || findings.length !== 1 || !evidence.length || evidence.length > 16) throw new Error('unsupported_agent_result');
-  return { summary: string(item.summary), findingRevisionRefs: [findings[0]!], evidenceRevisionRefs: evidence, uncertainty: array(item.uncertainty, string), simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false };
+  const outcomes = optionalArray(item.sourceOutcomes, (entry): AgentSourceOutcome => { const outcome = object(entry); return { evidenceRevisionRef: reference(outcome.evidenceRevisionRef), outcome: oneOf(outcome.outcome, SOURCE_USES) }; });
+  const generated = optionalArray(item.generatedArtifactIds, string), suggested = optionalArray(item.suggestedActionIds, string);
+  // Earlier results carry exactly one finding and no per-source outcomes.
+  const legacy = outcomes.length === 0;
+  if (item.simulated !== true || item.bodyAnalyzed !== false || item.liveLlm !== false || item.mcpWireExecuted !== false || findings.length > 1 || (legacy && findings.length !== 1) || !evidence.length || evidence.length > 16) throw new Error('unsupported_agent_result');
+  if (!legacy && (outcomes.length !== evidence.length || outcomes.some((outcome, index) => !sameRef(outcome.evidenceRevisionRef, evidence[index]) || outcome.outcome === 'analyzed') || !outcomes.some((outcome) => outcome.outcome === 'referenced'))) throw new Error('unsupported_agent_result');
+  if (generated.length > 2 || suggested.length > 4 || new Set(generated).size !== generated.length || new Set(suggested).size !== suggested.length) throw new Error('unsupported_agent_result');
+  return { summary: string(item.summary), findingRevisionRefs: findings, evidenceRevisionRefs: evidence, uncertainty: array(item.uncertainty, string), simulated: true, bodyAnalyzed: false, liveLlm: false, mcpWireExecuted: false, ...(outcomes.length ? { sourceOutcomes: outcomes } : {}), ...(generated.length ? { generatedArtifactIds: generated } : {}), ...(suggested.length ? { suggestedActionIds: suggested } : {}) };
+}
+function candidateRefs(value: unknown): RevisionRef[] { const refs = array(value, reference); if (!refs.length || refs.length > 16) throw new Error('invalid_response'); return refs; }
+function generatedArtifact(value: unknown): GeneratedArtifact {
+  const item = object(value);
+  const title = string(item.title), text = textValue(item.value).text;
+  if (item.schemaId !== 'organization.text-draft.v1' || item.visibility !== 'agent_execution_private' || !title.trim() || byteLength(title) > 200 || /\p{Cc}/u.test(title) || !text.trim() || byteLength(text) > 8192) throw new Error('unsupported_generated_artifact');
+  return { id: string(item.id), executionId: string(item.executionId), contextId: string(item.contextId), workItemId: string(item.workItemId), attemptId: string(item.attemptId), schemaId: 'organization.text-draft.v1', title, value: { text }, sourceRevisionRefs: candidateRefs(item.sourceRevisionRefs), author: string(item.author), simulated: bool(item.simulated), visibility: 'agent_execution_private', createdAt: string(item.createdAt) };
+}
+function proposedAction(value: unknown): SuggestedAction['action'] {
+  const item = object(value);
+  if (item.kind === 'review_finding') return { kind: 'review_finding', findingRevisionRef: reference(item.findingRevisionRef) };
+  if (item.kind === 'use_generated_artifact') return { kind: 'use_generated_artifact', generatedArtifactId: string(item.generatedArtifactId) };
+  throw new Error('unsupported_suggested_action');
+}
+function suggestedAction(value: unknown): SuggestedAction {
+  const item = object(value);
+  const rationale = string(item.rationale);
+  if (item.visibility !== 'agent_execution_private' || !rationale.trim() || byteLength(rationale) > 1024) throw new Error('unsupported_suggested_action');
+  return { id: string(item.id), executionId: string(item.executionId), contextId: string(item.contextId), workItemId: string(item.workItemId), attemptId: string(item.attemptId), action: proposedAction(item.action), rationale, supportingRevisionRefs: candidateRefs(item.supportingRevisionRefs), author: string(item.author), visibility: 'agent_execution_private', createdAt: string(item.createdAt) };
 }
 function agentExecution(value: unknown): AgentExecution {
   const item = object(value);
@@ -158,12 +234,12 @@ function result(value: unknown): WorkResult {
   const item = object(value);
   if (item.kind === 'agent_execution_requested' || item.kind === 'agent_execution_cancelled') {
     const summary = task(item.task), execution = agentExecution(item.execution);
-    if (execution.workItemId !== summary.id || execution.attemptId !== summary.attemptId || execution.contextId !== summary.contextId) throw new Error('response_target_mismatch');
+    if (execution.workItemId !== summary.id || execution.attemptId !== summary.attemptId || (summary.contextId !== null && execution.contextId !== summary.contextId)) throw new Error('response_target_mismatch');
     return { kind: item.kind, task: summary, execution };
   }
   if (item.kind === 'evidence_registered' || item.kind === 'finding_registered' || item.kind === 'decision_recorded') {
     const summary = task(item.task); const record = item.kind === 'evidence_registered' ? evidence(item.evidence) : item.kind === 'finding_registered' ? finding(item.finding) : decision(item.decision);
-    if (record.taskId !== summary.id || record.attemptId !== summary.attemptId || record.contextId !== summary.contextId) throw new Error('response_target_mismatch');
+    if (record.taskId !== summary.id || record.attemptId !== summary.attemptId || (summary.contextId !== null && record.contextId !== summary.contextId)) throw new Error('response_target_mismatch');
     return item.kind === 'evidence_registered' ? { kind: item.kind, task: summary, evidence: record as EvidenceRecord } : item.kind === 'finding_registered' ? { kind: item.kind, task: summary, finding: record as Finding } : { kind: item.kind, task: summary, decision: record as HumanDecision };
   }
   if (item.kind === 'completed' || item.kind === 'held' || item.kind === 'resumed') { const summary = task(item.task); if (summary.state !== ({ completed: 'completed', held: 'held', resumed: 'active' })[item.kind]) throw new Error('invalid_workflow_state'); return { kind: item.kind, task: summary }; }
@@ -177,6 +253,17 @@ function result(value: unknown): WorkResult {
     const summary = task(item.task); const saved = artifact(item.artifact);
     if (saved.taskId !== summary.id || saved.attemptId !== summary.attemptId) throw new Error('response_target_mismatch');
     return { kind: item.kind, task: summary, artifact: saved };
+  }
+  if (item.kind === 'artifact_created' || item.kind === 'artifact_content_written') {
+    const summary = task(item.task); const saved = artifact(item.artifact);
+    if (saved.taskId !== summary.id || saved.attemptId !== summary.attemptId || saved.schemaId !== FILE_SCHEMA || Boolean(saved.file?.generation) !== (item.kind === 'artifact_content_written')) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: summary, artifact: saved };
+  }
+  if (item.kind === 'artifact_discarded') return { kind: item.kind, task: task(item.task), artifactId: string(item.artifactId) };
+  if (item.kind === 'submission_imported') {
+    const summary = task(item.task); const artifacts = array(item.artifacts, artifact);
+    if (!artifacts.length || artifacts.some((entry) => entry.taskId !== summary.id || entry.attemptId !== summary.attemptId || !entry.derivedFrom)) throw new Error('response_target_mismatch');
+    return { kind: item.kind, task: summary, artifacts };
   }
   if (item.kind === 'submitted') return { kind: item.kind, task: task(item.task), snapshot: snapshot(item.snapshot), nextTask: task(item.nextTask) };
   if (item.kind === 'returned') {
@@ -197,6 +284,36 @@ async function request<T>(path: string, decode: (value: unknown) => T, method = 
   }
   try { return decode(await response.json()); } catch { throw new WorkApiError(response.status, 'invalid_response', method !== 'GET'); }
 }
+/** A failed mutation at 5xx stays unknown (the same operation may commit
+ * through another in-flight request); recovery resolves it by operation ID. */
+async function failure(response: Response, mutation: boolean): Promise<never> {
+  let code = 'request_failed';
+  try { const problem = object(await response.json()); if (typeof problem.code === 'string') code = problem.code; } catch { /* Never render untrusted response bodies. */ }
+  throw new WorkApiError(response.status, code, mutation && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN'));
+}
+/** Binary content upload: operation identity travels in headers, never a local path. */
+async function upload(artifactId: string, command: WorkCommand & { expectedArtifactRevision: number }, content: Blob): Promise<WorkResult> {
+  let response: Response;
+  try {
+    response = await fetch(`/v1/organization/working-artifacts/${segment(artifactId)}/content`, { method: 'PUT', credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream', 'x-operation-id': command.operationId, 'x-expected-revision': String(command.expectedRevision), 'x-acting-assignment-id': command.actingAssignmentId, 'x-expected-artifact-revision': String(command.expectedArtifactRevision) }, body: content });
+  } catch { throw new WorkApiError(0, 'network_unavailable', true); }
+  if (!response.ok) return failure(response, true);
+  try {
+    const receipt = result(await response.json());
+    if (receipt.kind !== 'artifact_content_written' || receipt.artifact.id !== artifactId || receipt.artifact.file?.generation?.id !== command.operationId || receipt.artifact.file.generation.sizeBytes !== content.size) throw new Error('response_target_mismatch');
+    return receipt;
+  } catch { throw new WorkApiError(response.status, 'invalid_response', true); }
+}
+/** An opaque attachment of exactly the expected generation size. */
+async function download(path: string, generation: FileGeneration, signal?: AbortSignal): Promise<Blob> {
+  let response: Response;
+  try { response = await fetch(`/v1/organization${path}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/octet-stream' }, signal }); }
+  catch { throw new WorkApiError(0, 'network_unavailable', false); }
+  if (!response.ok) return failure(response, false);
+  const blob = await response.blob().catch(() => { throw new WorkApiError(response.status, 'invalid_response', false); });
+  if (blob.size !== generation.sizeBytes) throw new WorkApiError(response.status, 'invalid_response', false);
+  return blob;
+}
 const segment = encodeURIComponent;
 function workflowAction(id: string, command: WorkflowActionCommand) {
   return request(`/tasks/${segment(id)}/actions`, (value) => {
@@ -214,7 +331,13 @@ export const workApi = {
     if (actingAssignmentId !== null && !responsibilities?.some((entry) => entry.id === actingAssignmentId)) throw new Error('invalid_acting_responsibility');
     return { principalId, displayName: string(item.displayName), actingAssignmentId, responsibilities, canManageOrganization: bool(item.canManageOrganization), policyRevision: nullable(item.policyRevision, revision), capabilities: { nativeWorkspace: bool(c.nativeWorkspace), agent: bool(c.agent), search: bool(c.search), fileUpload: bool(c.fileUpload), return: bool(c.return) } };
   }),
-  listTasks: (view: 'context' | 'queue', actingAssignmentId?: string) => request(`/tasks?view=${view}${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, task), nextCursor: null }; }),
+  listTasks: (view: 'context' | 'queue', actingAssignmentId?: string, filter: { contextId?: string; workTypeId?: string } = {}) => request(`/tasks?view=${view}&limit=100${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}${filter.contextId ? `&contextId=${segment(filter.contextId)}` : ''}${filter.workTypeId ? `&workTypeId=${segment(filter.workTypeId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); const items = array(item.items, task); if (items.some((entry) => (filter.contextId && entry.contextId !== filter.contextId) || (filter.workTypeId && entry.workTypeId !== filter.workTypeId))) throw new Error('response_target_mismatch'); return { items, nextCursor: null }; }),
+  listWorkViewProfiles: () => request('/work-view-profiles', (value) => page(value, workViewProfile)),
+  listWorkContexts: (actingAssignmentId?: string) => request(`/work-contexts${actingAssignmentId ? `?actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => page(value, workContext)),
+  getWorkContext: (id: string) => request(`/work-contexts/${segment(id)}`, (value) => exact(value, id, workContext)),
+  getWorkContextHistory: (id: string) => request(`/work-contexts/${segment(id)}/history`, (value): WorkContextHistory => { const item = object(value); if (string(item.contextId) !== id) throw new Error('response_target_mismatch'); return { contextId: id, entries: array(item.entries, (entry) => { const event = object(entry); return { kind: string(event.kind), occurredAt: string(event.occurredAt) }; }) }; }),
+  getTaskAttention: (id: string) => request(`/tasks/${segment(id)}/attention`, (value) => { const receipt = taskAttention(value); if (receipt.taskId !== id) throw new Error('response_target_mismatch'); return receipt; }),
+  markAttentionSeen: (id: string, workAssignmentId: string) => request(`/tasks/${segment(id)}/attention-seen`, (value) => { const receipt = taskAttention(value); if (receipt.taskId !== id) throw new Error('response_target_mismatch'); return receipt; }, 'POST', { workAssignmentId }),
   listUnits: () => request('/units', (value) => page(value, unit)),
   listRoles: () => request('/roles', (value) => page(value, role)),
   listRoleAssignments: () => request('/role-assignments', (value) => policyPage(value, roleAssignment)),
@@ -246,6 +369,14 @@ export const workApi = {
   requestAgentExecution: (id: string, command: AgentExecutionRequest) => request(`/tasks/${segment(id)}/agent-executions`, result, 'POST', command),
   getAgentExecution: (id: string) => request(`/agent-executions/${segment(id)}`, (value) => exact(value, id, agentExecution)),
   getAgentResult: (id: string) => request(`/agent-executions/${segment(id)}/result`, agentResult),
+  getGeneratedArtifact: (id: string) => request(`/generated-artifacts/${segment(id)}`, (value) => exact(value, id, generatedArtifact)),
+  getSuggestedAction: (id: string) => request(`/suggested-actions/${segment(id)}`, (value) => exact(value, id, suggestedAction)),
   cancelAgentExecution: (id: string, command: CancelAgentExecution) => request(`/agent-executions/${segment(id)}/cancel`, (value) => { const receipt = result(value); if (receipt.kind !== 'agent_execution_cancelled' || receipt.execution.id !== id || receipt.task.id !== command.taskId || receipt.task.attemptId !== command.expectedAttemptId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
   getOperation: (id: string) => request(`/operations/${segment(id)}`, result),
+  createFileArtifact: (taskId: string, command: FileArtifactCommand) => request(`/tasks/${segment(taskId)}/working-artifacts`, (value) => { const receipt = result(value); if (receipt.kind !== 'artifact_created' || receipt.task.id !== taskId || receipt.artifact.file?.fileName !== command.file.fileName) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  writeArtifactContent: (artifactId: string, command: WorkCommand & { expectedArtifactRevision: number }, content: Blob) => upload(artifactId, command, content),
+  readArtifactContent: (artifactId: string, generation: FileGeneration, signal?: AbortSignal) => download(`/working-artifacts/${segment(artifactId)}/content`, generation, signal),
+  readSnapshotContent: (snapshotId: string, artifactId: string, generation: FileGeneration, signal?: AbortSignal) => download(`/handoff-snapshots/${segment(snapshotId)}/artifacts/${segment(artifactId)}/content`, generation, signal),
+  discardArtifact: (artifactId: string, command: DiscardArtifactCommand) => request(`/working-artifacts/${segment(artifactId)}/discard`, (value) => { const receipt = result(value); if (receipt.kind !== 'artifact_discarded' || receipt.artifactId !== artifactId) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
+  importSubmission: (taskId: string, command: ImportSubmissionCommand) => request(`/tasks/${segment(taskId)}/working-artifacts/import`, (value) => { const receipt = result(value); if (receipt.kind !== 'submission_imported' || receipt.task.id !== taskId || receipt.task.attemptId !== command.expectedAttemptId || receipt.artifacts.some((entry) => entry.derivedFrom?.snapshotId !== command.snapshotId)) throw new Error('response_target_mismatch'); return receipt; }, 'POST', command),
 };
