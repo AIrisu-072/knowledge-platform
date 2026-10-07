@@ -1,6 +1,6 @@
 # Organization Agentの構造化結果・Agent Chat・executor adapter境界（U4）— Capability Execution Status
 
-## 2026-10-07 — 実装・ローカル検証中
+## 2026-10-07 — 実装・ローカル検証・独立review修正完了、PR/hosted CIへ
 
 ### 位置付け
 
@@ -29,7 +29,7 @@
 | HTTP | 全pass（新規：候補・提案の取得、他の担当と未知IDは同じ404、書込みmethodは閉じた `VALIDATION_FAILED` で状態不変） |
 | GUI | 1646/1646（69 suites、review修正後）、型検査（GUI・Organization runtime）。新規：Agent Chat 11件・client 1件。変異確認：候補の読み直し・未保存の変更の保護・提案の対象照合・一部の根拠の表示・編集不可の工程の保護をそれぞれ外すとRED |
 | 静的検査 | fmt、clippy（変更crate、`-D warnings`）、architecture-lint、assurance（scan/plan/run）、repo policy、API contract 18件、organization OpenAPI lint（警告0）、runner node試験30件 |
-| 実browser（ローカル、PostgreSQL 18.6公式image、system Chromium） | 23 stageすべてpassed（既存2名・6名policy・文脈・作業ファイルに加え agent-chat-journey／agent-chat-restart／agent-chat-persistence、cleanup完了）。既存2名journeyは新しいAgent Chat画面のまま変更なしで通過 |
+| 実browser（ローカル、PostgreSQL 18.6公式image、system Chromium） | review修正前・修正後とも23 stageすべてpassed（既存2名・6名policy・文脈・作業ファイルに加え agent-chat-journey／agent-chat-restart／agent-chat-persistence、cleanup完了）。既存2名journeyは新しいAgent Chat画面のまま変更なしで通過 |
 
 ### 独立review（GO）と対応
 
@@ -59,6 +59,5 @@
 
 ### 次のexact action
 
-1. ローカル受入（23 stage）・全GUI試験の結果を記入
-2. 独立reviewの指摘を修正
-3. PR作成（Draft）・PR activity購読・exact-head CI → main統合 → 統合後CI
+1. [PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104) のexact-head CI（review修正後のhead）を確認
+2. 合格後mainへ統合し、main push CIを確認
