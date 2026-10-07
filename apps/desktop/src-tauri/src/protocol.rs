@@ -15,14 +15,18 @@ pub const APP_ORIGIN: &str = "http://tauri.localhost";
 #[cfg(not(any(target_os = "windows", target_os = "android")))]
 pub const APP_ORIGIN: &str = "tauri://localhost";
 
+/// Only the single main window is served; nothing else may use the scheme.
+fn serves(webview_label: &str) -> bool {
+    webview_label == crate::MAIN_WINDOW
+}
+
 pub fn handle(
     proxy: &Arc<Proxy>,
     context: UriSchemeContext<'_, Wry>,
     request: Request<Vec<u8>>,
     responder: UriSchemeResponder,
 ) {
-    // Only the single main window is served; nothing else may use the scheme.
-    if context.webview_label() != crate::MAIN_WINDOW {
+    if !serves(context.webview_label()) {
         responder.respond(proxy::problem(
             StatusCode::FORBIDDEN,
             "利用できません。",
@@ -70,4 +74,17 @@ fn asset(app: &AppHandle<Wry>, request: &Request<Vec<u8>>) -> Response<Vec<u8>> 
     }
     proxy::secure_headers(headers, APP_ORIGIN);
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::serves;
+
+    #[test]
+    fn only_the_main_window_is_served() {
+        assert!(serves("main"));
+        for label in ["", "Main", "main2", "popup", "main "] {
+            assert!(!serves(label), "{label:?}");
+        }
+    }
 }

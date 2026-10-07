@@ -56,6 +56,8 @@
 
 - **window**：main windowを1つだけコードで作ります。`window.open` 等の新しいウィンドウは拒否し、遷移は同梱アプリのURL（Linux/macOS：`tauri://localhost`、Windows：`http://tauri.localhost`）と、同梱アプリが作ったblob URLだけを許可します。同梱アプリのURLかどうかはoriginの完全一致（scheme・host・port）で判定し、user情報付き・別port・`https` は拒否します（WebView2は `http://tauri.*` だけをshellへ渡すため、それ以外を許すとnetworkへ出ます）。drag&dropのOS連携（絶対pathを渡すもの）は無効です。
 - **IPC**：capabilityは `main` windowのローカル（同梱）originに `allow-local-workspace-runtime` の1件だけです。Tauri core・pluginの権限は与えません。remote contentはcommandに届きません。
+- **設定の固定**：Tauriが実際に使う設定（`tauri.conf.json` に、`tauri.<platform>.conf.json` と環境変数 `TAURI_CONFIG` を重ねたもの）が変わらないよう、上書き用のファイルが無いこと・build時に `TAURI_CONFIG` が無いこと・解決後の設定（CSP、capability、window、asset protocol等）とCargoが解決したTauriのfeatureを試験で固定します（ローカルの `mise run desktop:check`）。
+- **開発者ツール**：release buildには入れません（Tauriの `devtools` featureを使わない）。debug buildはTauriの既定どおり開発者ツールが有効で、ページのscriptを実行できるため、開発・確認用に限ります。
 - **転送**：アプリ自身のURL schemeをshellが登録し、同梱assetの配信と `/v1` の転送を行います（Tauri既定のasset handlerは未知のpathにindex.htmlを返すため、置き換えが必要）。
   - 転送先は `KNOWLEDGE_PLATFORM_API_ORIGIN` の1つだけで、literalのloopback（`127.0.0.0/8`・`::1`）・`http`・port必須・path無しに限ります。
   - 正規化した後のpathが `/v1` 以下で、originが同じ場合だけ転送します（`..`・`%2e%2e`・`\`・`//host` での脱出は拒否）。method：GET/HEAD/POST/PUT/PATCH/DELETE。

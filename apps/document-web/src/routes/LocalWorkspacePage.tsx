@@ -130,7 +130,7 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
       {unknown && !open
         ? <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} onClick={() => setOpen(true)}>Workspace作成の結果を確認</button>
         : <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} disabled={blocked && !open} onClick={() => setOpen(true)}>新しいWorkspace</button>}
-      <Modal isOpen={open} onOpenChange={(value) => { if (!value) close(); }} isDismissable={!pending && !unknown} isKeyboardDismissDisabled={pending || unknown} className={dialogStyles.modal}>
+      <Modal isOpen={open} onOpenChange={(value) => { if (!value) close(); }} isDismissable={!pending && !unknown} isKeyboardDismissDisabled={pending || unknown} className={`${dialogStyles.modal} ${styles.dialogModal}`}>
         <Dialog aria-labelledby="local-workspace-create-title" className={dialogStyles.dialog}>
           <form onSubmit={submit} className={styles.form}>
             <Heading id="local-workspace-create-title" slot="title">新しいWorkspace</Heading>
@@ -156,8 +156,8 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
   );
 }
 
-// `nonce` changes on every 「開く」 so the folder view remounts with fresh state
-// (alerts, preview, pages) and lists the root again.
+// `nonce` changes on every 「開く」: the folder view lists its location again and
+// drops alerts, preview and pages, but keeps the file name and content typed.
 type Browse = { bindingId: string; locator: string[]; nonce?: number };
 
 function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
@@ -284,7 +284,7 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
         </button>
         : <p className={styles.note}>この環境ではフォルダー選択画面を利用できません。</p>}
       <Problem error={bindingFailure} />
-      <Modal isOpen={Boolean(detaching)} onOpenChange={(value) => { if (!value) closeDetach(); }} isDismissable={detach.state.status !== 'pending'} className={dialogStyles.modal}>
+      <Modal isOpen={Boolean(detaching)} onOpenChange={(value) => { if (!value) closeDetach(); }} isDismissable={detach.state.status !== 'pending'} className={`${dialogStyles.modal} ${styles.dialogModal}`}>
         <Dialog aria-labelledby="local-detach-title" className={dialogStyles.dialog}>
           <Heading id="local-detach-title" slot="title">フォルダーの解除</Heading>
           <p>「{detaching?.label}」をこのWorkspaceから外します。フォルダーの中身は削除されません。</p>
@@ -301,14 +301,14 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
           </div>
         </Dialog>
       </Modal>
-      {browse && browsed && <FolderBrowser key={`${browse.bindingId}/${browse.locator.join('/')}/${browse.nonce ?? 0}`} workspace={workspace} binding={browsed} locator={browse.locator}
-        onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator, nonce: browse.nonce })} onNotice={onNotice} blocked={blocked} />}
+      {browse && browsed && <FolderBrowser key={`${browse.bindingId}/${browse.locator.join('/')}`} workspace={workspace} binding={browsed} locator={browse.locator}
+        refresh={browse.nonce ?? 0} onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator, nonce: browse.nonce })} onNotice={onNotice} blocked={blocked} />}
     </section>
   );
 }
 
-function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, blocked }: {
-  workspace: LocalWorkspace; binding: BindingSummary; locator: string[]; onNavigate: (locator: string[]) => void; onNotice: (text: string) => void; blocked: boolean;
+function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNotice, blocked }: {
+  workspace: LocalWorkspace; binding: BindingSummary; locator: string[]; refresh: number; onNavigate: (locator: string[]) => void; onNotice: (text: string) => void; blocked: boolean;
 }) {
   const runtime = useRuntime();
   const client = useQueryClient();
@@ -335,10 +335,18 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
     }
   }, [client, entries.error]);
 
-  // A listing that succeeds again ends the earlier failure.
+  // 「開く」 on the shown location lists it again from the first page. Earlier
+  // alerts and the preview end with it; the create-form draft is kept.
+  const shownRefresh = useRef(refresh);
   useEffect(() => {
-    if (entries.isSuccess && !entries.isFetching) setStickyProblem(undefined);
-  }, [entries.isSuccess, entries.isFetching, entries.dataUpdatedAt]);
+    if (shownRefresh.current === refresh) return;
+    shownRefresh.current = refresh;
+    setCursors([]);
+    setStickyProblem(undefined);
+    setPreview(undefined);
+    setPreviewProblem(undefined);
+    void client.invalidateQueries({ queryKey: ['local-runtime', 'entries', workspace.workspaceId] });
+  }, [client, refresh, workspace.workspaceId]);
 
   const create = useRuntimeOperation(
     `ws:${workspace.workspaceId}:file:${binding.bindingId}:${locator.join('/')}`,

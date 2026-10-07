@@ -1,7 +1,9 @@
 //! Pins the shell's security-relevant configuration. architecture-lint only
 //! sees Cargo dependency names and `src/**/*.rs`; these files (capabilities,
-//! tauri.conf.json, Cargo features, build.rs) are guarded here instead
-//! (`mise run desktop:check`, local; the owner chose no desktop CI job).
+//! tauri.conf.json and the absence of overlays, resolved Cargo features,
+//! build.rs) are guarded here instead, together with a unit test of the
+//! resolved Tauri config in src/main.rs (`mise run desktop:check`, local; the
+//! owner chose no desktop CI job).
 
 use serde_json::Value;
 
@@ -41,6 +43,23 @@ fn the_only_capability_grants_the_one_command_to_the_bundled_main_window() {
 }
 
 #[test]
+fn no_other_tauri_config_can_be_merged_in() {
+    // tauri-build/codegen merge tauri.<platform>.conf.json (and the JSON5/TOML
+    // forms) over tauri.conf.json; a Windows-only overlay would never be
+    // parsed by a Linux build, so refuse every such file here.
+    let mut names: Vec<_> = std::fs::read_dir(env!("CARGO_MANIFEST_DIR"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| {
+            let lower = name.to_ascii_lowercase();
+            lower.starts_with("tauri") && (lower.contains(".conf") || lower.ends_with(".toml"))
+        })
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, ["tauri.conf.json"]);
+}
+
+#[test]
 fn tauri_config_keeps_one_code_created_window_a_strict_csp_and_nothing_dangerous() {
     let text = include_str!("../tauri.conf.json");
     assert!(!text.to_ascii_lowercase().contains("dangerous"));
@@ -64,6 +83,77 @@ fn tauri_config_keeps_one_code_created_window_a_strict_csp_and_nothing_dangerous
     assert_eq!(
         app["security"]["csp"],
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    );
+}
+
+/// The features Cargo actually resolves, for every target and manifest table.
+#[test]
+fn cargo_resolves_tauri_with_only_the_pinned_features() {
+    let output = std::process::Command::new(env!("CARGO"))
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--locked",
+            "--offline",
+            "--manifest-path",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
+        ])
+        .output()
+        .expect("cargo metadata");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata = json(std::str::from_utf8(&output.stdout).unwrap());
+    let package = metadata["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|package| package["name"] == env!("CARGO_PKG_NAME"))
+        .expect("the shell package");
+    assert_eq!(package["features"], serde_json::json!({}));
+    let tauri: Vec<_> = package["dependencies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|dependency| dependency["name"] == "tauri")
+        .collect();
+    assert_eq!(tauri.len(), 1, "{tauri:?}");
+    assert_eq!(tauri[0]["uses_default_features"], false);
+    assert_eq!(
+        tauri[0]["features"],
+        serde_json::json!(["wry", "x11", "common-controls-v6", "custom-protocol"])
+    );
+    let node = metadata["resolve"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| {
+            node["id"]
+                .as_str()
+                .is_some_and(|id| id.ends_with("#tauri@2.12.1"))
+        })
+        .expect("resolved tauri");
+    let mut features: Vec<_> = node["features"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|feature| feature.as_str().unwrap())
+        .collect();
+    features.sort_unstable();
+    assert_eq!(
+        features,
+        [
+            "common-controls-v6",
+            "custom-protocol",
+            "tauri-runtime-wry",
+            "webkit2gtk",
+            "webview2-com",
+            "wry",
+            "x11"
+        ]
     );
 }
 

@@ -133,7 +133,13 @@ async function startDriver(name, env) {
   child.stdout.pipe(log);
   child.stderr.pipe(log);
   const url = `http://127.0.0.1:${port}`;
-  const stop = () => { try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ } };
+  // Signal the group once: after it is gone its id may be reused by another group.
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
+  };
   const driver = { name, url, logFile, stop };
   drivers.push(driver);
   for (let i = 0; i < 100; i++) {
@@ -173,23 +179,32 @@ async function appPids() {
   return stdout.split('\n').filter(Boolean).map(Number);
 }
 
-function invoke(session, command, request) {
-  return session.executeAsync(`const done = arguments[arguments.length - 1];
+// Every IPC reply the harness received, for the absolute-path checks.
+const ipcReplies = [];
+
+async function invoke(session, command, request) {
+  const reply = await session.executeAsync(`const done = arguments[arguments.length - 1];
     window.__TAURI__.core.invoke('local_workspace_runtime', { command: arguments[0], request: arguments[1] })
       .then((ok) => done({ ok }), (err) => done({ err }));`, [command, request]);
+  ipcReplies.push(reply);
+  return reply;
 }
 
-function invokeRaw(session, name, args) {
-  return session.executeAsync(`const done = arguments[arguments.length - 1];
+async function invokeRaw(session, name, args) {
+  const reply = await session.executeAsync(`const done = arguments[arguments.length - 1];
     window.__TAURI__.core.invoke(arguments[0], arguments[1]).then((ok) => done({ ok }), (err) => done({ err: String(err) }));`, [name, args]);
+  ipcReplies.push(reply);
+  return reply;
 }
 
 /**
  * Wraps the page's broker IPC to count commands and, when `lose` names one,
- * to drop the reply of its next call after the broker has completed it (a
- * lost IPC reply). Tauri's IPC entry points are non-writable, but on Linux its
- * custom-protocol IPC calls the global fetch at call time
- * (ipc://localhost/<command>), so the wrapper sits on window.fetch.
+ * to replace the reply of its next call, after the broker has completed it,
+ * with an untyped failure (what the page sees when a reply is lost or garbled
+ * in transit). A reply that never arrives at all is not modelled here.
+ * Tauri's IPC entry points are non-writable, but on Linux its custom-protocol
+ * IPC calls the global fetch at call time (ipc://localhost/<command>), so the
+ * wrapper sits on window.fetch.
  */
 function instrumentIpc(session, lose = null) {
   return session.execute(`const realFetch = window.__kpRealFetch ?? window.fetch;
@@ -268,6 +283,14 @@ async function openWorkspace(session, name) {
 }
 
 const FILE_FORM = 'form[aria-label="この場所にファイルを作成"]';
+
+/** Workspace names in the screen's list, and the folders shown for the selected one. */
+function shownWorkspaces(session) {
+  return session.execute('return [...document.querySelectorAll("nav[aria-labelledby=local-workspace-list-title] li button")].map((b) => b.textContent.trim());');
+}
+function shownFolders(session) {
+  return session.execute('return [...document.querySelectorAll("button[aria-label$=\\"を開く\\"]")].map((b) => b.getAttribute("aria-label").slice(0, -3));');
+}
 
 async function workspaces(session) {
   const reply = await invoke(session, 'workspace.list', null);
@@ -393,12 +416,18 @@ before(async () => {
     // The binary embeds the web build, so both must be newer than their inputs.
     const shell = join(root, 'apps/desktop/src-tauri');
     const dist = await newestMtime([join(root, 'apps/document-web/dist')]);
-    const webInputs = await newestMtime([join(root, 'apps/document-web/src'), join(root, 'packages/document-api-client/src')]);
-    const shellInputs = await newestMtime(['src', 'capabilities', 'permissions', 'build.rs', 'Cargo.toml', 'Cargo.lock', 'tauri.conf.json'].map((path) => join(shell, path)).concat(join(root, 'crates/local-workspace-runtime/src')));
+    const webInputs = await newestMtime([
+      ...['src', 'index.html', 'webpack.config.cjs', 'babel.config.cjs', 'tsconfig.json', 'package.json'].map((path) => join(root, 'apps/document-web', path)),
+      join(root, 'packages/document-api-client/src'), join(root, 'packages/document-api-client/package.json'), join(root, 'package.json'), join(root, 'pnpm-lock.yaml'),
+    ]);
+    const shellInputs = await newestMtime(['src', 'capabilities', 'permissions', 'icons', 'build.rs', 'Cargo.toml', 'Cargo.lock', 'tauri.conf.json'].map((path) => join(shell, path))
+      .concat(join(root, 'crates/local-workspace-runtime/src'), join(root, 'crates/local-workspace-runtime/Cargo.toml'), join(root, 'Cargo.toml')));
     const binaryInfo = await stat(binary);
     const binaryStale = binaryInfo.mtimeMs < Math.max(shellInputs, dist) || dist < webInputs;
     report.environment = {
-      gitHead: head, worktreeDirty: dirty, binary: { sha256: sha256(await readFile(binary)), builtAt: binaryInfo.mtime.toISOString(), staleAgainstSources: binaryStale },
+      gitHead: head, worktreeDirty: dirty,
+      // The default path is the binary desktop:build makes from this checkout.
+      binary: { sha256: sha256(await readFile(binary)), builtAt: binaryInfo.mtime.toISOString(), staleAgainstSources: binaryStale, overridden: Boolean(process.env.KP_DESKTOP_BINARY) },
       webkit2gtk: webkit, node: process.version, startedAt: new Date().toISOString(),
       tools: {
         // tauri-driver 2.1.0 has no --version; its identity is the binary hash.
@@ -429,8 +458,10 @@ after(async () => {
   await cleanup();
   report.finishedAt = new Date().toISOString();
   report.status = overallStatus();
-  // Evidence only from a complete, unfiltered run of committed sources with a fresh binary.
-  report.qualifying = report.status === 'passed' && !report.filtered && report.environment?.worktreeDirty === false && report.environment?.binary?.staleAgainstSources === false;
+  // Evidence only from a complete, unfiltered run of committed sources with a
+  // fresh binary of this checkout (mtime heuristic; desktop:build rebuilds it).
+  report.qualifying = report.status === 'passed' && !report.filtered && report.environment?.worktreeDirty === false
+    && report.environment?.binary?.staleAgainstSources === false && report.environment?.binary?.overridden === false;
   await saveReport();
   console.log(`desktop GUI evidence: ${directory} (status ${report.status}, qualifying ${report.qualifying})`);
 });
@@ -468,8 +499,9 @@ scenario('Router・Query：deep link（/tasks）と再読み込み、タスク�
     const firstTitle = api.title;
     check('タスク一覧のAPI（Work API）はshell経由で200', api.status === 200, api);
     check('タスク画面がWork APIのタスクを表示（deep linkはindex.htmlへfallback）', firstTitle && await s.waitForText('[aria-label="タスク一覧"]', firstTitle), firstTitle);
-    await s.execute('window.location.reload()');
-    await s.waitFor(async () => (await s.execute('return document.readyState')) === 'complete', { message: 'reload' });
+    await s.execute('window.__kpBeforeReload = true; window.location.reload();');
+    // A new document has no marker; only then is the reload proven.
+    await s.waitFor(async () => (await s.execute('return document.readyState === "complete" && window.__kpBeforeReload === undefined;')), { message: 'reloaded document' });
     check('/tasksで再読み込みしても同じ画面を復元', new URL(await s.url()).pathname === '/tasks' && await s.waitForText('[aria-label="タスク一覧"]', firstTitle));
     await shot(s, 'tasks');
     await clickText(s, 'nav a', '検索');
@@ -767,11 +799,15 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
 
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('二重クリック確認（合成）');
+    const dialogCursor = await s.execute(`const button = [...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim() === 'キャンセル');
+      button.disabled = true; const cursor = getComputedStyle(button).cursor; button.disabled = false; return cursor;`);
+    check('ダイアログ内のボタンも、無効のときは無効と見える（cursor: not-allowed）', dialogCursor === 'not-allowed', dialogCursor);
     await (await s.waitForText('[role="dialog"] button[type="submit"]', '作成する')).doubleClick();
     check('「作成する」の二重クリックでもWorkspace作成は1回', await notice(s, 'Workspace「二重クリック確認（合成）」を作成しました。'));
     const createCalls = callsOf(await ipcState(s), 'workspace.create');
     check('workspace.createのIPCは1回だけ', createCalls.length === 1, createCalls);
-    check('同名のWorkspaceは1つだけ', (await workspaces(s)).filter((item) => item.name === '二重クリック確認（合成）').length === 1);
+    check('画面の一覧にも同名のWorkspaceは1つだけ', await s.waitFor(async () => (await shownWorkspaces(s)).filter((name) => name === '二重クリック確認（合成）').length === 1, { message: 'one listed' }));
+    check('IPC：brokerの記録も1つだけ', (await workspaces(s)).filter((item) => item.name === '二重クリック確認（合成）').length === 1);
   } finally {
     await quit(s);
   }
@@ -788,7 +824,8 @@ scenario('ネイティブのフォルダー選択（実GTKダイアログ）：�
     check('IPC：ダイアログ表示中の2つ目の選択要求はpicker_busy', busy.err?.reason === 'picker_busy', busy);
     await X.cancelDialog();
     check('取消は変更なしの通知', await notice(s, 'フォルダーの選択を取り消しました。変更はありません。'));
-    check('取消後もフォルダー数は不変', (await workspaces(s)).find((item) => item.name === workspaceName).bindings.length === before.bindings.length);
+    check('取消後も画面のフォルダーは管理フォルダーだけ', JSON.stringify(await shownFolders(s)) === JSON.stringify(['管理フォルダー']), await shownFolders(s));
+    check('IPC：取消後もbrokerのフォルダー数は不変', (await workspaces(s)).find((item) => item.name === workspaceName).bindings.length === before.bindings.length);
     const focused = await s.execute('return document.activeElement.textContent.trim();');
     check('ダイアログを閉じた後もページのfocusは「フォルダーを追加」に残る', focused === 'フォルダーを追加', focused);
     await clickText(s, 'button', 'フォルダーを追加');
@@ -856,6 +893,7 @@ scenario('追加フォルダーの閲覧：一覧・階層移動・先頭1MiBの
 scenario('ページscriptからの不正なIPC・遷移・新規ウィンドウ・frame、読み取りの範囲と同時数', async () => {
   const s = await launch(main);
   try {
+    const firstReply = ipcReplies.length;
     const workspace = await openWorkspace(s, workspaceName);
     const context = contextOf(workspace);
     const explicit = workspace.bindings.find((item) => item.source === 'explicit');
@@ -898,7 +936,7 @@ scenario('ページscriptからの不正なIPC・遷移・新規ウィンドウ�
     const marker = randomUUID();
     const opened = await s.execute('return window.open(arguments[0]) === null;', [`${sentinel.origin}/window-${marker}`]);
     await delay(1000);
-    check('window.openで新しいウィンドウは開かない（要求も出ない）', opened === true && (await s.handles()).length === 1 && !sentinel.hits.some((hit) => hit.includes(`window-${marker}`)), { handles: await s.handles(), hits: sentinel.hits });
+    check('ページのscript：window.openで新しいウィンドウは開かない（要求も出ない）', opened === true && (await s.handles()).length === 1 && !sentinel.hits.some((hit) => hit.includes(`window-${marker}`)), { handles: await s.handles(), hits: sentinel.hits });
     const frames = await s.executeAsync(`const done = arguments[arguments.length - 1]; (async () => {
       const violations = [];
       const messages = [];
@@ -916,13 +954,15 @@ scenario('ページscriptからの不正なIPC・遷移・新規ウィンドウ�
       document.removeEventListener('securitypolicyviolation', listener);
       return { violations, messages };
     })().then(done, (e) => done({ error: String(e) }));`, [`${sentinel.origin}/frame-${marker}`]);
-    check('iframe（他origin・data:）はCSP frame-srcで遮断され、frameからのscriptも動かない', frames.messages?.length === 0 && frames.violations?.some((item) => item.directive === 'frame-src') && !sentinel.hits.some((hit) => hit.includes(`frame-${marker}`)), { frames, hits: sentinel.hits });
+    check('ページのscript：iframe（他origin・data:）はCSP frame-srcで遮断され、frameからのscriptも動かない', frames.messages?.length === 0 && frames.violations?.some((item) => item.directive === 'frame-src') && !sentinel.hits.some((hit) => hit.includes(`frame-${marker}`)), { frames, hits: sentinel.hits });
     await s.execute('window.location.assign(arguments[0]);', [`${sentinel.origin}/navigate-${marker}`]);
     // The loopback sentinel answers in milliseconds, so an allowed navigation would have committed.
     await delay(2000);
     await s.waitFor(async () => (await s.execute('return document.readyState')) === 'complete', { message: 'document ready' });
-    check('他originへの遷移は拒否され、要求も出ずアプリに留まる', (await s.url()).startsWith('tauri://localhost/') && !sentinel.hits.some((hit) => hit.includes(`navigate-${marker}`)), { url: await s.url(), hits: sentinel.hits });
-    check('画面とIPC応答に絶対pathが出ない', !(await s.bodyText()).includes(fixtures));
+    check('ページのscript：他originへの遷移は拒否され、要求も出ずアプリに留まる', (await s.url()).startsWith('tauri://localhost/') && !sentinel.hits.some((hit) => hit.includes(`navigate-${marker}`)), { url: await s.url(), hits: sentinel.hits });
+    check('画面に絶対pathが出ない', !(await s.bodyText()).includes(fixtures));
+    const replies = JSON.stringify(ipcReplies.slice(firstReply));
+    check('IPC：この場面で受け取った応答（一覧・読み取り・拒否）に絶対pathが含まれない', ![fixtures, home, directory, root].some((path) => replies.includes(path)), replies.length);
   } finally {
     await quit(s);
   }
@@ -967,18 +1007,18 @@ scenario('8MiBの上限：ちょうど8MiBは作成・表示でき、超過は�
   }
 });
 
-scenario('結果不明（IPC応答の消失）：「結果を確認」で同じ操作として確定し、移動を止める', async () => {
+scenario('結果不明（brokerの完了後に型の無い失敗応答）：「結果を確認」で同じ操作として確定し、移動を止める', async () => {
   const s = await launch(main);
   try {
     await gotoLocalWorkspaces(s);
     const managedBefore = (await readdir(join(stateRoot, 'managed'))).length;
-    check('Workspace作成の応答を1回失わせる設定', await instrumentIpc(s, 'workspace.create'));
+    check('Workspace作成の応答を1回だけ型の無い失敗に置き換える設定', await instrumentIpc(s, 'workspace.create'));
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('応答消失の確認（合成）');
     await clickText(s, '[role="dialog"] button[type="submit"]', '作成する');
-    check('応答が届かないと「結果を確認できませんでした」を表示', await s.waitForText('[role="dialog"] [role="alert"]', OUTCOME_UNKNOWN));
+    check('完了後の応答が型の無い失敗になると「結果を確認できませんでした」を表示', await s.waitForText('[role="dialog"] [role="alert"]', OUTCOME_UNKNOWN));
     const lost = (await ipcState(s)).lost;
-    check('brokerは作成を終えていた（応答だけが失われた）', lost.length === 1 && lost[0].delivered === 'ok' && (await workspaces(s)).filter((item) => item.name === '応答消失の確認（合成）').length === 1, lost);
+    check('IPC：brokerは作成を終えていた（応答だけを置き換えた）', lost.length === 1 && lost[0].delivered === 'ok' && (await workspaces(s)).filter((item) => item.name === '応答消失の確認（合成）').length === 1, lost);
     check('名前欄は変更できず、ボタンは「結果を確認」', !(await (await s.find('input[aria-label="Workspace名"]')).enabled()) && await s.waitForText('[role="dialog"] button[type="submit"]', '結果を確認'));
     await shot(s, 'unknown-dialog');
     await s.keys([Keys.ESCAPE]);
@@ -997,7 +1037,8 @@ scenario('結果不明（IPC応答の消失）：「結果を確認」で同じ�
     check('「結果を確認」で作成済みとして確定', await notice(s, 'Workspace「応答消失の確認（合成）」を作成しました。'));
     const creates = callsOf(await ipcState(s), 'workspace.create');
     check('再送は同じ操作ID（新しい操作として送らない）', creates.length === 2 && creates[0].operationId === creates[1].operationId, creates);
-    check('Workspaceは1つだけ、管理フォルダーも1つだけ増加', (await workspaces(s)).filter((item) => item.name === '応答消失の確認（合成）').length === 1 && (await readdir(join(stateRoot, 'managed'))).length === managedBefore + 1);
+    check('画面の一覧にWorkspaceは1つだけ', await s.waitFor(async () => (await shownWorkspaces(s)).filter((name) => name === '応答消失の確認（合成）').length === 1, { message: 'one listed' }));
+    check('IPC・ディスク：Workspaceは1つだけ、管理フォルダーも1つだけ増加', (await workspaces(s)).filter((item) => item.name === '応答消失の確認（合成）').length === 1 && (await readdir(join(stateRoot, 'managed'))).length === managedBefore + 1);
     check('確定後は移動の制限が解ける', !(await s.bodyText()).includes('結果を確認していない操作があります。'));
     const recovered = await invoke(s, 'workspace.recover', { operationId: creates[0].operationId });
     check('IPC：同じ操作IDのworkspace.recoverはready', recovered.ok?.state === 'ready', recovered);
@@ -1005,7 +1046,7 @@ scenario('結果不明（IPC応答の消失）：「結果を確認」で同じ�
     const workspace = await openWorkspace(s, workspaceName);
     await (await s.waitFor(() => s.find('button[aria-label="管理フォルダーを開く"]'))).click();
     await s.waitForText('table', 'メモ.txt');
-    check('ファイル作成の応答を1回失わせる設定', await instrumentIpc(s, 'file.create'));
+    check('ファイル作成の応答を1回だけ型の無い失敗に置き換える設定', await instrumentIpc(s, 'file.create'));
     await (await s.find('input[aria-label="ファイル名"]')).type('応答消失.txt');
     await (await s.find('textarea[aria-label="内容"]')).type('応答が失われた作成（合成）');
     await clickText(s, `${FILE_FORM} button[type="submit"]`, '作成する');
@@ -1051,7 +1092,8 @@ scenario('置き換え・脱出への対応と解除（中身は残る）', asyn
     await (await s.waitFor(() => s.find('button[aria-label="資料フォルダーを解除"]'), { message: '資料フォルダーを解除' })).click();
     await clickText(s, 'button', '解除する');
     check('解除の通知', await notice(s, 'フォルダー「資料フォルダー」を解除しました。フォルダーの中身はそのままです。'));
-    check('解除してもフォルダーの中身は残る', (await readFile(join(`${folders.folder}-old`, 'readme.txt'), 'utf8')).startsWith('合成データ'));
+    check('解除しても登録先の場所のフォルダーは削除しない', (await stat(folders.folder)).isDirectory());
+    check('置き換え前の実体（移動先）の中身も残る', (await readFile(join(`${folders.folder}-old`, 'readme.txt'), 'utf8')).startsWith('合成データ'));
     await clickText(s, 'button', 'フォルダーを追加');
     await X.chooseFolder(folders.second);
     check('別のフォルダーを追加', await notice(s, 'フォルダー「第二フォルダー」を追加しました。'));
@@ -1100,47 +1142,59 @@ scenario('再起動後の復元と、IPCでの同じ操作IDの再送・同時�
 });
 
 scenario('強制終了（SIGKILL）からの再起動：記録の復元と、書き込み中に止めた作成の収束', async () => {
-  const name = '強制終了時の作成.txt';
   const expected = Buffer.alloc(8 * MiB, 'z');
   const namesBefore = await readdir(managedDir);
-  let request;
-  // A separate driver for the app that is killed, so the main driver stays clean.
+  const attempts = [];
+  // A separate driver for the apps that are killed, so the main driver stays clean.
   const killed = await startDriver('sigkill', appEnvironment({ apiOrigin: backend.origin }));
-  let s = await launch(killed);
   try {
-    const workspace = await openWorkspace(s, workspaceName);
-    request = { context: contextOf(workspace), parent: { bindingId: workspace.managedBindingId, locator: [] }, name, operationId: randomUUID() };
-    const pids = await appPids();
-    check('アプリのプロセスは1つ', pids.length === 1, pids);
-    // Start an 8MiB create and kill the app as soon as its bytes reach the disk
-    // (the broker records the file identity before writing), so the crash
-    // lands while it writes or just after.
-    await s.execute(`const request = arguments[0]; request.bytesBase64 = btoa('z'.repeat(8 * 1024 * 1024));
-      window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }); return true;`, [request]);
-    const target = join(managedDir, name);
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline && !((await stat(target).catch(() => undefined))?.size > 0)) { /* poll as fast as possible */ }
-    process.kill(pids[0], 'SIGKILL');
-    await s.waitFor(async () => (await appPids()).length === 0, { message: 'app killed' });
+    // The kill must land while the broker writes. A write can also finish
+    // between two polls, so try again (with a new operation) up to 3 times.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const s = await launch(killed);
+      const name = `強制終了時の作成${attempt}.txt`;
+      try {
+        const workspace = await openWorkspace(s, workspaceName);
+        const request = { context: contextOf(workspace), parent: { bindingId: workspace.managedBindingId, locator: [] }, name, operationId: randomUUID() };
+        const pids = await appPids();
+        assert.equal(pids.length, 1, JSON.stringify(pids));
+        // Start an 8MiB create and kill the app as soon as its bytes reach the
+        // disk (the broker records the file identity before writing).
+        await s.execute(`const request = arguments[0]; request.bytesBase64 = btoa('z'.repeat(8 * 1024 * 1024));
+          window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }); return true;`, [request]);
+        const target = join(managedDir, name);
+        const deadline = Date.now() + 30_000;
+        while (Date.now() < deadline && !((await stat(target).catch(() => undefined))?.size > 0)) { /* poll as fast as possible */ }
+        process.kill(pids[0], 'SIGKILL');
+        await s.waitFor(async () => (await appPids()).length === 0, { message: 'app killed' });
+        attempts.push({ name, request });
+      } finally {
+        await s.delete();
+      }
+      await lockReleased();
+      const observed = await stat(join(managedDir, name)).then((info) => info.size, () => 'absent');
+      attempts.at(-1).observed = observed;
+      if (typeof observed === 'number' && observed > 0 && observed < expected.length) break;
+    }
   } finally {
-    await s.delete();
     killed.stop();
   }
-  await lockReleased();
-  const observed = await stat(join(managedDir, name)).then((info) => info.size, () => 'absent');
-  check('書き込みが始まった後で強制終了した（強制終了直後のファイルの大きさを記録）', observed !== 'absent' && observed > 0, { observed, expected: expected.length, midWrite: observed < expected.length });
-  s = await launch(main);
+  const midWrite = attempts.find((item) => typeof item.observed === 'number' && item.observed > 0 && item.observed < expected.length);
+  check('書き込みの途中で強制終了できた（途中のファイルが残った）', Boolean(midWrite), attempts.map(({ name, observed }) => ({ name, observed })));
+  const s = await launch(main);
   try {
     const workspace = await openWorkspace(s, workspaceName);
-    check('強制終了後もWorkspaceと追加フォルダーを復元', workspace?.bindings.some((item) => item.label === '第二フォルダー'), workspace?.bindings.map((item) => item.label));
-    const replay = await s.executeAsync(`const done = arguments[arguments.length - 1];
-      const request = arguments[0]; request.bytesBase64 = btoa('z'.repeat(8 * 1024 * 1024));
-      window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }).then((ok) => done({ ok }), (err) => done({ err }));`, [{ ...request, context: contextOf(workspace) }]);
-    check('IPC：同じ操作IDの再送で作成が1件に収束', Boolean(replay.ok) && replay.ok.sizeBytes === expected.length, { replay, observed });
-    const bytes = await readFile(join(managedDir, name));
-    check('ディスク上の内容は完全（途中までの書き込みが残らない）', bytes.length === expected.length && sha256(bytes) === sha256(expected), bytes.length);
+    check('強制終了後も画面にWorkspaceと追加フォルダーを復元', (await shownFolders(s)).includes('第二フォルダー'), await shownFolders(s));
+    for (const { name, request, observed } of attempts) {
+      const replay = await s.executeAsync(`const done = arguments[arguments.length - 1];
+        const request = arguments[0]; request.bytesBase64 = btoa('z'.repeat(8 * 1024 * 1024));
+        window.__TAURI__.core.invoke('local_workspace_runtime', { command: 'file.create', request }).then((ok) => done({ ok }), (err) => done({ err }));`, [{ ...request, context: contextOf(workspace) }]);
+      check(`IPC：同じ操作IDの再送で1件に収束（強制終了時 ${observed} bytes）`, Boolean(replay.ok) && replay.ok.sizeBytes === expected.length, { name, replay, observed });
+      const bytes = await readFile(join(managedDir, name));
+      check(`ディスク上の内容は完全（${name}）`, bytes.length === expected.length && sha256(bytes) === sha256(expected), bytes.length);
+    }
     const namesAfter = await readdir(managedDir);
-    check('管理フォルダーに余分なファイルが残らない', namesAfter.sort().join('/') === [...namesBefore, name].sort().join('/'), namesAfter);
+    check('管理フォルダーに余分なファイルが残らない', namesAfter.sort().join('/') === [...namesBefore, ...attempts.map((item) => item.name)].sort().join('/'), namesAfter);
     await (await s.waitFor(() => s.find('button[aria-label="第二フォルダーを開く"]'))).click();
     check('強制終了後も追加フォルダーを閲覧できる', await s.waitForText('table', '第二の資料.txt'));
   } finally {
@@ -1174,7 +1228,7 @@ scenario('多数の項目：100件ごとのページ送り（次・前）', asyn
   }
 });
 
-scenario('利用中のフォルダーの解除：取消・解除・管理フォルダーは解除できない', async () => {
+scenario('開いているフォルダーの解除：取消・解除・管理フォルダーは解除できない', async () => {
   const s = await launch(main);
   try {
     await openWorkspace(s, workspaceName);
@@ -1187,14 +1241,21 @@ scenario('利用中のフォルダーの解除：取消・解除・管理フォ�
     await s.waitForText('[role="dialog"]', '「第三フォルダー」をこのWorkspaceから外します。');
     await clickText(s, '[role="dialog"] button', 'キャンセル');
     await s.waitFor(async () => (await s.findAll('[role="dialog"]')).length === 0, { message: 'dialog closed' });
-    check('取消では解除しない', (await workspaces(s)).find((item) => item.name === workspaceName).bindings.some((item) => item.bindingId === third.bindingId));
+    check('取消では解除しない（画面に残る）', (await shownFolders(s)).includes('第三フォルダー'), await shownFolders(s));
+    check('IPC：brokerの登録も残る', (await workspaces(s)).find((item) => item.name === workspaceName).bindings.some((item) => item.bindingId === third.bindingId));
     await s.waitFor(async () => (await s.execute('return document.activeElement.getAttribute("aria-label");')) === '第三フォルダーを解除', { message: 'focus back' });
     check('取消後は「解除」ボタンへfocusが戻る', true);
+    // Detach while the folder is in use: its listing and a preview are shown.
+    await (await s.find('button[aria-label="第三フォルダーを開く"]')).click();
+    await (await s.waitFor(() => s.find('button[aria-label="third.txt の内容を表示"]'))).click();
+    await s.waitForText('[role="region"] pre', '第三フォルダーの合成ファイルです。');
     await (await s.find('button[aria-label="第三フォルダーを解除"]')).click();
     await clickText(s, '[role="dialog"] button', '解除する');
-    check('利用可能なフォルダーの解除', await notice(s, 'フォルダー「第三フォルダー」を解除しました。フォルダーの中身はそのままです。'));
+    check('開いている（一覧と内容を表示中の）フォルダーの解除', await notice(s, 'フォルダー「第三フォルダー」を解除しました。フォルダーの中身はそのままです。'));
+    check('解除したフォルダーの一覧と内容の表示は消える', await s.waitFor(async () => (await s.findAll('[role="region"]')).length === 0 && !(await s.bodyText()).includes('第三フォルダーの合成ファイルです。'), { message: 'browser closed' }));
+    check('解除後は画面から消える', await s.waitFor(async () => !(await shownFolders(s)).includes('第三フォルダー'), { message: 'detached folder gone' }));
     const detached = (await workspaces(s)).find((item) => item.name === workspaceName);
-    check('解除後は一覧から消える', !detached.bindings.some((item) => item.bindingId === third.bindingId));
+    check('IPC：brokerの登録からも消える', !detached.bindings.some((item) => item.bindingId === third.bindingId));
     const stale = await invoke(s, 'entries.list', { context: contextOf(detached), ref: { bindingId: third.bindingId, locator: [] } });
     check('IPC：解除したbindingIdではもう読めない', Boolean(stale.err), stale);
     check('フォルダーの中身はそのまま', (await readFile(join(folders.third, 'third.txt'), 'utf8')) === '第三フォルダーの合成ファイルです。\n');
@@ -1212,7 +1273,7 @@ scenario('二重起動：2つ目のアプリは同じ記録を使わない', asy
   const secondDriver = await startDriver('second', appEnvironment({ apiOrigin: backend.origin }));
   let second;
   try {
-    await gotoLocalWorkspaces(first);
+    await openWorkspace(first, workspaceName);
     second = await Session.create(secondDriver.url, binary);
     await second.waitFor(async () => (await second.url()).startsWith('tauri://localhost/'), { message: 'second app' });
     const reply = await invoke(second, 'workspace.list', null);
@@ -1222,7 +1283,8 @@ scenario('二重起動：2つ目のアプリは同じ記録を使わない', asy
     check('2つ目の画面は理由（別に起動中）を表示', await alertText(second, 'デスクトップ版が別に起動しています。もう一方を終了してから開き直してください。'));
     check('2つ目の画面には作成などの操作が出ない', !(await second.bodyText()).includes('新しいWorkspace'));
     await shot(second, 'second-instance');
-    check('1つ目は引き続き利用できる', (await workspaces(first)).some((item) => item.name === workspaceName));
+    await (await first.waitFor(() => first.find('button[aria-label="管理フォルダーを開く"]'))).click();
+    check('1つ目の画面は引き続き操作できる（管理フォルダーを開ける）', await first.waitForText('table', 'メモ.txt'));
   } finally {
     await second?.delete();
     secondDriver.stop();

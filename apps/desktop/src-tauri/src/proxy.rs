@@ -250,25 +250,53 @@ pub fn secure_headers(headers: &mut HeaderMap, app_origin: &str) {
     }
 }
 
+/// Size and time bounds of one forwarded request.
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub request_body: usize,
+    pub response_body: usize,
+    pub connect: Duration,
+    pub total: Duration,
+}
+
+impl Limits {
+    pub const PRODUCTION: Self = Self {
+        request_body: MAX_REQUEST_BODY_BYTES,
+        response_body: MAX_RESPONSE_BODY_BYTES,
+        connect: CONNECT_TIMEOUT,
+        total: REQUEST_TIMEOUT,
+    };
+}
+
 pub struct Proxy {
     origin: Result<Url, OriginError>,
     client: Option<reqwest::Client>,
     app_origin: &'static str,
+    limits: Limits,
 }
 
 impl Proxy {
     pub fn new(origin: Result<Url, OriginError>, app_origin: &'static str) -> Self {
+        Self::with_limits(origin, app_origin, Limits::PRODUCTION)
+    }
+
+    pub(crate) fn with_limits(
+        origin: Result<Url, OriginError>,
+        app_origin: &'static str,
+        limits: Limits,
+    ) -> Self {
         let client = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
+            .connect_timeout(limits.connect)
+            .timeout(limits.total)
             .build()
             .ok();
         Self {
             origin,
             client,
             app_origin,
+            limits,
         }
     }
 
@@ -326,7 +354,7 @@ impl Proxy {
                 app_origin,
             );
         };
-        if body.len() > MAX_REQUEST_BODY_BYTES {
+        if body.len() > self.limits.request_body {
             return problem(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "送信できる大きさを超えています。",
@@ -358,7 +386,7 @@ impl Proxy {
         };
         if upstream
             .content_length()
-            .is_some_and(|length| length > MAX_RESPONSE_BODY_BYTES as u64)
+            .is_some_and(|length| length > self.limits.response_body as u64)
         {
             return problem(
                 StatusCode::BAD_GATEWAY,
@@ -372,7 +400,7 @@ impl Proxy {
         loop {
             match upstream.chunk().await {
                 Ok(Some(chunk)) => {
-                    if bytes.len() + chunk.len() > MAX_RESPONSE_BODY_BYTES {
+                    if bytes.len() + chunk.len() > self.limits.response_body {
                         return problem(
                             StatusCode::BAD_GATEWAY,
                             "サーバーの応答が大きすぎます。",
@@ -410,9 +438,188 @@ impl Proxy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     fn origin() -> Url {
         parse_backend_origin(Some("http://127.0.0.1:8080")).unwrap()
+    }
+
+    const APP: &str = "tauri://localhost";
+
+    /// A one-request loopback backend that answers with `reply` after `wait`.
+    fn backend(reply: &'static [u8], wait: Duration) -> Url {
+        backend_holding(reply, wait, Duration::ZERO)
+    }
+
+    /// Like `backend`, then keeps the connection open for `hold`.
+    fn backend_holding(reply: &'static [u8], wait: Duration, hold: Duration) -> Url {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut seen = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            while !seen.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                if read == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buffer[..read]);
+            }
+            std::thread::sleep(wait);
+            let _ = stream.write_all(reply);
+            std::thread::sleep(hold);
+        });
+        parse_backend_origin(Some(&format!("http://127.0.0.1:{port}"))).unwrap()
+    }
+
+    fn small(response_body: usize, total: Duration) -> Limits {
+        Limits {
+            request_body: 16,
+            response_body,
+            connect: Duration::from_secs(2),
+            total,
+        }
+    }
+
+    fn forward(proxy: &Proxy, method: &str, body: &[u8]) -> Response<Vec<u8>> {
+        let request = Request::builder()
+            .method(method)
+            .uri("tauri://localhost/v1/documents")
+            .body(body.to_vec())
+            .unwrap();
+        tauri::async_runtime::block_on(proxy.forward(request))
+    }
+
+    fn detail(response: &Response<Vec<u8>>) -> String {
+        String::from_utf8_lossy(response.body()).into_owned()
+    }
+
+    #[test]
+    fn a_normal_reply_is_returned_as_data_with_only_allowed_headers() {
+        let origin = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nset-cookie: s=1\r\nx-internal: a\r\ncontent-length: 11\r\n\r\n{\"ok\":true}",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.body(), b"{\"ok\":true}");
+        let headers = response.headers();
+        assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+        assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(
+            headers[header::CONTENT_SECURITY_POLICY],
+            "sandbox; default-src 'none'"
+        );
+        assert!(headers.get(header::SET_COOKIE).is_none());
+        assert!(headers.get("x-internal").is_none());
+    }
+
+    #[test]
+    fn a_request_body_over_the_limit_is_refused_before_connecting() {
+        // Nothing listens on this origin: refusing first is the only way to get 413.
+        let proxy = Proxy::with_limits(Ok(origin()), APP, small(1024, Duration::from_secs(5)));
+        let response = forward(&proxy, "POST", &[b'x'; 17]);
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let at_limit = forward(&proxy, "POST", &[b'x'; 16]);
+        assert_ne!(at_limit.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[test]
+    fn a_declared_response_over_the_limit_is_refused() {
+        let origin = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 64\r\n\r\n0123456789012345678901234567890123456789012345678901234567890123",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(32, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            detail(&response).contains("大きすぎます"),
+            "{}",
+            detail(&response)
+        );
+    }
+
+    #[test]
+    fn a_declared_size_over_the_limit_is_refused_before_reading_the_body() {
+        // Only a few bytes arrive and the connection stays open: reading on
+        // would end in a timeout, so a prompt 502 proves the declared check.
+        let origin = backend_holding(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 1000000\r\n\r\nfirst-bytes",
+            Duration::ZERO,
+            Duration::from_secs(4),
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(32, Duration::from_secs(2)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            detail(&response).contains("大きすぎます"),
+            "{}",
+            detail(&response)
+        );
+    }
+
+    #[test]
+    fn a_chunked_response_over_the_limit_is_refused() {
+        let origin = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\n\r\n20\r\n01234567890123456789012345678901\r\n20\r\n01234567890123456789012345678901\r\n0\r\n\r\n",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(40, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            detail(&response).contains("大きすぎます"),
+            "{}",
+            detail(&response)
+        );
+    }
+
+    #[test]
+    fn a_response_cut_short_is_a_bad_gateway() {
+        let origin = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 100\r\n\r\nonly-this",
+            Duration::ZERO,
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            detail(&response).contains("途中で切れました"),
+            "{}",
+            detail(&response)
+        );
+    }
+
+    #[test]
+    fn a_backend_that_does_not_answer_in_time_is_a_gateway_timeout() {
+        let origin = backend(
+            b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n",
+            Duration::from_secs(3),
+        );
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_millis(300)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+    }
+
+    #[test]
+    fn a_backend_that_is_not_running_is_a_bad_gateway_without_detail() {
+        let port = {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        let origin = parse_backend_origin(Some(&format!("http://127.0.0.1:{port}"))).unwrap();
+        let proxy = Proxy::with_limits(Ok(origin), APP, small(1024, Duration::from_secs(5)));
+        let response = forward(&proxy, "GET", b"");
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(
+            !detail(&response).contains("127.0.0.1"),
+            "{}",
+            detail(&response)
+        );
     }
 
     #[test]

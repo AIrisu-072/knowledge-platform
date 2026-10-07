@@ -60,21 +60,29 @@ export async function startBackend({ root, directory, pdfium, register }) {
   const cidfile = join(directory, 'postgres.cid');
   let cid;
   let server;
+  let starting;
   const stop = async () => {
     if (server && server.child.exitCode === null && !server.child.signalCode) {
       try { await stopProcess(server); } catch { server.child.kill('SIGKILL'); }
     }
-    if (cid) {
-      // Remove only the container this run created and labeled.
-      const label = await command('docker', ['inspect', '--format', '{{index .Config.Labels "kp.document-poc.run"}}', cid], options('postgres-label')).catch(() => '');
-      if (label === runId) await command('docker', ['rm', '--force', cid], options('postgres-stop')).catch(() => undefined);
+    // A stop during `docker run` (Ctrl-C, SIGTERM) waits for it to settle, then
+    // finds the container by its cidfile or, failing that, by this run's label.
+    await starting?.catch(() => undefined);
+    const ids = new Set([cid ?? (await readFile(cidfile, 'utf8').catch(() => '')).trim()].filter(Boolean));
+    const labelled = await command('docker', ['ps', '--all', '--quiet', '--no-trunc', '--filter', `label=kp.document-poc.run=${runId}`], options('postgres-find')).catch(() => '');
+    for (const id of labelled.split('\n').map((line) => line.trim()).filter(Boolean)) ids.add(id);
+    for (const id of ids) {
+      // Remove only containers this run created and labeled.
+      const label = await command('docker', ['inspect', '--format', '{{index .Config.Labels "kp.document-poc.run"}}', id], options('postgres-label')).catch(() => '');
+      if (label === runId) await command('docker', ['rm', '--force', id], options('postgres-stop')).catch(() => undefined);
     }
   };
   // The caller can stop a backend that is still starting (Ctrl-C / SIGTERM).
   register?.(stop);
   try {
     try {
-      await command('docker', postgresArguments(runId, cidfile), options('postgres-start', { ...process.env, POSTGRES_PASSWORD: password }));
+      starting = command('docker', postgresArguments(runId, cidfile), options('postgres-start', { ...process.env, POSTGRES_PASSWORD: password }));
+      await starting;
     } finally {
       cid = (await readFile(cidfile, 'utf8').catch(() => '')).trim() || undefined;
     }

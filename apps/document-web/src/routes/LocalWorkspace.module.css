@@ -71,8 +71,10 @@
   background: var(--color-surface-hover);
 }
 
-/* Buttons stopped while an operation is unresolved must look unavailable. */
-.page button:disabled {
+/* Buttons stopped while an operation is pending or unresolved must look
+   unavailable, also in the dialogs (rendered outside .page). */
+.page button:disabled,
+.dialogModal button:disabled {
   cursor: not-allowed;
   color: var(--color-text-muted);
   background: var(--color-canvas);
