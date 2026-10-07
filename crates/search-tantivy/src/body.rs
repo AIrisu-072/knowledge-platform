@@ -1,6 +1,16 @@
 //! P1-E01 body-ready lexical generations (`schema-2`). Unit documents live in a
 //! separately typed index inside the generation, so Resource ranking and its
 //! statistics are unchanged. Enumeration reads the actually committed index.
+//!
+//! A generation may start from the Unit index of an earlier one (SD-T11 5):
+//! its segment files are hard-linked, never rewritten, Units that changed or
+//! disappeared are deleted and new ones added in one commit. Decoded segments
+//! are cached per process by segment and store-file identity, so an unchanged
+//! segment is read and checked once per process.
+
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use search_core::id::ResourceId;
 use search_core::knowledge_unit::{
@@ -9,11 +19,12 @@ use search_core::knowledge_unit::{
 };
 use search_core::projection::ProjectionGenerationKey;
 use sha2::{Digest, Sha256};
+use tantivy::indexer::NoMergePolicy;
 use tantivy::schema::{
     Field, IndexRecordOption, STORED, STRING, Schema, TantivyDocument, TextFieldIndexing,
     TextOptions, Value,
 };
-use tantivy::{Index, IndexReader, doc};
+use tantivy::{Index, IndexReader, SegmentReader, Term, doc};
 
 use crate::index::{LexicalBuildInput, LexicalIndexError};
 use crate::schema::kind_token;
@@ -51,6 +62,97 @@ pub(crate) struct UnitIndex {
     pub index: Index,
     pub reader: IndexReader,
     pub fields: UnitFields,
+    /// The directory of a persisted index; decoded segments are cached only then.
+    pub dir: Option<PathBuf>,
+}
+
+/// Decoded stored Units of one segment, by doc id (deleted ones included).
+type DecodedSegment = Arc<Vec<KnowledgeUnit>>;
+
+/// Segments decoded in this process: segment ID and the identity of its
+/// store file (device, inode, size, change time) to the decoded Units.
+type SegmentCache = Mutex<HashMap<(String, [u64; 5]), DecodedSegment>>;
+
+fn segment_cache() -> &'static SegmentCache {
+    static CACHE: OnceLock<SegmentCache> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Decoded Units kept per process before the cache is emptied.
+const CACHED_UNITS: usize = 2_000_000;
+
+#[cfg(unix)]
+fn file_identity(path: &Path) -> Option<[u64; 5]> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(path).ok()?;
+    Some([
+        meta.dev(),
+        meta.ino(),
+        meta.size(),
+        u64::try_from(meta.ctime()).ok()?,
+        u64::try_from(meta.ctime_nsec()).ok()?,
+    ])
+}
+
+#[cfg(not(unix))]
+fn file_identity(_path: &Path) -> Option<[u64; 5]> {
+    None
+}
+
+fn decode_segment(
+    units: &UnitIndex,
+    segment_ord: usize,
+    segment: &SegmentReader,
+) -> Result<DecodedSegment, LexicalIndexError> {
+    let id = segment.segment_id().uuid_string();
+    let key = units.dir.as_ref().and_then(|dir| {
+        file_identity(&dir.join(format!("{id}.store"))).map(|identity| (id.clone(), identity))
+    });
+    if let Some(key) = &key
+        && let Some(hit) = segment_cache()
+            .lock()
+            .map_err(|_| LexicalIndexError::LockPoisoned)?
+            .get(key)
+        && hit.len() == segment.max_doc() as usize
+    {
+        return Ok(hit.clone());
+    }
+    let searcher = units.reader.searcher();
+    let ord = u32::try_from(segment_ord).map_err(|_| LexicalIndexError::UnitEncoding)?;
+    let mut decoded = Vec::with_capacity(segment.max_doc() as usize);
+    for doc_id in 0..segment.max_doc() {
+        let document: TantivyDocument = searcher.doc(tantivy::DocAddress::new(ord, doc_id))?;
+        decoded.push(read_unit(&document, units.fields)?);
+    }
+    let decoded = Arc::new(decoded);
+    if let Some(key) = key {
+        let mut cache = segment_cache()
+            .lock()
+            .map_err(|_| LexicalIndexError::LockPoisoned)?;
+        if cache.values().map(|units| units.len()).sum::<usize>() + decoded.len() > CACHED_UNITS {
+            cache.clear();
+        }
+        cache.insert(key, decoded.clone());
+    }
+    Ok(decoded)
+}
+
+/// Every live Unit of the committed index, in segment and doc order.
+fn live_units(units: &UnitIndex) -> Result<Vec<KnowledgeUnit>, LexicalIndexError> {
+    let searcher = units.reader.searcher();
+    let mut out = Vec::new();
+    for (segment_ord, segment) in searcher.segment_readers().iter().enumerate() {
+        let decoded = decode_segment(units, segment_ord, segment)?;
+        let alive = segment.alive_bitset();
+        for (doc_id, unit) in decoded.iter().enumerate() {
+            let doc_id = u32::try_from(doc_id).map_err(|_| LexicalIndexError::UnitEncoding)?;
+            if alive.is_some_and(|bits| !bits.is_alive(doc_id)) {
+                continue;
+            }
+            out.push(unit.clone());
+        }
+    }
+    Ok(out)
 }
 
 fn unit_schema(tokenizer: &str) -> (Schema, UnitFields) {
@@ -72,9 +174,11 @@ fn unit_schema(tokenizer: &str) -> (Schema, UnitFields) {
 }
 
 fn metadata_json(unit: &KnowledgeUnit) -> Result<String, LexicalIndexError> {
-    // The body text is stored once, in the searchable body field.
+    // The body text is stored once, in the searchable body field. The Source
+    // snapshot is per generation and not stored, so a linked segment fits any.
     let mut stored = unit.clone();
     stored.text = String::new();
+    stored.provenance.source_snapshot.clear();
     serde_json::to_string(&stored).map_err(|_| LexicalIndexError::UnitEncoding)
 }
 
@@ -93,7 +197,81 @@ pub(crate) fn build_unit_index_at(
 ) -> Result<UnitIndex, LexicalIndexError> {
     std::fs::create_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
     let (schema, fields) = unit_schema(tokenizer);
-    fill_unit_index(Index::create_in_dir(dir, schema)?, fields, units)
+    let mut built = fill_unit_index(Index::create_in_dir(dir, schema)?, fields, units)?;
+    built.dir = Some(dir.to_path_buf());
+    Ok(built)
+}
+
+/// The same Units as `build_unit_index_at`, starting from the committed Unit
+/// index in `base`: its files are hard-linked into `dir` and never modified,
+/// Units that are gone or differ are deleted and the rest added. Returns
+/// `None` (and leaves no files) when `base` cannot serve as a base; the caller
+/// then builds from nothing. Merging is off, so linked segments stay shared.
+pub(crate) fn build_unit_index_from_base(
+    units: &[KnowledgeUnit],
+    base: &Path,
+    dir: &Path,
+    tokenizer: &str,
+) -> Result<Option<UnitIndex>, LexicalIndexError> {
+    let Ok(previous) = open_unit_index(base, tokenizer) else {
+        return Ok(None);
+    };
+    let Ok(previous_units) = live_units(&previous) else {
+        return Ok(None);
+    };
+    std::fs::create_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
+    let linked = (|| -> std::io::Result<()> {
+        for entry in std::fs::read_dir(base)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let kind = entry.file_type()?;
+            if kind.is_file() && !name.to_string_lossy().ends_with(".lock") {
+                std::fs::hard_link(entry.path(), dir.join(&name))?;
+            }
+        }
+        Ok(())
+    })();
+    if linked.is_err() {
+        std::fs::remove_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
+        return Ok(None);
+    }
+    // A base collected while it was being linked leaves an index that does
+    // not open; build from nothing instead.
+    let Ok(mut index) = open_unit_index(dir, tokenizer) else {
+        std::fs::remove_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
+        return Ok(None);
+    };
+    let unsnapshot = |unit: &KnowledgeUnit| {
+        let mut unit = unit.clone();
+        unit.provenance.source_snapshot.clear();
+        unit
+    };
+    let before: BTreeMap<_, KnowledgeUnit> = previous_units
+        .iter()
+        .map(|unit| (unit.unit_id, unsnapshot(unit)))
+        .collect();
+    let after: BTreeMap<_, &KnowledgeUnit> =
+        units.iter().map(|unit| (unit.unit_id, unit)).collect();
+    let mut writer: tantivy::IndexWriter = index.index.writer(15_000_000)?;
+    writer.set_merge_policy(Box::new(NoMergePolicy));
+    for (unit_id, unit) in &before {
+        if after.get(unit_id).map(|next| unsnapshot(next)) != Some(unit.clone()) {
+            writer.delete_term(Term::from_field_text(
+                index.fields.unit_id,
+                &unit_id.to_string(),
+            ));
+        }
+    }
+    for unit in units {
+        if before.get(&unit.unit_id) != Some(&unsnapshot(unit)) {
+            writer.add_document(unit_document(index.fields, unit)?)?;
+        }
+    }
+    writer.commit()?;
+    writer.wait_merging_threads()?;
+    index.reader.reload()?;
+    index.dir = Some(dir.to_path_buf());
+    Ok(Some(index))
 }
 
 /// Opens a committed Unit index and checks it has the Unit schema.
@@ -113,7 +291,20 @@ pub(crate) fn open_unit_index(
         index,
         reader,
         fields,
+        dir: Some(dir.to_path_buf()),
     })
+}
+
+fn unit_document(
+    fields: UnitFields,
+    unit: &KnowledgeUnit,
+) -> Result<TantivyDocument, LexicalIndexError> {
+    Ok(doc!(
+        fields.unit_id => unit.unit_id.to_string(),
+        fields.parent_resource => unit.version.resource_id.as_uuid().to_string(),
+        fields.metadata => metadata_json(unit)?,
+        fields.body => unit.text.as_str()
+    ))
 }
 
 fn fill_unit_index(
@@ -124,12 +315,7 @@ fn fill_unit_index(
     crate::analyzer::register(&index);
     let mut writer = index.writer(15_000_000)?;
     for unit in units {
-        writer.add_document(doc!(
-            fields.unit_id => unit.unit_id.to_string(),
-            fields.parent_resource => unit.version.resource_id.as_uuid().to_string(),
-            fields.metadata => metadata_json(unit)?,
-            fields.body => unit.text.as_str()
-        ))?;
+        writer.add_document(unit_document(fields, unit)?)?;
     }
     writer.commit()?;
     writer.wait_merging_threads()?;
@@ -139,63 +325,37 @@ fn fill_unit_index(
         index,
         reader,
         fields,
+        dir: None,
     })
 }
 
 /// Every committed Unit document, decoded back to the stored KnowledgeUnit.
 pub(crate) fn stored_units(units: &UnitIndex) -> Result<Vec<KnowledgeUnit>, LexicalIndexError> {
-    let searcher = units.reader.searcher();
-    let mut out = Vec::new();
-    for (segment_ord, segment) in searcher.segment_readers().iter().enumerate() {
-        let alive = segment.alive_bitset();
-        for doc_id in 0..segment.max_doc() {
-            if alive.is_some_and(|bits| !bits.is_alive(doc_id)) {
-                continue;
-            }
-            let document: TantivyDocument = searcher.doc(tantivy::DocAddress::new(
-                u32::try_from(segment_ord).map_err(|_| LexicalIndexError::UnitEncoding)?,
-                doc_id,
-            ))?;
-            out.push(read_unit(&document, units.fields)?);
-        }
-    }
-    Ok(out)
+    live_units(units)
 }
 
 pub(crate) fn enumerate(
     key: ProjectionGenerationKey,
     units: &UnitIndex,
 ) -> Result<Vec<IndexedUnitDoc>, LexicalIndexError> {
-    let searcher = units.reader.searcher();
-    let mut docs = Vec::new();
-    for (segment_ord, segment) in searcher.segment_readers().iter().enumerate() {
-        let alive = segment.alive_bitset();
-        for doc_id in 0..segment.max_doc() {
-            if alive.is_some_and(|bits| !bits.is_alive(doc_id)) {
-                continue;
-            }
-            let document: TantivyDocument = searcher.doc(tantivy::DocAddress::new(
-                u32::try_from(segment_ord).map_err(|_| LexicalIndexError::UnitEncoding)?,
-                doc_id,
-            ))?;
-            let unit = read_unit(&document, units.fields)?;
-            docs.push(IndexedUnitDoc {
-                generation: key,
-                parent_resource: unit.version.resource_id,
-                authoritative_representation_ref: unit.provenance.authoritative_representation_ref,
-                raw: unit.provenance.raw,
-                profile: unit.provenance.profile,
-                version: unit.version,
-                part: unit.part,
-                unit_id: unit.unit_id,
-                ordinal: unit.ordinal,
-                kind: unit.kind,
-                locator: unit.locator,
-                text_sha256: unit.text_sha256,
-                text: unit.text,
-            });
-        }
-    }
+    let mut docs: Vec<IndexedUnitDoc> = live_units(units)?
+        .into_iter()
+        .map(|unit| IndexedUnitDoc {
+            generation: key,
+            parent_resource: unit.version.resource_id,
+            authoritative_representation_ref: unit.provenance.authoritative_representation_ref,
+            raw: unit.provenance.raw,
+            profile: unit.provenance.profile,
+            version: unit.version,
+            part: unit.part,
+            unit_id: unit.unit_id,
+            ordinal: unit.ordinal,
+            kind: unit.kind,
+            locator: unit.locator,
+            text_sha256: unit.text_sha256,
+            text: unit.text,
+        })
+        .collect();
     docs.sort_by_key(|doc| doc.unit_id);
     Ok(docs)
 }

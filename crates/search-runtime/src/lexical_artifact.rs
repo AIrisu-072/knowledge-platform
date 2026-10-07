@@ -9,8 +9,11 @@
 //! database rows cannot commit atomically, so READY, CAS, pin and return all
 //! reopen and revalidate.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
+use search_application::search_core::id::SourceId;
 use search_application::search_core::projection::{
     ProjectionGenerationKey, ProjectionGenerationManifest,
 };
@@ -127,16 +130,73 @@ fn tree_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, LexicalArtifactError
     Ok(out)
 }
 
+/// File digests computed in this process, by file identity (device, inode,
+/// size, change and modification time). A file hard-linked into a later
+/// generation keeps its identity, so its bytes are hashed once per process.
+type FileDigestCache = Mutex<HashMap<[u64; 6], (u64, [u8; 32])>>;
+
+fn file_digest_cache() -> &'static FileDigestCache {
+    static CACHE: OnceLock<FileDigestCache> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Cached file digests kept per process before the cache is emptied.
+const CACHED_FILE_DIGESTS: usize = 200_000;
+
+#[cfg(unix)]
+fn file_identity(path: &Path) -> Option<[u64; 6]> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(path).ok()?;
+    Some([
+        meta.dev(),
+        meta.ino(),
+        meta.size(),
+        u64::try_from(meta.ctime()).ok()?,
+        u64::try_from(meta.ctime_nsec()).ok()?,
+        u64::try_from(meta.mtime_nsec()).ok()?,
+    ])
+}
+
+#[cfg(not(unix))]
+fn file_identity(_path: &Path) -> Option<[u64; 6]> {
+    None
+}
+
+/// Length and SHA-256 of one file, from the cache when its identity is known.
+fn file_digest(path: &Path) -> Result<(u64, [u8; 32]), LexicalArtifactError> {
+    let identity = file_identity(path);
+    if let Some(identity) = identity
+        && let Some(hit) = file_digest_cache()
+            .lock()
+            .map_err(|_| LexicalArtifactError::Io)?
+            .get(&identity)
+    {
+        return Ok(*hit);
+    }
+    let bytes = std::fs::read(path).map_err(|_| LexicalArtifactError::Io)?;
+    let digest = (bytes.len() as u64, Sha256::digest(&bytes).into());
+    if let Some(identity) = identity {
+        let mut cache = file_digest_cache()
+            .lock()
+            .map_err(|_| LexicalArtifactError::Io)?;
+        if cache.len() >= CACHED_FILE_DIGESTS {
+            cache.clear();
+        }
+        cache.insert(identity, digest);
+    }
+    Ok(digest)
+}
+
 fn tree_digest(dir: &Path) -> Result<[u8; 32], LexicalArtifactError> {
     let mut hasher = Sha256::new();
     hasher.update(b"lexical-tree:v1\0");
     let files = tree_files(dir)?;
     hasher.update((files.len() as u64).to_be_bytes());
     for (relative, path) in files {
-        let bytes = std::fs::read(&path).map_err(|_| LexicalArtifactError::Io)?;
+        let (length, digest) = file_digest(&path)?;
         frame(&mut hasher, relative.as_bytes());
-        hasher.update((bytes.len() as u64).to_be_bytes());
-        hasher.update(Sha256::digest(&bytes));
+        hasher.update(length.to_be_bytes());
+        hasher.update(digest);
     }
     Ok(hasher.finalize().into())
 }
@@ -200,6 +260,26 @@ impl LexicalArtifactStore {
 
     pub fn final_dir(&self, key: ProjectionGenerationKey) -> PathBuf {
         self.root.join(Self::relpath(key))
+    }
+
+    /// The Unit index of the newest finalized generation of `source_id`, as a
+    /// base for the next build. Only efficiency depends on this choice: the
+    /// seal compares every searchable Unit with the new manifest.
+    pub fn latest_units_dir(&self, source_id: SourceId) -> Option<PathBuf> {
+        let parent = self
+            .root
+            .join("generations")
+            .join(source_id.as_uuid().to_string());
+        std::fs::read_dir(parent)
+            .ok()?
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let units = entry.path().join("units");
+                let modified = std::fs::metadata(entry.path()).ok()?.modified().ok()?;
+                units.is_dir().then_some((modified, units))
+            })
+            .max_by_key(|(modified, _)| *modified)
+            .map(|(_, units)| units)
     }
 
     /// Seals what is on disk now for `manifest`, without any database row.

@@ -871,6 +871,10 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
         let key = manifest.key();
         let logical = search_tantivy::lexical_input_digest(&input)?;
         let dir = self.lexical().staging_dir(key);
+        let input = match self.lexical().latest_units_dir(key.source_id) {
+            Some(base) => input.with_base_units_dir(base),
+            None => input,
+        };
         TantivyLexicalIndex::new().build_generation_at(manifest, source, input, &dir)?;
         self.with(key, |pending| {
             pending.lexical = Some(ArtifactReceipt {
