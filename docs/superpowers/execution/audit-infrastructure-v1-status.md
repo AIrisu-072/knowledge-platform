@@ -1,5 +1,23 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-07 — 単位B（Store・relay）の改訂core追従と確認review引継事項の実装（worktree branch、未push）
+
+- branch `worktree-agent-a07ac0dcd80b1fa0d`（基点 `0ee9cf5`＝単位B統合branchに単位A `74795be` をmerge）。commit：
+  - `dc5b8fc`：改訂audit-core API（RawReceiptRow／RawControlReceiptRow→decode、EventTypeName／BoundedCode、precheck_ingest）、catalog追補（head_seq、epoch_mismatch、count_relay_catalog_skew必須）、timelineのint8表記、relayのrelay_catalog_skew class
+  - `224222b`：event type filterを登録済みtype・control typeへ限定、selectorは登録済みrelay type、db_role issuerへの付与拒否、begin_recovery_epochの期待値照合（preview／expectation_mismatch）
+  - `297e18e`：audit-core（受領行・IngestRowの相互整合、ChainIntegrity、verify_identity_chain_complete、anchor位置のcheckpointとhead以降の記録の中立扱い）
+  - `f8eef15`：exportの完全性検証をverify_export_completeへ移行、watermark後の失効を被覆扱いしない（complete=false、expired_after_watermark）、chain_integrityの出力
+  - `17d6be4`：Store golden pinを入力行hashのkeyへ移行（digest不変）
+  - `fdb6929`：IngestRowが結果列からだけ作られることの構造試験
+  - `e691b85`：control event全14種・全判別値の発行とcore検証
+- ローカル検証（`e691b85`）：`cargo test -p audit-core -p audit-store-postgres -p audit-relay` 全PASS（core 147＋doc 2、Store 60、relay 40＋ignored 1）、clippy `-D warnings`・fmt・architecture-lint・`cargo metadata --locked` PASS。sqlxはruntime queryのみ（offline dataは不要）。
+- 設計改訂3・単位Aからの差分（承認状態：依頼者の実装指示の範囲内で本trackが採用、独立review未実施）：
+  - `assess_recovery`：anchorと同じseqのcheckpointは中立（単位Aの試験は比較結果を残したまま判定を中立へ変更）、headより後の遷移の記録（`old_epoch ≥ head.epoch`）は `records_after_head` で中立（単位Aの試験はUnverifiedRecoveryを期待していた）
+  - `begin_recovery_epoch` は帯域外記録の期待値（旧epoch、復元head seq・chain、消失上限）を必須にした（SQL署名・CLI・`AuditAdmin` APIの変更）
+  - reconcileの `relay_catalog_skew` をpendingと排他のclassにした（`audit_relay.delivery_view` に `last_error_code` を追加）
+  - export中のexpire競合は、snapshotではなく「Wより後の証拠を被覆しない」方式（complete=false）で扱う
+- 次のexact action：独立review（security・correctness）→ 指摘反映 → 最新mainから作り直したbranchへ移してDraft PR → exact-head CI。
+
 ## 2026-10-07 — 単位A（event契約）の実装・review・exact-head CI
 
 - 設計は改訂3（`8254d76`）で確定した。独立reviewは3回行った。
