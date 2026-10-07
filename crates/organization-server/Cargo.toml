@@ -12,6 +12,7 @@ document-api-http = { version = "0.0.0", path = "../document-api-http" }
 document-application = { version = "0.0.0", path = "../document-application" }
 document-domain = { version = "0.0.0", path = "../document-domain" }
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
 serde_json.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
@@ -25,3 +26,4 @@ work-repository-postgres = { version = "0.0.0", path = "../work-repository-postg
 work-api-http = { version = "0.0.0", path = "../work-api-http" }
 
 [dev-dependencies]
+tempfile.workspace = true

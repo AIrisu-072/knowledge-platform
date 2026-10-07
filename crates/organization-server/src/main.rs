@@ -3,9 +3,9 @@ use document_server::{
     config::{Command, ConfigSource, ProcessEnvironment},
 };
 use organization_server::{
-    DocumentAgentSource, DocumentEvidenceSource, OrganizationConfig, OrganizationProfile,
-    OwnedAgentDispatcher, SyntheticIdentityAdapter, bootstrap_document_policy, compose_routes,
-    verify_shared_document,
+    DocumentAgentSource, DocumentEvidenceSource, FileSystemWorkArtifactStore, OrganizationConfig,
+    OrganizationProfile, OwnedAgentDispatcher, SyntheticIdentityAdapter, bootstrap_document_policy,
+    compose_routes, verify_shared_document,
 };
 use std::{process::ExitCode, sync::Arc};
 use uuid::Uuid;
@@ -99,11 +99,21 @@ async fn run() -> Result<(), String> {
             let documents = Arc::new(
                 document_repository_postgres::PostgresDocumentRepository::new(pool.clone()),
             );
-            let repository = Arc::new(PostgresWorkRepository::with_agent_source(
-                pool.clone(),
-                Arc::new(DocumentEvidenceSource::new(documents.clone())),
-                Arc::new(DocumentAgentSource::new(documents)),
-            ));
+            let serve = config
+                .document()
+                .serve()
+                .ok_or("serve configuration unavailable")?;
+            // Work-owned files share the configured volume in a namespace of their own.
+            let repository = Arc::new(
+                PostgresWorkRepository::with_agent_source(
+                    pool.clone(),
+                    Arc::new(DocumentEvidenceSource::new(documents.clone())),
+                    Arc::new(DocumentAgentSource::new(documents)),
+                )
+                .with_artifact_store(Arc::new(FileSystemWorkArtifactStore::new(
+                    serve.storage_root(),
+                ))),
+            );
             // A previous process's queued/running work is uncertain, never replayed.
             // Only this startup profile's nonterminal executions are affected. A fresh
             // schema starts before `seed-work`; an upgraded one with existing Work but no
@@ -114,11 +124,7 @@ async fn run() -> Result<(), String> {
             let dispatcher = Arc::new(OwnedAgentDispatcher::new(repository.clone(), actor));
             let work = work_api_http::router_with_agent(repository, actor, dispatcher.clone());
             let joined = compose_routes(work, runtime.router());
-            let bind = config
-                .document()
-                .serve()
-                .ok_or("serve configuration unavailable")?
-                .bind();
+            let bind = serve.bind();
             let listener = tokio::net::TcpListener::bind(bind)
                 .await
                 .map_err(|_| "HTTP listener unavailable")?;
