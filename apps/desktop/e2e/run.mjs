@@ -710,7 +710,7 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
     check('実行環境がデスクトップ版・各機能が利用可', (await s.bodyText()).includes('デスクトップ版') && !(await s.bodyText()).includes('利用できません'));
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('案件A（合成）');
-    await clickText(s, 'button[type="submit"]', '作成する');
+    await clickText(s, '[role="dialog"] button[type="submit"]', '作成する');
     check('作成の通知', await notice(s, 'Workspace「案件A（合成）」を作成しました。'));
     await clickText(s, 'button', '名前を変更');
     const renameInput = await s.waitFor(() => s.find('input[aria-label="新しいWorkspace名"]'));
@@ -763,7 +763,7 @@ scenario('ローカルWorkspace：作成・名前変更・管理フォルダー�
 
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('二重クリック確認（合成）');
-    await (await s.waitForText('button[type="submit"]', '作成する')).doubleClick();
+    await (await s.waitForText('[role="dialog"] button[type="submit"]', '作成する')).doubleClick();
     check('「作成する」の二重クリックでもWorkspace作成は1回', await notice(s, 'Workspace「二重クリック確認（合成）」を作成しました。'));
     const createCalls = callsOf(await ipcState(s), 'workspace.create');
     check('workspace.createのIPCは1回だけ', createCalls.length === 1, createCalls);
@@ -971,7 +971,7 @@ scenario('結果不明（IPC応答の消失）：「結果を確認」で同じ�
     check('Workspace作成の応答を1回失わせる設定', await instrumentIpc(s, 'workspace.create'));
     await clickText(s, 'button', '新しいWorkspace');
     await (await s.waitFor(() => s.find('input[aria-label="Workspace名"]'))).type('応答消失の確認（合成）');
-    await clickText(s, 'button[type="submit"]', '作成する');
+    await clickText(s, '[role="dialog"] button[type="submit"]', '作成する');
     check('応答が届かないと「結果を確認できませんでした」を表示', await s.waitForText('[role="dialog"] [role="alert"]', OUTCOME_UNKNOWN));
     const lost = (await ipcState(s)).lost;
     check('brokerは作成を終えていた（応答だけが失われた）', lost.length === 1 && lost[0].delivered === 'ok' && (await workspaces(s)).filter((item) => item.name === '応答消失の確認（合成）').length === 1, lost);
