@@ -21,7 +21,8 @@ use search_application::search_core::projection::{
 use search_projection_memory::generation_digest;
 use search_source_document::{
     BodyCoverageArtifact, BodyItemEntry, BodyUnitManifest, GenerationBundleReceipt,
-    compute_bundle_receipt, segment_digest, validate_restored_manifest,
+    compute_bundle_receipt_from, profile_set_digest, segment_digest,
+    unit_manifest_receipt_from_segments, validate_restored_manifest_skipping,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -279,6 +280,73 @@ fn sha256_text(digest: &[u8; 32]) -> String {
     format!("sha256:{hex}")
 }
 
+/// Segment digests whose items passed the per-item checks in this process.
+fn validated_segments() -> &'static Mutex<std::collections::HashSet<[u8; 32]>> {
+    static VALIDATED: OnceLock<Mutex<std::collections::HashSet<[u8; 32]>>> = OnceLock::new();
+    VALIDATED.get_or_init(Default::default)
+}
+
+/// Each item's segment digest and Unit count, in manifest order.
+fn segment_digests(manifest: &BodyUnitManifest) -> Result<Vec<([u8; 32], u64)>, BundleError> {
+    manifest
+        .entries
+        .iter()
+        .map(|entry| {
+            segment_digest(entry)
+                .map(|digest| (digest, entry.units.len() as u64))
+                .map_err(|_| BundleError::Digest)
+        })
+        .collect()
+}
+
+/// Validates the Unit manifest, skipping the per-item checks of segments this
+/// process already validated (SD-T11 5), and returns its coverage artifact and
+/// receipt. Order, Source binding and the derived coverage always cover every
+/// item; the receipt is recomputed from every segment digest.
+fn validate_units(
+    manifest: &BodyUnitManifest,
+    segments: &[([u8; 32], u64)],
+) -> Result<
+    (
+        BodyCoverageArtifact,
+        search_source_document::ArtifactReceipt,
+    ),
+    BundleError,
+> {
+    let known: Vec<bool> = {
+        let validated = validated_segments()
+            .lock()
+            .map_err(|_| BundleError::StoreUnknown)?;
+        segments
+            .iter()
+            .map(|(digest, _)| validated.contains(digest))
+            .collect()
+    };
+    // The segment digest binds each Unit's text digest, not its text: every
+    // Unit's text is checked against its digest even when the item is known.
+    for (entry, known) in manifest.entries.iter().zip(&known) {
+        if *known
+            && entry.units.iter().any(|unit| {
+                <[u8; 32]>::from(sha2::Sha256::digest(unit.text.as_bytes())) != unit.text_sha256
+            })
+        {
+            return Err(BundleError::Digest);
+        }
+    }
+    let coverage = validate_restored_manifest_skipping(manifest, |index| known[index])
+        .map_err(|_| BundleError::Digest)?;
+    let receipt = unit_manifest_receipt_from_segments(manifest.key, segments)
+        .map_err(|_| BundleError::Digest)?;
+    let mut validated = validated_segments()
+        .lock()
+        .map_err(|_| BundleError::StoreUnknown)?;
+    if validated.len() + segments.len() > SEGMENT_CACHE_ITEMS {
+        validated.clear();
+    }
+    validated.extend(segments.iter().map(|(digest, _)| *digest));
+    Ok((coverage, receipt))
+}
+
 /// Recomputes the projection-only digest, the Unit manifest and coverage
 /// receipts and the composite digest from the restored DTOs.
 pub fn validate_stored_bundle_v1(
@@ -306,16 +374,18 @@ pub fn validate_stored_bundle_v1(
     if projection != bundle.manifest.digest {
         return Err(BundleError::Digest);
     }
-    let derived =
-        validate_restored_manifest(&bundle.unit_manifest).map_err(|_| BundleError::Digest)?;
+    let segments = segment_digests(&bundle.unit_manifest)?;
+    let (derived, units) = validate_units(&bundle.unit_manifest, &segments)?;
     if derived != bundle.coverage {
         return Err(BundleError::Binding);
     }
-    let receipt = compute_bundle_receipt(
+    let receipt = compute_bundle_receipt_from(
         key,
         snapshot,
         &bundle.manifest.digest,
-        &bundle.unit_manifest,
+        units,
+        bundle.unit_manifest.entries.len(),
+        profile_set_digest(&bundle.unit_manifest).map_err(|_| BundleError::Digest)?,
         &bundle.coverage,
         bundle.receipt.lexical,
         bundle.receipt.graph,
@@ -590,12 +660,11 @@ impl PgPayloadStore {
         if projection_digest != manifest.digest {
             return Err(BundleError::Digest);
         }
-        if validate_restored_manifest(&unit_manifest).map_err(|_| BundleError::Digest)? != coverage
-        {
+        let segments = segment_digests(&unit_manifest)?;
+        let (derived, units_receipt) = validate_units(&unit_manifest, &segments)?;
+        if derived != coverage {
             return Err(BundleError::Binding);
         }
-        let units_receipt = search_source_document::unit_manifest_receipt(&unit_manifest)
-            .map_err(|_| BundleError::Digest)?;
         let coverage_receipt =
             search_source_document::coverage_receipt(&coverage).map_err(|_| BundleError::Digest)?;
         let expected = [

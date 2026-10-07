@@ -222,6 +222,17 @@ pub fn validate_manifest(
 pub fn validate_restored_manifest(
     manifest: &BodyUnitManifest,
 ) -> Result<BodyCoverageArtifact, BodyBuildError> {
+    validate_restored_manifest_skipping(manifest, |_| false)
+}
+
+/// `validate_restored_manifest` that skips the per-item checks of entries for
+/// which `verified(index)` is true: items this process already validated in
+/// the same content (by segment digest). Order and Source binding are always
+/// checked and the coverage artifact is always derived from every entry.
+pub fn validate_restored_manifest_skipping(
+    manifest: &BodyUnitManifest,
+    verified: impl Fn(usize) -> bool,
+) -> Result<BodyCoverageArtifact, BodyBuildError> {
     if manifest
         .entries
         .windows(2)
@@ -230,11 +241,13 @@ pub fn validate_restored_manifest(
         return Err(integrity("manifest order"));
     }
     let mut items = Vec::with_capacity(manifest.entries.len());
-    for entry in &manifest.entries {
+    for (index, entry) in manifest.entries.iter().enumerate() {
         if entry.version.source_id != manifest.key.source_id {
             return Err(integrity("manifest source"));
         }
-        validate_entry(entry, &manifest.source_snapshot)?;
+        if !verified(index) {
+            validate_entry(entry, &manifest.source_snapshot)?;
+        }
         items.push(BodyCoverageItem {
             version: entry.version.clone(),
             part: entry.part.clone(),
@@ -616,13 +629,41 @@ pub fn compute_bundle_receipt(
     {
         return Err(integrity("bundle key"));
     }
-    let unit_manifest = unit_manifest_receipt(manifest)?;
+    compute_bundle_receipt_from(
+        key,
+        source_snapshot,
+        projection_manifest_digest,
+        unit_manifest_receipt(manifest)?,
+        manifest.entries.len(),
+        profile_set_digest(manifest)?,
+        coverage,
+        lexical,
+        graph,
+    )
+}
+
+/// `compute_bundle_receipt` from an already computed Unit manifest receipt
+/// (e.g. from stored segment digests), its item count and profile set digest.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_bundle_receipt_from(
+    key: ProjectionGenerationKey,
+    source_snapshot: &str,
+    projection_manifest_digest: &str,
+    unit_manifest: ArtifactReceipt,
+    items: usize,
+    profile_set_digest: [u8; 32],
+    coverage: &BodyCoverageArtifact,
+    lexical: ArtifactReceipt,
+    graph: ArtifactReceipt,
+) -> Result<GenerationBundleReceipt, BodyBuildError> {
+    if unit_manifest.key != key || coverage.key != key || lexical.key != key || graph.key != key {
+        return Err(integrity("bundle key"));
+    }
     let body_coverage = coverage_receipt(coverage)?;
-    if body_coverage.count != manifest.entries.len() as u64 {
+    if body_coverage.count != items as u64 {
         return Err(integrity("coverage item count"));
     }
     let projection_digest = projection_digest(projection_manifest_digest)?;
-    let profile_set_digest = profile_set_digest(manifest)?;
     let mut hasher = Sha256::new();
     hasher.update(b"document-generation-bundle:v2\0");
     hasher.update(key.source_id.as_uuid().as_bytes());
