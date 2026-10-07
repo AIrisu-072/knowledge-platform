@@ -74,13 +74,30 @@ async fn legacy_upgrade_preserves_timestamp_audit_checksums_and_insert_defaults(
         .bind(version_id).bind(first_read_at).execute(&mut *connection).await.unwrap();
     sqlx::query("INSERT INTO document_read_states(identity_provider,principal_id,document_version_id,first_read_at,needs_recheck,read_state_revision) VALUES('test-idp','new-insert',$1,$2,DEFAULT,DEFAULT)")
         .bind(version_id).bind(first_read_at).execute(&mut *connection).await.unwrap();
-    let defaults: Vec<(i64, bool)> = sqlx::query_as("SELECT read_state_revision,needs_recheck FROM document_read_states ORDER BY principal_id")
-        .fetch_all(&mut *connection).await.unwrap();
+    let defaults: Vec<(i64, bool)> = sqlx::query_as(
+        "SELECT read_state_revision,needs_recheck FROM document_read_states ORDER BY principal_id",
+    )
+    .fetch_all(&mut *connection)
+    .await
+    .unwrap();
     assert_eq!(defaults, vec![(1, false); 3]);
-    let old_checksums: Vec<(i64, Vec<u8>)> = sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations WHERE version <= 11 ORDER BY version")
-        .fetch_all(&mut *connection).await.unwrap();
-    assert_eq!(old_checksums, MIGRATOR.iter().filter(|migration| migration.version <= 11).map(|migration| (migration.version, migration.checksum.to_vec())).collect::<Vec<_>>());
+    let old_checksums: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+        "SELECT version,checksum FROM _sqlx_migrations WHERE version <= 11 ORDER BY version",
+    )
+    .fetch_all(&mut *connection)
+    .await
+    .unwrap();
+    assert_eq!(
+        old_checksums,
+        MIGRATOR
+            .iter()
+            .filter(|migration| migration.version <= 11)
+            .map(|migration| (migration.version, migration.checksum.to_vec()))
+            .collect::<Vec<_>>()
+    );
     let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM document_read_state_operations")
-        .fetch_one(&mut *connection).await.unwrap();
+        .fetch_one(&mut *connection)
+        .await
+        .unwrap();
     assert_eq!(receipts, 0);
 }

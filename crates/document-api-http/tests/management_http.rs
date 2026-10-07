@@ -753,11 +753,11 @@ async fn current_read_state_routes_preserve_replay_reset_and_legacy_wire() {
     let (status, detail) = json_request(
         router.clone(),
         Method::GET,
-        &format!("/v1/documents/{}", f.document_id.as_uuid()),
+        &format!("/v1/documents/{}?view=published", f.document_id.as_uuid()),
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{detail}");
     assert_eq!(detail["readState"]["isRead"], false);
     assert_eq!(detail["unread"], true);
     let (status, list) = json_request(

@@ -185,7 +185,6 @@ async fn each_scope_uses_its_visible_title_and_unread_is_per_version() {
     assert_eq!(reset.items.len(), 1);
     assert!(!reset.items[0].gui.read_state.is_read());
     assert!(reset.items[0].gui.read_state.first_read_at.is_some());
-
 }
 
 #[tokio::test]

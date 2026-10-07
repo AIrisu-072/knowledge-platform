@@ -227,10 +227,24 @@ async fn old_view_replay_does_not_clear_reset() {
     assert_eq!(send(&f, command).await.unwrap(), first);
     assert_eq!(state(&f, version_id).await, reset.resulting_read_state);
     let audit: Vec<(String, serde_json::Value)> = sqlx::query_as("SELECT event_type,data FROM audit_outbox_events WHERE event_type IN ('document.version.detail_viewed','document.version.marked_unread')").fetch_all(&f.pool).await.unwrap();
-    let viewed = &audit.iter().find(|(event, _)| event == "document.version.detail_viewed").unwrap().1;
-    assert_eq!(viewed, &serde_json::json!({"document_version_id": version_id.as_uuid(), "operation_id": command.operation_id.as_uuid(), "expected_read_state_revision": 0, "resulting_read_state_revision": 1, "first_record": true, "trigger": "detail_display"}));
-    let reset_audit = &audit.iter().find(|(event, _)| event == "document.version.marked_unread").unwrap().1;
-    assert_eq!(reset_audit, &serde_json::json!({"document_version_id": version_id.as_uuid(), "operation_id": reset.operation_id.as_uuid(), "expected_read_state_revision": 1, "resulting_read_state_revision": 2, "trigger": "user_reset"}));
+    let viewed = &audit
+        .iter()
+        .find(|(event, _)| event == "document.version.detail_viewed")
+        .unwrap()
+        .1;
+    assert_eq!(
+        viewed,
+        &serde_json::json!({"document_version_id": version_id.as_uuid(), "operation_id": command.operation_id.as_uuid(), "expected_read_state_revision": 0, "resulting_read_state_revision": 1, "first_record": true, "trigger": "detail_display"})
+    );
+    let reset_audit = &audit
+        .iter()
+        .find(|(event, _)| event == "document.version.marked_unread")
+        .unwrap()
+        .1;
+    assert_eq!(
+        reset_audit,
+        &serde_json::json!({"document_version_id": version_id.as_uuid(), "operation_id": reset.operation_id.as_uuid(), "expected_read_state_revision": 1, "resulting_read_state_revision": 2, "trigger": "user_reset"})
+    );
     assert_eq!(counts(&f).await, (1, 2, 2));
 
     let returning_command = self::command(&f, version_id, ReadStateMutationKind::View, 2);
@@ -239,7 +253,10 @@ async fn old_view_replay_does_not_clear_reset() {
     assert_eq!(returning_view.resulting_read_state.read_state_revision, 3);
     assert!(returning_view.resulting_read_state.is_read());
     assert!(!returning_view.resulting_read_state.needs_recheck);
-    assert_eq!(returning_view.resulting_read_state.first_read_at, first.resulting_read_state.first_read_at);
+    assert_eq!(
+        returning_view.resulting_read_state.first_read_at,
+        first.resulting_read_state.first_read_at
+    );
     let returning_audit: serde_json::Value = sqlx::query_scalar(
         "SELECT data FROM audit_outbox_events WHERE event_type='document.version.detail_viewed' AND data->>'operation_id'=$1",
     )
@@ -247,21 +264,50 @@ async fn old_view_replay_does_not_clear_reset() {
     .fetch_one(&f.pool)
     .await
     .unwrap();
-    assert_eq!(returning_audit, serde_json::json!({
-        "document_version_id": version_id.as_uuid(),
-        "operation_id": returning_command.operation_id.as_uuid(),
-        "expected_read_state_revision": 2,
-        "resulting_read_state_revision": 3,
-        "first_record": false,
-        "trigger": "detail_display"
-    }));
-    let unread_query = PublishedQuery { unread_only: true, ..PublishedQuery::default() };
-    assert!(f.repository.list_published_documents(&context(), unread_query.clone()).await.unwrap().items.is_empty());
-    let later_reset = send(&f, self::command(&f, version_id, ReadStateMutationKind::Reset, 3)).await.unwrap();
+    assert_eq!(
+        returning_audit,
+        serde_json::json!({
+            "document_version_id": version_id.as_uuid(),
+            "operation_id": returning_command.operation_id.as_uuid(),
+            "expected_read_state_revision": 2,
+            "resulting_read_state_revision": 3,
+            "first_record": false,
+            "trigger": "detail_display"
+        })
+    );
+    let unread_query = PublishedQuery {
+        unread_only: true,
+        ..PublishedQuery::default()
+    };
+    assert!(
+        f.repository
+            .list_published_documents(&context(), unread_query.clone())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    let later_reset = send(
+        &f,
+        self::command(&f, version_id, ReadStateMutationKind::Reset, 3),
+    )
+    .await
+    .unwrap();
     assert_eq!(later_reset.resulting_read_state.read_state_revision, 4);
     assert_eq!(send(&f, returning_command).await.unwrap(), returning_view);
-    assert_eq!(state(&f, version_id).await, later_reset.resulting_read_state);
-    assert_eq!(f.repository.list_published_documents(&context(), unread_query).await.unwrap().items.len(), 1);
+    assert_eq!(
+        state(&f, version_id).await,
+        later_reset.resulting_read_state
+    );
+    assert_eq!(
+        f.repository
+            .list_published_documents(&context(), unread_query)
+            .await
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
     assert_eq!(counts(&f).await, (1, 4, 4));
 }
 
@@ -530,17 +576,45 @@ async fn ended_receipt_replay_rechecks_history_before_stale_rejection() {
     let command = command(&f, version_id, ReadStateMutationKind::View, 0);
     let first = send(&f, command).await.unwrap();
     let revision: i64 = sqlx::query_scalar("SELECT revision FROM documents WHERE document_id=$1")
-        .bind(f.document_id.as_uuid()).fetch_one(&f.pool).await.unwrap();
+        .bind(f.document_id.as_uuid())
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO document_publication_end_operations(operation_id,document_id,command_digest,expected_document_revision,expected_current_version_id,actor_identity_provider,actor_principal_id,reason,former_current_version_id,resulting_document_revision,ended_at) VALUES($1,$2,$3,$4,$5,'test-idp','policy-admin','synthetic end',$5,$6,now())")
         .bind(Uuid::now_v7()).bind(f.document_id.as_uuid()).bind(vec![0_u8; 32]).bind(revision).bind(version_id.as_uuid()).bind(revision + 1).execute(&f.pool).await.unwrap();
-    sqlx::query("UPDATE documents SET current_version_id=NULL,revision=revision+1 WHERE document_id=$1")
-        .bind(f.document_id.as_uuid()).execute(&f.pool).await.unwrap();
+    sqlx::query(
+        "UPDATE documents SET current_version_id=NULL,revision=revision+1 WHERE document_id=$1",
+    )
+    .bind(f.document_id.as_uuid())
+    .execute(&f.pool)
+    .await
+    .unwrap();
     assert_eq!(send(&f, command).await.unwrap(), first);
-    assert_eq!(send(&f, self::command(&f, version_id, ReadStateMutationKind::Reset, 1)).await, Err(ApplicationError::StaleVersion));
+    assert_eq!(
+        send(
+            &f,
+            self::command(&f, version_id, ReadStateMutationKind::Reset, 1)
+        )
+        .await,
+        Err(ApplicationError::StaleVersion)
+    );
     let service = CurrentReadStateService::new(f.repository.clone());
-    assert_eq!(service.get_current_read_state(&context(), f.document_id, version_id).await, Err(ApplicationError::StaleVersion));
-    sqlx::query("DELETE FROM access_policy_grants WHERE action='read_history'").execute(&f.pool).await.unwrap();
+    assert_eq!(
+        service
+            .get_current_read_state(&context(), f.document_id, version_id)
+            .await,
+        Err(ApplicationError::StaleVersion)
+    );
+    sqlx::query("DELETE FROM access_policy_grants WHERE action='read_history'")
+        .execute(&f.pool)
+        .await
+        .unwrap();
     assert_eq!(send(&f, command).await, Err(ApplicationError::Forbidden));
-    assert_eq!(service.get_current_read_state(&context(), f.document_id, version_id).await, Err(ApplicationError::Forbidden));
+    assert_eq!(
+        service
+            .get_current_read_state(&context(), f.document_id, version_id)
+            .await,
+        Err(ApplicationError::Forbidden)
+    );
     assert_eq!(counts(&f).await, (1, 1, 1));
 }

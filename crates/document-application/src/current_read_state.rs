@@ -165,13 +165,18 @@ impl<R: CurrentReadStateRepository> CurrentReadStateService<R> {
         command: ReadStateMutation,
     ) -> Result<ReadStateMutationResult, ApplicationError> {
         read_state_command_digest(ctx, &command)?;
-        self.repository.mutate_read_state(ctx, command).await.map_err(|error| match error {
-            RepositoryError::CommitOutcomeUnknown => ApplicationError::CurrentReadStateCommitOutcomeUnknown {
-                operation_id: command.operation_id,
-                document_id: command.document_id,
-                document_version_id: command.document_version_id,
-            },
-            other => other.into(),
-        })
+        self.repository
+            .mutate_read_state(ctx, command)
+            .await
+            .map_err(|error| match error {
+                RepositoryError::CommitOutcomeUnknown => {
+                    ApplicationError::CurrentReadStateCommitOutcomeUnknown {
+                        operation_id: command.operation_id,
+                        document_id: command.document_id,
+                        document_version_id: command.document_version_id,
+                    }
+                }
+                other => other.into(),
+            })
     }
 }

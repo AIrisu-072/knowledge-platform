@@ -22,7 +22,7 @@ async function recheckDocument(client: QueryClient, documentId: string): Promise
   }
 }
 export async function refreshCurrentReadState(client: QueryClient, target: Pick<ReadStateIntent, 'documentId' | 'versionId'>): Promise<void> {
-  const owner = documentViewNavigation(client); owner.revokeCurrent(target.documentId);
+  const owner = documentViewNavigation(client); owner.suppress(target.documentId); owner.revokeCurrent(target.documentId);
   const key = currentReadStateKey(target.documentId, target.versionId);
   await client.cancelQueries({ queryKey: key, exact: true }, { revert: false });
   try {
@@ -108,9 +108,11 @@ export function useDocumentViewReadState({ document: detail, view, activeTab, wo
   }, [client, detail, detailReady, documentId, eligible, opening, owner, store, versionId]);
 
   function onPublishedDetailDisplayed(openId: string): void {
-    const live = owner.get(); const input = latestProps.current;
+    const live = owner.get(); const input = latestProps.current; const liveCurrent = client.getQueryState<CurrentReadState>(queryKey);
     if (!live || live.openId !== openId || live.suppressed || live.consumed || live.documentId !== documentId || live.versionId !== versionId
       || !validCurrentReadState(live.token, documentId, versionId) || !input.eligible || !input.detailReady || !input.filesReady
+      || liveCurrent?.status !== 'success' || liveCurrent.fetchStatus !== 'idle' || liveCurrent.isInvalidated
+      || owner.current(documentId, versionId) !== liveCurrent.data || !validCurrentReadState(liveCurrent.data, documentId, versionId)
       || !owner.viewing(documentId) || !normalReadsReady(client, documentId, versionId) || !isOverviewVisible(overviewRef.current)) return;
     const previous = store.get(documentId, versionId);
     if (previous?.status === 'pending' || previous?.status === 'unknown') return;

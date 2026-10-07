@@ -2,6 +2,13 @@
 
 Status: ACTIVE
 
+## 2026-10-07 11:47 UTC — 最終ローカルGUI確認とhosted追従補修
+
+- 第4公開head0b3987ad69d74378b2203a8d526ab2ab5b2ba931 / tree8b5aeb2449cc844810b86046642a4452f69ddef4は66ファイルが一致し、CI37615369766を開始した。旧75件境界の全GUI73suite/1721件・build成功を確認したが、独立レビューで回復panelからの再取得中に待機中VIEWを送る反例1件を発見した
+- その反例を新しい実route REDで再現し、共有refreshの同期opening失効とVIEW送信直前のlive query/owner資格確認へ限定補修した。取得中も完了後も未読を維持する反例がGREEN。初回記録日時の履歴label/assertion各1箇所も揃え、focused124件・全GUI73suite/1722件・schema/型/buildが成功。独立した同反例の再検査を含む仕様/品質再レビューはGO
+- 第3headの通常Document GET422は、新HTTP試験だけが既存必須query viewを欠いたことをread.rs/OpenAPI/既存成功例で確認した。試験URIへview=publishedを追加し、失敗時に合成response bodyを示す2行だけ補修する。業務判定や期待200は変更しない
+- 第4headの実fmt logが示した残8hunkを同sourceへ一致確認して適用する。既存Search回帰は同headで成功し、台帳期待1箇所の追従を確認した。新Rust/DB/HTTP全体、追加GUI受入・再起動の最終合格は次headで確認する。過去の失敗/未取得と未資格は保持し、同PRへこの限定補修を保存する
+
 ## 2026-10-07 11:28 UTC — GUIと既存受入の段階保存
 
 - GUI所管15filesを新focused75件・schema/型の成功時と同じhashで固定した。StrictMode/remount/reload、遅い読取/新版/認可拒否、MAX、UNKNOWN往復/固定再送、成功後read失敗を含む。補助read拒否後の正規再確認が余分にretryする実反例は、既存queryFnを明示再利用して1回へ限定した。全GUI/buildとGUI独立レビューは続行中

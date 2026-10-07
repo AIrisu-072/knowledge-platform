@@ -277,3 +277,33 @@ test('other_tab_old_unread_token_cannot_undo_reset', async () => {
   await waitFor(() => expect(api.recordDocumentVersionView).toHaveBeenCalledTimes(2)); expect(api.recordDocumentVersionView!.mock.calls[1]![2].expectedReadStateRevision).toBe(0); expect(authoritative).toMatchObject({ isRead: false, readStateRevision: 2 });
   expect(within(oldTab.container).queryByRole('button', { name: '同じ操作を再試行' })).not.toBeInTheDocument(); await currentBadge('未読', newScope);
 });
+
+
+test('recovery_current_refresh_before_queued_display_revokes_the_opening', async () => {
+  mockApi();
+  api.getCurrentDocumentVersionReadState!.mockResolvedValueOnce({ ...authoritative }).mockRejectedValueOnce(new Error('read failed')).mockImplementation(() => Promise.resolve({ ...authoritative }));
+  const h = renderWorkspace(overviewUrl);
+  await screen.findByText('処理結果は確認済みですが、現在の既読状態を取得できません');
+  expect(api.recordDocumentVersionView).toHaveBeenCalledTimes(1);
+  authoritative = { ...authoritative, needsRecheck: true, isRead: false, readStateRevision: 2 };
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  await screen.findByRole('heading', { name: '文書一覧' });
+  const frames: FrameRequestCallback[] = [];
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  await openFromHome(); await currentBadge('未読');
+  const refresh = deferred<Snapshot>();
+  api.getCurrentDocumentVersionReadState!.mockReturnValue(refresh.promise);
+  const recovery = screen.getByRole('region', { name: '既読状態の操作結果' });
+  fireEvent.click(within(recovery).getByRole('button', { name: '現在の既読状態を再取得' }));
+  await waitFor(() => expect(h.client.getQueryState(['document-current-read-state', documentId, versionId])?.fetchStatus).toBe('fetching'));
+  const { documentViewNavigation } = require('../src/application/document-view-navigation');
+  expect(documentViewNavigation(h.client).current(documentId, versionId)).toBeUndefined();
+  act(() => { frames.splice(0).forEach(callback => callback(performance.now())); });
+  const posts = api.recordDocumentVersionView!.mock.calls.length;
+  await act(async () => { refresh.resolve({ ...authoritative }); });
+  await currentBadge('未読');
+  act(() => { frames.splice(0).forEach(callback => callback(performance.now())); });
+  raf.mockRestore();
+  expect(posts).toBe(1);
+  expect(api.recordDocumentVersionView).toHaveBeenCalledTimes(1);
+});

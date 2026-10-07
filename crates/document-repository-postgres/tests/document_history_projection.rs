@@ -400,27 +400,59 @@ async fn reset_preserves_version_historical_first_record() {
     sqlx::query("INSERT INTO document_versions(document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES($1,$2,1,'PUBLISHED','Synthetic',now(),'test-idp','policy-admin','{}',now())")
         .bind(version_id.as_uuid()).bind(f.document_id.as_uuid()).execute(&f.pool).await.unwrap();
     sqlx::query("UPDATE documents SET current_version_id=$1 WHERE document_id=$2")
-        .bind(version_id.as_uuid()).bind(f.document_id.as_uuid()).execute(&f.pool).await.unwrap();
+        .bind(version_id.as_uuid())
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
     let service = CurrentReadStateService::new(f.repository.clone());
-    let first = service.mutate_read_state(&context(), ReadStateMutation {
-        operation_id: ReadStateOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
-        document_id: f.document_id,
-        document_version_id: version_id,
-        expected_read_state_revision: 0,
-        kind: ReadStateMutationKind::View,
-    }).await.unwrap();
-    service.mutate_read_state(&context(), ReadStateMutation {
-        operation_id: ReadStateOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
-        document_id: f.document_id,
-        document_version_id: version_id,
-        expected_read_state_revision: 1,
-        kind: ReadStateMutationKind::Reset,
-    }).await.unwrap();
-    let history = DocumentHistoryService::new(f.repository.clone()).get_document_version(&context(), VersionRequest {
-        document_id: f.document_id,
-        document_version_id: version_id,
-        purpose: VersionPurpose::History,
-    }).await.unwrap();
-    assert_eq!(history.summary.first_read_at, first.resulting_read_state.first_read_at);
-    assert!(!service.get_current_read_state(&context(), f.document_id, version_id).await.unwrap().state.is_read());
+    let first = service
+        .mutate_read_state(
+            &context(),
+            ReadStateMutation {
+                operation_id: ReadStateOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+                document_id: f.document_id,
+                document_version_id: version_id,
+                expected_read_state_revision: 0,
+                kind: ReadStateMutationKind::View,
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .mutate_read_state(
+            &context(),
+            ReadStateMutation {
+                operation_id: ReadStateOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+                document_id: f.document_id,
+                document_version_id: version_id,
+                expected_read_state_revision: 1,
+                kind: ReadStateMutationKind::Reset,
+            },
+        )
+        .await
+        .unwrap();
+    let history = DocumentHistoryService::new(f.repository.clone())
+        .get_document_version(
+            &context(),
+            VersionRequest {
+                document_id: f.document_id,
+                document_version_id: version_id,
+                purpose: VersionPurpose::History,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        history.summary.first_read_at,
+        first.resulting_read_state.first_read_at
+    );
+    assert!(
+        !service
+            .get_current_read_state(&context(), f.document_id, version_id)
+            .await
+            .unwrap()
+            .state
+            .is_read()
+    );
 }
