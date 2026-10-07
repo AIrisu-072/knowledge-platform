@@ -535,9 +535,12 @@ scenario('キーボード操作とfocus（skip link、ダイアログの開閉�
   const s = await launch(main);
   try {
     await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    // The skip link belongs to the shared shell. Check it on the Local Workspace
+    // screen: the document list moves focus to its selected row once loaded,
+    // which can race with the first Tab.
+    await gotoLocalWorkspaces(s);
     // Start sequential navigation from the top of the page. blur() alone keeps
-    // WebKit's starting point at the last focused element (the document list
-    // may restore focus to its selected row), so focus the body itself.
+    // WebKit's starting point at the last focused element, so focus the body.
     await s.execute('window.focus(); const body = document.body; body.setAttribute("tabindex", "-1"); body.focus(); body.removeAttribute("tabindex");');
     await s.keys([Keys.TAB]);
     const skip = await s.execute('return document.activeElement.textContent.trim();');

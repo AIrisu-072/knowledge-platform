@@ -96,7 +96,7 @@ mise run desktop:gui:e2e
 |---|---|
 | 起動と既存画面 | ウィンドウ1つ、文書一覧に実APIの合成文書、詳細への移動と「戻る」 |
 | Router・Query | `/tasks` を直接開く（SPAのfallback）と再読み込み、タスク一覧にWork APIの内容、検索（PoCの未実装表示）・担当と委任・文書・編集作業への移動 |
-| キーボードとfocus | ページ先頭からのTabで「メインコンテンツへ」（起動直後は、文書一覧が選択中の行へfocusを置くことがあるため、確認ではページ先頭から始める）、focus表示、Enterでmainへ、ダイアログの開閉とfocusの戻り |
+| キーボードとfocus | ローカルWorkspace画面で、ページ先頭からのTabで共通の「メインコンテンツへ」（文書一覧は読み込み後に選択中の行へfocusを移し、最初のTabと競合することがあるため、その画面では確認していない）、focus表示、Enterでmainへ、ダイアログの開閉とfocusの戻り |
 | reduced motion（2件） | 既定では動きあり。GTKの「アニメーション無効」設定で `prefers-reduced-motion` が成立し、motion tokenが0msになる |
 | API転送と境界 | 約2.8MBのmultipart上りと下りのbyte列が一致。名乗りheaderは無視、nosniff、Set-Cookie無し。`/v1/../` はWebKit自身が正規化してアプリのHTMLになり、正規化されない `..%2f`・`%2e%2e%2f`・`..%5c` は `/v1` の内側の404に留まる。OPTIONSは405。他originへのfetchは、CORSを許可したloopbackのserverに対しても `no-cors` でも送信前にCSP（connect-src）で止まり、server側に到達記録が無い。JavaScriptとして登録した原本も `/v1` 応答は `application/octet-stream`＋CSP sandboxで、`<script>` で読み込んでも実行されない。「ファイルを取得」でDownloadsへ保存 |
 | 画面からの文書登録 | ファイル欄にファイルを設定（WebDriverで設定。OSのファイル選択画面は使っていない）して「下書きとして登録」→詳細画面、APIから取り出した原本が一致、編集作業の一覧に表示（Queryの再取得） |
