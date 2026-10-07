@@ -1,6 +1,6 @@
 # Organization 複数担当・役割・委任（U1）— Capability Execution Status
 
-## 2026-10-07 — U1実装・ローカル検証完了、Draft PR/hosted CIへ
+## 2026-10-07 — U1 main統合済み（`04076b1`）
 
 ### 位置付け
 
@@ -85,9 +85,12 @@ Work側の必須local staging（`work.event_staging`）に次を記録する。A
 
 再review（同じreviewer）：GO。残る軽微事項（取消・期限切れを含む件数上限は削除方針未決定、委任・割当フォームの期限入力の事前判定はbrowser時計＝serverが再検証）は追補§8.7・利用手順に記録した。
 
+### main統合
+
+- review修正後のexact head（main `93947f3` 取込み後）で全job成功を確認し、[PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)をsquash mergeした。main `04076b1`
+- 直前のmain push CI（PR95 `93947f3`、別担当）の `rust-test` 失敗は、試験setup中の `postgres:18.6-bookworm` image取得の途中切断（`bytes remaining on stream`）で、test本体の失敗ではない
+- 統合後のmain push CI（`04076b1`）の結果は[U2の状況](organization-work-context-status.md)に記録する
+
 ### 次のexact action
 
-1. review修正のローカル検証（Rust・実PostgreSQL・GUI・実browser 13 stage）を完了してcommit・push
-2. exact-head CIを確認し、失敗は根因を直す。独立reviewの再確認
-3. 合格後mainへ統合し、main push CIを確認
-4. 同名branchを最新mainから作り直し、U2（WorkContext複数化・Attention・WorkViewProfile）へ
+U1は完了。U2（[状況](organization-work-context-status.md)）へ進む。

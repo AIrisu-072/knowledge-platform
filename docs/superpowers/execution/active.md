@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-07 06:10 UTC — Organization 複数文脈・注意・表示Profile（U2）
+
+- U1は[PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)でmain `04076b1` へ統合済み（[U1状況](organization-multi-principal-status.md)）。U2の再開先は[状況](organization-work-context-status.md)、[実装追補](../specs/2026-10-07-organization-work-context-attention-amendment.md)、[小計画](../plans/2026-10-07-organization-work-context.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `04076b1` から作り直した。合成文脈3件・文脈ごとのworkflow instance・Attention（導出）・確認済み（Work mutationではない）・表示Profile 3種・営業型の文脈一覧/事務型のWorkType別キュー
+- 独立reviewのNO-GO（審査文脈の差戻し後に再提出できない、差戻し注意の対象、注意APIの閲覧範囲ほか）を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 17 stageが成功。新しい判断は承認済みとして扱わない
+- 次はPR作成→exact-head CI→修正の再review→main統合→統合後CI→同名branchを作り直してU3
+
+---
+
 ## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
 
 - main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先
