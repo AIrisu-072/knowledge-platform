@@ -370,3 +370,132 @@ fn candidates_follow_the_execution_read_rule_across_reassignment_and_new_attempt
         Err(WorkError::WorkItemNotFound)
     );
 }
+
+#[test]
+fn reviewer_candidates_stay_with_the_completed_attempt_after_a_return() {
+    let (mut w, sales_ctx, refs) = running(1);
+    w.finish_agent_execution(&sales_ctx, structured(&refs), NOW)
+        .unwrap();
+    let MutationResult::DraftSaved { artifact, .. } = w
+        .apply(
+            ACTOR,
+            &Command::SaveDraft {
+                task_id: SALES_TASK_ID,
+                artifact_id: None,
+                context: context(&w),
+                value: TextValue {
+                    text: "提出".into(),
+                },
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let MutationResult::Submitted { snapshot, .. } = w
+        .apply(
+            ACTOR,
+            &Command::Submit {
+                task_id: SALES_TASK_ID,
+                context: context(&w),
+                artifacts: vec![ArtifactSelection {
+                    artifact_id: artifact.id,
+                    revision: artifact.revision,
+                }],
+                expected_attempt_id: Some(SALES_ATTEMPT_ID),
+                evidence_revision_refs: vec![],
+                finding_revision_refs: vec![],
+                decision_revision_refs: vec![],
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let office = VerifiedActor::Office01;
+    let office_ctx = |w: &Workflow| CommandContext {
+        operation_id: Uuid::now_v7(),
+        expected_revision: w.next.as_ref().unwrap().revision,
+        acting_assignment_id: OFFICE_ASSIGNMENT_ID,
+    };
+    w.apply(
+        office,
+        &Command::Claim {
+            task_id: OFFICE_TASK_ID,
+            context: office_ctx(&w),
+        },
+        NOW,
+    )
+    .unwrap();
+    let MutationResult::EvidenceRegistered { evidence, .. } = w
+        .apply(
+            office,
+            &Command::RegisterEvidence {
+                task_id: OFFICE_TASK_ID,
+                context: office_ctx(&w),
+                expected_attempt_id: OFFICE_ATTEMPT_ID,
+                source: w.evidence[0].source.clone(),
+                relevant_location: "事務の根拠".into(),
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let office_refs = vec![RevisionRef {
+        id: evidence.id,
+        revision: 1,
+    }];
+    let MutationResult::AgentExecutionRequested { execution, .. } = w
+        .apply(
+            office,
+            &Command::RequestAgentExecution {
+                task_id: OFFICE_TASK_ID,
+                context: office_ctx(&w),
+                expected_attempt_id: OFFICE_ATTEMPT_ID,
+                purpose: "事務の確認".into(),
+                evidence_revision_refs: office_refs.clone(),
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let ctx = w
+        .start_agent_execution(office, execution.id, NOW)
+        .unwrap()
+        .unwrap();
+    w.finish_agent_execution(&ctx, structured(&office_refs), NOW)
+        .unwrap();
+    let generated = w
+        .agent_result(office, execution.id)
+        .unwrap()
+        .generated_artifact_ids[0];
+    w.apply(
+        office,
+        &Command::Return {
+            task_id: OFFICE_TASK_ID,
+            context: office_ctx(&w),
+            expected_attempt_id: OFFICE_ATTEMPT_ID,
+            previous_submission_id: snapshot.id,
+            target_task_id: SALES_TASK_ID,
+            transition_id: RETURN_TRANSITION_ID,
+            reason: "再確認".into(),
+        },
+        NOW,
+    )
+    .unwrap();
+    // The completed office attempt keeps its own records, like its execution.
+    assert!(w.agent_execution(office, execution.id).is_ok());
+    assert!(w.generated_artifact(office, generated).is_ok());
+    // The returned sales attempt starts a new, empty chat; old records never attach.
+    assert!(
+        w.generated_artifact(ACTOR, w.generated_artifacts[0].id)
+            .is_err()
+    );
+    w.validate_integrity().unwrap();
+}
