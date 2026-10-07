@@ -7,8 +7,9 @@ pub use agent::*;
 use work_domain::{
     AgentDispatchContext, AgentExecution, AgentFailureCode, AgentFindingOutput, AgentResult,
     Command, EvidenceRecord, EvidenceSource, Finding, HandoffSnapshot, HumanDecision,
-    MutationResult, OrganizationView, PolicyCommand, ReturnInstruction, TaskDetail, TaskSummary,
-    TaskView, VerifiedActor, WorkError, WorkingArtifact,
+    MutationResult, OrganizationView, PolicyCommand, ReturnInstruction, TaskAttention, TaskDetail,
+    TaskSummary, TaskView, VerifiedActor, WorkContextHistory, WorkContextView, WorkError,
+    WorkingArtifact,
 };
 
 pub type WorkFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, WorkError>> + Send + 'a>>;
@@ -123,6 +124,41 @@ pub trait WorkRepository: Send + Sync {
         }
     }
     fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>>;
+    /// Authorized WorkContext projection (owner-unit readers and current assignees).
+    fn list_work_contexts(
+        &self,
+        _actor: VerifiedActor,
+        _scope: Option<Uuid>,
+    ) -> WorkFuture<'_, Vec<WorkContextView>> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn work_context(&self, _actor: VerifiedActor, _id: Uuid) -> WorkFuture<'_, WorkContextView> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    fn work_context_history(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, WorkContextHistory> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Derived attention with the same visibility as the task's list row.
+    fn task_attention(
+        &self,
+        _actor: VerifiedActor,
+        _task_id: Uuid,
+    ) -> WorkFuture<'_, TaskAttention> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Idempotent acknowledgment of the actor's own current assignment period.
+    fn acknowledge_attention(
+        &self,
+        _actor: VerifiedActor,
+        _task_id: Uuid,
+        _work_assignment_id: Uuid,
+    ) -> WorkFuture<'_, TaskAttention> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
     fn task(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, TaskDetail>;
     fn artifact(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact>;
     fn snapshot(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, HandoffSnapshot>;
