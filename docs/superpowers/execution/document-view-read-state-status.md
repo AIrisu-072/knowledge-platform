@@ -2,6 +2,15 @@
 
 Status: ACTIVE
 
+## 2026-10-07 13:51 UTC — 実受入の共有診断と本番API振分けの欠落
+
+- 第5公開head671fb237 / tree965ec049のCI37616879956は終端FAIL。Rust1980件、新DB遷移15件・移行・HTTP・fmt/clippy/sqlx等は成功したが、Document実画面は11成功/2失敗/5skipで、後続Agent/再起動は未実施。元の大ログはTransport closedのため、依頼者からbounded summaryの共有を受けて再開した
+- 失敗のdocument-runtime.spec.ts:25とmetadata-editor.spec.ts:159はtest宣言であり、assertionの場所ではない。完了点はそれぞれdocument-selected、gui-metadata-working-verified。ブラウザーAPIの失敗0はNode側のSDK呼出しを含まず、apiEventsは最初の12件であるため失敗直前の応答と解釈しない
+- 新GET read-state、POST read-state/view・resetはmanagement routerにあるが、本番compose_document_apiの振分けは旧PUTだけを登録しており、新3操作はread routerへ落ちることを独立に照合した。新HTTP試験はmanagement_router.merge(read_router)を直接使い、本番振分けを通らなかった。既存の合成契約にも新3操作が不足していた
+- 画面遷移前に新GETを呼ぶ両試験の位置と、この欠落は整合する。実SDKへ空本文404を返す限定試験では{}がthrowされ、画面遷移0・既存診断のerrorCategory unavailableを再現した。実失敗HTTP本文そのものを取得したとは主張しない
+- 本番相当の非同期DOM対照は成功。lazy routeと開発時StrictModeだけの別反例は証拠として保持し、今回の本番受入原因や合格へ混ぜない
+- まず既存Rust合成契約へ3操作を追加し、34→37caseへ拡張する。local Rustは未使用で、この試験sourceのREDを同じDraftの通常hostedで確認してから、振分けだけの最小補修を重ねる。新runner・timeout/skip緩和・新機能は追加しない。導入pinは合格前に変更しない
+
 ## 2026-10-07 11:47 UTC — 最終ローカルGUI確認とhosted追従補修
 
 - 第4公開head0b3987ad69d74378b2203a8d526ab2ab5b2ba931 / tree8b5aeb2449cc844810b86046642a4452f69ddef4は66ファイルが一致し、CI37615369766を開始した。旧75件境界の全GUI73suite/1721件・build成功を確認したが、独立レビューで回復panelからの再取得中に待機中VIEWを送る反例1件を発見した
