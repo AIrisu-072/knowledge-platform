@@ -26,7 +26,7 @@
 | C2 | case | 合成案件B・運転資金相談 | 営業内容整理 → 審査内容確認（新定義） | 営業工程 ready・未割当、期限あり |
 | C3 | request | 合成依頼C・住所変更届 | 営業内容整理 → 事務内容確認（既存定義と同じ工程） | 営業工程 ready・未割当、期限あり |
 
-- 既存C1のID・定義・保存JSONは変えない。C2・C3は `seed-work` が `ON CONFLICT DO NOTHING` で追加する（既存DBにも追加される。既存の進捗は変えない）
+- 既存C1のID・定義・保存JSONと `seed-work` は変えない。C2・C3は明示コマンド `seed-contexts` が `ON CONFLICT DO NOTHING` で追加する（既存DBにも追加できる。既存の進捗は変えない）。受入済みの2名journeyは単一文脈のDBのまま実行する
 - 各instanceは2工程（営業→次工程）で、次工程のtask IDと最初の試行IDはfixtureで固定する
 - 審査内容確認の責任区分は「審査」役割。審査は事務型（queue）のProfileで表示する。差戻しはworkflow状態であり別画面を作らない
 - WorkContextは `owner unit`（合成fixtureでは全文脈が「営業店」）を持つ。文脈そのものの読取は §4 の規則に従う

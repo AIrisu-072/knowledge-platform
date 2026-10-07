@@ -774,9 +774,34 @@ pub async fn seed_synthetic(pool: &PgPool, document_id: Option<Uuid>) -> Result<
     let policy = OrganizationPolicy::synthetic();
     sqlx::query("INSERT INTO work.organization_policies(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
         .bind(ORGANIZATION_POLICY_ID).bind(Json(policy)).execute(pool).await.map_err(database_error)?;
-    // Every fixture context; an existing instance (and its progress) is kept.
+    insert_fixtures(pool, document_id, &CONTEXT_FIXTURES[..1]).await
+}
+/// Explicit, separately invoked seed of the additional synthetic WorkContexts
+/// (U2). The original single-context fixture and its accepted journeys stay as
+/// they were; an existing instance and its progress are never overwritten.
+pub async fn seed_synthetic_contexts(
+    pool: &PgPool,
+    document_id: Option<Uuid>,
+) -> Result<(), WorkError> {
+    check_schema_compatibility(pool).await?;
+    let present: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM work.organization_policies WHERE id=$1)")
+            .bind(ORGANIZATION_POLICY_ID)
+            .fetch_one(pool)
+            .await
+            .map_err(database_error)?;
+    if !present {
+        return Err(WorkError::DependencyUnavailable);
+    }
+    insert_fixtures(pool, document_id, &CONTEXT_FIXTURES[1..]).await
+}
+async fn insert_fixtures(
+    pool: &PgPool,
+    document_id: Option<Uuid>,
+    fixtures: &[ContextFixture],
+) -> Result<(), WorkError> {
     let seeded_at = OffsetDateTime::now_utc();
-    for fixture in &CONTEXT_FIXTURES {
+    for fixture in fixtures {
         let workflow = Workflow::from_fixture(fixture, document_id, seeded_at)?;
         sqlx::query("INSERT INTO work.workflow_instances(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
             .bind(workflow.id).bind(Json(&workflow)).execute(pool).await.map_err(database_error)?;

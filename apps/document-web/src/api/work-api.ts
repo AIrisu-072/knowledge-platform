@@ -35,6 +35,11 @@ export type RoleAssignmentCommand = Generated.RoleAssignmentCommand;
 export type DelegationCommand = Generated.DelegationCommand;
 export type RevokePolicyRecordCommand = Generated.RevokePolicyRecordCommand;
 export type AssignmentCommand = Generated.AssignmentCommand;
+export type Attention = Generated.Attention;
+export type TaskAttention = Generated.TaskAttention;
+export type WorkContext = Generated.WorkContext;
+export type WorkContextHistory = Generated.WorkContextHistory;
+export type WorkViewProfile = Generated.WorkViewProfile;
 export type PolicyResult = Generated.RoleAssignmentCreated | Generated.RoleAssignmentRevoked | Generated.DelegationCreated | Generated.DelegationRevoked;
 export const SYNTHETIC_PRINCIPALS = ['sales-01', 'office-01', 'review-01', 'approver-01', 'multi-role-01', 'delegate-01'] as const;
 export type SyntheticPrincipal = (typeof SYNTHETIC_PRINCIPALS)[number];
@@ -58,7 +63,22 @@ function policyAction(value: unknown): PolicyAction { const text = string(value)
 function responsibilityKind(value: unknown): 'role_assignment' | 'delegation' { if (value !== 'role_assignment' && value !== 'delegation') throw new Error('invalid_responsibility'); return value; }
 function responsibility(value: unknown): Responsibility {
   const item = object(value);
-  return { id: string(item.id), kind: responsibilityKind(item.kind), principal: principal(item.principal), roleId: string(item.roleId), roleLabel: string(item.roleLabel), unitId: string(item.unitId), unitLabel: string(item.unitLabel), actions: array(item.actions, policyAction), validFrom: string(item.validFrom), validUntil: nullable(item.validUntil, string), sourceAssignmentId: nullable(item.sourceAssignmentId, string), delegator: nullable(item.delegator, principal) };
+  return { id: string(item.id), kind: responsibilityKind(item.kind), principal: principal(item.principal), roleId: string(item.roleId), roleLabel: string(item.roleLabel), unitId: string(item.unitId), unitLabel: string(item.unitLabel), actions: array(item.actions, policyAction), validFrom: string(item.validFrom), validUntil: nullable(item.validUntil, string), sourceAssignmentId: nullable(item.sourceAssignmentId, string), delegator: nullable(item.delegator, principal), workViewProfileId: string(item.workViewProfileId) };
+}
+function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T { const text = string(value); if (!(allowed as readonly string[]).includes(text)) throw new Error('invalid_response'); return text as T; }
+const ATTENTION_KINDS = ['newly_assigned', 'returned', 'due_soon', 'overdue'] as const;
+const TASK_STATES = ['ready', 'active', 'held', 'completed'] as const;
+function attention(value: unknown): Attention { const item = object(value); return { kind: oneOf(item.kind, ATTENTION_KINDS), sourceId: nullable(item.sourceId, string), dueAt: nullable(item.dueAt, string) }; }
+function taskAttention(value: unknown): TaskAttention { const item = object(value); return { taskId: string(item.taskId), attemptId: string(item.attemptId), evaluatedAt: string(item.evaluatedAt), items: array(item.items, attention) }; }
+function workContext(value: unknown): WorkContext {
+  const item = object(value);
+  const progress = nullable(item.progress, (entry) => array(entry, (step) => { const value = object(step); if (revision(value.attemptNumber) < 1) throw new Error('invalid_attempt'); return { taskId: string(value.taskId), stepLabel: string(value.stepLabel), workTypeId: string(value.workTypeId), state: oneOf(value.state, TASK_STATES), attemptNumber: revision(value.attemptNumber), dueAt: nullable(value.dueAt, string), assigned: bool(value.assigned) }; }));
+  return { id: string(item.id), kind: oneOf(item.kind, ['case', 'routine_run', 'batch', 'request'] as const), title: string(item.title), ownerUnitId: string(item.ownerUnitId), progress, canReadHistory: bool(item.canReadHistory), ownTaskIds: array(item.ownTaskIds, string), attentionCount: revision(item.attentionCount) };
+}
+const MODULES = ['document', 'history', 'evidence', 'agent', 'search', 'resources', 'return'] as const;
+function workViewProfile(value: unknown): WorkViewProfile {
+  const item = object(value);
+  return { id: string(item.id), key: string(item.key), label: string(item.label), archetype: oneOf(item.archetype, ['context', 'queue'] as const), primaryGrouping: oneOf(item.primaryGrouping, ['context', 'work_type'] as const), defaultSort: oneOf(item.defaultSort, ['due_at'] as const), initialModule: oneOf(item.initialModule, MODULES), modules: array(item.modules, (entry) => { const module = object(entry); return { module: oneOf(module.module, MODULES), presentation: oneOf(module.presentation, ['hidden', 'available', 'visible', 'prominent'] as const) }; }) };
 }
 function assignmentView(value: unknown): TaskAssignmentView {
   const item = object(value);
@@ -91,7 +111,7 @@ function task(value: unknown): TaskSummary {
   const item = object(value);
   if (revision(item.attemptNumber) < 1) throw new Error('invalid_attempt');
   if (!['ready', 'active', 'held', 'completed'].includes(string(item.state))) throw new Error('invalid_state');
-  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canHold: bool(item.canHold), holdActionId: item.holdActionId === null ? null : string(item.holdActionId), canResume: bool(item.canResume), resumeActionId: item.resumeActionId === null ? null : string(item.resumeActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId), requiredRoleId: nullable(item.requiredRoleId, string), claimAssignmentId: nullable(item.claimAssignmentId, string), canAssign: bool(item.canAssign), assignment: nullable(item.assignment, assignmentView) };
+  return { id: string(item.id), contextId: string(item.contextId), attemptId: string(item.attemptId), attemptNumber: revision(item.attemptNumber), revision: revision(item.revision), title: string(item.title), stepLabel: string(item.stepLabel), state: item.state as TaskSummary['state'], canClaim: bool(item.canClaim), canEdit: bool(item.canEdit), canSubmit: bool(item.canSubmit), canComplete: bool(item.canComplete), completionActionId: item.completionActionId === null ? null : string(item.completionActionId), canHold: bool(item.canHold), holdActionId: item.holdActionId === null ? null : string(item.holdActionId), canResume: bool(item.canResume), resumeActionId: item.resumeActionId === null ? null : string(item.resumeActionId), canReturn: bool(item.canReturn), canRegisterEvidence: bool(item.canRegisterEvidence), canRegisterFinding: bool(item.canRegisterFinding), canRecordDecision: bool(item.canRecordDecision), canRequestAgent: bool(item.canRequestAgent), returnTransition: returnTransition(item.returnTransition), returnInstructionId: item.returnInstructionId === null ? null : string(item.returnInstructionId), handoffSnapshotId: item.handoffSnapshotId === null ? null : string(item.handoffSnapshotId), requiredRoleId: nullable(item.requiredRoleId, string), claimAssignmentId: nullable(item.claimAssignmentId, string), canAssign: bool(item.canAssign), assignment: nullable(item.assignment, assignmentView), workTypeId: string(item.workTypeId), workTypeLabel: string(item.workTypeLabel), dueAt: nullable(item.dueAt, string), attention: array(item.attention, attention), contextTitle: nullable(item.contextTitle, string) };
 }
 function returnTransition(value: unknown): TaskSummary['returnTransition'] {
   if (value === null) return null;
@@ -214,7 +234,13 @@ export const workApi = {
     if (actingAssignmentId !== null && !responsibilities?.some((entry) => entry.id === actingAssignmentId)) throw new Error('invalid_acting_responsibility');
     return { principalId, displayName: string(item.displayName), actingAssignmentId, responsibilities, canManageOrganization: bool(item.canManageOrganization), policyRevision: nullable(item.policyRevision, revision), capabilities: { nativeWorkspace: bool(c.nativeWorkspace), agent: bool(c.agent), search: bool(c.search), fileUpload: bool(c.fileUpload), return: bool(c.return) } };
   }),
-  listTasks: (view: 'context' | 'queue', actingAssignmentId?: string) => request(`/tasks?view=${view}${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); return { items: array(item.items, task), nextCursor: null }; }),
+  listTasks: (view: 'context' | 'queue', actingAssignmentId?: string, filter: { contextId?: string; workTypeId?: string } = {}) => request(`/tasks?view=${view}${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}${filter.contextId ? `&contextId=${segment(filter.contextId)}` : ''}${filter.workTypeId ? `&workTypeId=${segment(filter.workTypeId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); const items = array(item.items, task); if (items.some((entry) => (filter.contextId && entry.contextId !== filter.contextId) || (filter.workTypeId && entry.workTypeId !== filter.workTypeId))) throw new Error('response_target_mismatch'); return { items, nextCursor: null }; }),
+  listWorkViewProfiles: () => request('/work-view-profiles', (value) => page(value, workViewProfile)),
+  listWorkContexts: (actingAssignmentId?: string) => request(`/work-contexts${actingAssignmentId ? `?actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => page(value, workContext)),
+  getWorkContext: (id: string) => request(`/work-contexts/${segment(id)}`, (value) => exact(value, id, workContext)),
+  getWorkContextHistory: (id: string) => request(`/work-contexts/${segment(id)}/history`, (value): WorkContextHistory => { const item = object(value); if (string(item.contextId) !== id) throw new Error('response_target_mismatch'); return { contextId: id, entries: array(item.entries, (entry) => { const event = object(entry); return { kind: string(event.kind), occurredAt: string(event.occurredAt) }; }) }; }),
+  getTaskAttention: (id: string) => request(`/tasks/${segment(id)}/attention`, (value) => { const receipt = taskAttention(value); if (receipt.taskId !== id) throw new Error('response_target_mismatch'); return receipt; }),
+  markAttentionSeen: (id: string, workAssignmentId: string) => request(`/tasks/${segment(id)}/attention-seen`, (value) => { const receipt = taskAttention(value); if (receipt.taskId !== id) throw new Error('response_target_mismatch'); return receipt; }, 'POST', { workAssignmentId }),
   listUnits: () => request('/units', (value) => page(value, unit)),
   listRoles: () => request('/roles', (value) => page(value, role)),
   listRoleAssignments: () => request('/role-assignments', (value) => policyPage(value, roleAssignment)),

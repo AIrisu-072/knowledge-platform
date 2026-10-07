@@ -14,6 +14,7 @@ import { workApi, actingFor, executeWorkOperation, isOperationNotFound, validate
 import { formatDateTime } from '../view-model/date-time';
 import { TaskAssignmentPanel, TaskAssignmentSummary } from '../components/organization/TaskAssignmentPanel';
 import { actingLabel, responsibilityLabel } from '../application/organization-policy';
+import { AttentionBadges, ContextCollection, ContextOverview, QueueCollection } from '../components/organization/WorkContextPanels';
 import styles from './TaskWorkspace.module.css';
 
 const sessionKey = ['organization-session'];
@@ -36,7 +37,15 @@ export function TaskHomePage() {
   useEffect(() => { if (sessionData && (currentHref === '/tasks' || currentHref.startsWith('/tasks?'))) organization.setContext(sessionData, currentHref); }, [sessionData, currentHref, organization.setContext]);
   // A selected responsibility only narrows the projection; an unknown one is ignored, never sent as identity.
   const scope = search.acting && sessionData?.responsibilities?.some((value) => value.id === search.acting) ? search.acting : undefined;
-  const tasks = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'tasks', search.view, ...(scope ? [scope] : [])], queryFn: () => workApi.listTasks(search.view, scope), enabled: Boolean(sessionData), placeholderData: (previous, query) => query?.queryKey[1] === sessionData?.principalId && query?.queryKey[2] === sessionData?.actingAssignmentId ? previous : undefined, staleTime: 0, gcTime: 0, retry: false });
+  // Presentation default only: the selected (or session) responsibility's WorkViewProfile.
+  const profiles = useQuery({ queryKey: ['organization-work-view-profiles'], queryFn: workApi.listWorkViewProfiles, enabled: Boolean(sessionData) && !search.view, staleTime: 0, gcTime: 0, retry: false });
+  const activeResponsibility = sessionData?.responsibilities?.find((value) => value.id === (scope ?? sessionData.actingAssignmentId));
+  const profile = profiles.isSuccess ? profiles.data.items.find((value) => value.id === activeResponsibility?.workViewProfileId) : undefined;
+  const profileSettled = Boolean(search.view) || !activeResponsibility || profiles.isSuccess || profiles.isError;
+  const view = search.view ?? profile?.archetype ?? 'context';
+  const tasks = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'tasks', view, ...(scope ? [scope] : [])], queryFn: () => workApi.listTasks(view, scope), enabled: Boolean(sessionData) && profileSettled, placeholderData: (previous, query) => query?.queryKey[1] === sessionData?.principalId && query?.queryKey[2] === sessionData?.actingAssignmentId ? previous : undefined, staleTime: 0, gcTime: 0, retry: false });
+  const contexts = useQuery({ queryKey: [...(sessionData ? actorKey(sessionData) : ['organization-unavailable']), 'contexts', ...(scope ? [scope] : [])], queryFn: () => workApi.listWorkContexts(scope), enabled: Boolean(sessionData) && profileSettled && view === 'context', staleTime: 0, gcTime: 0, retry: false });
+  const selectedContext = !search.taskId && search.contextId && contexts.isSuccess ? contexts.data.items.find((value) => value.id === search.contextId) : undefined;
   useEffect(() => {
     if (isDisclosureDenied(session.error) || isDisclosureDenied(tasks.error)) {
       clearTransients('');
@@ -63,7 +72,10 @@ export function TaskHomePage() {
     client.removeQueries({ queryKey: ['organization'], predicate: (query) => query.queryKey[3] === 'agent-context' && (query.queryKey[1] !== sessionData?.principalId || query.queryKey[2] !== sessionData?.actingAssignmentId || query.queryKey[4] !== selected?.id || query.queryKey[5] !== selected?.attemptId) });
   }, [sessionData?.principalId, sessionData?.actingAssignmentId, selected?.id, selected?.attemptId, clearAgentTransients, client]);
   const [module, setModule] = useState('document');
-  useEffect(() => { setModule('document'); setBlockedId(null); }, [search.taskId, sessionData?.principalId, sessionData?.actingAssignmentId]);
+  useEffect(() => { setModule(profile?.initialModule ?? 'document'); setBlockedId(null); }, [search.taskId, sessionData?.principalId, sessionData?.actingAssignmentId, profile?.initialModule]);
+  const [attentionNotice, setAttentionNotice] = useState('');
+  useEffect(() => setAttentionNotice(''), [search.taskId]);
+  const acknowledge = useMutation({ mutationFn: ({ taskId, period }: { taskId: string; period: string }) => workApi.markAttentionSeen(taskId, period), onSuccess: () => { setAttentionNotice('新しい割当を確認済みにしました。作業は完了していません。'); void tasks.refetch(); if (view === 'context') void contexts.refetch(); } });
   const updateSearch = (patch: Partial<TaskSearch>) => { void navigate({ search: (previous) => ({ ...previous, ...patch }) }); };
   const refresh = async () => { if (sessionData && selected) await client.invalidateQueries({ queryKey: evidenceRecordsKey(sessionData, selected) }); await tasks.refetch(); if (selected && !selected.canClaim) await detail.refetch(); if (detailData?.handoffSnapshotId) await snapshot.refetch(); if (detailData?.returnInstructionId) await instruction.refetch(); if (priorSnapshotId && priorSnapshotId !== detailData?.handoffSnapshotId) await priorSnapshot.refetch(); };
   function denyDisclosure() {
@@ -92,20 +104,22 @@ export function TaskHomePage() {
     client.removeQueries({ queryKey: taskKey(sessionData, result.task) });
     void client.invalidateQueries({ queryKey: [...actorKey(sessionData), 'tasks'] });
   }
+  const hint = (item: TaskSummary) => item.canClaim ? '担当を引き受けると詳細を表示' : item.canAssign && item.assignment?.principalId !== sessionData?.principalId ? (item.assignment ? (item.assignment.responsibilityEffective ? `担当 ${item.assignment.principalId}` : `担当の責任が終了 · ${item.assignment.principalId}`) : '未割当') : item.contextTitle ?? item.stepLabel;
   const collection = <aside className={styles.collection} aria-label="タスク一覧">
-    <p className={styles.muted}>同じタスクの2つの表示</p>
-    <button type="button" aria-pressed={search.view === 'context'} onClick={() => updateSearch({ view: 'context' })}>営業型・文脈</button>
-    <button type="button" aria-pressed={search.view === 'queue'} onClick={() => updateSearch({ view: 'queue' })}>事務型・キュー</button>
-    <h2>{search.view === 'context' ? '文脈ごとのタスク' : '担当可能なキュー'}</h2>
+    <p className={styles.muted}>同じタスクの2つの表示{profile ? `（既定：${profile.label}）` : ''}</p>
+    <button type="button" aria-pressed={view === 'context'} onClick={() => updateSearch({ view: 'context', workTypeId: undefined })}>営業型・文脈</button>
+    <button type="button" aria-pressed={view === 'queue'} onClick={() => updateSearch({ view: 'queue', contextId: undefined })}>事務型・キュー</button>
+    <h2>{view === 'context' ? '文脈ごとのタスク' : '担当可能なキュー'}</h2>
     <p className={styles.muted}>現在の担当で閲覧できる範囲</p>
-    {tasks.isFetching && <p role="status">一覧を読み込み中…</p>}
+    {(tasks.isFetching || !profileSettled) && <p role="status">一覧を読み込み中…</p>}
     {tasks.isError && <p role="alert">{workErrorMessage(tasks.error)}</p>}
     {tasks.isSuccess && tasks.data.items.length === 0 && <p>閲覧できるタスクはありません</p>}
-    {tasks.isSuccess && tasks.data.items.map((item) => <button type="button" key={item.id} aria-pressed={search.taskId === item.id} onClick={() => updateSearch({ taskId: item.id })}>
-      {item.title}<span>{taskStateLabel(item.state)}</span><small>{item.canClaim ? '担当を引き受けると詳細を表示' : item.canAssign && item.assignment?.principalId !== sessionData?.principalId ? (item.assignment ? (item.assignment.responsibilityEffective ? `担当 ${item.assignment.principalId}` : `担当の責任が終了 · ${item.assignment.principalId}`) : '未割当') : search.view === 'context' ? `文脈 ${item.contextId}` : item.stepLabel}</small>
-    </button>)}
+    {tasks.isSuccess && sessionData && (view === 'context'
+      ? <ContextCollection contexts={contexts.isSuccess ? contexts.data.items : undefined} contextError={contexts.error} tasks={tasks.data.items} selectedContext={search.contextId} selectedTask={search.taskId} hint={hint} onContext={(id) => updateSearch({ contextId: id, taskId: undefined })} onTask={(id) => updateSearch({ taskId: id })} />
+      : <QueueCollection tasks={tasks.data.items} session={sessionData} workTypeId={search.workTypeId} selectedTask={search.taskId} hint={hint} onWorkType={(id) => updateSearch({ workTypeId: id })} onTask={(id) => updateSearch({ taskId: id })} />)}
     <div className={styles.actions}><button type="button" onClick={() => void refresh()}>再読込</button></div>
   </aside>;
+  const newlyAssigned = selected?.attention.find((value) => value.kind === 'newly_assigned' && value.sourceId);
   const contextPanel = <>
     <div className={styles.moduleButtons} aria-label="文脈モジュール">
       {[['document', '文書・比較'], ['history', '履歴'], ['evidence', '根拠'], ['agent', 'Agent'], ['search', '検索'], ['resources', 'Workspace'], ['return', '差戻']].map(([id, label]) => <button key={id} type="button" aria-pressed={module === id} onClick={() => setModule(id!)}>{label}</button>)}
@@ -119,9 +133,16 @@ export function TaskHomePage() {
     <div className={styles.layout}>{collection}<section className={styles.work} aria-label="主作業">
       {session.isPending && <p role="status">利用者を確認中…</p>}
       {session.isError && <><h1>タスクを開けません</h1><p role="alert">{workErrorMessage(session.error)}</p></>}
-      {sessionData && !search.taskId && <><h1>タスク</h1><p>一覧から作業するタスクを選択してください</p></>}
+      {sessionData && !search.taskId && selectedContext && tasks.isSuccess && <ContextOverview session={sessionData} context={selectedContext} tasks={tasks.data.items} onTask={(id) => updateSearch({ taskId: id })} />}
+      {sessionData && !search.taskId && search.contextId && contexts.isSuccess && !selectedContext && <><h1>選択中の文脈を利用できません</h1><p>対象が一覧にありません。別の文脈を自動選択していません。</p></>}
+      {sessionData && !search.taskId && !search.contextId && <><h1>タスク</h1><p>一覧から作業する{view === 'context' ? '文脈またはタスク' : 'タスク'}を選択してください</p></>}
       {sessionData && search.taskId && tasks.isSuccess && !selected && <><h1>選択中のタスクを利用できません</h1><p>対象が一覧にありません。別のタスクを自動選択していません。</p></>}
-      {sessionData && selected && <><h1>{selected.title}</h1><p className={styles.muted}>タスク {selected.id} · 試行 {selected.attemptNumber}（{selected.attemptId}）</p><span className={styles.badge}>{taskStateLabel(selected.state)}</span>
+      {sessionData && selected && <><h1>{selected.title}</h1>{selected.contextTitle && <p>文脈：{selected.contextTitle}</p>}<p className={styles.muted}>タスク {selected.id} · 試行 {selected.attemptNumber}（{selected.attemptId}）{selected.workTypeLabel ? ` · ${selected.workTypeLabel}` : ''}</p><span className={styles.badge}>{taskStateLabel(selected.state)}</span>
+        {selected.dueAt && <p>期限 <time dateTime={selected.dueAt}>{formatDateTime(selected.dueAt, 'Asia/Tokyo')}</time></p>}
+        <AttentionBadges attention={selected.attention} label="このタスクの注意" />
+        {newlyAssigned && <div className={styles.actions}><button type="button" disabled={acknowledge.isPending} onClick={() => acknowledge.mutate({ taskId: selected.id, period: newlyAssigned.sourceId! })}>確認済みにする</button></div>}
+        {acknowledge.isError && <p role="alert">{workErrorMessage(acknowledge.error)}</p>}
+        {attentionNotice && <p role="status">{attentionNotice}</p>}
         {selected.assignment && <TaskAssignmentSummary task={selected} session={sessionData} />}
         {managedOnly ? <TaskAssignmentPanel key={`${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} scope={scope} onAssigned={applyAssignment} /> : blockedId === attemptKey(selected) ? <p role="alert">このタスクを現在の担当では利用できません。内容を非表示にしました。</p> : selected.canClaim ? <TaskAction key={`${sessionData.principalId}:${sessionData.actingAssignmentId}:${selected.id}:${selected.attemptId}`} session={sessionData} task={selected} applyResult={applyResult} refresh={refresh} onDenied={denyDisclosure} /> : detail.isError ? <p role="alert">{workErrorMessage(detail.error)}</p> : detailData ? <>
           {detailData.returnInstructionId && instruction.isPending && <p role="status">差戻指示を確認中…</p>}

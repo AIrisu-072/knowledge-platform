@@ -80,7 +80,9 @@ impl work_application::AgentSourcePort for TestAgentSource {
 }
 
 use work_domain::*;
-use work_repository_postgres::{PostgresWorkRepository, migrate, seed_synthetic};
+use work_repository_postgres::{
+    PostgresWorkRepository, migrate, seed_synthetic, seed_synthetic_contexts,
+};
 fn ctx(actor: VerifiedActor, revision: i64) -> CommandContext {
     CommandContext {
         operation_id: Uuid::now_v7(),
@@ -2001,6 +2003,16 @@ async fn several_contexts_commit_to_their_own_instance_and_acknowledgment_is_not
         .unwrap();
     migrate(&pool).await.unwrap();
     seed_synthetic(&pool, None).await.unwrap();
+    // The original fixture alone until the explicit context seed.
+    let count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM work.workflow_instances")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(count().await, 1);
+    seed_synthetic_contexts(&pool, None).await.unwrap();
+    seed_synthetic_contexts(&pool, None).await.unwrap();
     let repository = PostgresWorkRepository::new(pool.clone());
     let instances: Vec<Uuid> =
         sqlx::query_scalar("SELECT id FROM work.workflow_instances ORDER BY id")
@@ -2226,6 +2238,7 @@ async fn several_contexts_commit_to_their_own_instance_and_acknowledgment_is_not
     assert_eq!(stored, 1);
     // Re-seeding adds nothing and never resets progress.
     seed_synthetic(&pool, None).await.unwrap();
+    seed_synthetic_contexts(&pool, None).await.unwrap();
     assert_eq!(revisions().await.len(), 3);
     assert_eq!(
         repository

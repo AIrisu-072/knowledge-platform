@@ -16,7 +16,7 @@ import { DocumentHomePage } from '../src/routes/DocumentHomePage';
 jest.mock('../src/application/document-workspace', () => ({ documentApi: { getDocument: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn(), getRootFolder: jest.fn(), listFolderChildren: jest.fn(), listDocuments: jest.fn() } }));
 
 const session = { principalId: 'sales-01', displayName: '営業担当（模擬）', actingAssignmentId: 'assignment-sales', capabilities: { nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: false } };
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null, requiredRoleId: null, claimAssignmentId: null, canAssign: false, assignment: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null, requiredRoleId: null, claimAssignmentId: null, canAssign: false, assignment: null, workTypeId: 'work-type-1', workTypeLabel: '内容確認', dueAt: null, attention: [], contextTitle: null };
 const artifact = { id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '保存済みの文案' }, visibility: 'work_item_private' };
 const detail = { ...task, inputResources: [{ kind: 'document', documentId: '00000000-0000-4000-8000-000000000010', label: '共有の入力文書' }], workingArtifacts: [artifact], history: [], agentExecutionIds: [] };
 const nextTask = { ...task, id: 'task-2', attemptId: 'attempt-2', title: '事務確認', stepLabel: '事務確認', state: 'ready', canClaim: true, canEdit: false, canSubmit: false };
@@ -29,6 +29,7 @@ function setup(entry = '/tasks?view=context&taskId=task-1') {
   jest.mocked(documentApi.getDocument).mockResolvedValue({ documentId: detail.inputResources[0]!.documentId, displayRevision: null } as never);
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [task], nextCursor: null } as never);
+  jest.spyOn(workApi, 'listWorkContexts').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'getTask').mockResolvedValue(detail as never);
   jest.spyOn(workApi, 'listEvidence').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'listFindings').mockResolvedValue({ items: [], nextCursor: null });

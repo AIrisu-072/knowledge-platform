@@ -118,6 +118,24 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "query",
+            "name": "contextId",
+            "description": "同じ認可済みprojectionを文脈で絞る表示用filter。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workTypeId",
+            "description": "同じ認可済みprojectionをWorkTypeで絞る表示用filter。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ]
       }
@@ -1872,6 +1890,299 @@
           }
         }
       }
+    },
+    "/v1/organization/work-view-profiles": {
+      "get": {
+        "operationId": "listWorkViewProfiles",
+        "summary": "listWorkViewProfiles",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkViewProfilePage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organization/work-contexts": {
+      "get": {
+        "operationId": "listWorkContexts",
+        "summary": "listWorkContexts",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkContextPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actingAssignmentId",
+            "description": "表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/work-contexts/{id}": {
+      "get": {
+        "operationId": "getWorkContext",
+        "summary": "getWorkContext",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkContext"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/work-contexts/{id}/history": {
+      "get": {
+        "operationId": "getWorkflowHistory",
+        "summary": "getWorkflowHistory",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkContextHistory"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/attention": {
+      "get": {
+        "operationId": "getWorkAttention",
+        "summary": "getWorkAttention",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAttention"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/tasks/{id}/attention-seen": {
+      "post": {
+        "operationId": "markWorkAttentionSeen",
+        "summary": "markWorkAttentionSeen",
+        "responses": {
+          "200": {
+            "description": "現在の認可で評価した結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAttention"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttentionSeenCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2130,6 +2441,34 @@
                 "type": "null"
               }
             ]
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeLabel": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "attention": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attention"
+            },
+            "maxItems": 4
+          },
+          "contextTitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "文脈の表示名。owner unitのcontext.read保有者と現在の担当者本人にだけ開示。"
           }
         },
         "required": [
@@ -2161,7 +2500,12 @@
           "requiredRoleId",
           "claimAssignmentId",
           "canAssign",
-          "assignment"
+          "assignment",
+          "workTypeId",
+          "workTypeLabel",
+          "dueAt",
+          "attention",
+          "contextTitle"
         ]
       },
       "WorkingArtifact": {
@@ -2431,6 +2775,34 @@
                 "type": "null"
               }
             ]
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeLabel": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "attention": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attention"
+            },
+            "maxItems": 4
+          },
+          "contextTitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "文脈の表示名。owner unitのcontext.read保有者と現在の担当者本人にだけ開示。"
           }
         },
         "required": [
@@ -2466,7 +2838,12 @@
           "requiredRoleId",
           "claimAssignmentId",
           "canAssign",
-          "assignment"
+          "assignment",
+          "workTypeId",
+          "workTypeLabel",
+          "dueAt",
+          "attention",
+          "contextTitle"
         ]
       },
       "TaskPage": {
@@ -2898,7 +3275,8 @@
               "FINDING_NOT_FOUND",
               "AGENT_RESULT_NOT_READY",
               "WORK_CONTEXT_STALE",
-              "ORGANIZATION_RECORD_NOT_FOUND"
+              "ORGANIZATION_RECORD_NOT_FOUND",
+              "WORK_CONTEXT_NOT_FOUND"
             ]
           },
           "traceId": {
@@ -4366,6 +4744,11 @@
               "delegate-01",
               null
             ]
+          },
+          "workViewProfileId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "役割の上書き→組織単位の既定で選ぶ表示Profile。権限ではない。"
           }
         },
         "required": [
@@ -4380,7 +4763,8 @@
           "validFrom",
           "validUntil",
           "sourceAssignmentId",
-          "delegator"
+          "delegator",
+          "workViewProfileId"
         ],
         "description": "評価時点で有効な責任の説明。再利用できる許可ではない。"
       },
@@ -5250,6 +5634,375 @@
           "kind",
           "delegation",
           "policyRevision"
+        ]
+      },
+      "AttentionKind": {
+        "type": "string",
+        "enum": [
+          "newly_assigned",
+          "returned",
+          "due_soon",
+          "overdue"
+        ],
+        "description": "記録から導出した注意。lifecycleではない。waiting_for_confirmation/blockedは根拠の記録が無いため出さない。"
+      },
+      "Attention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AttentionKind"
+          },
+          "sourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "根拠記録のID（割当期間・差戻指示）。担当者本人にだけ開示。"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "kind",
+          "sourceId",
+          "dueAt"
+        ]
+      },
+      "TaskAttention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attention"
+            },
+            "maxItems": 4
+          }
+        },
+        "required": [
+          "taskId",
+          "attemptId",
+          "evaluatedAt",
+          "items"
+        ]
+      },
+      "AttentionSeenCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "workAssignmentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "本人の現在の割当期間。Work操作ではなく冪等な確認済み記録。"
+          }
+        },
+        "required": [
+          "workAssignmentId"
+        ]
+      },
+      "ContextProgressItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepLabel": {
+            "type": "string"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "active",
+              "held",
+              "completed"
+            ]
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "assigned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "taskId",
+          "stepLabel",
+          "workTypeId",
+          "state",
+          "attemptNumber",
+          "dueAt",
+          "assigned"
+        ]
+      },
+      "WorkContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "case",
+              "routine_run",
+              "batch",
+              "request"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "ownerUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContextProgressItem"
+                },
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "owner unitのcontext.progress.readがある場合だけ。担当者識別・理由・本文を含まない。"
+          },
+          "canReadHistory": {
+            "type": "boolean"
+          },
+          "ownTaskIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 2
+          },
+          "attentionCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "ownerUnitId",
+          "progress",
+          "canReadHistory",
+          "ownTaskIds",
+          "attentionCount"
+        ]
+      },
+      "WorkContextPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkContext"
+            },
+            "maxItems": 32
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "WorkContextHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "occurredAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "kind",
+                "occurredAt"
+              ]
+            },
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "contextId",
+          "entries"
+        ],
+        "description": "業務状態の推移（種類と時刻）だけ。理由・本文・識別を含まない。"
+      },
+      "WorkViewProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "archetype": {
+            "type": "string",
+            "enum": [
+              "context",
+              "queue"
+            ]
+          },
+          "primaryGrouping": {
+            "type": "string",
+            "enum": [
+              "context",
+              "work_type"
+            ]
+          },
+          "defaultSort": {
+            "type": "string",
+            "enum": [
+              "due_at"
+            ]
+          },
+          "initialModule": {
+            "type": "string",
+            "enum": [
+              "document",
+              "history",
+              "evidence",
+              "agent",
+              "search",
+              "resources",
+              "return"
+            ]
+          },
+          "modules": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "module": {
+                  "type": "string",
+                  "enum": [
+                    "document",
+                    "history",
+                    "evidence",
+                    "agent",
+                    "search",
+                    "resources",
+                    "return"
+                  ]
+                },
+                "presentation": {
+                  "type": "string",
+                  "enum": [
+                    "hidden",
+                    "available",
+                    "visible",
+                    "prominent"
+                  ]
+                }
+              },
+              "required": [
+                "module",
+                "presentation"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "label",
+          "archetype",
+          "primaryGrouping",
+          "defaultSort",
+          "initialModule",
+          "modules"
+        ],
+        "description": "表示だけを変える定義。権限・操作を変えない。"
+      },
+      "WorkViewProfilePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkViewProfile"
+            },
+            "maxItems": 16
+          },
+          "nextCursor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       }
     }
