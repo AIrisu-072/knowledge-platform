@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）
+
+- Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません
+- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eを実装しました。Tauri shellは、MPL-2.0・Linux advisory・Windows経路・WebView2・OSV送信の[依頼者判断](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)待ちでSTOPしています。PR52の限定例外は使っていません
+
+---
+
 ## 2026-10-07 01:28 UTC — 公開前WORKINGの内容比較
 
 - PR93統合main41b584ddを基点に、通常「版・改訂」から正規readで確認したcurrent published/選択WORKINGの固定IDを既存Version comparisonへ送る。[状況](document-working-comparison-status.md)と[限定計画](../plans/2026-10-07-document-working-comparison.md)が再開先
