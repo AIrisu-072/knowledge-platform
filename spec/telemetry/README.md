@@ -164,7 +164,7 @@ catalogはclientが選ぶIDだけに印を付ける：fieldの `client_chosen: t
  "versions": {"1": {"<fixture名>@<入力行hashの先頭16桁>": "<sha256 hex>"}}}
 ```
 
-- digestは `sha256(AuditEnvelope::to_json_string())`（compact、keyはbyte順）である。Rust投影の固定であり、Storeの `kp-audit-jsonb-sha256-v1`（jsonb textのdigest）ではない。Store側の固定はunit Bの試験が行う。
+- digestは `sha256(AuditEnvelope::to_json_string())`（compact、keyはbyte順）である。Rust投影の固定であり、Storeの `kp-audit-jsonb-sha256-v1`（jsonb textのdigest）ではない。Store側の固定はunit Bの試験（`crates/audit-store-postgres/tests/store_golden.rs`、`tests/data/store-envelope-golden.json`）が行い、entryのkey（Storeが投影する入力行のhash）と判定（`tests/common/mod.rs` の `check_golden`）をこの節と共有する。
 - entryのkeyは `<fixture名>@<sha256(入力のclaim行の全列をkey順のcompact JSONにしたもの)の先頭16桁>` である。fixtureの追加・改名・入力の編集は新しいentryの追加になり、既存entryを書き換えない（古いentryは履歴として残す）。
 - 試験（`tests/golden_projection.rs`）は次を確認する。
   - 現在の `LEGACY_ADAPTER_VERSION` のsectionがあり、全acceptance fixtureの現在のkeyを含み、digestが一致すること。

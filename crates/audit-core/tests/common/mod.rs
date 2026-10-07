@@ -2,9 +2,13 @@
 //! All identifiers and principals are synthetic.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use audit_core::catalog::DOCUMENT_SOURCE;
-use audit_core::{DocumentStagingProjection, Origin, project};
-use serde_json::{Value, json};
+use audit_core::chain::to_hex;
+use audit_core::kinds::is_hex_digest;
+use audit_core::{DocumentStagingProjection, Origin, envelope_digest, project};
+use serde_json::{Map, Value, json};
 
 pub const EVENT_ID: &str = "0199a1b2-0000-7000-8000-00000000e001";
 pub const DOC: &str = "0199a1b2-0000-7000-8000-00000000d001";
@@ -1701,4 +1705,186 @@ fn control_rejections() -> Vec<EnvelopeCase> {
             None,
         ),
     ]
+}
+
+// ---------------------------------------------------------------------------
+// Golden pins (design §7.2, §14.1): shared by tests/golden_projection.rs and
+// crates/audit-store-postgres/tests/store_golden.rs. Entries are keyed by the
+// input row, so an edited fixture input adds an entry (and needs a
+// re-projection) instead of rewriting one.
+// ---------------------------------------------------------------------------
+
+/// Compact JSON with object keys in byte order at every depth.
+pub fn canonical_text(value: &Value) -> String {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let members: Vec<String> = keys
+                .into_iter()
+                .map(|key| {
+                    format!(
+                        "{}:{}",
+                        Value::String(key.clone()),
+                        canonical_text(&map[key])
+                    )
+                })
+                .collect();
+            format!("{{{}}}", members.join(","))
+        }
+        Value::Array(items) => {
+            let items: Vec<String> = items.iter().map(canonical_text).collect();
+            format!("[{}]", items.join(","))
+        }
+        other => other.to_string(),
+    }
+}
+
+/// Every column of the claim row. The exhaustive destructuring makes a new
+/// column a compile error here, so the key always covers the whole input.
+pub fn row_json(row: &DocumentStagingProjection) -> Value {
+    let DocumentStagingProjection {
+        event_id,
+        event_type,
+        source,
+        subject,
+        actor_identity_provider,
+        actor_principal_id,
+        resource_type,
+        resource_id,
+        resource_version_id,
+        result,
+        trace_id,
+        occurred_at,
+        oversize,
+        data,
+        data_kind,
+        reason_kind,
+        reason_bytes,
+        source_intact,
+        source_commitment,
+        registration_kind,
+    } = row;
+    json!({
+        "event_id": event_id,
+        "event_type": event_type,
+        "source": source,
+        "subject": subject,
+        "actor_identity_provider": actor_identity_provider,
+        "actor_principal_id": actor_principal_id,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "resource_version_id": resource_version_id,
+        "result": result,
+        "trace_id": trace_id,
+        "occurred_at": occurred_at,
+        "oversize": oversize,
+        "data": data,
+        "data_kind": data_kind,
+        "reason_kind": reason_kind,
+        "reason_bytes": reason_bytes,
+        "source_intact": source_intact,
+        "source_commitment": source_commitment,
+        "registration_kind": registration_kind,
+    })
+}
+
+pub fn entry_key(name: &str, row: &DocumentStagingProjection) -> String {
+    let digest = to_hex(&envelope_digest(&canonical_text(&row_json(row))));
+    format!("{name}@{}", &digest[..16])
+}
+
+pub fn is_entry_key(key: &str) -> bool {
+    key.rsplit_once('@').is_some_and(|(name, hash)| {
+        !name.is_empty()
+            && hash.len() == 16
+            && hash
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+pub fn section_digest(section: &Value) -> String {
+    to_hex(&envelope_digest(&canonical_text(section)))
+}
+
+/// Checks golden sections (`versions`: adapter version -> {entry key ->
+/// sha256 hex}) against the computed digests of the current
+/// `LEGACY_ADAPTER_VERSION`. Failure messages name only the offending
+/// entries: new keys with their digest (to append), changed keys without it
+/// (`bump` explains the required version bump). Shared by the Rust
+/// projection pin and the Store envelope pin.
+pub fn check_golden(
+    versions: &Map<String, Value>,
+    current: i32,
+    frozen: &[(i32, &str)],
+    computed: &BTreeMap<String, String>,
+    bump: &str,
+) -> Result<(), String> {
+    let mut problems = Vec::new();
+    for (key, section) in versions {
+        let Some(version) = key
+            .parse::<i32>()
+            .ok()
+            .filter(|v| (1..=current).contains(v))
+        else {
+            problems.push(format!(
+                "{bump}: section {key} is not a version in 1..={current}"
+            ));
+            continue;
+        };
+        let Some(entries) = section.as_object().filter(|e| !e.is_empty()) else {
+            problems.push(format!("section {key} must be a non-empty object"));
+            continue;
+        };
+        for (name, digest) in entries {
+            if !is_entry_key(name) || !digest.as_str().is_some_and(is_hex_digest) {
+                problems.push(format!(
+                    "section {key}: entry {name} must be <fixture>@<16 hex> -> sha256 hex"
+                ));
+            }
+        }
+        if version < current {
+            match frozen.iter().find(|(v, _)| *v == version) {
+                None => problems.push(format!(
+                    "section {key} is older than {current} but has no FROZEN_SECTION_DIGESTS entry"
+                )),
+                Some((_, pinned)) if *pinned != section_digest(section) => problems.push(format!(
+                    "section {key} changed after it was frozen; never edit an existing version's entries"
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+    for (version, _) in frozen {
+        if *version >= current || !versions.contains_key(&version.to_string()) {
+            problems.push(format!(
+                "frozen section {version} is missing or not older than {current}"
+            ));
+        }
+    }
+    match versions
+        .get(&current.to_string())
+        .and_then(Value::as_object)
+    {
+        None => problems.push(format!("{bump}: no section for version {current}")),
+        Some(pinned) => {
+            for (key, digest) in computed {
+                match pinned.get(key).and_then(Value::as_str) {
+                    None => problems.push(format!(
+                        "new fixture input, append to section {current}: \"{key}\": \"{digest}\""
+                    )),
+                    Some(pinned) if pinned != digest => {
+                        problems.push(format!("{bump}: {key}"));
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("\n"))
+    }
 }
