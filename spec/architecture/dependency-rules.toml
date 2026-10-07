@@ -89,6 +89,11 @@ crate_path = "crates/search-tantivy"
 forbidden_dependencies = ["sqlx", "axum", "lindera", "lindera-tantivy"]
 forbidden_source_patterns = ["tokio::fs"]
 
+[workspace.boundaries.audit_store_postgres]
+crate_path = "crates/audit-store-postgres"
+forbidden_dependencies = ["axum", "outbox-delivery", "organization-server", "document-api-http", "document-application", "document-diff-core", "document-diff-runner", "document-diff-worker", "document-domain", "document-publication-scheduler", "document-repository-postgres", "document-sandbox-runner", "document-semantic-inspection-core", "document-semantic-inspection-runner", "document-semantic-inspection-worker", "document-server", "document-storage-fs", "search-api-http", "search-application", "search-core", "search-evaluation", "search-extraction-core", "search-extraction-runner", "search-extraction-worker", "search-graph", "search-graph-memory", "search-projection-memory", "search-runtime", "search-source-document", "search-source-http", "search-tantivy", "search-vector-adapter", "work-api-http", "work-application", "work-domain", "work-repository-postgres"]
+forbidden_source_patterns = []
+
 [workspace.boundaries.audit_core]
 crate_path = "crates/audit-core"
 forbidden_dependencies = ["sqlx", "tokio", "axum", "outbox-delivery", "organization-server", "document-api-http", "document-application", "document-diff-core", "document-diff-runner", "document-diff-worker", "document-domain", "document-publication-scheduler", "document-repository-postgres", "document-sandbox-runner", "document-semantic-inspection-core", "document-semantic-inspection-runner", "document-semantic-inspection-worker", "document-server", "document-storage-fs", "search-api-http", "search-application", "search-core", "search-evaluation", "search-extraction-core", "search-extraction-runner", "search-extraction-worker", "search-graph", "search-graph-memory", "search-projection-memory", "search-runtime", "search-source-document", "search-source-http", "search-tantivy", "search-vector-adapter", "work-api-http", "work-application", "work-domain", "work-repository-postgres"]

@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/audit-core",
+  "crates/audit-store-postgres",
   "crates/outbox-delivery",
   "crates/document-sandbox-runner",
   "crates/search-runtime",
