@@ -7,8 +7,8 @@ pub use agent::*;
 use work_domain::{
     AgentDispatchContext, AgentExecution, AgentFailureCode, AgentFindingOutput, AgentResult,
     Command, EvidenceRecord, EvidenceSource, Finding, HandoffSnapshot, HumanDecision,
-    MutationResult, ReturnInstruction, TaskDetail, TaskSummary, TaskView, VerifiedActor, WorkError,
-    WorkingArtifact,
+    MutationResult, OrganizationView, PolicyCommand, ReturnInstruction, TaskDetail, TaskSummary,
+    TaskView, VerifiedActor, WorkError, WorkingArtifact,
 };
 
 pub type WorkFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, WorkError>> + Send + 'a>>;
@@ -98,6 +98,30 @@ pub trait WorkRepository: Send + Sync {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
 
+    /// Current Organization policy view for the verified actor, evaluated now.
+    fn organization(&self, _actor: VerifiedActor) -> WorkFuture<'_, OrganizationView> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Revision-checked policy mutation with the same operation-ledger semantics.
+    fn execute_policy(
+        &self,
+        _actor: VerifiedActor,
+        _command: PolicyCommand,
+    ) -> WorkFuture<'_, MutationResult> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Projection for one selected acting responsibility; `None` is the union.
+    fn list_tasks_in(
+        &self,
+        actor: VerifiedActor,
+        view: TaskView,
+        scope: Option<Uuid>,
+    ) -> WorkFuture<'_, Vec<TaskSummary>> {
+        match scope {
+            None => self.list_tasks(actor, view),
+            Some(_) => Box::pin(async { Err(WorkError::DependencyUnavailable) }),
+        }
+    }
     fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>>;
     fn task(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, TaskDetail>;
     fn artifact(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact>;
@@ -114,6 +138,17 @@ pub trait WorkRepository: Send + Sync {
 pub fn command_digest(actor: VerifiedActor, command: &Command) -> Result<Vec<u8>, WorkError> {
     use sha2::{Digest, Sha256};
     let bytes = serde_json::to_vec(&(actor, command)).map_err(|_| WorkError::IntegrityViolation)?;
+    Ok(Sha256::digest(bytes).to_vec())
+}
+/// Policy commands are a separate closed union; the tagged kind keeps their
+/// digests disjoint from Work commands that share the same operation ledger.
+pub fn policy_command_digest(
+    actor: VerifiedActor,
+    command: &PolicyCommand,
+) -> Result<Vec<u8>, WorkError> {
+    use sha2::{Digest, Sha256};
+    let bytes = serde_json::to_vec(&(actor, "organization_policy", command))
+        .map_err(|_| WorkError::IntegrityViolation)?;
     Ok(Sha256::digest(bytes).to_vec())
 }
 

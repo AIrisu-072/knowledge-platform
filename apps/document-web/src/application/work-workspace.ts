@@ -1,9 +1,12 @@
 export { workApi, WorkApiError } from '../api/work-api';
+export type { PolicyAction, PolicyResult, Responsibility, RoleAssignment, Delegation, OrganizationalUnit, BusinessRole, SyntheticPrincipal, TaskAssignmentView } from '../api/work-api';
 export type { WorkSession, TaskSummary, TaskDetail, WorkingArtifact, HandoffSnapshot, WorkCommand, WorkflowActionCommand, WorkResult, ReturnCommand, ReturnInstruction, EvidenceRecord, Finding, HumanDecision, RevisionRef, SelectedHandoff, EvidenceCommand, FindingCommand, DecisionCommand, SubmitCommand, AgentExecution, AgentResult, AgentExecutionRequest, CancelAgentExecution } from '../api/work-api';
-import { WorkApiError, workApi, type WorkCommand, type WorkflowActionCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
-export type TaskSearch = { view: 'context' | 'queue'; taskId?: string };
+import { WorkApiError, workApi, type WorkSession, type WorkCommand, type WorkflowActionCommand, type ReturnCommand, type EvidenceCommand, type FindingCommand, type DecisionCommand, type SubmitCommand, type WorkResult, type AgentExecutionRequest, type CancelAgentExecution } from '../api/work-api';
+/** `acting` selects a projection scope only; it is never sent as identity. */
+export type TaskSearch = { view: 'context' | 'queue'; taskId?: string; acting?: string };
 export function validateTaskSearch(value: Record<string, unknown>): TaskSearch {
-  return { view: value.view === 'queue' ? 'queue' : 'context', ...(typeof value.taskId === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(value.taskId) ? { taskId: value.taskId } : {}) };
+  const id = (input: unknown) => typeof input === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(input);
+  return { view: value.view === 'queue' ? 'queue' : 'context', ...(id(value.taskId) ? { taskId: value.taskId as string } : {}), ...(id(value.acting) ? { acting: value.acting as string } : {}) };
 }
 export function workErrorMessage(error: unknown): string {
   if (error instanceof WorkApiError) {
@@ -46,5 +49,10 @@ export function executeWorkOperation(operation: WorkOperation): Promise<WorkResu
     case 'draft_saved': return workApi.saveDraft({ ...operation.input, taskId: operation.taskId });
     case 'submitted': return workApi.submit(operation.taskId, operation.input);
   }
+}
+/** The attempt's recorded acting responsibility when the actor is its assignee,
+ * otherwise the session default. A request hint only: the server re-resolves it. */
+export function actingFor(session: Pick<WorkSession, 'principalId' | 'actingAssignmentId'>, task: { assignment?: { principalId: string; actingAssignmentId: string } | null }): string {
+  return task.assignment && task.assignment.principalId === session.principalId ? task.assignment.actingAssignmentId : (session.actingAssignmentId ?? '');
 }
 export function isOperationNotFound(error: unknown): boolean { return error instanceof WorkApiError && error.status === 404 && error.code === 'WORK_ITEM_NOT_FOUND'; }

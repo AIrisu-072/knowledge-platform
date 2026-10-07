@@ -373,3 +373,79 @@ fn hold_resume_fences_running_and_queued_agent_outputs_without_redispatch() {
         }
     }
 }
+
+#[test]
+fn reassignment_under_another_responsibility_lists_only_readable_executions() {
+    let mut w = fixture();
+    let execution = request(&mut w);
+    let ctx = |acting, revision| CommandContext {
+        operation_id: Uuid::now_v7(),
+        expected_revision: revision,
+        acting_assignment_id: acting,
+    };
+    // A second sales holder delegates to sales-01, giving it another responsibility.
+    let mut policy = OrganizationPolicy::synthetic();
+    let MutationResult::RoleAssignmentCreated { assignment, .. } = policy
+        .apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::CreateRoleAssignment {
+                context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                principal: VerifiedActor::Review01,
+                role_id: ROLE_SALES_ID,
+                unit_id: UNIT_SALES_ID,
+                valid_from: None,
+                valid_until: None,
+                reason: "営業応援".into(),
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let MutationResult::DelegationCreated { delegation, .. } = policy
+        .apply(
+            VerifiedActor::Review01,
+            &PolicyCommand::CreateDelegation {
+                context: ctx(assignment.id, 1),
+                source_assignment_id: assignment.id,
+                recipient: ACTOR,
+                actions: vec![
+                    PolicyAction::QueueRead,
+                    PolicyAction::WorkRead,
+                    PolicyAction::WorkClaim,
+                ],
+                valid_from: None,
+                valid_until: "2026-10-05T00:00:00Z".into(),
+                reason: "代理".into(),
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let now =
+        time::OffsetDateTime::parse(NOW, &time::format_description::well_known::Rfc3339).unwrap();
+    let mut w = w.with_authority(policy, now);
+    w.apply(
+        VerifiedActor::Approver01,
+        &Command::Assign {
+            task_id: SALES_TASK_ID,
+            context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, w.source.revision),
+            expected_attempt_id: SALES_ATTEMPT_ID,
+            assignee: ACTOR,
+            assignee_responsibility_id: delegation.id,
+            reason: "責任の切替".into(),
+        },
+        NOW,
+    )
+    .unwrap();
+    // The earlier request belongs to the previous responsibility: never listed.
+    let detail = w.detail(ACTOR, SALES_TASK_ID).unwrap();
+    assert!(!detail.agent_execution_ids.contains(&execution.id));
+    for id in detail.agent_execution_ids {
+        assert!(w.agent_execution(ACTOR, id).is_ok());
+    }
+    assert!(w.agent_execution(ACTOR, execution.id).is_err());
+}

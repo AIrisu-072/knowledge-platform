@@ -447,7 +447,7 @@ test('実2名UIで根拠・候補・3種の人間判断を選択提出し、差�
     await office.getByRole('button', { name: '完了内容を確認', exact: true }).click();
     const completionDialog = office.getByRole('dialog', { name: 'タスク完了の確認', exact: true });
     await expect(completionDialog).toContainText(officeReclaimed.task.attemptId);
-    await expect(completionDialog).toContainText(sessions.office.actingAssignmentId);
+    await expect(completionDialog).toContainText(sessions.office.actingAssignmentId!);
     await expect(completionDialog).toContainText('完了後は読み取り専用');
     await expect(completionDialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
     await completionDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();

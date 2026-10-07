@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
+
+- main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先
+- PR43受入exact `6103e4d4`（tree `f2e13eee`）がmainの祖先であることと受入記録を確認。Phase0→3の凍結・PR62/67の既存機能を保持し、再実装しない。新しい判断5点は承認済みとして扱わない
+- [PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)（branch `claude/trusting-knuth-dn5cx4`）。初回独立reviewのNO-GO（差戻し後の閲覧・一覧上限・職務分離ほか）を修正し、再reviewはGO。修正前head `be1a1be` はhosted全job成功（Organization 13 stage）。修正後はローカルで全Rust・実PostgreSQL・GUI1429件・実browser 13 stageが成功
+- main `93947f3`（PR95 Desktop Workspace Runtime、PR97 Folderアクセス設定）を取り込み済み。次はexact-head CI合格→main統合→統合後CI→同名branchを作り直してU2
+
+---
+
 ## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）
 
 - Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません

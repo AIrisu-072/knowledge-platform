@@ -2,6 +2,7 @@
 //! Work HTTP transport. The composition root injects a process-fixed verified actor.
 mod agent;
 mod evidence;
+mod organization;
 use agent::*;
 use axum::{
     Json, Router,
@@ -15,6 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use evidence::*;
+use organization::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -46,6 +48,25 @@ fn build_router(
 ) -> Router {
     Router::new()
         .route("/v1/organization/session", get(session))
+        .route("/v1/organization/units", get(units))
+        .route("/v1/organization/roles", get(roles))
+        .route(
+            "/v1/organization/role-assignments",
+            get(role_assignments).post(create_role_assignment),
+        )
+        .route(
+            "/v1/organization/role-assignments/{id}/revoke",
+            post(revoke_role_assignment),
+        )
+        .route(
+            "/v1/organization/delegations",
+            get(delegations).post(create_delegation),
+        )
+        .route(
+            "/v1/organization/delegations/{id}/revoke",
+            post(revoke_delegation),
+        )
+        .route("/v1/organization/tasks/{id}/assignment", post(assign_task))
         .route("/v1/organization/tasks", get(list_tasks))
         .route("/v1/organization/tasks/{id}", get(task))
         .route(
@@ -159,20 +180,14 @@ struct ListQuery {
     view: Option<TaskView>,
     limit: Option<usize>,
     cursor: Option<String>,
+    /// Requested projection scope; re-resolved against the current policy.
+    acting_assignment_id: Option<Uuid>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Page<T> {
     items: Vec<T>,
     next_cursor: Option<String>,
-}
-async fn session(State(state): State<ApiState>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "principalId":state.actor.principal_id(),
-        "displayName":match state.actor { VerifiedActor::Sales01 => "営業担当（模擬）", VerifiedActor::Office01 => "事務担当（模擬）" },
-        "actingAssignmentId":state.actor.assignment_id(),
-        "capabilities":{"nativeWorkspace":false,"agent":state.agent_dispatch.is_some(),"search":false,"fileUpload":false,"return":true}
-    }))
 }
 async fn list_tasks(
     State(state): State<ApiState>,
@@ -188,7 +203,11 @@ async fn list_tasks(
     }
     let items = state
         .repository
-        .list_tasks(state.actor, query.view.unwrap_or(TaskView::Context))
+        .list_tasks_in(
+            state.actor,
+            query.view.unwrap_or(TaskView::Context),
+            query.acting_assignment_id,
+        )
         .await?;
     // This fixed two-step PoC has no pagination token implementation: never silently truncate.
     if items.len() > limit {
@@ -465,6 +484,7 @@ impl IntoResponse for Problem {
             WorkError::EvidenceNotFound
             | WorkError::FindingNotFound
             | WorkError::WorkItemNotFound
+            | WorkError::OrganizationRecordNotFound
             | WorkError::WorkArtifactNotFound => StatusCode::NOT_FOUND,
             WorkError::RevisionConflict
             | WorkError::OperationConflict

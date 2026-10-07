@@ -27,6 +27,10 @@ fn synthetic_identity_is_fixed_and_reused_for_document() {
     for (profile, name) in [
         (OrganizationProfile::Sales, "sales-01"),
         (OrganizationProfile::Office, "office-01"),
+        (OrganizationProfile::Review, "review-01"),
+        (OrganizationProfile::Approver, "approver-01"),
+        (OrganizationProfile::MultiRole, "multi-role-01"),
+        (OrganizationProfile::Delegate, "delegate-01"),
     ] {
         let actor = SyntheticIdentityAdapter::new(profile)
             .current_context()
@@ -49,9 +53,16 @@ fn synthetic_identity_is_fixed_and_reused_for_document() {
     }
 }
 #[test]
-fn only_two_explicit_profiles_and_synthetic_mode_are_accepted() {
+fn only_explicit_fixture_profiles_and_synthetic_mode_are_accepted() {
     let mut env = environment();
-    for profile in ["sales-01", "office-01"] {
+    for profile in [
+        "sales-01",
+        "office-01",
+        "review-01",
+        "approver-01",
+        "multi-role-01",
+        "delegate-01",
+    ] {
         env.0.insert("KP_ORGANIZATION_PROFILE", profile.into());
         assert!(OrganizationConfig::from_env(&env, Command::Serve).is_ok());
     }
@@ -60,6 +71,8 @@ fn only_two_explicit_profiles_and_synthetic_mode_are_accepted() {
         "production",
         "agent-01",
         "sales-01,office-01",
+        "multi-role01",
+        "admin",
         "",
     ] {
         env.0.insert("KP_ORGANIZATION_PROFILE", profile.into());
@@ -85,6 +98,16 @@ fn organization_config_keeps_fixed_profiles_off_public_interfaces() {
         config.document().serve().unwrap().bind().to_string(),
         "127.0.0.1:8091"
     );
+    for (profile, bind) in [
+        ("review-01", "127.0.0.1:8092"),
+        ("approver-01", "127.0.0.1:8093"),
+        ("multi-role-01", "127.0.0.1:8094"),
+        ("delegate-01", "127.0.0.1:8095"),
+    ] {
+        env.0.insert("KP_ORGANIZATION_PROFILE", profile.into());
+        let config = OrganizationConfig::from_env(&env, Command::Serve).unwrap();
+        assert_eq!(config.document().serve().unwrap().bind().to_string(), bind);
+    }
     env.0.insert("KP_BIND", "0.0.0.0:8090".into());
     env.0.insert("KP_POC_ALLOW_NON_LOOPBACK", "true".into());
     assert!(OrganizationConfig::from_env(&env, Command::Serve).is_err());
