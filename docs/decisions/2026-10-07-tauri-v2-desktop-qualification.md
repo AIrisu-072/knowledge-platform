@@ -29,9 +29,9 @@ PR52の限定例外（2026-10-10までの非build一覧検証）は使ってい�
 
 ### OSV
 
-- この環境からapi.osv.devへは接続できません（通信方針）。PR53のCI（security job）のログで、Tauri lockに対してOSVが検出したのは上記2件だけであることを確認しました。
-- 設定ファイルはlockと同じディレクトリに置きます。既存の `experiments/search-vector-model-poc/osv-scanner.toml` も同じ置き方で、そのディレクトリのlockにだけ適用されています（ローカル実行時の「unused ignores」表示で、ディレクトリ単位で読み込まれることを確認）。
-- 最終的な合否は、PRの既存security jobで確認します。
+- この環境からapi.osv.devへは接続できません（通信方針）。事前の見込みは、PR53のCI（security job）のログ（PR53の資格確認用lock）で、Tauri lockに対してOSVが検出したのが上記2件だけだったことです。
+- 設定ファイルはlockと同じディレクトリに置きます。既存の `experiments/search-vector-model-poc/osv-scanner.toml` も同じ置き方で、そのディレクトリのlockにだけ適用されています。
+- **このPRの実lock（420 package、rfd 0.16.0・reqwest 0.13.5を含む）での結果**：PR #103のCI（run 37589403315、commit 38be3f8、security job 112687561648。workflow全体も成功）で、desktop lockの420 packageを走査し、`Loaded filter from: .../apps/desktop/src-tauri/osv-scanner.toml` が出て上記2件（glibは別名1件を含む）だけが除外され、結果は「No issues found」でした。lockを変えたときは、同じjobで再確認します。
 
 ### 実装と実行（Linux）
 
@@ -41,12 +41,14 @@ PR52の限定例外（2026-10-10までの非build一覧検証）は使ってい�
 
 ## shellの構成（実装済み）
 
-- 単一main window（コードで生成）。新しいウィンドウは拒否し、遷移は自アプリのURLと、自アプリが作ったblob URL（「原本を取得」のダウンロード用）だけを許可します。
+- 単一main window（コードで生成）。新しいウィンドウは拒否し、遷移は自アプリのURLと、自アプリが作ったblob URL（「原本を取得」のダウンロード用）だけを許可します。自アプリのURLかどうかは、scheme・host・portを含むoriginの完全一致で判定し、user情報付き・別port・`https` は拒否します。
 - IPC commandは `local_workspace_runtime` だけを登録します。capabilityは `main` windowのローカル（同梱）originだけに、このcommandの許可1件を与えます。Tauriのcoreやplugin（fs・shell・dialog・http等）の権限は与えません。
 - フォルダー選択は `rfd` の単一フォルダー選択だけです。選んだ絶対pathはbrokerへ直接渡し、画面には不透明なIDだけを返します。
 - `/v1` は、shellのURL schemeから、環境変数 `KNOWLEDGE_PLATFORM_API_ORIGIN` で指定した1つのloopback（`http://127.0.0.1:<port>` または `http://[::1]:<port>`）backendへ転送します。要求・応答のheaderは許可リスト方式、redirectは追わず、cookieとsystem proxyは使わず、大きさと時間に上限があります。既存serverのCORSは変えていません。
+- `/v1` の応答は、ページにとって「データ」としてだけ返します。JSON・テキスト・octet-stream・一部の画像以外のContent-Type（JavaScript・HTML・SVG・CSS等）は `application/octet-stream` に置き換え、`Content-Security-Policy: sandbox; default-src 'none'` を付けます。Tauriは `script-src` に必ず `'self'` を加えるため、これが無いと、JavaScriptとして登録された文書の原本を `<script>` で読み込むとアプリのoriginで実行できました（実アプリで確認し、修正後は実行されないことを確認）。
+- WebKitGTKの不具合の回避（同一originへの本文をArrayBufferに確定）は、`new Request(input, init)` で一度Requestを組み立ててから送ります。GET・HEAD・他originへの要求は、組み立てたRequestをそのまま送ります（本文を引き継いだRequestを二重に使わないため）。
 - CSPは既存previewと同等に、Tauri IPC用の `ipc:` と `http://ipc.localhost` を `connect-src` に加えたものです。
-- ダウンロードは、自アプリのblob URLを、利用者のDownloadsフォルダー直下へ保存する場合だけ許可します。
+- ダウンロードは、自アプリのblob URLだけを許可し、保存先は必ず利用者のDownloadsフォルダー直下にします。WebView側の提案先がDownloadsの外なら、Downloads直下の同じファイル名に置き換え、同名があれば `名前 (n).拡張子` にします。OSにダウンロード先の設定が無い場合は、既にある `~/Downloads` を使います。Downloadsが無い場合と、自アプリのblob以外のURLは、保存せず取り消します。
 - 状態フォルダーは、OSのアプリデータフォルダー（Linuxでは `~/.local/share/dev.knowledgeplatform.desktop/workspace-runtime`）です。
 
 ## 証拠として扱わないもの

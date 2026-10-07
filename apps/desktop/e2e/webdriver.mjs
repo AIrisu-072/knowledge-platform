@@ -11,12 +11,18 @@ export class WebDriverError extends Error {
   }
 }
 
+// The client gives up only after WebDriver's own longest timeout (the 180 s
+// script timeout set in Session.create), so a slow transfer script fails with
+// WebDriver's script-timeout error instead of a client abort mid-script.
+const SCRIPT_TIMEOUT = 180_000;
+const CLIENT_TIMEOUT = SCRIPT_TIMEOUT + 20_000;
+
 async function call(base, method, path, body) {
   const response = await fetch(`${base}${path}`, {
     method,
     headers: body === undefined ? undefined : { 'content-type': 'application/json; charset=utf-8' },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(CLIENT_TIMEOUT),
   });
   const text = await response.text();
   const json = text ? JSON.parse(text) : {};
@@ -36,7 +42,7 @@ export class Session {
     });
     const session = new Session(base, value.sessionId);
     // Real uploads/downloads through the shell can exceed the 30 s default.
-    await call(base, 'POST', `/session/${value.sessionId}/timeouts`, { script: 180_000, pageLoad: 60_000 });
+    await call(base, 'POST', `/session/${value.sessionId}/timeouts`, { script: SCRIPT_TIMEOUT, pageLoad: 60_000 });
     return session;
   }
 
@@ -161,6 +167,20 @@ export class Element {
 
   click() {
     return call(this.session.base, 'POST', this.#path('/click'), {});
+  }
+
+  /** Two real pointer clicks in quick succession on the element (a double click). */
+  async doubleClick() {
+    // Viewport coordinates of the element's centre: WebKitWebDriver rejects an
+    // element-relative move inside a modal overlay as "out of bounds".
+    const { x, y } = await this.session.execute(`arguments[0].scrollIntoView({ block: 'center' });
+      const r = arguments[0].getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };`, [this.ref]);
+    const press = [{ type: 'pointerDown', button: 0 }, { type: 'pointerUp', button: 0 }];
+    await call(this.session.base, 'POST', `/session/${this.session.id}/actions`, {
+      actions: [{ type: 'pointer', id: 'mouse', parameters: { pointerType: 'mouse' }, actions: [{ type: 'pointerMove', origin: 'viewport', x, y }, ...press, ...press] }],
+    });
+    await call(this.session.base, 'DELETE', `/session/${this.session.id}/actions`);
   }
 
   type(text) {

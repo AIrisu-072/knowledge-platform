@@ -8,14 +8,30 @@ import { setTimeout as delay } from 'node:timers/promises';
 const run = promisify(execFile);
 export const DIALOG_TITLE = '追加するフォルダーを選択';
 
-export async function startXvfb(display) {
-  const child = spawn('Xvfb', [display, '-screen', '0', '1440x900x24', '-nolisten', 'tcp'], { stdio: 'ignore' });
+/**
+ * Starts a private Xvfb on a display number that Xvfb itself picks as free
+ * (-displayfd), so the run never attaches to an X server that already exists.
+ */
+export async function startXvfb() {
+  const child = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', '1440x900x24', '-nolisten', 'tcp'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
+  const stop = () => { if (child.exitCode === null && !child.signalCode) child.kill('SIGTERM'); };
+  const number = await new Promise((resolve, reject) => {
+    let text = '';
+    const timer = setTimeout(() => reject(new Error('Xvfb did not report its display')), 20_000);
+    child.stdio[3].on('data', (chunk) => {
+      text += chunk;
+      const match = /^(\d+)\n/.exec(text);
+      if (match) { clearTimeout(timer); resolve(match[1]); }
+    });
+    child.once('exit', () => { clearTimeout(timer); reject(new Error('Xvfb exited during startup')); });
+  }).catch((error) => { stop(); throw error; });
+  const display = `:${number}`;
   const env = { ...process.env, DISPLAY: display, LC_ALL: 'C.UTF-8' };
   for (let i = 0; i < 100; i++) {
     if (child.exitCode !== null) throw new Error('Xvfb exited during startup');
-    try { await run('xdotool', ['getdisplaygeometry'], { env }); return { display, env, stop: () => child.kill('SIGTERM') }; } catch { await delay(100); }
+    try { await run('xdotool', ['getdisplaygeometry'], { env }); return { display, env, pid: child.pid, stop }; } catch { await delay(100); }
   }
-  child.kill('SIGKILL');
+  stop();
   throw new Error('Xvfb did not become ready');
 }
 

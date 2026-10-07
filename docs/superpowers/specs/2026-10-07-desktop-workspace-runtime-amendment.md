@@ -54,19 +54,21 @@
 
 依頼者の判断（[判断事項](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)、全項目合意）を受けて追加しました。
 
-- **window**：main windowを1つだけコードで作ります。`window.open` 等の新しいウィンドウは拒否し、遷移は同梱アプリのURL（Linux/macOS：`tauri://localhost`、Windows：`http://tauri.localhost`）と、同梱アプリが作ったblob URLだけを許可します。drag&dropのOS連携（絶対pathを渡すもの）は無効です。
+- **window**：main windowを1つだけコードで作ります。`window.open` 等の新しいウィンドウは拒否し、遷移は同梱アプリのURL（Linux/macOS：`tauri://localhost`、Windows：`http://tauri.localhost`）と、同梱アプリが作ったblob URLだけを許可します。同梱アプリのURLかどうかはoriginの完全一致（scheme・host・port）で判定し、user情報付き・別port・`https` は拒否します（WebView2は `http://tauri.*` だけをshellへ渡すため、それ以外を許すとnetworkへ出ます）。drag&dropのOS連携（絶対pathを渡すもの）は無効です。
 - **IPC**：capabilityは `main` windowのローカル（同梱）originに `allow-local-workspace-runtime` の1件だけです。Tauri core・pluginの権限は与えません。remote contentはcommandに届きません。
 - **転送**：アプリ自身のURL schemeをshellが登録し、同梱assetの配信と `/v1` の転送を行います（Tauri既定のasset handlerは未知のpathにindex.htmlを返すため、置き換えが必要）。
   - 転送先は `KNOWLEDGE_PLATFORM_API_ORIGIN` の1つだけで、literalのloopback（`127.0.0.0/8`・`::1`）・`http`・port必須・path無しに限ります。
   - 正規化した後のpathが `/v1` 以下で、originが同じ場合だけ転送します（`..`・`%2e%2e`・`\`・`//host` での脱出は拒否）。method：GET/HEAD/POST/PUT/PATCH/DELETE。
   - 要求header：`accept`・`accept-language`・`content-type`・`traceparent` だけ。応答header：`content-type`・`content-disposition`・`content-language`・`cache-control`・`etag`・`last-modified`・`retry-after` だけ（Set-Cookie・Location・CORS系は返しません）。`X-Content-Type-Options: nosniff` を付けます。
-  - redirectは追わず、cookie・system proxyは使いません。上限：要求本文1GiB＋1MiB、応答本文256MiB＋1MiB、接続5秒、全体180秒。失敗はpath等を含まないproblem（503未設定・502接続不可・504時間切れ・400宛先不正・405 method・413大きさ）。
+  - redirectは追わず、cookie・system proxyは使いません。上限：要求本文1GiB＋1MiB、応答本文256MiB＋1MiB、接続5秒、全体180秒。
+  - 失敗はpath等を含まないproblemです：503（接続先が未設定。形式違い・loopback以外は別の文言で形式を案内し、起動時に標準エラーへ1行だけ理由を出す）、502（接続できない・応答が大きすぎる・応答が途中で切れた）、504（時間切れ）、400（宛先が `/v1` の外）、403（Origin/Refererが同梱アプリと違う、またはmain window以外からの要求）、405（method）、413（要求が大きすぎる）。
   - Origin/Refererは、付いていれば同梱アプリと一致することを求めます（WebKitGTKは同一originのcustom scheme要求にOriginを付けないため、必須にはできません）。
   - 既存serverのCORS・認証・identityの扱いは変えません（名乗りheaderは転送しません）。
+  - **応答はデータとしてだけ返す**：`/v1` の応答のContent-Typeは、`application/json`・`application/*+json`・`text/plain`・`application/octet-stream`・`image/png|jpeg|gif|webp` だけをそのまま返し、それ以外（JavaScript・HTML・SVG・CSS・XML等）と無指定は `application/octet-stream` にします。さらに `Content-Security-Policy: sandbox; default-src 'none'` を付けます。Tauriは `script-src` に必ず `'self'` を加えるため、これが無いと、JavaScriptとして登録された文書の原本を `<script src="/v1/...">` で読み込むと、IPCを使えるアプリのoriginで実行できました（実アプリで確認）。原本の取得（「ファイルを取得」）はblob経由なので影響しません。
 - **CSP**：既存previewと同等に、Tauri IPCの `ipc:` と `http://ipc.localhost` を `connect-src` に加えたものです。backendへの直接接続はできません。
-- **本文の確定（WebKitGTK回避）**：WebKitGTK 2.52はcustom schemeへのBlob/FormData本文でSIGSEGVします。shellは初期化scriptで、同一originへのGET/HEAD以外の要求本文をページ内でArrayBufferに確定してから送ります。bytes・method・header・中断signalは変わりません。他originとIPCには触れません。
-- **ダウンロード**：同梱アプリのblob URLを、Downloadsフォルダー直下（WebViewが重複を避けた名前）に保存する場合だけ許可します。
-- **picker**：`rfd` の単一フォルダー選択。brokerはworker threadから呼び、lockを持たずに待ちます。LinuxではGTKのmain contextでdialogが動きます。Windowsではmain windowを親にします。
+- **本文の確定（WebKitGTK回避）**：WebKitGTK 2.52はcustom schemeへのBlob/FormData本文でSIGSEGVします。shellは初期化scriptで `window.fetch` を包み、まず `new Request(input, init)` を組み立てます。同一originへのGET/HEAD以外は、その本文をページ内でArrayBufferに確定してから送ります。bytes・method・header・中断signalは変わりません。GET/HEAD・他origin・IPC（`ipc://`）は、組み立てたRequestをそのまま送ります（本文を引き継いだ元のRequestを二重に使わないため。内容は変わりません）。
+- **ダウンロード**：同梱アプリのblob URLだけを許可し、保存先は必ずDownloadsフォルダー直下にします。WebView側の提案先がDownloadsの外なら、Downloads直下の同じファイル名に置き換え、同名があれば `名前 (n).拡張子` にします。OSにダウンロード先の設定が無い場合は既存の `~/Downloads` を使い、それも無い場合と、同梱アプリのblob以外のURLは取り消します。
+- **picker**：`rfd` の単一フォルダー選択。brokerはworker threadから呼び、lockを持たずに待ちます。LinuxではGTKのmain contextでdialogが動きます。Linuxのdialogはmain windowの子にならず、modalでもありません（rfdのGTK3実装の制約）。表示中の2つ目の選択要求は `picker_busy` で拒否します。Windowsではmain windowを親にします（Windows実機では未確認）。
 
 ## 不変条件（変更なし）
 

@@ -45,9 +45,10 @@ async function publishDocument(origin, title, text) {
 /**
  * Starts PostgreSQL 18.6 (docker, loopback, tmpfs) and organization-server,
  * migrates, bootstraps and seeds synthetic data. Returns the backend origin
- * and a stop() that removes only the owned container and process.
+ * and a stop() that removes only the owned container and process (also
+ * handed to `register` before anything starts).
  */
-export async function startBackend({ root, directory, pdfium }) {
+export async function startBackend({ root, directory, pdfium, register }) {
   const runId = randomUUID();
   const binaryDir = join(process.env.CARGO_TARGET_DIR ?? join(root, 'target'), 'debug');
   const binary = join(binaryDir, 'organization-server');
@@ -69,6 +70,8 @@ export async function startBackend({ root, directory, pdfium }) {
       if (label === runId) await command('docker', ['rm', '--force', cid], options('postgres-stop')).catch(() => undefined);
     }
   };
+  // The caller can stop a backend that is still starting (Ctrl-C / SIGTERM).
+  register?.(stop);
   try {
     try {
       await command('docker', postgresArguments(runId, cidfile), options('postgres-start', { ...process.env, POSTGRES_PASSWORD: password }));
