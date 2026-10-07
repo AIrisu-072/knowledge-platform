@@ -14,7 +14,7 @@ use std::fmt;
 use std::time::Duration;
 
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{Connection, PgPool, Row};
+use sqlx::{Connection, PgConnection, PgPool, Row};
 
 /// Which connection a check refers to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +148,23 @@ pub async fn connect(
     acquire_timeout: Duration,
 ) -> Result<PgPool, StartupError> {
     check_url(side, url)?;
+    // One plain connection first: a refused setting is reported as such
+    // (the pool would retry a failing after_connect until it times out).
+    let mut first = tokio::time::timeout(acquire_timeout, PgConnection::connect(url))
+        .await
+        .map_err(|_| StartupError::Unavailable {
+            side,
+            code: "connect_timeout".into(),
+        })?
+        .map_err(|error| StartupError::from_sqlx(side, &error))?;
+    let value: String = sqlx::query_scalar("SHOW synchronous_commit")
+        .fetch_one(&mut first)
+        .await
+        .map_err(|error| StartupError::from_sqlx(side, &error))?;
+    let _ = first.close().await;
+    if value != "on" {
+        return Err(StartupError::SynchronousCommitOff { side });
+    }
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
         .acquire_timeout(acquire_timeout)
