@@ -19,9 +19,9 @@ use search_application::search_core::projection::{
 };
 use search_application::search_core::source::DiscoverableSource;
 use search_source_document::{
-    ArtifactReceipt, BodyUnitManifest, seal_lexical, unit_manifest_receipt,
+    ArtifactReceipt, BodyUnitManifest, seal_lexical_entries, unit_manifest_receipt,
 };
-use search_tantivy::{IndexedUnitDoc, TantivyLexicalIndex};
+use search_tantivy::{TantivyLexicalIndex, UnitSealEntry};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 
@@ -215,27 +215,17 @@ fn sealed_cache() -> &'static SealCache {
 /// Seals kept per process before the cache is emptied.
 const CACHED_SEALS: usize = 64;
 
-/// Ordered binding of every searchable Unit document.
-fn unit_seal(units: &[IndexedUnitDoc]) -> Result<[u8; 32], LexicalArtifactError> {
-    let mut ordered: Vec<&IndexedUnitDoc> = units.iter().collect();
-    ordered.sort_by_key(|doc| doc.unit_id);
+/// `lexical-unit-seal:v2`: every searchable Unit document's ID and the digest
+/// of its stored fields and text, in Unit ID order.
+fn unit_seal(units: &[UnitSealEntry]) -> Result<[u8; 32], LexicalArtifactError> {
+    let mut ordered: Vec<&UnitSealEntry> = units.iter().collect();
+    ordered.sort_by_key(|entry| entry.unit_id);
     let mut hasher = Sha256::new();
-    hasher.update(b"lexical-unit-seal:v1\0");
+    hasher.update(b"lexical-unit-seal:v2\0");
     hasher.update((ordered.len() as u64).to_be_bytes());
-    for doc in ordered {
-        frame(&mut hasher, doc.unit_id.to_string().as_bytes());
-        hasher.update(doc.parent_resource.as_uuid().as_bytes());
-        frame(&mut hasher, doc.part.source_native_part_id.as_bytes());
-        frame(&mut hasher, doc.part.logical_path.as_bytes());
-        hasher.update(doc.part.ordinal.to_be_bytes());
-        hasher.update(doc.ordinal.to_be_bytes());
-        frame(
-            &mut hasher,
-            &doc.locator
-                .encode()
-                .map_err(|_| LexicalArtifactError::Seal)?,
-        );
-        hasher.update(doc.text_sha256);
+    for entry in ordered {
+        frame(&mut hasher, entry.unit_id.to_string().as_bytes());
+        hasher.update(entry.hash);
     }
     Ok(hasher.finalize().into())
 }
@@ -323,7 +313,8 @@ impl LexicalArtifactStore {
         }
         let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
             .map_err(|_| LexicalArtifactError::Index)?;
-        seal_lexical(unit_manifest, &persisted.units).map_err(|_| LexicalArtifactError::Seal)?;
+        seal_lexical_entries(unit_manifest, &persisted.units)
+            .map_err(|_| LexicalArtifactError::Seal)?;
         let unit_count =
             u64::try_from(persisted.units.len()).map_err(|_| LexicalArtifactError::Seal)?;
         let seal = LexicalSealV1 {

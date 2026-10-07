@@ -526,16 +526,20 @@ async fn unit_index_from_a_base_generation_has_exactly_the_new_units() {
             .unwrap();
     };
     let texts = |dir: &std::path::Path| {
-        let mut out: Vec<String> =
-            TantivyLexicalIndex::inspect_persisted(&manifest(), &source(), dir)
-                .unwrap()
-                .units
-                .into_iter()
-                .map(|doc| doc.text)
-                .collect();
+        let reopened = TantivyLexicalIndex::new();
+        reopened
+            .load_generation_at(&manifest(), &source(), dir)
+            .unwrap();
+        let mut out: Vec<String> = reopened
+            .enumerate_unit_docs(key())
+            .unwrap()
+            .into_iter()
+            .map(|doc| doc.text)
+            .collect();
         out.sort();
         out
     };
+
     let root = std::env::temp_dir().join(format!("kp-unit-base-{}", Uuid::new_v4()));
     let (first, second) = (root.join("first"), root.join("second"));
     persist(

@@ -9,7 +9,8 @@ mod schema;
 
 pub use analyzer::{CJK_BIGRAM_ANALYZER_VERSION, LEGACY_ANALYZER_VERSION};
 pub use body::{
-    BODY_LEXICAL_SCHEMA_VERSION, IndexedUnitDoc, LexicalInputDigest, lexical_input_digest,
+    BODY_LEXICAL_SCHEMA_VERSION, IndexedUnitDoc, LexicalInputDigest, UnitSealEntry,
+    lexical_input_digest, unit_doc_hash,
 };
 #[cfg(feature = "fault-injection")]
 pub use index::UnitIndexFault;
