@@ -8,8 +8,6 @@ pnpm = "12.4.1"
 "cargo:cargo-deny" = "0.20.2"
 "cargo:cargo-nextest" = "0.9.144"
 "cargo:sqlx-cli" = "0.9.0"
-# Local desktop GUI verification only (mise run desktop:gui:e2e); CI never installs it.
-"cargo:tauri-driver" = "2.1.0"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:google/osv-scanner" = { version = "2.5.1", slsa_signer_identity = "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0", slsa_signer_issuer = "https://token.actions.githubusercontent.com" }
 "github:anchore/syft" = "1.51.1"

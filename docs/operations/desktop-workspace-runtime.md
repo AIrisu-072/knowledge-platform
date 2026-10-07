@@ -83,7 +83,7 @@ mise run desktop:gui:e2e
 
 `desktop:gui:e2e` は、本物のデスクトップアプリ（Tauri＋WebKitGTK＋埋め込んだ本番画面＋broker）を、その画面から操作して確かめます。
 
-- 使うもの：tauri-driver 2.1.0（`mise install cargo:tauri-driver`）、WebKitWebDriver（`webkit2gtk-driver`）、Xvfb、xdotool（OSのフォルダー選択画面を操作）、ImageMagick、Docker（PostgreSQL 18.6）、PDFium（`KP_DSI_PDFIUM_RUNTIME_DIR`、`experiments/document-semantic-inspection/scripts/install-pdfium.sh`）。
+- 使うもの：tauri-driver 2.1.0（`cargo install tauri-driver --version =2.1.0 --locked`。miseの `[tools]` には入れていません。追跡対象の `mise.lock` が変わり、CIの作業ツリー検査が失敗するため）、WebKitWebDriver（`webkit2gtk-driver`）、Xvfb、xdotool（OSのフォルダー選択画面を操作）、ImageMagick、Docker（PostgreSQL 18.6）、PDFium（`KP_DSI_PDFIUM_RUNTIME_DIR`、`experiments/document-semantic-inspection/scripts/install-pdfium.sh`）。
 - 毎回、使い捨てのPostgreSQLとorganization-server（合成の `sales-01`）を起動し、合成文書を登録してから確認します。HOME・設定・データは実行ごとの一時フォルダーに分けます。終了時は、自分が作ったcontainerとprocessだけを止めます。
 - 結果は `apps/desktop/e2e/.state/run-*/report.json` とスクリーンショットに残ります（git管理外）。
 - これはLinuxでの証拠です。Windows・WebView2の証拠にはなりません。
