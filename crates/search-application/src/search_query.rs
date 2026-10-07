@@ -176,6 +176,8 @@ pub struct SearchItemView {
     /// One-based S1 rank after the final gate.
     pub rank: usize,
     pub matched: Vec<MatchedField>,
+    /// Body snippet of a body match that passed the final gate.
+    pub snippet: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -372,6 +374,7 @@ impl<'a> SearchQueryService<'a> {
                 title: hit.title,
                 rank: index + 1,
                 matched: hit.matched,
+                snippet: hit.snippet,
             })
             .collect();
         // A continuation is bound to everything that produced this ranking.

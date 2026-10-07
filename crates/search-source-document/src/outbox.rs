@@ -152,6 +152,17 @@ pub trait DocumentIndexRuntime: Send + Sync {
         Box::pin(async { Err(body_bundles_unsupported()) })
     }
 
+    /// The body entries of the current published bundle, so an item whose
+    /// version, part, representation and raw bytes are unchanged need not be
+    /// extracted again. `None` when there is none or it cannot be read; the
+    /// caller then extracts every item.
+    fn current_body_entries<'a>(
+        &'a self,
+        _source_id: SourceId,
+    ) -> BoxFuture<'a, Option<Vec<BodyItemEntry>>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// The current projection generation together with its published bundle.
     /// `None` when the current generation is not body-ready.
     fn pin_current_bundle<'a>(
@@ -925,11 +936,55 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         extractor: &dyn BodyItemExtractor,
         snapshot: &DocumentOutboxSnapshot,
         key: ProjectionGenerationKey,
+        reuse: bool,
     ) -> Result<(BodyUnitManifest, BodyCoverageArtifact), SearchError> {
         let source_id = self.config.source.source_id;
+        // Published entries of unchanged items stand for a new read; a manual
+        // rebuild (`reuse == false`) reads every item again.
+        let previous: BTreeMap<_, BodyItemEntry> = if reuse {
+            self.runtime
+                .current_body_entries(source_id)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|entry| extractor.reusable(entry))
+                .map(|entry| {
+                    (
+                        reuse_key(
+                            &entry.version,
+                            &entry.part,
+                            &entry.authoritative_representation_ref,
+                            &entry.raw,
+                        ),
+                        entry,
+                    )
+                })
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
         let mut entries = Vec::new();
         for record in &snapshot.live {
             for item in &record.authoritative_items {
+                let version = crate::body_manifest::version_ref(source_id, record);
+                let representation = item.representation_id.to_string();
+                let lookup = reuse_key(&version, &item.part, &representation, &item.raw);
+                // The key is a digest of the fields; equality is rechecked.
+                if let Some(entry) = previous.get(&lookup).filter(|entry| {
+                    entry.version == version
+                        && entry.part == item.part
+                        && entry.authoritative_representation_ref == representation
+                        && entry.raw == item.raw
+                }) {
+                    let mut entry = entry.clone();
+                    for unit in &mut entry.units {
+                        unit.provenance.source_snapshot = snapshot.source_snapshot.clone();
+                    }
+                    entries.push(entry);
+                    continue;
+                }
                 let result = extractor.extract(record, item).await?;
                 entries.push(BodyItemEntry::from_extracted(
                     source_id,
@@ -1125,7 +1180,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             generation_digest(source_id, &projections, &self.config.semantic_registry)?;
         let body = match (&self.body, &body_snapshot) {
             (Some(extractor), Some(snapshot)) => Some(
-                self.body_bundle(extractor.as_ref(), snapshot, manifest.key())
+                self.body_bundle(extractor.as_ref(), snapshot, manifest.key(), !full_rebuild)
                     .await?,
             ),
             _ => None,
@@ -1263,7 +1318,8 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             manifest.projection_schema_version.clone(),
             manifest.lens_version,
             lexical_documents,
-        );
+        )
+        .with_analyzer_version(self.config.analyzer_version.clone());
         if let Some((unit_manifest, _)) = &body {
             lexical_input = lexical_input.with_body_units(
                 unit_manifest
@@ -1435,6 +1491,31 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             .await
         })
     }
+}
+
+/// The identity of one authoritative item read: version, part,
+/// representation and the raw bytes' binding.
+fn reuse_key(
+    version: &search_core::knowledge_unit::ResourceVersionRef,
+    part: &search_core::knowledge_unit::ContentPartRef,
+    representation: &str,
+    raw: &search_core::knowledge_unit::RawBinding,
+) -> String {
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        version.resource_id.as_uuid(),
+        version.source_native_version,
+        part.source_native_part_id,
+        part.logical_path,
+        part.ordinal,
+        representation,
+        raw.sha256
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>(),
+        raw.size_bytes,
+        raw.media_type
+    )
 }
 
 fn one_source_snapshot(snapshot: &DocumentOutboxSnapshot) -> Result<String, SearchError> {

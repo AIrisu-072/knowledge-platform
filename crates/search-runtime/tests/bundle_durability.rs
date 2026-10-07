@@ -209,6 +209,49 @@ async fn stored_bundle_restores_on_a_new_connection_with_the_same_digests() {
     );
 }
 
+/// A payload larger than one JSONB value is stored as ordered text chunks
+/// and restored to the same digests; a missing chunk fails closed.
+#[tokio::test]
+async fn chunked_payload_restores_and_a_missing_chunk_fails_closed() {
+    let (_guard, pool, _options, registrar) = fixture().await;
+    let key = register(&registrar, 7_425).await;
+    let stored = bundle(7_425, &["東京の本文", "大阪の補足"]);
+    PgPayloadStore::new(pool.clone())
+        .with_chunk_bytes(64)
+        .store(&stored)
+        .await
+        .unwrap();
+    let chunks: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM search_generation_payload \
+         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest'",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(chunks > 2, "{chunks}");
+    let store = PgPayloadStore::new(pool.clone());
+    assert_eq!(
+        store.load(&stored.manifest, &stored.receipt).await.unwrap(),
+        stored
+    );
+    // A gap in the chunk sequence (here: chunk 1 renumbered) fails closed.
+    sqlx::query(
+        "UPDATE search_generation_payload SET chunk=1000 \
+         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest' AND chunk=1",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        store.load(&stored.manifest, &stored.receipt).await,
+        Err(BundleError::Shape)
+    );
+}
+
 #[tokio::test]
 async fn tampered_unknown_or_unguarded_payload_fails_closed() {
     let (_guard, pool, _options, registrar) = fixture().await;

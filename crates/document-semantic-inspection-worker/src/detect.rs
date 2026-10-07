@@ -18,7 +18,7 @@ pub fn detect_format(bytes: &[u8], declared_media_type: &str) -> Result<FormatId
         || bytes.windows(4).any(|window| window == b"PK\x01\x02")
     {
         detect_ooxml(bytes)
-    } else if is_textual(bytes) && looks_like_html(bytes) {
+    } else if is_textual(bytes) && looks_like_html(bytes, expected == Some(FormatId::Html)) {
         Some(FormatId::Html)
     } else if is_textual(bytes) && expected == Some(FormatId::Csv) && looks_like_csv(bytes) {
         Some(FormatId::Csv)
@@ -152,15 +152,30 @@ fn is_textual(bytes: &[u8]) -> bool {
             .all(|byte| matches!(byte, b'\t' | b'\n' | b'\r') || *byte >= 0x20)
 }
 
-fn looks_like_html(bytes: &[u8]) -> bool {
+const HTML_MARKERS: [&[u8]; 3] = [b"<!doctype html", b"<html", b"<body"];
+
+/// Content declared HTML is HTML when a marker appears anywhere. Other
+/// declared text is HTML only when it *starts* as an HTML document (after a
+/// BOM and whitespace), so plain text that quotes markup, e.g. an article
+/// about XHTML, keeps its declared format while a disguised HTML document is
+/// still a format mismatch.
+fn looks_like_html(bytes: &[u8], anywhere: bool) -> bool {
     let lower: Vec<u8> = bytes.iter().map(u8::to_ascii_lowercase).collect();
-    [
-        b"<!doctype html".as_slice(),
-        b"<html".as_slice(),
-        b"<body".as_slice(),
-    ]
-    .iter()
-    .any(|needle| lower.windows(needle.len()).any(|window| window == *needle))
+    if anywhere {
+        return HTML_MARKERS
+            .iter()
+            .any(|needle| lower.windows(needle.len()).any(|window| window == *needle));
+    }
+    let body = lower
+        .strip_prefix(b"\xef\xbb\xbf".as_slice())
+        .unwrap_or(&lower);
+    let start = body
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(body.len());
+    HTML_MARKERS
+        .iter()
+        .any(|needle| body[start..].starts_with(needle))
 }
 
 fn looks_like_csv(bytes: &[u8]) -> bool {

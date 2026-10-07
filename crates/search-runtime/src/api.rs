@@ -71,6 +71,9 @@ use crate::source_registration::PgSourceRegistrationLedger;
 
 pub use search_api_http::router::MAX_OPERATION_TIMEOUT;
 
+/// Lexical candidates one Discover request ranks from its query.
+const DISCOVER_LEXICAL_LIMIT: usize = 50;
+
 /// Source read ports bound to one verified actor for one request.
 #[derive(Clone)]
 pub struct ActorPorts {
@@ -498,6 +501,24 @@ impl SearchApiBackend for RuntimeBackend {
                     .collect(),
             });
             let mut config = self.config.clone();
+            // The request query also drives Lexical over title and permitted
+            // metadata; without it Discover ranked only by Directory order.
+            if let Some(query) = &input.query
+                && config.retriever_support.lexical
+                && config.lexical_query.is_none()
+            {
+                config.retrieval_inputs.lexical_query = Some(query.clone());
+                config.lexical_query = Some(search_application::ports::LexicalQuery::new(
+                    query.clone(),
+                    DISCOVER_LEXICAL_LIMIT,
+                ));
+            }
+            // Directory lists every Resource in scope with no relevance to a
+            // query; with a query it only padded the ranking with unrelated
+            // Resources. It stays the browse route of a query-less request.
+            if input.query.is_some() {
+                config.retriever_support.directory = false;
+            }
             if let (Some(_), Some(query)) = (&scoped_vector, &input.query) {
                 config.retriever_support.vector = true;
                 config.retrieval_inputs.vector_query_available = true;
