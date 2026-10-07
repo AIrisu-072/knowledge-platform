@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-07 22:38 UTC — 自動既読・未読戻しの製品資格と導入手順
+
+- [PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の製品head cbe65d14 / tree b2cb1cbaの通常CI37692284389は14 jobs全成功、全19checksは16成功・既存skip3。新Rust/DBを実ログ確認し、Document/Organization/summaryも公式step成功。詳細な根拠と取得制限は[状況](document-view-read-state-status.md)へ記録
+- 再開先は同じ[限定要件](../specs/2026-10-07-document-view-read-state-design.md)と[計画](../plans/2026-10-07-document-view-read-state.md)。資格済み製品headへ導入4手順を更新し、source照合/日本語レビュー後に同Draftへ保存する。最終保存headの通常CIと親のmerge判定はこれから。実server反映は依頼者が手動で行う
+- 他担当のmainと履歴を保持。製品sourceや新機能の追加、別経路によるログ取得、旧資格の転用は行わない
+
+---
+
 ## 2026-10-07 10:02 UTC — 文書詳細表示による既読・未読戻しの再実装
 
 - 承認済みの詳細正常表示→既読、未読へ戻す再確認目印を実装する。[状況](document-view-read-state-status.md)、[限定要件](../specs/2026-10-07-document-view-read-state-design.md)、[計画](../plans/2026-10-07-document-view-read-state.md)が再開先

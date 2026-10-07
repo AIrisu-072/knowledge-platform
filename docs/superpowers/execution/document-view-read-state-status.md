@@ -2,6 +2,16 @@
 
 Status: ACTIVE
 
+## 2026-10-07 22:38 UTC — 製品headの通常CI合格と導入手順の更新
+
+- 公開head `cbe65d140852cbacd7fea4a8fed7830f0757ea4b` / tree `b2cb1cba60bfc29c4407335faec8f30a6d1c9740` / base `a7cf93d53a1b1627ace31d079fd222d7400d8673` をGitHubから再確認した。[CI37692284389](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389)は終端SUCCESS。通常14 jobsすべて成功、全19 checksは16成功・既存skip3、公開artifact0件。mainは同baseを保持している
+- [Rust実ログ113035189328](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389/job/113035189328)はmerge ref `1d3a4ab197935122cc7d61e804c3ccecff30e502` をcheckoutしている。そのtreeは公開headと完全一致し、parentsは同mainと公開headである。新CurrentRead純粋6件・HTTP純粋4件・実DB15件・移行1件・HTTP reset/replay・旧PUT実DB7件のPASSを直接確認。workspace1980成功/既存skip13、追加21成功/skip0、別7成功/既存skip1。Rust staticのfmt/check/clippy/sqlx、container、required-checkも成功
+- [Document runtime113035189564](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389/job/113035189564)の通常head checkout指定sourceで、Real composition-root acceptance・Real Organization two-principal acceptance・Emit bounded runtime evidenceの3stepが成功した。固定runner/summaryの全必須工程、Agent provenance、同じowned DB/storageによるHTTP再起動、本人の未読snapshot/古いVIEW replay、正常終了/owned cleanupの失敗伝播と成功stepを照合し合格と評価する。大ログはTransport closedで個別実測値を直接読んだとは扱わない。画像/macOS golden、DBプロセス再起動、対象PC/本番Identity/TLS/backup-restoreの資格は追加しない
+- local HEAD `0040f7a15017584c7543379df3d98a35558bf07f` は公開commit IDと異なるが同treeで、開始時worktreeはcleanだった。保存済みsourceを復旧元とし、旧未公開sourceや以前の成功を転用していない
+- 導入4手順を資格済み製品head cbe65d14へ固定する。Document12/Work9、work-artifactsを含むstorage全体、既存Workのmigrate→同じDocumentIDでseed-work→serveをsourceと照合する。最小2profileを維持し、追加6profile常設を導入条件にしない。新機能sourceは変更しない
+- 導入4手順をsourceへ照合し、shell構文24ブロック・相対file link96件・固定source link7件・旧migration17file不変・git diff checkを確認した。既存runner/summary/metadataの純粋source guard25件も固定Node24.21.0で成功し、repo:policyも成功。独立レビューGO。残った旧pin/main資格の文言を修正し、初回記録日時のlabelも画面へ揃えた。手順の実コマンド/対象PC/backup-restoreを実行済みとは扱わない
+- 次のexact action: 同PR106へ手順/状況を保存し、保存後exact-headの通常CI全終端を確認する。PRはDraftのまま。最終headのmerge-ready判定と親によるmain統合・統合後CIは未完、実server反映は依頼者の手動操作
+
 ## 2026-10-07 21:44 UTC — 新版作成の成功通知を確認する受入の限定修正
 
 - 公開head2cd9c75b / tree ab3552e2のCI37635679777で、本番振分け37case、新DB15件・移行・HTTP・旧PUTを含むRust1980件は成功。全体はDocument runtimeとrequired-checkが失敗し、14 jobs中12成功・2失敗、公開artifactは0件だった
