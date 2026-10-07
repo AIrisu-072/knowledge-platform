@@ -51,7 +51,7 @@ export function folderMoveOperations(owner: object) {
 // reads, without clearing immutable operation payloads, blobs, mutation cache or provider state.
 export async function refreshFolderMoveReads(client: QueryClient): Promise<void> {
   const reads = new Set(['folder-tree', 'documents', 'document', 'document-versions', 'document-revisions',
-    'document-history', 'document-access-policy', 'document-version', 'document-version-files',
+    'document-history', 'folder-access-policy', 'document-access-policy', 'document-version', 'document-version-files',
     'document-edit-manifest', 'revision-comparison']);
   const operations = new Set(['document-working-operation', 'document-schedule-cancel', 'document-lifecycle-operation']);
   // Keep Organization identity/task selection stable: its transient provider holds fixed operations.
@@ -60,6 +60,8 @@ export async function refreshFolderMoveReads(client: QueryClient): Promise<void>
   const filter = { predicate: (query: { queryKey: readonly unknown[] }) => typeof query.queryKey[0] === 'string'
     && !operations.has(query.queryKey[0]) && (reads.has(query.queryKey[0])
       || query.queryKey[0] === 'organization' && typeof query.queryKey[3] === 'string' && organizationReads.has(query.queryKey[3])) };
+  // Revoke every old read synchronously before the first await, including a Blob resolving this tick.
+  void client.invalidateQueries({ ...filter, refetchType: 'none' });
   await client.cancelQueries(filter, { revert: false });
   // Infinite Folder reads restart at initialPageParam; an old Document URL cursor remains explicit.
   await client.resetQueries(filter, { throwOnError: true });

@@ -9,6 +9,7 @@ import { validateDetailSearch, validateListSearch } from '../src/application/sea
 import { rootFolderOperations } from '../src/application/document-root-folder';
 import { folderRenameOperations } from '../src/application/document-folder-rename';
 import { documentMoveOperations } from '../src/application/document-move';
+import { folderAccessPolicyOperations } from '../src/application/document-folder-access-policy';
 import { folderMoveOperations } from '../src/application/document-folder-move';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
@@ -34,7 +35,7 @@ function problem(code: string, status: number) { return { type: 'about:blank', t
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; }
 const clients: QueryClient[] = [];
 afterEach(() => clients.splice(0).forEach(client => {
-  for (const store of [rootFolderOperations(client), folderRenameOperations(client), folderMoveOperations(client), documentMoveOperations(client)]) {
+  for (const store of [folderAccessPolicyOperations(client), rootFolderOperations(client), folderRenameOperations(client), folderMoveOperations(client), documentMoveOperations(client)]) {
     const operation = store.get(); if (operation) { store.put({ ...operation, status: 'succeeded' } as never); store.clearSettled(store.get()! as never); }
   }
   client.clear();
@@ -262,10 +263,11 @@ test('送信後別navigationへ移っても遅延receipt/refreshは元URLへ戻�
   const body = h.api.moveDocument.mock.calls[0]![1]; await goList(h, { cursor: 'opaque', titleContains: '新条件' }); await act(async () => response.resolve({ operationId: body.operationId, resourceId: documentId, changed: true, resultingRevision: 8, occurredAt: '2026-10-06T10:00:00Z' }));
   expect(h.router.state.location.search).toMatchObject({ cursor: 'opaque', titleContains: '新条件' }); fireEvent.click(await screen.findByRole('button', { name: recovery })); await screen.findByText('文書を移動しました。');
 });
-test.each(['create', 'rename', 'folder-move'])('Folder %s未確定が送信前GET中に発生しても文書移動を送らない', async kind => {
+test.each(['create', 'rename', 'folder-move', 'policy'])('Folder %s未確定が送信前GET中に発生しても文書移動を送らない', async kind => {
   const h = setup(); const dialog = await openMove(); await chooseDestination(dialog); fill(dialog); const read = deferred<DocumentDetail>(); h.api.getDocument.mockReturnValue(read.promise); submit(dialog);
   act(() => { if (kind === 'create') rootFolderOperations(h.client).put({ status: 'unknown', request: { operationId: 'fixed', folderId: 'new', parentFolderId: rootId, expectedParentRevision: 17, name: '新', reason: '理由' } });
     else if (kind === 'rename') folderRenameOperations(h.client).put({ status: 'unknown', targetFolderId: source.folderId, currentName: source.name, expectedChanged: true, context: { kind: 'selected', folderId: source.folderId, sourceParentId: rootId, pageLimit: 1, name: source.name }, request: { operationId: 'fixed', expectedFolderRevision: 8, name: '新', reason: '理由' } });
+    else if (kind === 'policy') folderAccessPolicyOperations(h.client).put({ status: 'unknown', targetFolderId: source.folderId, context: { kind: 'selected', folderId: source.folderId, sourceParentId: rootId, pageLimit: 1, name: source.name }, expectedChanged: true, request: { operationId: 'fixed', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' } });
     else folderMoveOperations(h.client).put({ status: 'unknown', targetFolderId: source.folderId, currentName: source.name, expectedChanged: true, context: { kind: 'selected', folderId: source.folderId, sourceParentId: rootId, pageLimit: 1, name: source.name }, destination: { kind: 'root', folderId: rootId, name: 'System Root' }, request: { operationId: 'fixed', fromParentId: rootId, toParentId: 'other', expectedFolderRevision: 8, reason: '理由' } }); });
   await act(async () => read.resolve(detail())); expect(h.api.moveDocument).not.toHaveBeenCalled();
 });

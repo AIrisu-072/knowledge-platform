@@ -636,12 +636,12 @@ function CompareTab({ documentId, purpose, revisions, pair, revisionRead, compar
       )}
       {!revisionRead.error && <RevisionPairNotice pair={pair} />}
       {comparisonRead && <DocumentComparisonReadControls read={comparisonRead} />}
-      {comparisonRead?.comparison && <ComparisonResult documentId={documentId} purpose={purpose} comparison={comparisonRead.comparison} />}
+      {comparisonRead?.comparison && <ComparisonResult documentId={documentId} purpose={purpose} comparison={comparisonRead.comparison} isReadable={comparisonRead.readableNow} watchReadLoss={comparisonRead.watchReadLoss} />}
     </div>
   );
 }
 
-function ComparisonResult({ documentId, purpose, comparison }: { documentId: string; purpose: 'published' | 'authoring'; comparison: RevisionComparisonResponse }) {
+function ComparisonResult({ documentId, purpose, comparison, isReadable, watchReadLoss }: { watchReadLoss: (onLoss: () => void) => () => void; isReadable: () => boolean; documentId: string; purpose: 'published' | 'authoring'; comparison: RevisionComparisonResponse }) {
   return (
     <div className={styles.comparisonResult}>
       <dl className={styles.resultFacts}>
@@ -686,8 +686,8 @@ function ComparisonResult({ documentId, purpose, comparison }: { documentId: str
               <li key={`unverified-${index}`}>
                 <span>{unverifiedReason(region.reason)}</span>
                 {region.navigationHint && <span>{region.navigationHint}</span>}
-                {region.base && <DownloadSourceButton documentId={documentId} purpose={purpose} versionId={region.base.versionId} evidence={region.base} label="基準原本を確認" />}
-                {region.target && <DownloadSourceButton documentId={documentId} purpose={purpose} versionId={region.target.versionId} evidence={region.target} label="対象原本を確認" />}
+                {region.base && <DownloadSourceButton isReadable={isReadable} watchReadLoss={watchReadLoss} documentId={documentId} purpose={purpose} versionId={region.base.versionId} evidence={region.base} label="基準原本を確認" />}
+                {region.target && <DownloadSourceButton isReadable={isReadable} watchReadLoss={watchReadLoss} documentId={documentId} purpose={purpose} versionId={region.target.versionId} evidence={region.target} label="対象原本を確認" />}
               </li>
             ))}
           </ul>
@@ -707,25 +707,40 @@ function ComparisonResult({ documentId, purpose, comparison }: { documentId: str
   );
 }
 
-function DownloadSourceButton({ documentId, purpose, versionId, evidence, label }: {
+function DownloadSourceButton({ documentId, purpose, versionId, evidence, label, isReadable, watchReadLoss }: {
+  isReadable: () => boolean;
+  watchReadLoss: (onLoss: () => void) => () => void;
   documentId: string;
   purpose: 'published' | 'authoring';
   versionId: string;
   evidence: { contentItemId: string; representationId: string };
   label: string;
 }) {
+  const mounted = useRef(true); const active = useRef<AbortController | undefined>(undefined);
+  const identity = JSON.stringify([documentId, purpose, versionId, evidence.contentItemId, evidence.representationId]);
+  const liveIdentity = useRef(identity); liveIdentity.current = identity;
+  const readable = useRef(isReadable); readable.current = isReadable;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; active.current?.abort(); }; }, []);
+  useEffect(() => () => { active.current?.abort(); }, [identity]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
   async function download() {
+    if (!readable.current() || active.current && !active.current.signal.aborted) return;
+    const controller = new AbortController(); active.current = controller;
+    const stopWatching = watchReadLoss(() => controller.abort());
+    controller.signal.addEventListener('abort', stopWatching, { once: true });
+    const current = () => mounted.current && liveIdentity.current === identity && active.current === controller && !controller.signal.aborted && readable.current();
     setPending(true);
     setError(null);
     try {
-      const blob = await documentApi.downloadVersionFile({ documentId, versionId, contentItemId: evidence.contentItemId, representationId: evidence.representationId, purpose });
+      const blob = await documentApi.downloadVersionFile({ documentId, versionId, contentItemId: evidence.contentItemId, representationId: evidence.representationId, purpose }, { signal: controller.signal });
+      if (!current()) { controller.abort(); return; }
       saveBlob(blob, `原本-${versionId}`);
     } catch (caught) {
-      setError(caught);
+      if (current()) setError(caught);
     } finally {
-      setPending(false);
+      stopWatching(); controller.signal.removeEventListener('abort', stopWatching);
+      if (active.current === controller) { active.current = undefined; if (mounted.current) setPending(false); }
     }
   }
   return <span className={styles.originalAction}><button type="button" disabled={pending} onClick={() => void download()}>{pending ? '取得中…' : label}</button>{Boolean(error) && <ApiFeedback error={error} />}</span>;

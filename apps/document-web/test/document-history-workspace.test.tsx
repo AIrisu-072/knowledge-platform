@@ -1,3 +1,4 @@
+import { folderAccessPolicyOperations, sendFolderAccessPolicyOperation } from '../src/application/document-folder-access-policy';
 import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -290,4 +291,18 @@ test('履歴panelを閉じたら元の明示選択行へfocusを戻す', async (
   const close = panel().getByRole('button', { name: '履歴パネルを閉じる' }); close.focus(); fireEvent.click(close);
   await waitFor(() => expect(screen.queryByRole('region', { name: '選択した文書の履歴' })).not.toBeInTheDocument());
   expect(screen.getByRole('button', { name: item().title })).toHaveFocus();
+});
+
+test('Folder ACL成功receiptと同tickに戻る履歴Blobは保存せず現在readを失効する', async () => {
+  const h = setup('/documents?view=history'); const pending = deferred<Blob>(); h.api.downloadVersionFile.mockReturnValue(pending.promise);
+  await selectDocument(); await openContent(); await selectVersion(); fireEvent.click(panel().getByRole('button', { name: '履歴の原本を取得: 旧原本B.pdf' }));
+  const signal = h.api.downloadVersionFile.mock.calls[0]![1].signal as AbortSignal;
+  h.api.listDocuments.mockRejectedValue(problem(403));
+  await act(async () => {
+    void sendFolderAccessPolicyOperation({ store: folderAccessPolicyOperations(h.client), targetFolderId: 'folder', context: { kind: 'selected', folderId: 'folder', sourceParentId: 'root', pageLimit: 1, name: '資料' },
+      request: { operationId: 'policy', mode: 'inherit', expectedPolicyRevision: 7, reason: '理由' },
+      send: async () => ({ operationId: 'policy', resourceId: 'folder', resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }), invalidate: () => refreshFolderMoveReads(h.client) });
+    pending.resolve(new Blob(['late']));
+  });
+  expect(folderAccessPolicyOperations(h.client).get()?.status).toBe('succeeded'); expect(URL.createObjectURL).not.toHaveBeenCalled(); expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled(); expect(signal.aborted).toBe(true);
 });
