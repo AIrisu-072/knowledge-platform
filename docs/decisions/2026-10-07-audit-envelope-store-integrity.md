@@ -2,7 +2,7 @@
 
 ## 状態
 
-PROPOSED（Audit Infrastructure v1 track、2026-10-07）。依頼者の実装指示（Audit Outboxから監査Storeまでの配送・保存・検証の完成）と TC:797（`audit_outbox_events` の行・配送状態・ackは独立したAudit経路が所有する）に基づく。設計の詳細は[配送・保存・検証設計](../superpowers/specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)。Document担当・Search担当への影響は同設計§13のhandoffで共有する。本番採用・本番DB移行・deployは意味しない。
+ADOPTED FOR v1 IMPLEMENTATION（Audit Infrastructure v1 track、2026-10-07）。設計の独立review 2回と最終確認を経たうえで、依頼者の実装指示の範囲で採用する。Document担当・Search担当には、設計§13のhandoffで影響の確認を求める。依頼者の実装指示（Audit Outboxから監査Storeまでの配送・保存・検証の完成）と TC:797（`audit_outbox_events` の行・配送状態・ackは独立したAudit経路が所有する）に基づく。設計の詳細は[配送・保存・検証設計](../superpowers/specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)。Document担当・Search担当への影響は同設計§13のhandoffで共有する。本番採用・本番DB移行・deployは意味しない。
 
 ## D1. CloudEvents envelopeは自前の最小実装とする
 
@@ -44,6 +44,7 @@ PROPOSED（Audit Infrastructure v1 track、2026-10-07）。依頼者の実装指
 
 - **限界：**
   - DB owner（superuser）はchainを全体再計算できる。これは帯域外checkpointとの照合でのみ検出できる。
+  - DB ownerは、最後のcheckpoint以降の任意のsuffix（Store生成の閲覧記録を含む）を失わせ、それを「復旧」として装うこともできる。v1はこれを可視化し、帯域外の記録（restore時のepoch遷移の追記）との照合に依存させる。抵抗するにはDが要る。
   - 配送前のstagingは、Document DBの特権者が改変し得る（設計§5.3）。
   - Dは将来の拡張とする。
 
@@ -59,7 +60,7 @@ PROPOSED（Audit Infrastructure v1 track、2026-10-07）。依頼者の実装指
   - 今後のDocument migrationで、digest対象列をDROP・型変更するとmigrate時に失敗する。
   - この表に触れるDocument migrationには、Auditのreviewが要る。
   - 既存のowner DELETEを前提とした試験（`document_history_projection.rs:88`）は、Document単体のDBでのみ有効になる。
-- **migrate順：** Document ledger → `audit-relay migrate`。
+- **migrate順：** Document ledger → `audit-relay migrate`（列・型の事前検査付き）。`audit_outbox_events` に対する `DROP COLUMN ... CASCADE` は禁止する。
 
 ## D5. 自由記述reasonはStoreへ複製しない
 

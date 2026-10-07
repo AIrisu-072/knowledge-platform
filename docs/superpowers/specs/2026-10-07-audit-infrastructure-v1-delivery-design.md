@@ -1,6 +1,6 @@
 # Audit Infrastructure v1：監査Outboxから監査Storeまでの配送・保存・検証 設計
 
-Status: DESIGN REVISION 1（独立review 1の指摘を反映、再review待ち）。2026-10-07、基点main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4`（push CI 37562024089 SUCCESS）。
+Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最終確認reviewの対象）。2026-10-07、基点main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4`（push CI 37562024089 SUCCESS）。
 
 本書は未統合Draft [PR44](https://github.com/AIrisu-072/knowledge-platform/pull/44)（設計）と [PR45](https://github.com/AIrisu-072/knowledge-platform/pull/45)（schema/legacy contract）を置き換える。旧設計の脅威分析・失敗モデルは入力として尊重する。ただし旧基点 `d71753d` は30 merge古く、旧方針「reasonを持つevent・通常ACL変更を配送しない」は今回の要求（取下げ・metadata/ACL変更をStoreまで届ける）と衝突する。旧PRのstackには依存しない。決定事項は [決定記録](../../decisions/2026-10-07-audit-envelope-store-integrity.md) に記す。
 
@@ -120,7 +120,7 @@ Status: DESIGN REVISION 1（独立review 1の指摘を反映、再review待ち�
   - `trace_id`（W3Cの32桁hex、非ゼロ）は予約fieldである。将来Documentがtraceparent列を追加した場合だけ、その専用列から設定する。legacy `trace_id` 列からの推測は禁止する。
 - `details` は種別ごとのallowlistであり、legacy key名を変えない。型はcatalogのkindで検証する。
 - `extensions` は、v1では空objectのみを許す。名前空間はcatalogに登録した後に許可する（§13）。
-- `provenance.source_commitment` は、salt付きのsource commitmentである（§5.2）。adapterごとに任意とする（NO_RETENTION由来のsourceでは計算しない）。
+- `provenance.source_commitment` は、salt付きのsource commitmentである（§5.2）。Document sourceでは必須とする。他のadapterでは任意とする（NO_RETENTION由来のsourceでは計算しない。commitmentが無い場合のduplicate規則は§7.2）。
 
 ### 4.3 catalog・schema・検証
 
@@ -152,7 +152,7 @@ Status: DESIGN REVISION 1（独立review 1の指摘を反映、再review待ち�
 
 対象は `document.version.withdrawn`、`document.publication.ended`、`document.metadata.changed`、`document.moved`、`folder.created`、`folder.renamed`、`folder.moved`。
 
-- 理由文はStoreへ複製しない。claim関数（SQL、§5.4）が `data - 'reason'` を取り、`reason: {provided: true, utf8_bytes, text_retained: "source_systems"}` だけを作る。Storeの読者は、理由文を取得も推測確認もできない（source commitmentはsalt付き。§5.2）。
+- 理由文はStoreへ複製しない。claim関数（SQL、§5.4）が `data - 'reason'` を取り、`reason: {provided: true, utf8_bytes, text_retained: "source_systems"}` だけを作る。Storeの読者は、理由文を取得できない。正確なbyte数による長さの区別を除けば、推測した理由文を確認することもできない（source commitmentはsalt付き。§5.2）。
 - 理由文の所在（v1で開示する手段は提供しない。読めるのはDocument DBのroleを持つ者だけで、audit-of-auditの対象外）：
 
   | event | 理由文の所在 |
@@ -287,199 +287,254 @@ relay workerは、`audit_relay.claim` / `renew` / `settle_success` / `settle_fai
 
 Store保存後・ack前にcrashした場合は、lease失効後の再配送でStoreがDuplicateを返してackへ収束する。commit結果が不明な場合も同様である。staleなtokenはrenew・ack・failのいずれもできない。
 
-### 6.3 失敗の分類
+### 6.3 失敗の分類（網羅的な既定）
 
-- Terminal（quarantine）：Storeの明示的な判定（`conflict`、SQL/Rustの検証拒否）、`source_digest_mismatch`、`actor_mismatch`、catalog不適合。
-- 外部障害（試行を返却して保留）：
+- Terminal（quarantine）は、次のいずれかに限る。
+  - Storeの明示的な判定：`ingest` が構造化された結果行で返す `rejected:<code>` と `conflict`
+  - relay側の判定：`source_digest_mismatch`、`actor_mismatch`、catalog不適合（Rustの検証拒否）
+- それ以外のエラーは、すべて外部障害として扱い、試行を返却して保留する。具体例：
   - transport/timeout
-  - SQLSTATE class 08・class 53
-  - 25006（read-only）
-  - 57P01–57P03
-  - 40001・40P01（serialization failure・deadlock）
-  - 55P03（lock不可）
-  - `store_recovery_required` / `store_regressed`
+  - SQLSTATEの全class：08・53・25006・57P0x・57014（statement timeout）・40001・40P01・55P03・class 58・XX・54000・42xxx（deployの食い違い）など
+  - `registered_types` に無いtype（catalogとStore migrationの版ずれ）
+  - `store_recovery_required` / `store_regressed` / `store_posture_invalid`
+- store実装の `settle_failure` は、ledgerに外部障害の印があれば次を行う。行のlock・tokenはfenceで確認する。
+  1. `attempt_count` を1戻す。
+  2. `outage_streak` を加算する。
+  3. `outage_streak` に基づく上限付きbackoff（最大300 s）を設定する。
+  4. `last_outage_code` を記録する。
 
-  store実装の `settle_failure` は、ledgerの外部障害印を見て `attempt_count` を1戻し、store側で上限付きのbackoff（最大300 s）を設定し、`last_outage_code` を記録する。circuit breakerはprobeが成功するまでclaimを止める。Store停止中に正常なeventがquarantineされることは無い。
-- 結果不明のまま上限に達した場合：reaperが `delivery_unknown_at_limit` としてquarantineする。ただし、Storeに保存済みかどうかをreconcileが `quarantined_stored` として分類し、`--repair` が保存済みのreceiptでackする（§12）。
+  成功時に `outage_streak` を0へ戻す。runnerがattemptに基づいて計算するbackoffは使わず、store側で計算した値を使う。
+- 特定eventだけが外部障害を起こし続ける疑い（直後のprobeは成功するのにingestが外部障害で失敗する、が連続する場合）に備え、`outage_streak` がpolicyの上限（既定64）に達したら `outage_suspected_event_specific` としてquarantineする。Store全体の障害（probeも失敗する場合）は数えない。
+- circuit breaker：外部障害で開き、指数cooldownの後にhalf-openとなる（1 claimだけ許す）。ingestが成功した場合だけ閉じる（probeの成功だけでは閉じない）。breakerのpermitは、`preflight` / `renew` で常にUpdatedを返す（進行中のclaimをLostにしない）。
+- 結果不明のまま上限に達した場合：reaperが `delivery_unknown_at_limit` としてquarantineする。Storeに保存済みであれば、reconcileが `quarantined_stored` として分類し、`--repair` がSQL側のfence付きでackする（§12）。
 
-policyの既定値：attempt 16、lease 30 s、backoff 1–300 s、batch 32、in-flight 4（`DeliveryConfig::validate` の範囲内）。
+policyの既定値：attempt 16、lease 30 s、backoff 1–300 s、batch 32、in-flight 4、outage_streak上限64（`DeliveryConfig::validate` の範囲内）。`statement_timeout` はrole単位で設定する。関数レベルの `SET` では、実行中の呼出しを制限できない。
 
 ### 6.4 quarantineとreplay
 
-quarantineは削除でも成功でもなく、保持される終端証拠である。`audit-relay replay --event-id`（operator role）は、次の順に処理する。
+quarantineは削除でも成功でもなく、保持される終端証拠である。`audit-relay replay --event-id`（operatorの本人login）は次の順に処理する。
 
-1. Storeの `record_relay_control` で `audit.delivery.replay_requested` を記録する。記録できなければ中止する。
-2. 1 transactionで処理する。
+1. Storeの `record_relay_control`（operatorのStore login。主体は本人）で `audit.delivery.replay_requested` を記録し、返されたseqを得る。記録できなければ中止する。
+2. `audit_relay.replay(event_id, control_seq)` を1 transactionで実行する。
    1. 行を `FOR UPDATE` でlockし、quarantined・未leaseであることを確認する。
-   2. 直前のattempt_count、attempt_limit、quarantine_code、quarantined_at、last_attempt_at、control eventのseqを `delivery_history` に追加する。
-   3. `attempt_count=0`、`attempt_limit=NULL`（次のclaimで現policyから再固定）、quarantine列とlease列をNULL、`available_at=now()`、`replay_count+1` にする。
+   2. 直前の終端証拠（attempt_count、attempt_limit、quarantine_code、quarantined_at、last_attempt_at）と `control_seq` を `delivery_history` に追加する。
+   3. `attempt_count=0`、`attempt_limit=NULL`、`outage_streak=0`、quarantine列とlease列をNULL、`available_at=now()`、`replay_count+1` にする。
 
-restartは試行履歴をresetしない。resetするのは監査付きのreplay/repairだけである。
+信頼の限界：Document側の関数は、Storeの事実（ackのreceipt、replayのcontrol seq）をDB内で検証できない。「Storeに記録してから戻す」という順序はCLIが守る。直接SQLで行われたreplayは、reconcileの `unaudited_replay`（`delivery_history.control_seq` がStore上で、origin=relay_control・type=replay_requested・同じevent_idに解決できない）として検出する。restartは試行履歴をresetしない。resetするのは監査付きのreplay/repairだけである。
 
 ## 7. Audit Store（`audit_store` schema）
 
 ### 7.1 表
 
-- `publication_head`（singleton）：last_seq、last_chain、recovery_epoch、store_fingerprint（database oid）。`last_chain` の初期値は `GENESIS = sha256('kp-audit-chain-genesis-v1')`、epochは1から始める。
+- `publication_head`（singleton）：
+  - last_seq、last_chain、recovery_epoch
+  - store_fingerprint：(`pg_control_system().system_identifier`, database oid, 現timeline)
+  - recovery_pending
+  - `last_chain` の初期値は `GENESIS = sha256('kp-audit-chain-genesis-v1')`、epochは1から始める。
 - `events`（永続identity、削除しない）：
-  - seq PK、event_id UNIQUE、origin（`relay` / `store` / `relay_control`。definer関数だけが設定し、envelopeからは取らない）
+  - seq PK、event_id UNIQUE
+  - origin（`relay` / `store` / `relay_control`。definer関数だけが設定し、envelopeからは取らない）
   - source、event_type、event_class、subject、occurred_at、stored_at
   - actor_issuer、actor_principal_id、resource_type、resource_id、result
   - envelope_digest、digest_algorithm、source_commitment、adapter_version
   - prev_chain、chain、recovery_epoch、expired_at、expired_by_seq
   - digest/chain列はすべてNOT NULLかつ32 byteのCHECK。`seq=1` ならprev_chain=GENESISのCHECK。
 - `event_bodies`：seq PK、FK、envelope jsonb。retention・purgeでのみ削除する。
-- `principal_bindings`：db_role（PK）、issuer、principal_id。administerで管理する。
+- `principal_bindings`：db_role（PK）、issuer、principal_id。ownerだけが管理する（§10.2）。
 - `access_grants`：issuer、principal_id、capability。
-- `access_intents`：token、session db_role、主体、操作、filter、watermark、page上限、期限、intent seq。
+- `access_intents`：intent seq PK、token digest、session db_role、主体、操作、filter（型付き）、filter_digest、watermark W、page_size、max_pages、visibility（control eventを含むか）、期限、`creating_xid xid8 DEFAULT pg_current_xact_id()`。append-only（UPDATE・DELETE・TRUNCATEを拒否）。
 - `retention_policies`：(policy_id, revision) PK、selector、retain_days（NULL=無期限、`>0`）、created_seq。追加のみで、UPDATE・DELETEはしない。
 - `legal_holds`（予約）
-- tombstoneに残す列：seq、event_id、origin、source、type、class、subject、occurred_at、actor、resource、result、各digest、commitment、chain、epoch、expiry印。「誰が何をいつしたか」を長期に残す証跡として意図的に保持する（DC:470/473。TC:994の暫定的な答え）。chainとdigestはこれらの列に依存しないので、将来のmigrationで失効行をNULL化できる。試験で、失効行に残る列の集合を固定する。
+- `registered_types`：(source, type, adapter_version)。migrationでcatalogから投入し、試験でcatalogとの一致を確認する。
+- tombstoneに残す列：seq、event_id、origin、source、type、class、subject、occurred_at、actor、resource、result、各digest、commitment、chain、epoch、expiry印。「誰が何をいつしたか」を長期に残す証跡として、意図的に保持する（DC:470/473。TC:994の暫定的な答え）。chainとdigestはこれらの列に依存しないので、将来のmigrationで失効行をNULL化できる。試験で、失効行に残る列の集合を固定する。
 
 ### 7.2 ingest（`audit_store.ingest(envelope jsonb)`、definer関数）
 
-1. `SET LOCAL lock_timeout`、関数レベルの `synchronous_commit=on`、`statement_timeout` を設定する。最初に `publication_head` を `FOR UPDATE` でlockする（全publicationの共通lock）。fingerprintを照合し、不一致なら `store_recovery_required` とする。
+1. 関数レベルで `synchronous_commit=on` と `SET LOCAL lock_timeout` を設定する。最初に `publication_head` を `FOR UPDATE` でlockする（全publicationの共通lock）。fingerprint・recovery_pending・postureを照合し、異常があれば `store_recovery_required` とする。
 2. 構造検査：
    - specversion、id形式、閉じた属性集合
    - envelopeのtextが32 KiB以下
    - `source` が `urn:knowledge-platform:audit-store` / `audit-relay` でないこと
    - typeが `audit.` で始まらないこと
    - `resource.type` が `AuditStore` でないこと
-   - (source, type) が `audit_store.registered_types`（migrationでcatalogから投入し、試験でcatalogとの一致を確認）にあること
-3. 列はenvelopeから導出する。source、type、class、subject、occurred_at（`time`）、actor、resource、result、`provenance.source_commitment`、`adapter_version`。引数の値は信用しない。
-4. `envelope_digest = sha256(convert_to(envelope::text,'UTF8'))`（`kp-audit-jsonb-sha256-v1`）。PostgreSQLのjsonb正規化を正とする。export行はこのtextの原文なので、外部検証者は行のbyte列をhashするだけで済む。
-5. event_idが既存の場合（判定はcommitmentとenvelope digestの両方を明示的に比較する）：
+   - (source, type, adapter_version) が `registered_types` にあること（無い場合は版ずれ。外部障害の結果を返す）
+   - `source=document-platform` なら `provenance.source_commitment` が必須であること
+3. 列はenvelopeから導出し、引数の値は信用しない。
+4. `envelope_digest = sha256(convert_to(envelope::text,'UTF8'))`（`kp-audit-jsonb-sha256-v1`）。
+5. event_idが既存の場合、既存行がorigin=relayで、source・typeが同じ場合に限ってduplicateの候補とする。それ以外は `conflict`。判定はcommitmentとenvelope digestを明示的に比較する。
 
    | 条件 | 結果 |
    |---|---|
    | commitment一致・envelope digest一致 | `duplicate`（失効済みなら `duplicate_expired`。本文は復活させない） |
-   | commitment一致・adapter_version違い | `duplicate_reprojected`。新しいseqは振らず、元のreceipt（seq、元のenvelope digest、元のadapter_version）を返す。relayは返されたdigestでackする |
-   | commitment一致・adapter_version同じ・envelope digest違い | `conflict`（adapterの非決定性） |
+   | commitment一致・adapter_version違い | `duplicate_reprojected`（新しいseqは振らず、元のreceiptを返す。relayは返されたdigestでackする） |
+   | commitment一致・adapter_version同じ・envelope digest違い | `conflict`（投影の非決定性、またはadapter_versionの上げ忘れ） |
    | commitment違い | `conflict`、`audit.integrity.conflict_detected` を記録する |
+   | commitmentを持たないadapter（将来） | duplicateはenvelope digestの完全一致の場合だけ。それ以外はconflict |
 
 6. 新規の場合：`seq = last_seq+1`、`chain = sha256('kp-audit-chain-v1' || prev_chain || int8send(seq) || uuid_send(event_id) || envelope_digest)`。events、bodies、headを同一transactionで更新する。
+7. 結果は構造化された行 `(status, seq, envelope_digest, adapter_version, code)` で返す。検証拒否とconflictは例外にしない。
 
-head lockをcommitまで保持するので、seqの公開はcommit順になる。可視のhead値は「それ以下が全てcommit済み」の閉じたwatermarkである。直列化は意図したtrade-off（Auditの量では許容範囲。競合を試験する）。seqはStoreへのcommit順であり、業務の因果順ではない。`occurred_at` は保持する。
+`adapter_version` は、投影の全体（adapterのcodeと、出力に影響するcatalog属性：event_class、details allowlistとkind、持ち上げるfield、reason扱い、subject形、correlation写像）を識別する。既存の (source, type) の出力を変える変更では、必ず値を上げる。試験では、(source_format, adapter_version) ごとに代表fixtureのenvelope digestを固定し、上げ忘れをCIで検出する。
+
+head lockをcommitまで保持するので、seqの公開はcommit順になる。可視のhead値は閉じたwatermarkである。直列化は意図したtrade-off（Auditの量では許容範囲。競合を試験する）。seqはStoreへのcommit順であり、業務の因果順ではない。`occurred_at` は保持する。
 
 ### 7.3 append-onlyと関数の規律
 
 - 表への直接DML権限は誰にも与えない。変更はすべてdefiner関数経由とする。
   - eventsのUPDATEは、`expired_at` / `expired_by_seq` をNULLから設定する場合だけ許す（retention/purge関数がfunction-levelの `SET audit_store.maintenance_context` で示す）。eventsのDELETE・TRUNCATEは常に拒否する。
   - bodiesのDELETEはretention/purge関数経由のみ許し、UPDATE・TRUNCATEは拒否する。
-  - GUCの条件は事故防止であり、境界は権限である。DB ownerはこれを迂回できる（§8の外部checkpointで検出する）。
+  - GUCの条件は事故防止であり、境界は権限である。
 - 全definer関数（両schema）は次を守る。
   1. `SET search_path = pg_catalog, pg_temp`。
   2. 全objectをschema修飾する。
-  3. 非superuserのNOLOGIN owner（`audit_store_owner` / `audit_relay_owner`）が所有する。
-  4. `REVOKE ALL ON ALL FUNCTIONS/TABLES/SEQUENCES IN SCHEMA ... FROM PUBLIC`、`ALTER DEFAULT PRIVILEGES ... REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`（roleへGRANTしてもPUBLICの既定EXECUTEは消えないため、明示的に剥奪する）。
+  3. 非superuserのNOLOGIN owner（`audit_store_owner` / `audit_relay_owner`）が所有する。migrationは `SET ROLE audit_*_owner` の状態でobjectを作るか、作成後にownerを変更する。
+  4. 各migrationの末尾で `REVOKE ALL ON ALL FUNCTIONS/TABLES/SEQUENCES IN SCHEMA ... FROM PUBLIC` を再実行する。`ALTER DEFAULT PRIVILEGES FOR ROLE audit_*_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`（IN SCHEMAを付けない全体形）も実行する。roleへGRANTしてもPUBLICの既定EXECUTEは消えないので、明示的に剥奪する。
   5. filterは静的SQLで処理する（jsonbから型付きで抽出し、未知keyを拒否し、`= ANY($n)` で照合する。LIKE・正規表現・動的SQLは使わない）。
   6. 書込を伴う関数は、最初の文で `publication_head FOR UPDATE` を取り、その後に状態を読む（lock順：head → policy/grant → identity）。
-- 試験：
-  - `pg_proc` の `prosecdef` 関数について、search_pathの固定、PUBLIC EXECUTEが無いこと、ownerが非superuserであることを確認する。
-  - temp tableによるshadowing攻撃が失敗すること。
-  - 各roleが、許可されない関数で42501になること。
+  7. 読取専用の経路（`read_page`、recovery関数）では、`xmin` の比較を使わない（§10.3）。
+- `audit_store.posture_check()`（content-free）は、次の違反を返す。
+  - ownerが非superuserでないもの
+  - search_pathが固定されていないもの
+  - PUBLIC EXECUTE（aclexplodeのgrantee 0、またはproaclがNULL）
+  - §10.1の行列と異なるACL
+  - databaseのPUBLIC CONNECT/TEMP
+  - login roleのtimeout設定の欠落
+  - 試験では各roleが許可されない関数で42501になること、temp tableによるshadowingが失敗することを確認する。
 
 ## 8. Integrity（決定記録 D3：方式比較と選択）
 
 | 方式 | 検出できるもの | 限界・運用 |
 |---|---|---|
 | A. event digestのみ | 偶発的な改変（期待digestを信頼できる場合） | 削除、digestの同時改変、順序入替を検出できない |
-| B. write-time hash chain＋event digest＋外部checkpoint | 改変、削除（seq欠番・chain断）、順序入替、checkpoint以前の全体書換え | DB ownerはchainを全体再計算できる。外部保管checkpointとの照合が必要。restoreではrecovery epochを使う |
-| C. 検証時のMerkle/rolling checkpoint | Bと同等（checkpoint時点） | checkpoint作成がO(n)。行単位の自己検証性が無い |
+| B. write-time hash chain＋event digest＋外部checkpoint | 改変、削除（seq欠番・chain断）、順序入替、checkpoint以前の全体書換え | DB ownerはchainを全体再計算でき、最後のcheckpoint以降の任意のsuffixを失わせることも、それを「復旧」として装うこともできる。v1はこれを可視化し、帯域外の記録との照合に依存させるだけで、抵抗にはDが要る |
+| C. 検証時のMerkle/rolling checkpoint | Bと同等（checkpoint時点） | checkpointの作成がO(n)。行単位の自己検証性が無い |
 | D. 署名checkpoint／WORM／外部anchor | DB ownerへの耐性 | 鍵管理・新しい運用基盤が要る（v1範囲外、将来拡張） |
 
 選択：B。
-- ingestはcommit順を確定するためにhead lockで既に直列化されている。そのためchainのcostはinsertごとのsha256 1回で済み、checkpointはhead（epoch, seq, chain）の1組になる。
+- ingestはcommit順を確定するためにhead lockで既に直列化されているので、chainのcostはinsertごとのsha256 1回で済む。checkpointは（epoch, seq, chain）の1組になる。
 - retention：tombstoneがdigest/chainを保持するので、本文を削除してもchainは検証可能なままである。
-- migration：chainは本文ではなくdigestに依存するので、既存行の再計算は不要である。
+- migration：chainは本文ではなくdigestに依存する。
 - 業務transactionをまたぐchainは作らない。
 
 検証の種類と信頼の規則：
 - `audit_store.verify`（DB内の高速検査）：
   - 開始時のheadをW（上限）に固定し、1つのquery（events LEFT JOIN bodies、READ COMMITTED、単一snapshot）で範囲を走査する。
-  - 検査項目：seqの連続性、prev_chainの連鎖、chainの再計算（`IS DISTINCT FROM`）、本文digest、本文欠落が失効の印と整合すること、envelopeの属性とidentity列の一致、`envelope.id = event_id`、headの整合。
-  - retention整合：失効行の `expired_by_seq` が、自分より後のseqの `audit.retention.expired`（origin=store）を指すこと。その件数・`expired_set_digest`（印付けたseqの昇順 `int8send` の連結のsha256）・selector・cutoffが一致すること。
-  - 結果は1件の `audit.integrity.verified`（origin=store）に記録する。この記録はWより後のseqになるので、検証が自分の結果を無限に追いかけることは無い。
-- 真正性の主張は、audit-coreがDB外で、連続したseq範囲のchainを再計算した場合だけ行う。範囲の起点はgenesisか既に信頼したcheckpoint、終点は帯域外に保管したcheckpointと一致するheadである。DB内verifyの結果やchain列は、真正性の証拠にならない。`audit-admin export --identity-chain` は、本文を含まない（seq, event_id, envelope_digest, prev_chain, chain, epoch）行を出力する。
-- filter付きexportは「anchorのない部分集合」と表示する。真正性が必要なら、同じseq範囲のidentity chain exportを併用する。
-- health の「verified」は、origin=storeの `audit.integrity.verified` だけを数える。
+  - 検査項目：seqの連続性、prev_chainの連鎖、chainの再計算（`IS DISTINCT FROM`）、本文digest、envelopeの属性とidentity列の一致、`envelope.id = event_id`、headの整合。
+  - retention整合（集合の意味で判定する）：
+    - 失効の印がある ⇔ 本文が無い。
+    - `expired_by_seq` は、自分より後のseqのorigin=store eventを指す。その対象は次のどちらかである。
+      - (a) `audit.retention.expired`：その件数と `expired_set_digest`（印付けたseqの昇順 `int8send` の連結のsha256）が、参照する行の集合と一致し、selectorと実効cutoffが対象行のidentity列と整合する。
+      - (b) `audit.body.purged`：記録した対象seqが、その1行と一致する。
+    - 参照先の本文は存在しなければならない。無ければ `retention_evidence_missing` を違反として報告する（skipしない）。
+  - 結果は1件の `audit.integrity.verified`（origin=store）に記録する。この記録はWより後のseqになるので、検証は再帰しない。
+- 真正性の主張は、audit-coreがDB外で連続したseq範囲のchainを再計算した場合だけ行う。範囲の起点はgenesisか既に信頼したcheckpoint、終点は帯域外に保管したcheckpointと一致するheadである。
+  - DB内verifyの結果やchain列は、真正性の証拠にならない。
+  - `audit-admin export --identity-chain` は、本文を含まない（seq, event_id, envelope_digest, prev_chain, chain, epoch）行を出力する。
+  - filter付きexportは「anchorのない部分集合」と表示する。
+- recovery epochの扱い：
+  - 帯域外のcheckpoint記録（operatorがrestore時に、旧/新epoch、復元head、消失範囲、incident参照を追記する）にも同じ遷移がある場合に限り、DB外の検証は置換範囲内の不一致を「lost（recovery epoch k）」と報告する。この場合も「authentic」とはしない。
+  - 帯域外の記録が無い、または食い違う場合は `unverified_recovery`（改変の疑い）とする。
+  - 復元head以下のseqでの不一致は、常に改変として報告する。
+  - verifierは全recovery epochと消失範囲を、人の確認対象として列挙する。
+- healthの「verified」は、origin=storeの `audit.integrity.verified` だけを数える。
 
 ## 9. Retention
 
-- `retention_policies` は版付きで不変とする。`set_retention_policy` は新しいrevisionを追加し、control eventに全内容を記録する。既定では行が無いので失効しない。年数は固定しない（OA §26）。
+- `retention_policies` は版付きで不変とする。`set_retention_policy`（administer）は新しいrevisionを追加し、control eventに全内容を記録する。
+  - 既定では行が無いので失効しない。年数は固定しない（OA §26）。
+  - selectorの文法は、event_types／event_classes／sourcesの列挙である。origin=relayのeventだけを対象にできる。
 - `expire(policy_id, expected_revision, cutoff, limit≤1000)`（maintain）の手順：
   1. lock順はhead → policy → identity。最新revisionが `expected_revision` と一致しなければstaleとし、何も削除せず試行を記録する。
   2. `retain_days IS NULL` なら `not_expirable` とし、何も削除せず試行を記録する。
   3. legal holdが1件でも有効なら削除しない（v1の拡張境界。hold内容の判定規則は将来の拡張）。
-  4. 対象の述語は次のとおり（時刻はtransaction内で1回だけ計算する）。
+  4. 実効cutoffを `effective_cutoff = least($cutoff, transaction_timestamp() - make_interval(days => p.retain_days))` として1回だけ計算する。
+  5. 対象の述語：
 
      ```sql
-     p.retain_days IS NOT NULL
-     AND e.occurred_at < least($cutoff, now() - make_interval(days => p.retain_days))
-     AND body存在 AND expired_at IS NULL AND selector一致
+     e.origin = 'relay'
+     AND e.occurred_at < effective_cutoff
+     AND body存在 AND e.expired_at IS NULL AND selector一致
      ```
 
-  5. `audit.retention.expired`（selector snapshot、cutoff、count、seq範囲、`expired_set_digest`）を先に記録し、そのseqで対象を印付けてから本文を削除する。identity・digest・chainは残す。
+     origin=store/relay_controlのcontrol event（verify・recoveryの根拠）は、v1では失効しない。
+  6. `audit.retention.expired` を先に記録し、そのseqで対象を印付けてから本文を削除する。記録する内容は、policy_id、revision、selector snapshot、retain_days、入力cutoff、effective_cutoff、transaction時刻、count、seq範囲、`expired_set_digest`。identity・digest・chainは残す。
 - 失効済みeventの再配送は `duplicate_expired` を返し、本文は復活しない。
-- `purge_body(event_id, purge_reason_code)`（maintain）：最小化の失敗（adapterの不具合で禁止情報が入った等）への個別対処である。control eventを先に記録し、expireと同様にchainの検証可能性を保つ。
+- `purge_body(event_id, purge_reason_code)`（maintain、origin=relayのみ）：最小化の失敗（adapterの不具合で禁止情報が入った等）への個別対処である。`audit.body.purged`（対象seq、event_id、code）を先に記録し、その行に印を付ける。
 - source stagingの削除（破壊的なcleanup）はv1では提供しない。Storeの失効は、source側のcopyを消したことを意味しない。
 
 ## 10. 調査・export・設定変更の認可と監査
 
-### 10.1 role行列（DB層）
+### 10.1 role・credential行列（DB層）
 
 roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates/audit-relay/sql/roles.sql`）で行い、DB ownerが適用する。capability role（NOLOGIN）をlogin roleへGRANTする。
 
 | capability role | EXECUTE可能な関数 |
 |---|---|
-| `audit_store_ingest` | `ingest`、`probe`、`store_status`、`lookup_receipts`、`list_source_receipts` |
-| `audit_store_relay_control` | `record_relay_control` |
+| `audit_store_ingest` | `ingest`、`probe`、`store_status`、`lookup_receipts`、`list_source_receipts`、`lookup_control_receipts` |
+| `audit_store_relay_control` | `record_relay_control`（seqを返す） |
 | `audit_store_reader` | `open_access`（investigate/export）、`read_page`、`close_access` |
-| `audit_store_verifier` | `verify`、`identity_chain_page`（`open_access` 経由） |
-| `audit_store_admin` | `change_access`、`bind_principal`、`set_retention_policy` |
-| `audit_store_maintainer` | `expire`、`purge_body`、`begin_recovery_epoch` |
-| owner（`audit_store_owner`）のみ | `bootstrap_administrator` |
+| `audit_store_verifier` | `open_access`（verify/identity_chain）、`read_page`、`close_access`、`verify`、`checkpoint`、`verify_recovery`、`identity_chain_recovery_page` |
+| `audit_store_admin` | `change_access`、`set_retention_policy` |
+| `audit_store_maintainer` | `expire`、`purge_body`、`begin_recovery_epoch`、`rebind_fingerprint`、`verify_recovery`、`identity_chain_recovery_page` |
+| owner（`audit_store_owner`）のmemberのみ | `bootstrap_administrator`、`bind_principal`、`unbind_principal` |
 | `audit_relay_worker` | `claim`、`renew`、`settle_*`、`reap_exhausted`、`status` |
-| `audit_relay_operator` | `replay`、`repair_*`、`register_missing` |
+| `audit_relay_operator` | `replay`、`repair_ack_stored`、`repair_reset_missing`、`register_missing` |
 
-- PUBLICにはどの関数のEXECUTEも与えない。Store DBのCONNECTもPUBLICから剥奪する。
-- Store roleには、`idle_in_transaction_session_timeout`、`statement_timeout`、`lock_timeout` を設定する（head lockの占有を防ぐ）。
+- PUBLICにはどの関数のEXECUTEも与えない。Store DBのCONNECT・TEMPもPUBLICから剥奪する。
+- Store roleには、`idle_in_transaction_session_timeout`、`statement_timeout`、`lock_timeout` をrole単位で設定する。
+- `audit_relay_owner` には、Document ownerが `public.audit_outbox_events` へのSELECT・REFERENCESを与える。
+
+| command | 接続 |
+|---|---|
+| `audit-relay run` | `AUDIT_SOURCE_DATABASE_URL`＝`audit_relay_worker` を持つlogin。`AUDIT_STORE_DATABASE_URL`＝`audit_store_ingest`＋`audit_store_relay_control` を持つloginで、`service/audit-relay` に束縛 |
+| `audit-relay replay` / `reconcile --repair` | operator本人のDocument login（`audit_relay_operator`）とStore login（`audit_store_relay_control`、本人の主体に束縛） |
+| `audit-admin` | operator本人のStore login |
+| `migrate` | 別のURL（runtimeでは使わない） |
+
+- migrate・bootstrapを除くcommandは、起動時にsessionが `rolsuper`、または `audit_*_owner` のmemberであれば拒否する（多層防御）。
 
 ### 10.2 主体の束縛（認証境界）
 
-- 本番identityが確立するまでは、DB login roleが認証境界である。各関数は、`session_user`（SECURITY DEFINER内でも呼出元のloginを指す）を `principal_bindings` で（issuer, principal_id）へ解決する。未束縛なら `audit.access.denied`（unbound）を記録してdeniedを返す。呼出側から主体を引数で渡すことは無い。v1では、operatorごとに1つのDB login roleを持つ。
-- 権限（Audit上の責務。Organization roleではない）は、`investigate`、`export`、`verify`、`administer`、`maintain` である。DB層のcapability roleを持ち、かつ束縛された主体にAudit上の権限がある場合だけ実行できる。Document ACLは流用しない。
+- 本番identityが確立するまでは、DB login roleが認証境界である。各関数は、`session_user`（SECURITY DEFINER内でも呼出元のloginを指す）を `principal_bindings` で（issuer, principal_id）へ解決する。
+  - 未束縛なら `audit.access.denied`（unbound）を記録してdeniedを返す。
+  - 呼出側から主体を引数で渡すことは無い。
+  - v1では、operatorごとに1つのDB login roleを持つ。
+- 束縛（`bind_principal` / `unbind_principal`）はowner roleのmemberだけが行う（`pg_has_role(session_user, 'audit_store_owner', 'MEMBER')`、head lockの後）。administerは束縛を変えられないので、自分が誰として振る舞うかを変更できない。束縛は上書きせず、変更にはunbindを先に記録する。
+- 権限（Audit上の責務。Organization roleではない）は、`investigate`、`export`、`verify`、`administer`、`maintain`。DB層のcapability roleを持ち、かつ束縛された主体にAudit上の権限がある場合だけ実行できる。Document ACLは流用しない。
+- `change_access` は、呼出者自身の主体への付与を拒否し、その試行を記録する。2人の管理者の共謀と二人承認はv1の範囲外とする（すべての変更は主体とsession_userで記録され、検出できる）。
 - control eventには、主体と `session_user` の両方を記録する。
-- 最初の管理者：`bootstrap_administrator(db_role, issuer, principal_id)` は、owner roleのmemberだけが呼べる（`pg_has_role(session_user, 'audit_store_owner', 'MEMBER')`。`current_user` は使わない）。head lockの後にadministerが0件であることを確認して成功する。最後の管理者を失った場合は、同じ経路で監査付きのlockout回復とする。
-- 自己昇格：`change_access` が呼出者自身へ権限を付与する場合は拒否し、その試行を記録する。
-- `audit.access.*` / control eventの閲覧：`investigate` の結果からは除く。administer権限を持つ場合だけ見られる。これにより、誰が誰を調べているかを調査者同士で見られないようにする。
+- 最初の管理者：`bootstrap_administrator(db_role, issuer, principal_id)` はownerのmemberだけが呼べる（`current_user` は使わない）。head lockの後にadministerが0件であることを確認して成功する。最後の管理者を失った場合は、同じ経路で監査付きのlockout回復とする。
+- `audit.access.*` などcontrol eventの閲覧：investigate・exportのどちらでも、administer権限を持つ場合だけ含める（intentの時点で可視範囲を固定する）。
 
 ### 10.3 開示の2段階（fail-closed）
 
-1. `open_access(op, filter, max_pages)`：autocommitの単独transactionで実行する。
-   1. 主体・権限・入力（filter allowlist：event_types≤16、source、actor、resource、occurred範囲、event_ids≤100。page sizeはinvestigate 1–100、export 1–1000）を検査する。
-   2. watermark（現在head以下。clientは指定できない）を固定する。
-   3. `audit.access.intent_opened` を記録する。
-   4. 単回使用ではないが期限付きのtoken（既定10分）を返す。
+1. `open_access(op, filter, page_size, max_pages)`
+   1. 主体・権限・入力を検査する。filter allowlist：event_types≤16、source、actor、resource、occurred範囲、event_ids≤100。page sizeはinvestigate 1–100、export・identity_chain 1–1000。max_pagesは最大100。
+   2. watermark W（現在head以下。clientは指定できない）と可視範囲を固定する。
+   3. `audit.access.intent_opened`（op、型付きfilterの全値、filter_digest、W、page_size、max_pages、可視範囲、期限）を記録する。
+   4. `access_intents` に、`creating_xid = pg_current_xact_id()`（savepoint内でも最上位transactionのID）とともに保存する。
+   5. 期限付きのtoken（既定10分）を返す。
 
-   拒否・入力不正は `audit.access.denied` として記録する（入力を検証した後、bounded shapeのみ）。
-2. `read_page(token, after_seq)`：READ ONLY transactionで実行する。intentが次の条件をすべて満たす場合だけデータを返す。
-   - commit済みであること（intent行の `xmin` が現transactionのIDと異なること）
-   - 同じ `session_user` のものであること
-   - 期限内であること
-   - page上限内であること
+   拒否・入力不正は、入力を検証した後、bounded shapeのみを `audit.access.denied` として記録する。
+2. `read_page(token, after_seq)`。次の条件をすべて満たす場合だけデータを返す。
+   - 入口で `pg_current_xact_id_if_assigned() IS NULL`（現transactionがまだ何も書いていない。savepointで書いて戻した場合も拒否される）であること。
+   - `pg_xact_status(intent.creating_xid) IS NOT DISTINCT FROM 'committed'`（NULLや実行中は拒否）であること。
+   - `access_intents.filter_digest` が、chainに入ったintent eventのdigestと一致すること。
+   - 同じ `session_user` のものであること。
+   - 期限内であること。
+   - 現在の束縛と権限が有効であること（取消しは開いているtokenにも効く）。
 
-   したがって、呼出側がrollbackしても閲覧の記録は消えない。
-3. `close_access(token, returned_count, page_digests)`：件数とpage digestを記録する（任意。記録しなくても、intentで開示の範囲は確定している）。
+   開示する集合は「(filter ∩ seq≤W ∩ 可視範囲) をseq順に並べた先頭 max_pages×page_size 行」である。after_seqを任意に選んでも、この集合の外は返さない（state無しで有界）。read_pageはREAD ONLYなので、ここでの拒否はerrorとして返り、記録されない（拒否は何も開示しない）。READ ONLY設定やautocommitは呼出側の慣行であり、保証はserver側の上記の判定が担う。
+3. `close_access(token, returned_count, page_digests)`：件数とpage digestを記録する（任意）。開示の範囲は、chainに入ったintent eventで既に確定している。
 
-拒否の記録は、呼出側がBEGIN/ROLLBACKで包めば消せる。拒否は何も開示しないので、この限界を明記する。adminとmaintainの操作（変更系）は、変更とcontrol eventが同一transactionで成否を共にする（開示を伴わない）。
+- 拒否の記録は、呼出側がBEGIN/ROLLBACKで包めば消せる。拒否は何も開示しないので、この限界を明記する。adminとmaintainの操作（変更系）は、変更とcontrol eventが同一transactionで成否を共にする。
+- audit-of-auditの範囲は関数経由の読取に限る。次は対象外であり、運用上の権限管理で守る。
+  - `pg_dump` によるbackup（Store・Document DBの両方。Document DBにはstagingの理由文がある）
+  - owner/superuserによる直接の読取
+  - recovery mode中のcontent-freeな読取（§11）
+  - CLI hostに出力したexport file
 
-audit-of-auditの範囲は関数経由の読取に限る。次は対象外であり、運用上の権限管理で守る。
-- `pg_dump` によるbackup（Store・Document DBの両方。Document DBにはstagingの理由文がある）
-- owner/superuserによる直接の読取
-- CLI hostに出力したexport file
-
-export fileとbackupは、mode 0600とし、logに内容を出さず、保管場所を運用手順に記す。checkpointの作成は `verify` 権限の操作として記録する。
+  export fileとbackupは、mode 0600とし、logに内容を出さず、保管場所を運用手順に記す。`checkpoint` は `verify` 権限の操作として記録する。
 
 ### 10.4 export形式
 
@@ -492,80 +547,105 @@ export fileとbackupは、mode 0600とし、logに内容を出さず、保管場
   SQLで `envelope::text` を連結して生成し、serdeでの往復はしない。
 - `audit-core` のexport検証は、RawValueで原文を保持し、sha256とchainを再計算する。
 - manifestには、件数、seq範囲、watermark、page digest、intentのseq、照合したcheckpoint、GENESIS定数を記す。
-- relay用の `lookup_receipts` / `list_source_receipts` は、content-free（seq、event_id、envelope digest、commitment、expired）である。DB role（ingest）で制限し、呼出ごとのcontrol eventは作らない。reconcileは1 runにつき1件の `audit.reconciliation.completed` を記録する。healthは、content-freeで監査対象外の `store_status()` を使う。
+- relay用の `lookup_receipts` / `list_source_receipts` / `lookup_control_receipts` は、content-free（seq、event_id、origin、type、envelope digest、commitment、expired、control対象event_id）である。DB role（ingest）で制限し、呼出ごとのcontrol eventは作らない。reconcileは1 runにつき1件の `audit.reconciliation.completed` を記録する。healthは、content-freeで監査対象外の `store_status()` を使う。
 
 ## 11. Backup / restore 契約
 
 - 対象は2つ：Document DB（staging＋`audit_relay`）とStore DB。どちらも既存PostgreSQLの `pg_dump -Fc` / `pg_restore` で扱い、新しい基盤は要らない。Document DBのbackupはrelayを停止してから取る。backupの後とその定期にcheckpointを取る。
-- 外部checkpoint（`audit-admin checkpoint` の出力JSON：epoch、seq、chain、時刻、GENESIS）は、DBとは別の場所に保管する。同じ管理者が持つbackupは独立anchorではない。
-- 復元の検知（gate）：
-  - fingerprint：`publication_head.store_fingerprint`（database oid）と現在のdatabase oidが一致しなければ、全publication関数が `store_recovery_required` を返す。論理restoreではdatabaseが作り直されるので検知できる。
-  - 後退検知：relayは、自分がack済みの最大 `store_seq` がStore headより大きければ `store_regressed` としてclaimを止める。物理restoreも検知できる。
-  - どちらも外部障害として扱い、試行を消費しない。healthに専用の状態として表示する。
+- 外部checkpointの記録（`audit-admin checkpoint` の出力JSONと、restore時のepoch遷移の追記）は、DBとは別の場所に保管する。同じ管理者が持つbackupは独立anchorではない。
+- restoreの前提：
+  1. 復元先clusterに、globals（`roles.sql`、cluster移行時は `pg_dumpall --globals-only`。`principal_bindings` が参照するlogin roleを含む）を先に作る。
+  2. `pg_restore --exit-on-error --single-transaction` で復元する。`--no-owner`・`--no-privileges`・`--no-acl`・`--role` は禁止する（roleが無ければrestoreを失敗させ、PUBLIC剥奪の消失を防ぐ）。
+  3. 復元後に、冪等な `privileges.sql`（database ACL、role設定、PUBLIC剥奪）を再適用する。`posture_check()` が違反を返す間は、`begin_recovery_epoch` が `store_posture_invalid` で拒否する。
+- 復元の検知とrecovery mode：
+  - fingerprint：(system_identifier, database oid, timeline) が `publication_head` と異なる場合、またはrecovery_pendingの場合をrecovery modeとする。
+    - system_identifierは別clusterへの論理restoreを検知する。
+    - oidは同じcluster内でのrestoreを検知する。
+    - timelineはPITR・promotionを検知する。
+    - 残る限界：同じtimelineでのcrash recoveryのみの物理restore・snapshot restoreは、fingerprintでは検知できない。
+  - 後退検知：relayは、最後にack済みの（store_seq, event_id, envelope digest）を `lookup_receipts` でidentity照合する。不一致または欠落なら `store_regressed` とし、`begin_recovery_epoch` が実行されるまでclaimを止める（自動では解除しない）。
+  - recovery mode中は、publicationのすべての関数（ingest、record_relay_control、open_access、verify、checkpoint、change_access、bind/unbind、set_retention_policy、expire、purge_body、close_access）が `store_recovery_required` を返す。許可されるのは次の3つだけである。
+    - `verify_recovery()`：READ ONLYでverifyと同じ検査を行い、何も追記しない。
+    - `identity_chain_recovery_page(after_seq, limit)`：content-free、intentなし、本文なし。
+    - `begin_recovery_epoch`
+
+    recovery mode中の読取は、呼出ごとの監査記録を残さない（content-freeであり、restoreを行う者は既にownerの権限を持つため）。
+  - 計画的な移動（`pg_upgrade`、dump/restoreによる移行、計画的なpromotion）は、maintainの監査付き `rebind_fingerprint` で扱う（旧/新fingerprintを記録する）。
 - Store restoreの手順（relayは手順4まで停止）：
-  1. 新しいDBへrestoreする。
-  2. `audit-admin verify` で内部整合を確認する。
-  3. identity chain exportを、最新の外部checkpointとDB外で照合する。
-  4. `begin_recovery_epoch` を実行する。次をcontrol eventに記録し、新fingerprintを設定する。
-     - 復元head、照合したcheckpoint、照合の分類
-     - 消失したseq範囲：(復元head, max(checkpoint seq, relayの最大store_seq)]。上限が既知かどうかも記録する
-     - 旧epochで置き換えられた範囲
+  1. 前提に従って新しいDBへrestoreし、権限を再適用する。
+  2. `audit-admin verify --recovery` で内部整合を確認する。
+  3. `audit-admin export --identity-chain --recovery` で、最新の外部checkpointとDB外で照合する。
+  4. 帯域外の記録へepoch遷移を追記し、`begin_recovery_epoch(checkpoint)` を実行する。この関数は次を行う。
+     - fingerprint不一致か後退でなければ拒否する。
+     - head lockの下で、自らverifyを再走査し、復元headを計算する。
+     - control eventの記録：
+       - 照合したcheckpointと照合の分類
+       - recovery identity範囲のdigest
+       - 消失したseq範囲：(復元head, max(checkpoint seq, relayの最大store_seq)]。上限は「主張値」として記録し、復元headより小さい値は拒否する
+       - 旧/新fingerprint
+     - 新fingerprintを設定する。
   5. `audit-relay reconcile --repair` で、delivered_missingをpendingへ戻す（履歴を保存する）。
   6. 再配送する（idempotent）。
-  7. 再verifyと新しいcheckpointを取る。
+  7. 通常の記録付きverifyを実行し、新しいcheckpointを取る。
 
-  epochはchainを継続する（genesisへ戻さない）。終了したepochで宣言された置換範囲内のchain不一致は、改変ではなく復旧として扱う。
+  epochはchainを継続する（genesisへ戻さない）。
 - 限界：
-  - Store内で生成されたcontrol event（閲覧intent、拒否、retention、replay、integrity、権限変更）は、backup以降の分がsourceを持たないため回復できない。RPOを縮めたい場合は、WAL archiving/PITRを運用上で選択する（新しい依存は不要）。復元後にinvestigate/exportを再開する前に、権限の失効（revocation）とretention revisionを帯域外の記録から再適用し、それをcontrol eventとして記録する。
-  - 失効より前の古いbackupをrestoreすると、失効済みの本文が戻り得る。手順上、restore後に現行retentionを再適用し、それを記録する。
-- source（Document DB）を古いbackupへ戻した場合、Storeにあってsourceに無いeventが生じ得る。reconcileはこれを `store_only` として報告し、自動では削除しない。
+  - Store内で生成されたcontrol event（閲覧intent、拒否、retention、replay、integrity、権限変更）は、backup以降の分がsourceを持たないため回復できない。RPOを縮めたい場合は、WAL archiving/PITRを運用上で選択する（新しい依存は不要）。
+  - 復元後にinvestigate/exportを再開する前に、権限の失効とretention revisionを帯域外の記録から再適用し、それをcontrol eventとして記録する。失効より前の古いbackupをrestoreすると失効済みの本文が戻り得るので、restore後に現行retentionを再適用して記録する。
+- source（Document DB）を古いbackupへ戻した場合、Storeにあってsourceに無いeventが生じ得る。reconcileはこれを `store_only` として報告し、自動では削除しない。Document DBのrestoreでも、`audit_relay` に対して同じ前提（globals、権限の再適用、posture確認）を適用する。
 
 ## 12. Health・reconciliation・restart
 
 - `audit-relay health`（JSON）：
   - produced：staging件数、登録件数、未登録件数、repair登録件数
   - pending / leased / retry待ち / quarantined（code別）、最古pendingの経過時間、delivered件数
-  - Store可用性（circuit状態、`store_recovery_required` / `store_regressed`）
+  - Store可用性：circuit状態、`store_recovery_required` / `store_regressed` / `store_posture_invalid`
   - Store head seq（stored）
   - 最終 `audit.integrity.verified`（origin=store）のseqと時刻（verified）、verification lag
-  - trigger導入状態、policy revision
+  - 導入状態：登録trigger、guard trigger、digest関数の存在、policy revision
+  - reconcileの警報（unaudited_replay、delivered_missing、digest_mismatch）
 
   labelは固定codeのみとし、principal・resource・payloadを出さない。
-- `audit-relay reconcile`：deliveriesとStore receiptを照合する。event_idのbatch照会と、`list_source_receipts` によるseq順のpagingを組み合わせ、次に分類する。
+- `audit-relay reconcile`（service identityで定期実行するread-only版と、operatorが実行する `--repair` 版）：deliveriesとStore receiptを照合する。event_idのbatch照会と、`list_source_receipts` によるseq順のpagingを組み合わせ、commitmentも比較して次に分類する。
 
   | class | 意味 |
   |---|---|
   | ok | 一致 |
   | delivered_missing | relayはackしたがStoreに無い |
-  | digest_mismatch | digestが一致しない |
-  | quarantined_stored | quarantine済みだがStoreに保存されている |
+  | digest_mismatch | digestまたはcommitmentが一致しない |
+  | quarantined_stored | `delivery_unknown_at_limit` でquarantineされ、Storeのcommitmentが一致する |
+  | quarantined_conflict | quarantine済みでStoreのcommitmentが異なる |
   | pending | 配送待ち |
   | quarantined | quarantine済み |
   | unregistered | 配送登録が無い |
   | source_tampered | digestを再計算すると一致しない |
   | store_only | Storeにあるがsourceに無い |
+  | unaudited_replay | replayの記録がStoreで確認できない |
 
-  `--repair` を付けた場合だけ、次の処理を行う。新しいIDの生成や事実の書換えはしない。
-  - delivered_missingをpendingへ戻す（履歴を保存）
-  - quarantined_storedをStore receiptでackする（履歴を保存）
-  - unregisteredを登録する
+- `--repair` は次の処理だけを行う。新しいIDの生成や事実の書換えはしない。
+  - delivered_missingをpendingへ戻す（履歴を保存）。
+  - quarantined_storedをStore receiptでackする（履歴を保存）。SQL関数 `repair_ack_stored` 側で次をfenceする。
+    - `quarantine_code='delivery_unknown_at_limit'` であること
+    - 渡されたcommitmentがserver側で再計算した値と一致すること
+  - unregisteredを登録する。
 
-  store_onlyとdigest_mismatchには触れない。結果は `audit.reconciliation.completed` に記録する。
+  conflict・source_digest_mismatch・actor_mismatch・検証拒否のcodeは、ackしない。store_only、digest_mismatch、quarantined_conflictにも触れない。結果は `audit.reconciliation.completed` に記録する。
 - restartは試行履歴をresetしない。lease失効後に再claimする。shutdownではclaimを止め、有界にdrainし、未完了分はlease失効に任せる。
 
 ## 13. 境界とhandoff
 
 - Document（決定記録 D4）：TC:797に基づき、Auditの経路（`audit_relay` ledger）が `public.audit_outbox_events` に、登録trigger・append-only guard・deliveries FK・`BEGIN ATOMIC` digest関数を追加する。
   - migrate順：Document ledger → `audit-relay migrate`。
-  - migrationを実行するroleは、`audit_outbox_events` のownerであるか、TRIGGER・REFERENCES・UPDATE/DELETE/TRUNCATEのいずれか（LOCKのため）を持つ必要がある。
-  - この表に触れる今後のDocument migrationには、Auditのreviewが要る。
+  - `audit-relay migrate` は事前検査（preflight）として、`audit_outbox_events` の必要な列と型、Document ledgerの存在を確認する。
+  - migrationを実行するroleは、`audit_outbox_events` のownerまたはsuperuserとし、`audit_relay_owner` へSELECT・REFERENCESを与える。
+  - この表に触れる今後のDocument migrationには、Auditのreviewが要る。`DROP COLUMN ... CASCADE` を禁止する（digest関数が消え、producerのINSERTがruntimeで失敗するため）。
   - Documentへの引継ぎ：
     - `authorization.denied` の対象範囲と試験
     - 取下げ・公開終了時のschedule terminal audit
     - withdraw/endの理由文の上限
     - 通常ACLのreason未保存
     - W3C traceparent列の追加（TC INV-10・AC §13のtrace_id充足）
-    - principal/issuerの長さ上限
+    - principal/issuerの長さ上限（256 byte）
     - 本番でのrole分離（serveを非superuserで行う）
     - 理由文を開示する機能の要否
 - Organization：Role/Delegation/WorkItem/Workflowの意味をここで定義しない。現在の帰属情報を保持する。将来の接続点は次の3つ。
@@ -577,38 +657,48 @@ export fileとbackupは、mode 0600とし、logに内容を出さず、保管場
 - Search：`search_audit_outbox_events` とR04AはSearch担当の領域である。adapter契約を渡す。内容は次のとおり。
   - 配送登録：Search所有のmigration、またはSearchが付与する未配送index＋grant
   - class/resultの写像
+  - commitmentを持たないadapterでのduplicate規則（§7.2）
   - NO_RETENTION由来のfieldについて、digest・長さ・hidden Source IDを計算せず保持しない（OA SD-O1/O2）
 
 ## 14. 試験と受入
 
-合成データのみを使う。PostgreSQL 18.6（testcontainers。sourceとStoreは別database）で行う。
+合成データのみを使う。PostgreSQL 18.6（testcontainers。sourceとStoreは別database）で行う。roleの経路を確かめる試験は、superuserではなくroles.sqlで作った各loginで実行する。
 
 1. schema互換：
-   - acceptされること：main producerのpayloadの全形（初回 `version.created`、nullable base、revision_comparison、Document/Folder/bootstrapのACL、denied、schedulerのserviceExecutor、cancelledのcorrelation、unversioned subjectでversion付きのpublication.ended、representation付きのfile access）。
-   - 拒否されること：機微key、未知key、型違反、浮動小数、上限超過、重複key、UUID以外のcorrelation、control typeの偽装。
+   - acceptされること：main producerのpayloadの全形。
+   - 拒否されること：機微key、未知key、型違反、浮動小数、上限超過、重複key、UUID以外のcorrelation、control偽装。
    - legacy_time配列の形。
    - 生成schemaの再現性と、Rust⊂schemaの関係。
+   - (source_format, adapter_version) ごとに、envelope digestを固定したfixture。
 2. Store：
-   - idempotency：duplicate、duplicate_reprojected、duplicate_expired、conflict（commitment違い）。
+   - idempotency：duplicate、duplicate_reprojected、duplicate_expired、conflict（commitment違い、origin/source/type違い）。
    - append-only：UPDATE/DELETE/TRUNCATE/直接INSERTの拒否。
    - head直列化と遅延commit。genesis。
-   - chain検証と、改変・削除・順序入替・retention偽装の検出。
-   - DB外のidentity chain照合と外部checkpoint照合。
-   - role行列（42501）、`search_path` とshadowingの回帰、catalog検査（`pg_proc`）。
-   - 束縛されない主体・権限の無い主体のdenied記録と非開示。自己昇格の拒否。bootstrapの一回性・並行性。
-   - BEGIN/ROLLBACKで包んでもintentが残ること。READ ONLYのread_pageが未commitのintentを拒否すること。
+   - chain検証と、改変・削除・順序入替・retention偽装・purge偽装の検出。
+   - DB外のidentity chain照合と外部checkpoint照合。suffixを切り詰めてepoch_startedを捏造した場合の判定（帯域外記録なし→unverified_recovery、あり→lost）。
+   - role行列（42501）、posture_check、`search_path` とshadowingの回帰。
+   - 束縛されない主体・権限の無い主体のdenied記録と非開示。自己昇格の拒否。bind/unbindがowner専用であること。bootstrapの一回性・並行性。
+   - 開示：
+     - 同一transaction内で、SAVEPOINT→RELEASE、SAVEPOINTを開いたまま、ROLLBACK TO、DO＋EXCEPTION、open_access内部のEXCEPTIONの各経路でread_pageが拒否されること。
+     - 後続のREAD ONLY transactionでは成功すること。
+     - 任意のafter_seqで上限を超えないこと。
+     - 権限の取消しが開いているtokenに効くこと。
+     - access_intentsのfilterを改ざんすると検出されること。
    - export検証。
-   - retention：NULL policyのnot_expirable、cutoff前後、stale revision、hold、tombstoneの列集合、purge。
-   - 検証の非再帰、fingerprint gate、control eventのcatalog適合。
+   - retention：NULL policyのnot_expirable、cutoff前後と実効cutoff、stale revision、hold、control eventが対象外であること、tombstoneの列集合、purge。
+   - 検証の非再帰。
+   - fingerprint gateとrecovery mode（別container・同じoidへのrestore、許可された3関数以外の拒否、headが不変であること、epoch_startedがrestored_head+1に来ること）、posture違反での拒否。
+   - control eventのcatalog適合。
 3. 配送：
    - 登録triggerの失敗で業務がrollbackすること。
-   - Store停止（接続拒否）とread-only・lock timeoutで、業務は継続し、pendingが増え、試行を消費せず、復旧後に排出されること。
+   - Store停止（接続拒否）、read-only、lock timeout、statement timeout、未登録type（版ずれ）で、業務は継続し、pendingが増え、試行を消費せず、復旧後に排出されること。
+   - breakerはingestが成功するまで閉じないこと。特定eventだけが外部障害を起こし続ける場合の上限。
    - 不正schemaのquarantine、source改変の検出とcontrol event、staleなlease、commit結果不明。
-   - 保存後・ack前のcrash（子processをkill -9してrestart）、最終試行での保存後crashと `quarantined_stored` の修復。
-   - 同時重複、adapter_version違いの再配送。
-   - replay（試行予算の再設定と履歴）、reconcile/repair、store_only。
+   - 保存後・ack前のcrash（子processをkill -9してrestart）。最終試行での保存後crashと、`quarantined_stored` のfence付き修復（conflict codeは修復されないこと）。
+   - 同時重複、adapter_version違いの再配送、上げ忘れでconflictになることとその修復。
+   - replay（試行予算の再設定と履歴）、直接SQLでのreplayが `unaudited_replay` として検出されること、reconcile/repair、store_only。
    - backup → restore → gate → epoch → 再配送。
-   - 同一databaseの拒否、deliveries guard。
+   - 同一databaseの拒否、superuser/owner sessionでの起動拒否、deliveries guard。
 4. Document E2E：作成、公開、予約公開（scheduler attribution `service/scheduler`）、取下げ、metadata変更、folder操作、文書移動、ACL変更（通常・bootstrap）、初回既読、原本アクセス、Diffアクセス、revision比較、拒否（management・既読）、公開終了を、実producer経由でStoreまで届ける。
    - 確認すること：actor/resource/correlation、理由文が複製されていないこと、chainの検証。
    - staging失敗時に業務がrollbackすること。
