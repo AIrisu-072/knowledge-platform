@@ -1,0 +1,635 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "document.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"}
+      },
+      "required": ["documentId"],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": [
+        "document/{resource.id}",
+        "document/{resource.id}/version/{resource.version_id}"
+      ],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid"},
+        "versionNo": {"kind": "positive_counter"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid"},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": ["documentId", "documentVersionId"],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.updated",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid"},
+        "versionNo": {"kind": "positive_counter"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid"},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "versionNo",
+        "baseDocumentVersionId",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.rebased",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid"},
+        "versionNo": {"kind": "positive_counter"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid"},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "versionNo",
+        "baseDocumentVersionId",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "publishOperationId": {"kind": "uuid"},
+        "expectedDocumentRevision": {"kind": "counter"},
+        "resultingDocumentRevision": {"kind": "counter"},
+        "result": {"kind": "enum", "values": ["success"]},
+        "publishedAt": {"kind": "legacy_time"},
+        "serviceExecutor": {"kind": "principal"}
+      },
+      "required": [
+        "publishOperationId",
+        "expectedDocumentRevision",
+        "resultingDocumentRevision",
+        "result",
+        "publishedAt"
+      ],
+      "reason": "absent",
+      "service_executor_field": "serviceExecutor",
+      "operation_id_field": "publishOperationId",
+      "publish_operation_id_field": "publishOperationId"
+    },
+    {
+      "type": "document.version.publication.scheduled",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid"},
+        "publishOperationId": {"kind": "uuid"},
+        "scheduledPublishAt": {"kind": "legacy_time"},
+        "acceptedDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "scheduledPublishAt",
+        "acceptedDocumentRevision"
+      ],
+      "reason": "absent",
+      "operation_id_field": "publishOperationId",
+      "publish_operation_id_field": "publishOperationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.publication.cancelled",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid"},
+        "publishOperationId": {"kind": "uuid"},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "publish_operation_id_field": "publishOperationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.publication.terminal",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["failure"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid"},
+        "publishOperationId": {"kind": "uuid"},
+        "terminalReason": {
+          "kind": "enum",
+          "values": [
+            "identity_invalid",
+            "authorization_revoked",
+            "publish_quality_rejected",
+            "stale_publication_intent",
+            "publication_business_rule",
+            "publication_integrity_failure",
+            "semantic_inspection_rejected",
+            "publication_preflight_rejected"
+          ]
+        },
+        "resultingDocumentRevision": {"kind": "counter"},
+        "serviceExecutor": {"kind": "principal"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "terminalReason",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "reason_code_field": "terminalReason",
+      "service_executor_field": "serviceExecutor",
+      "operation_id_field": "publishOperationId",
+      "publish_operation_id_field": "publishOperationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.withdrawn",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "withdrawnDocumentVersionId": {"kind": "uuid"},
+        "formerCurrentVersionId": {"kind": "nullable_uuid"},
+        "resultingCurrentVersionId": {"kind": "nullable_uuid"},
+        "actor": {"kind": "principal"},
+        "restorationWithheldByValidation": {"kind": "boolean"},
+        "restorationWithheldReason": {
+          "kind": "nullable_enum",
+          "values": [
+            "base_unavailable_or_not_published",
+            "base_inspection_unavailable",
+            "base_quality_or_storage_unavailable",
+            "base_database_evidence_changed",
+            "base_not_qualified"
+          ]
+        },
+        "invalidatedScheduleCount": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "withdrawnDocumentVersionId",
+        "formerCurrentVersionId",
+        "resultingCurrentVersionId",
+        "actor",
+        "restorationWithheldByValidation",
+        "restorationWithheldReason",
+        "invalidatedScheduleCount"
+      ],
+      "reason": "caller_text",
+      "duplicated_actor_field": "actor",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "withdrawnDocumentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.publication.ended",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "operationId": {"kind": "uuid"},
+        "documentId": {"kind": "uuid"},
+        "formerCurrentVersionId": {"kind": "uuid"},
+        "resultingCurrentVersionId": {"kind": "nullable_uuid"},
+        "resultingDocumentRevision": {"kind": "counter"},
+        "actor": {"kind": "principal"},
+        "invalidatedScheduleCount": {"kind": "counter"},
+        "endedAt": {"kind": "legacy_time"}
+      },
+      "required": [
+        "operationId",
+        "documentId",
+        "formerCurrentVersionId",
+        "resultingCurrentVersionId",
+        "resultingDocumentRevision",
+        "actor",
+        "invalidatedScheduleCount",
+        "endedAt"
+      ],
+      "reason": "caller_text",
+      "duplicated_actor_field": "actor",
+      "operation_id_field": "operationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "formerCurrentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.metadata.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "document_id": {"kind": "uuid"},
+        "changed_keys": {
+          "kind": "enum_list",
+          "values": ["category", "document_type", "extensions", "owning_department"]
+        },
+        "document_revision": {"kind": "counter"}
+      },
+      "required": ["operation_id", "document_id", "changed_keys", "document_revision"],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "document_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "document.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "document_id": {"kind": "uuid"},
+        "from_folder_id": {"kind": "uuid"},
+        "to_folder_id": {"kind": "uuid"},
+        "document_revision": {"kind": "counter"},
+        "access_revision": {"kind": "counter"},
+        "visibility_changed": {"kind": "boolean"}
+      },
+      "required": [
+        "operation_id",
+        "document_id",
+        "from_folder_id",
+        "to_folder_id",
+        "document_revision",
+        "access_revision",
+        "visibility_changed"
+      ],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "document_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "folder.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["folder/{resource.id}"],
+      "fields": {
+        "folder_id": {"kind": "uuid"},
+        "parent_folder_id": {"kind": "uuid"},
+        "folder_revision": {"kind": "counter"},
+        "operation_id": {"kind": "uuid"}
+      },
+      "required": ["folder_id", "parent_folder_id", "folder_revision", "operation_id"],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "folder_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "folder.renamed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["folder/{resource.id}"],
+      "fields": {
+        "folder_id": {"kind": "uuid"},
+        "folder_revision": {"kind": "counter"},
+        "operation_id": {"kind": "uuid"}
+      },
+      "required": ["folder_id", "folder_revision", "operation_id"],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "folder_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "folder.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["folder/{resource.id}"],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "folder_id": {"kind": "uuid"},
+        "from_parent_id": {"kind": "uuid"},
+        "to_parent_id": {"kind": "uuid"},
+        "folder_revision": {"kind": "counter"},
+        "access_revision": {"kind": "counter"},
+        "subtree_affected": {"kind": "counter"}
+      },
+      "required": [
+        "operation_id",
+        "folder_id",
+        "from_parent_id",
+        "to_parent_id",
+        "folder_revision",
+        "access_revision",
+        "subtree_affected"
+      ],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "folder_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "ACCESS_POLICY",
+      "resources": ["Document", "Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": [
+        {"template": "document/{resource.id}", "resource": "Document"},
+        {"template": "folder/{resource.id}", "resource": "Folder"}
+      ],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "target_type": {"kind": "enum", "values": ["Document", "Folder"]},
+        "target_id": {"kind": "uuid"},
+        "policy_id": {"kind": "nullable_uuid"},
+        "policy_revision": {"kind": "counter"},
+        "access_revision": {"kind": "counter"},
+        "bootstrap": {"kind": "boolean"}
+      },
+      "required": [
+        "operation_id",
+        "target_type",
+        "target_id",
+        "policy_id",
+        "policy_revision",
+        "access_revision"
+      ],
+      "reason": "absent",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "target_type", "equals": "resource.type"},
+        {"field": "target_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "document.version.read_confirmed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "document_version_id": {"kind": "uuid"}
+      },
+      "required": ["document_version_id"],
+      "reason": "absent",
+      "bindings": [
+        {"field": "document_version_id", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.file.access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": [
+        "document/{resource.id}/version/{resource.version_id}/representation/{details.representation_id}"
+      ],
+      "fields": {
+        "content_item_id": {"kind": "uuid"},
+        "representation_id": {"kind": "uuid"},
+        "purpose": {"kind": "enum", "values": ["authoring", "history", "published"]}
+      },
+      "required": ["content_item_id", "representation_id", "purpose"],
+      "reason": "absent"
+    },
+    {
+      "type": "document.diff.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/diff"],
+      "fields": {
+        "base_version_id": {"kind": "uuid"},
+        "target_version_id": {"kind": "uuid"},
+        "base_snapshot_digest": {"kind": "digest"},
+        "target_snapshot_digest": {"kind": "digest"},
+        "comparison_profile": {"kind": "enum", "values": ["document-diff-v0"]},
+        "resource_profile": {"kind": "enum", "values": ["diff-resource-v0"]},
+        "result_digest": {"kind": "digest"},
+        "verdict": {"kind": "enum", "values": ["different", "same", "unknown"]},
+        "coverage": {"kind": "enum", "values": ["full", "none", "partial"]},
+        "cache_hit": {"kind": "boolean"}
+      },
+      "required": [
+        "base_version_id",
+        "target_version_id",
+        "base_snapshot_digest",
+        "target_snapshot_digest",
+        "comparison_profile",
+        "resource_profile",
+        "result_digest",
+        "verdict",
+        "coverage",
+        "cache_hit"
+      ],
+      "reason": "absent",
+      "bindings": [
+        {"field": "target_version_id", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.revision_comparison.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/revision-comparison"],
+      "fields": {
+        "base_revision_id": {"kind": "uuid"},
+        "target_revision_id": {"kind": "uuid"},
+        "content_comparison_status": {
+          "kind": "enum",
+          "values": ["differentAuthoritativeVersions", "sameAuthoritativeVersion"]
+        },
+        "content_result_digest": {"kind": "nullable_digest"},
+        "content_audit_event_id": {"kind": "nullable_uuid"},
+        "metadata_comparison_status": {
+          "kind": "enum",
+          "values": ["different", "same", "unavailableLegacy"]
+        },
+        "base_metadata_snapshot_digest": {"kind": "nullable_digest"},
+        "target_metadata_snapshot_digest": {"kind": "nullable_digest"}
+      },
+      "required": [
+        "base_revision_id",
+        "target_revision_id",
+        "content_comparison_status",
+        "content_result_digest",
+        "content_audit_event_id",
+        "metadata_comparison_status",
+        "base_metadata_snapshot_digest",
+        "target_metadata_snapshot_digest"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "authorization.denied",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "SECURITY",
+      "resources": ["AccessPolicy"],
+      "version_required": false,
+      "results": ["denied"],
+      "subjects": ["authorization/denied"],
+      "fields": {
+        "action_code": {
+          "kind": "enum",
+          "values": [
+            "create_folder",
+            "lookup_management_operation",
+            "mark_version_read",
+            "move_document",
+            "move_folder",
+            "rename_folder",
+            "set_access_policy",
+            "update_document_metadata"
+          ]
+        },
+        "reason_code": {"kind": "enum", "values": ["forbidden"]}
+      },
+      "required": ["action_code", "reason_code"],
+      "reason": "absent",
+      "reason_code_field": "reason_code",
+      "nil_resource_allowed": true
+    }
+  ]
+}
