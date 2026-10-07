@@ -1,5 +1,21 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-08 — 4回目の独立reviewの修正（`fbe962a`、`6504778`）
+
+- 4回目のreview（修正の確認、mainの機能がshellの制限で壊れていないかの全件調査、completeness critic）。「修正の確認」の担当がCPU負荷試験のコマンド内で止まったため、負荷試験を禁じて再実行した。成立した指摘を修正。
+- **ウィンドウを閉じる操作で、ページの離脱確認が働いていなかった。** shellはウィンドウを即座に閉じ、ページの `beforeunload`（未保存の文案、処理中・結果未確認の操作）が一度も動かなかった。Linuxでは閉じる要求をいったん止め、`webkit_web_view_try_close` でページに閉じさせ、ページが応じたときだけ閉じるよう修正（`webkit2gtk` 2.0.2を直接依存に追加。依存の木には既存）。WebDriverの操作中は離脱確認が自動で承諾される（WebDriverの規格）ため、WebDriverを使わずに起動したアプリをX上の実際のクリックとキー入力で操作して確認した。Windowsは未実装（確認項目7に追加）。
+- **デスクトップ版ではタスク・検索の画面へ画面の操作だけでは移れない**（起動時は文書の画面で、そのメニューに「タスク」「検索」が無く、URL欄も無い）。実GUIの確認はscriptでURLを指定して移動していたため見落としていた。入口は依頼者の判断事項として手順書の既知の制約に記録。
+- 「ファイルを作成」の書き込み中にアプリが落ちると途中のファイルが残り、画面からは完成できない（承認済みの設計の帰結）ことを、既知の制約と復旧の表に記録。
+- 画面：作成フォームが状況変更を説明したら、一覧側の同じ説明は消す（再試行の成功後も残っていた）。shell試験：API定義のheader一致を `$ref`・path単位・引用符付きYAMLまで確認。
+- 実GUIの証跡：確認手段の分類の残り（WebDriver、IPC、scriptによる操作）を修正し、「X操作」を追加。タスク画面の接続先未設定時の表示を追加。修正前のshellでの失敗の確認は、証跡の条件を満たさない参考の実行として記録。実行は固定版のNode 24.21.0で、`mise run desktop:gui:e2e` と同じ手順（画面の本番build、shellのbuild、backendのbuild、harness）を個別に実行した（この環境のmiseはrepositoryの設定を信頼済みにしていないため）。
+- 検証（ローカル、Linux）：
+  - 実GUI：`run-XbKm2e`・`run-NKcwUg`（commit `6504778`、Node 24.21.0、連続2回）で26シナリオ・217項目がすべて成功、`qualifying: true`（画面103、WebDriver 2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8）。参考：閉じる処理を外したshellでは閉じる操作の場面が失敗（`run-AR2LPn`）。
+  - shell：単体28件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`。architecture-lint成功。
+  - 画面：全69 suites／1660件、型検査、本番build（Node 24.21.0）。
+- 未検証：Windows実機・WebView2・MSVC build（依頼者。確認項目7に閉じる操作を追加）、Windows版broker（未実装）、Windowsでの閉じる操作の離脱確認（未実装）、macOS、手順書の「Linuxで未確認」の項目。
+- 依頼者の判断事項：デスクトップ版の入口（タスク・検索の画面への導線、または起動時の画面）。
+- 次のexact action：push → exact-head CI → Draft解除と統合 → 統合後のmain CIを確認 → 最終報告。
+
 ## 2026-10-07 14:40 UTC — 3回目の独立reviewの修正（`d18df99`）
 
 - 2回目のreviewは、最後の検証1件（強制終了の確認。対象は `6a7fae8` で修正済み）がコマンド内で止まったため打ち切り、修正commitの確認と抜け漏れの確認を3回目として実施（12件中11件が再現つきで成立、1件は反証）。

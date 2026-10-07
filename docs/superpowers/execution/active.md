@@ -73,6 +73,7 @@
 - 09:20追補：[PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。1回目の独立reviewを修正し、実GUI確認を24シナリオへ拡充（commit `baad3bc` で `qualifying: true`）。Linuxで未確認の項目は[手順書](../../operations/desktop-workspace-runtime.md)、詳細は[状況](desktop-workspace-runtime-status.md)。次は2回目の独立reviewの確認→exact-head CI→統合→統合後CI
 - 10:10追補：2回目の独立reviewの指摘を修正（設定の上書き防止、転送の上限試験、下書き保持、証跡の厳密化）。commit `3abfeca` と、main（PR #100〜#105）取り込み後の `c31e6d0` で、実GUI 24シナリオ・205項目がそれぞれ連続2回 `qualifying: true`。次はexact-head CI→統合→統合後CI
 - 14:40追補：3回目の独立reviewで、デスクトップ版のタスク画面の作業ファイル保存が必ず失敗する不具合（Work APIの専用headerをshellが落とす）などを発見し修正（`d18df99`）。実GUI 25シナリオ・212項目が連続2回 `qualifying: true`。次はpush→exact-head CI→4回目のreview→統合→統合後CI
+- 2026-10-08追補：4回目の独立reviewで、ウィンドウを閉じる操作でページの離脱確認が働かない不具合などを発見し修正（`6504778`）。実GUI 26シナリオ・217項目が固定版Node 24.21.0で連続2回 `qualifying: true`。デスクトップ版ではタスク・検索の画面へメニューから移れないこと（入口は依頼者の判断事項）を記録。次はpush→exact-head CI→統合→統合後CI
 
 ---
 

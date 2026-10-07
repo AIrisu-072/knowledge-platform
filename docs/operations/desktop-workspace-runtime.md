@@ -92,7 +92,7 @@ mise run desktop:gui:e2e
 - 各項目の名前の先頭に、何で確かめたかを付けています：接頭辞なし＝画面（操作して、画面に出たもの・画面の要素の状態を読む）、「IPC：」＝ページのscriptからbrokerを直接呼ぶ（不正な要求、同じ操作IDの再送、brokerの記録の確認など）、「ページのscript：」＝その他のページのscript（`/v1` への直接のfetch、新しいウィンドウ・iframe・遷移の試行、media query、IPCの呼び出し回数の計測）、「ディスク：」＝harnessがディスク上のファイルを読む、「ログ：」＝アプリのstderr、「WebDriver：」＝WebDriverだけが読める状態（ウィンドウの数、document.title）、「X操作：」＝WebDriverを使わずに起動したアプリを、X上の実際のクリックとキー入力で操作して画面を確かめたもの（画面に数える）、「準備：」＝確認のための準備。report.jsonの `checkCounts` に種類ごとの件数を集計します。デスクトップ版にはURL欄が無く、すべての画面にメニューのリンクがあるわけではないため、一部の画面へはscriptでURLを指定して移動し、移動した先の画面を確かめています（移動そのものを確かめる項目だけ「ページのscript：」に分類）。
 - これはLinuxでの証拠です。Windows・WebView2の証拠にはなりません。
 
-2026-10-07の確認結果（25シナリオ。実行記録は下の「証拠とした実行」）：
+2026-10-07〜08の確認結果（26シナリオ。実行記録は下の「証拠とした実行」）：
 
 | シナリオ | 主な確認内容（「IPC」はページのscriptからbrokerを直接呼んだ確認、「ページのscript」はその他のscriptによる確認） |
 |---|---|
@@ -141,9 +141,13 @@ mise run desktop:gui:e2e
 
 ### 証拠とした実行
 
-- 2026-10-07 14:25–14:32 UTC、`run-p5Dill` と `run-29mvyi`（連続2回）：commit `d18df99`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも25シナリオ・212項目がすべて成功し、`qualifying: true`。212項目の内訳（report.jsonの `checkCounts`）は、画面105、ページのscript 36、IPC 38、IPC・ディスク2、ディスク20、ログ3、準備8です。
-- 実行ファイル（debug build）のsha256は `08a95df4587e259447bbe537ea7e1f63d8ef5616a56fac6a825197f1b2780c84`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、Node 22.22.0、PostgreSQL 18.6。
-- それ以前の実行（`c31e6d0` の `run-AZ0Gve`・`run-O8wwVK` など）では、ページのscriptによる確認の一部を画面の確認として数えていました（IPCも42ではなく38）。上の実行から、確認手段ごとに分けて集計しています。
+- 2026-10-07 23:42–23:49 UTC、`run-XbKm2e` と `run-NKcwUg`（連続2回）：commit `6504778`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも26シナリオ・217項目がすべて成功し、`qualifying: true`。217項目の内訳（report.jsonの `checkCounts`）は、画面103（X操作を含む）、WebDriver 2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8です。離脱確認の判定に使った画面中央の画素の差は、確認の表示中が23,443、取り消し後が0でした。
+- 実行の手順：この環境のmiseはrepositoryの設定を信頼済みにしていないため、`mise run desktop:gui:e2e` と同じ手順（画面の本番build、shellのbuild、backendのbuild、`node apps/desktop/e2e/run.mjs`）を、固定版のNode 24.21.0（miseで取得）・Rust 1.98.1・pnpm 12.4.1で個別に実行しました。
+- 実行ファイル（debug build）のsha256は `47a6e75bf2e082d697cbfb17fe01cb3f57344915723ac1c5ed9fd84e4187e4c7`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、PostgreSQL 18.6。
+- 参考（証跡の条件を満たさない実行。修正前の動作で場面が失敗することの確認）：
+  - `run-9ZrhTA`：Work APIの専用headerを落とす許可リストのshell（実行ファイルを差し替え、sha256 `7211fcfedd1e566f8a30f84dcc849a73aaa3a0f58b6d4944ed82cae67b423532`、絞り込み実行）で、タスク画面の作業ファイルの場面は保存が完了せず失敗。画面には一般的な失敗の表示だけが出て、backendの記録にも422は残らないため、原因（headerの欠落による422）は、shellの試験（headerが届かない）とserverの試験（headerが無ければ422）からの推定です。
+  - `run-AR2LPn`：閉じる処理を外したshell（実行ファイルを差し替え、sha256 `f5b8b9893d2d889f95bffab648e545a95a5d9300055f2a189e851c52500ea6c7`、絞り込み実行）で、保存の処理中に閉じる要求を送るとアプリがそのまま終了し、閉じる操作の場面が失敗。
+- それ以前の実行（`d18df99` の `run-p5Dill`・`run-29mvyi` など）は、確認手段の分類が今より粗く（WebDriverやscriptによる操作の一部を画面に数えていた）、Node 22で実行していました。
 - 強制終了は、どちらの実行も1回目の試行で8MiB中4MiBを書いた時点で起き、同じ操作IDの再送で完全な1件に収束しました。
 - 途中で失敗した実行もあります（いずれもharness側の問題で、直してから上の実行を行いました）：二重クリックがmodalの裏のボタンを押していた、`xdotool type` が「第」を落としてGTKの選択画面が別名のフォルダーを作った、skip linkの確認が直前のfocus位置や、文書一覧が読み込み後に選択行へfocusを移す動作と競合した。経緯は[実行状況](../superpowers/execution/desktop-workspace-runtime-status.md)にあります。
 - 証跡（report.jsonとスクリーンショット）はクラウド環境の `apps/desktop/e2e/.state/`（git管理外）にあり、環境の終了とともに消えます。手元で再現するときは `mise run desktop:gui:e2e` を実行してください。
