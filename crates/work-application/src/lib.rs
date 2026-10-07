@@ -5,11 +5,11 @@ use uuid::Uuid;
 mod agent;
 pub use agent::*;
 use work_domain::{
-    AgentDispatchContext, AgentExecution, AgentFailureCode, AgentFindingOutput, AgentResult,
-    Command, CommandContext, EvidenceRecord, EvidenceSource, FileGeneration, Finding,
+    AgentDispatchContext, AgentExecution, AgentFailureCode, AgentOutput, AgentResult, Command,
+    CommandContext, EvidenceRecord, EvidenceSource, FileGeneration, Finding, GeneratedArtifact,
     HandoffSnapshot, HumanDecision, MutationResult, OrganizationView, PolicyCommand,
-    ReturnInstruction, TaskAttention, TaskDetail, TaskSummary, TaskView, VerifiedActor,
-    WorkContextHistory, WorkContextView, WorkError, WorkFile, WorkingArtifact,
+    ReturnInstruction, SuggestedAction, TaskAttention, TaskDetail, TaskSummary, TaskView,
+    VerifiedActor, WorkContextHistory, WorkContextView, WorkError, WorkFile, WorkingArtifact,
 };
 
 pub type WorkFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, WorkError>> + Send + 'a>>;
@@ -106,6 +106,22 @@ pub trait WorkRepository: Send + Sync {
     fn agent_result(&self, _actor: VerifiedActor, _id: Uuid) -> WorkFuture<'_, AgentResult> {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }
+    /// Private Agent draft candidate, read under the execution's current scope.
+    fn generated_artifact(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, GeneratedArtifact> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
+    /// Typed non-executable proposal, read under the execution's current scope.
+    fn suggested_action(
+        &self,
+        _actor: VerifiedActor,
+        _id: Uuid,
+    ) -> WorkFuture<'_, SuggestedAction> {
+        Box::pin(async { Err(WorkError::DependencyUnavailable) })
+    }
     fn start_agent_execution(
         &self,
         _actor: VerifiedActor,
@@ -123,7 +139,7 @@ pub trait WorkRepository: Send + Sync {
     fn finish_agent_execution(
         &self,
         _context: AgentDispatchContext,
-        _output: AgentFindingOutput,
+        _output: AgentOutput,
     ) -> WorkFuture<'_, AgentExecution> {
         Box::pin(async { Err(WorkError::DependencyUnavailable) })
     }

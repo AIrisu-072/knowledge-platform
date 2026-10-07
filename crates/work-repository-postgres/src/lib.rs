@@ -860,6 +860,26 @@ impl WorkRepository for PostgresWorkRepository {
             e.result.ok_or(WorkError::IntegrityViolation)
         })
     }
+    fn generated_artifact(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, GeneratedArtifact> {
+        Box::pin(
+            self.read_candidate(actor, WorkTarget::GeneratedArtifact(id), move |w| {
+                let record = w.generated_artifact(actor, id)?;
+                Ok((record.execution_id, record))
+            }),
+        )
+    }
+    fn suggested_action(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, SuggestedAction> {
+        Box::pin(
+            self.read_candidate(actor, WorkTarget::SuggestedAction(id), move |w| {
+                let record = w.suggested_action(actor, id)?;
+                Ok((record.execution_id, record))
+            }),
+        )
+    }
     fn start_agent_execution(
         &self,
         actor: VerifiedActor,
@@ -877,7 +897,7 @@ impl WorkRepository for PostgresWorkRepository {
     fn finish_agent_execution(
         &self,
         context: AgentDispatchContext,
-        output: AgentFindingOutput,
+        output: AgentOutput,
     ) -> WorkFuture<'_, AgentExecution> {
         Box::pin(self.finish_agent(context, output))
     }

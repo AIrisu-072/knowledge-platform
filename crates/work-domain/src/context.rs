@@ -360,6 +360,8 @@ pub enum WorkTarget {
     Evidence(Uuid),
     Finding(Uuid),
     AgentExecution(Uuid),
+    GeneratedArtifact(Uuid),
+    SuggestedAction(Uuid),
     Context(Uuid),
 }
 
@@ -631,6 +633,12 @@ impl Workflow {
             WorkTarget::Finding(id) => self.findings.iter().any(|value| value.id == id),
             WorkTarget::AgentExecution(id) => {
                 self.agent_executions.iter().any(|value| value.id == id)
+            }
+            WorkTarget::GeneratedArtifact(id) => {
+                self.generated_artifacts.iter().any(|value| value.id == id)
+            }
+            WorkTarget::SuggestedAction(id) => {
+                self.suggested_actions.iter().any(|value| value.id == id)
             }
             WorkTarget::Context(id) => self.context_id == id,
         }

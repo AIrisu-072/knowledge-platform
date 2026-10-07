@@ -3,11 +3,13 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 mod agent;
+mod agent_result;
 mod context;
 mod evidence;
 mod files;
 mod organization;
 pub use agent::*;
+pub use agent_result::*;
 pub use context::*;
 pub use evidence::*;
 pub use files::*;
@@ -429,6 +431,11 @@ pub struct WorkItem {
 pub struct Workflow {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_executions: Vec<AgentExecution>,
+    /// Private Agent draft candidates and typed suggestions (U4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generated_artifacts: Vec<GeneratedArtifact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggested_actions: Vec<SuggestedAction>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<EvidenceRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -792,6 +799,8 @@ impl Workflow {
     pub fn synthetic(document_id: Option<Uuid>) -> Self {
         Self {
             agent_executions: vec![],
+            generated_artifacts: vec![],
+            suggested_actions: vec![],
             evidence: vec![],
             findings: vec![],
             decisions: vec![],
@@ -1369,6 +1378,7 @@ impl Workflow {
             }
         }
         self.validate_agent_integrity()?;
+        self.validate_candidate_integrity()?;
         Ok(())
     }
     pub fn authorize_command(

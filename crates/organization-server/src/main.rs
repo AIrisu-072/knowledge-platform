@@ -4,8 +4,8 @@ use document_server::{
 };
 use organization_server::{
     DocumentAgentSource, DocumentEvidenceSource, FileSystemWorkArtifactStore, OrganizationConfig,
-    OrganizationProfile, OwnedAgentDispatcher, SyntheticIdentityAdapter, bootstrap_document_policy,
-    compose_routes, verify_shared_document,
+    OrganizationProfile, OwnedAgentDispatcher, SyntheticAgentExecutor, SyntheticIdentityAdapter,
+    bootstrap_document_policy, compose_routes, verify_shared_document,
 };
 use std::{process::ExitCode, sync::Arc};
 use uuid::Uuid;
@@ -121,7 +121,13 @@ async fn run() -> Result<(), String> {
             repository.interrupt_agent_executions(actor).await.map_err(
                 |_| "synthetic execution recovery unavailable (after upgrading, run `seed-work`)",
             )?;
-            let dispatcher = Arc::new(OwnedAgentDispatcher::new(repository.clone(), actor));
+            // The executor port is the replacement point for a reviewed real
+            // Agent/MCP adapter; only the fixed simulated executor is composed.
+            let dispatcher = Arc::new(OwnedAgentDispatcher::with_executor(
+                repository.clone(),
+                actor,
+                Arc::new(SyntheticAgentExecutor),
+            ));
             let work = work_api_http::router_with_agent(repository, actor, dispatcher.clone());
             let joined = compose_routes(work, runtime.router());
             let bind = serve.bind();

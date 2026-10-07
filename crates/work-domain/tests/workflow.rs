@@ -1077,11 +1077,12 @@ fn completion_invalidates_running_agent_and_rejects_late_candidate_output() {
     assert_eq!(
         workflow.finish_agent_execution(
             &running,
-            AgentFindingOutput {
-                summary: "合成実行".into(),
-                claim: "遅い出力".into(),
-                uncertainty: vec!["本文分析なし".into()]
-            },
+            AgentOutput::referenced_finding(
+                &running,
+                "合成実行",
+                "遅い出力",
+                vec!["本文分析なし".into()]
+            ),
             NOW
         ),
         Err(WorkError::WorkContextStale)

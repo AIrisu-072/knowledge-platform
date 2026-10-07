@@ -2525,6 +2525,104 @@
         ],
         "description": "getHandoffSnapshotと同じ規則で読める利用者だけ。固定した世代を保存領域で照合してから返す。一致しない・欠落はWORK_ARTIFACT_UNAVAILABLE"
       }
+    },
+    "/v1/organization/generated-artifacts/{id}": {
+      "get": {
+        "operationId": "getGeneratedArtifact",
+        "summary": "getGeneratedArtifact",
+        "responses": {
+          "200": {
+            "description": "現在の権限で読んだ非公開の下書き候補（実行の依頼者本人・同じ担当・同じ試行だけ）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedArtifact"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/organization/suggested-actions/{id}": {
+      "get": {
+        "operationId": "getSuggestedAction",
+        "summary": "getSuggestedAction",
+        "responses": {
+          "200": {
+            "description": "現在の権限で読んだ型付き提案（実行の依頼者本人・同じ担当・同じ試行だけ）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedAction"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "安全なRFC9457エラー。外部状態不明を成功としない",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4610,8 +4708,9 @@
             "items": {
               "$ref": "#/components/schemas/RevisionRef"
             },
-            "minItems": 1,
-            "maxItems": 1
+            "minItems": 0,
+            "maxItems": 1,
+            "description": "0〜1件。根拠の無い提案はFindingにしない。U4以前の結果は常に1件。"
           },
           "evidenceRevisionRefs": {
             "type": "array",
@@ -4647,6 +4746,35 @@
           "mcpWireExecuted": {
             "type": "boolean",
             "const": false
+          },
+          "sourceOutcomes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSourceOutcome"
+            },
+            "minItems": 1,
+            "maxItems": 16,
+            "description": "選択した根拠ごとの利用結果（同じ順序）。U4以前の結果には無い。unavailable/unsupportedを含む結果は一部の根拠だけで作成した結果であり、全体の検証済みを意味しない。"
+          },
+          "generatedArtifactIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 2,
+            "description": "非公開の下書き候補。空なら省略。"
+          },
+          "suggestedActionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "description": "実行権限の無い型付き提案。空なら省略。"
           }
         },
         "required": [
@@ -6666,6 +6794,240 @@
           "kind",
           "task",
           "artifacts"
+        ]
+      },
+      "AgentSourceOutcome": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evidenceRevisionRef": {
+            "$ref": "#/components/schemas/RevisionRef"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "referenced",
+              "analyzed",
+              "unavailable",
+              "unsupported"
+            ],
+            "description": "executorが利用できた範囲。認可はWorkが別に再確認する。合成executorはanalyzedを返さない。"
+          }
+        },
+        "required": [
+          "evidenceRevisionRef",
+          "outcome"
+        ]
+      },
+      "GeneratedArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Agentの非公開の下書き候補。Workの作業成果物ではなく、提出・次工程の対象にならない。担当者が既存の文案保存で保存したときだけ作業に入る。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "schemaId": {
+            "type": "string",
+            "const": "organization.text-draft.v1"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "UTF-8で200 bytes以内、制御文字なし。"
+          },
+          "value": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192,
+                "description": "UTF-8 encoded length is limited to 8192 bytes by the server."
+              }
+            },
+            "required": [
+              "text"
+            ]
+          },
+          "sourceRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "author": {
+            "type": "string",
+            "description": "実際のexecutorの識別"
+          },
+          "simulated": {
+            "type": "boolean"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "agent_execution_private"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "contextId",
+          "workItemId",
+          "attemptId",
+          "schemaId",
+          "title",
+          "value",
+          "sourceRevisionRefs",
+          "author",
+          "simulated",
+          "visibility",
+          "createdAt"
+        ]
+      },
+      "ProposedAction": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ReviewFindingAction"
+          },
+          {
+            "$ref": "#/components/schemas/UseGeneratedArtifactAction"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "review_finding": "#/components/schemas/ReviewFindingAction",
+            "use_generated_artifact": "#/components/schemas/UseGeneratedArtifactAction"
+          }
+        }
+      },
+      "SuggestedAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "実行権限の無い型付き提案。実行するAPIは無く、人間が選ぶと画面は対象を現在の権限で読み直して通常の操作画面を開く。HumanDecisionでも工程操作でもない。",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ProposedAction"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "UTF-8で1024 bytes以内。"
+          },
+          "supportingRevisionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionRef"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "author": {
+            "type": "string",
+            "description": "実際のexecutorの識別"
+          },
+          "visibility": {
+            "type": "string",
+            "const": "agent_execution_private"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "executionId",
+          "contextId",
+          "workItemId",
+          "attemptId",
+          "action",
+          "rationale",
+          "supportingRevisionRefs",
+          "author",
+          "visibility",
+          "createdAt"
+        ]
+      },
+      "ReviewFindingAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "review_finding"
+          },
+          "findingRevisionRef": {
+            "$ref": "#/components/schemas/RevisionRef"
+          }
+        },
+        "required": [
+          "kind",
+          "findingRevisionRef"
+        ]
+      },
+      "UseGeneratedArtifactAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "use_generated_artifact"
+          },
+          "generatedArtifactId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "generatedArtifactId"
         ]
       }
     }

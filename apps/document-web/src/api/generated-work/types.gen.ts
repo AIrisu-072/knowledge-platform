@@ -483,15 +483,28 @@ export type AgentResult = {
      * UTF-8 encoded length is limited to 8192 bytes by the server.
      */
     summary: string;
-    findingRevisionRefs: [
-        RevisionRef
-    ];
+    /**
+     * 0〜1件。根拠の無い提案はFindingにしない。U4以前の結果は常に1件。
+     */
+    findingRevisionRefs: Array<RevisionRef>;
     evidenceRevisionRefs: Array<RevisionRef>;
     uncertainty: Array<string>;
     simulated: true;
     bodyAnalyzed: false;
     liveLlm: false;
     mcpWireExecuted: false;
+    /**
+     * 選択した根拠ごとの利用結果（同じ順序）。U4以前の結果には無い。unavailable/unsupportedを含む結果は一部の根拠だけで作成した結果であり、全体の検証済みを意味しない。
+     */
+    sourceOutcomes?: Array<AgentSourceOutcome>;
+    /**
+     * 非公開の下書き候補。空なら省略。
+     */
+    generatedArtifactIds?: Array<string>;
+    /**
+     * 実行権限の無い型付き提案。空なら省略。
+     */
+    suggestedActionIds?: Array<string>;
 };
 
 export type AgentExecution = {
@@ -966,6 +979,83 @@ export type SubmissionImported = {
     kind: 'submission_imported';
     task: TaskSummary;
     artifacts: Array<WorkingArtifact>;
+};
+
+export type AgentSourceOutcome = {
+    evidenceRevisionRef: RevisionRef;
+    /**
+     * executorが利用できた範囲。認可はWorkが別に再確認する。合成executorはanalyzedを返さない。
+     */
+    outcome: 'referenced' | 'analyzed' | 'unavailable' | 'unsupported';
+};
+
+/**
+ * Agentの非公開の下書き候補。Workの作業成果物ではなく、提出・次工程の対象にならない。担当者が既存の文案保存で保存したときだけ作業に入る。
+ */
+export type GeneratedArtifact = {
+    id: string;
+    executionId: string;
+    contextId: string;
+    workItemId: string;
+    attemptId: string;
+    schemaId: 'organization.text-draft.v1';
+    /**
+     * UTF-8で200 bytes以内、制御文字なし。
+     */
+    title: string;
+    value: {
+        /**
+         * UTF-8 encoded length is limited to 8192 bytes by the server.
+         */
+        text: string;
+    };
+    sourceRevisionRefs: Array<RevisionRef>;
+    /**
+     * 実際のexecutorの識別
+     */
+    author: string;
+    simulated: boolean;
+    visibility: 'agent_execution_private';
+    createdAt: string;
+};
+
+export type ProposedAction = ({
+    kind: 'review_finding';
+} & ReviewFindingAction) | ({
+    kind: 'use_generated_artifact';
+} & UseGeneratedArtifactAction);
+
+/**
+ * 実行権限の無い型付き提案。実行するAPIは無く、人間が選ぶと画面は対象を現在の権限で読み直して通常の操作画面を開く。HumanDecisionでも工程操作でもない。
+ */
+export type SuggestedAction = {
+    id: string;
+    executionId: string;
+    contextId: string;
+    workItemId: string;
+    attemptId: string;
+    action: ProposedAction;
+    /**
+     * UTF-8で1024 bytes以内。
+     */
+    rationale: string;
+    supportingRevisionRefs: Array<RevisionRef>;
+    /**
+     * 実際のexecutorの識別
+     */
+    author: string;
+    visibility: 'agent_execution_private';
+    createdAt: string;
+};
+
+export type ReviewFindingAction = {
+    kind: 'review_finding';
+    findingRevisionRef: RevisionRef;
+};
+
+export type UseGeneratedArtifactAction = {
+    kind: 'use_generated_artifact';
+    generatedArtifactId: string;
 };
 
 export type GetOrganizationSessionData = {
@@ -2425,3 +2515,65 @@ export type ReadHandoffSnapshotContentResponses = {
 };
 
 export type ReadHandoffSnapshotContentResponse = ReadHandoffSnapshotContentResponses[keyof ReadHandoffSnapshotContentResponses];
+
+export type GetGeneratedArtifactData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/generated-artifacts/{id}';
+};
+
+export type GetGeneratedArtifactErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetGeneratedArtifactError = GetGeneratedArtifactErrors[keyof GetGeneratedArtifactErrors];
+
+export type GetGeneratedArtifactResponses = {
+    /**
+     * 現在の権限で読んだ非公開の下書き候補（実行の依頼者本人・同じ担当・同じ試行だけ）
+     */
+    200: GeneratedArtifact;
+};
+
+export type GetGeneratedArtifactResponse = GetGeneratedArtifactResponses[keyof GetGeneratedArtifactResponses];
+
+export type GetSuggestedActionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/suggested-actions/{id}';
+};
+
+export type GetSuggestedActionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetSuggestedActionError = GetSuggestedActionErrors[keyof GetSuggestedActionErrors];
+
+export type GetSuggestedActionResponses = {
+    /**
+     * 現在の権限で読んだ型付き提案（実行の依頼者本人・同じ担当・同じ試行だけ）
+     */
+    200: SuggestedAction;
+};
+
+export type GetSuggestedActionResponse = GetSuggestedActionResponses[keyof GetSuggestedActionResponses];
