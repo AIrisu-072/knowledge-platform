@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use search_application::body_ports::{KnowledgeUnitHitRef, LexicalHit, LexicalRetrievalBatch};
 use search_application::error::SearchError;
@@ -405,11 +406,14 @@ fn body_hit(
             Some(KnowledgeUnitHitRef {
                 generation,
                 parent_resource: parent,
-                authoritative_representation_ref: unit.provenance.authoritative_representation_ref,
-                raw: unit.provenance.raw,
-                profile: unit.provenance.profile,
-                version: unit.version,
-                part: unit.part,
+                authoritative_representation_ref: unit
+                    .provenance
+                    .authoritative_representation_ref
+                    .clone(),
+                raw: unit.provenance.raw.clone(),
+                profile: unit.provenance.profile.clone(),
+                version: Arc::unwrap_or_clone(unit.version),
+                part: Arc::unwrap_or_clone(unit.part),
                 unit_id: unit.unit_id,
                 excerpt: search_application::body_ports::excerpt_around(&unit.text, &span),
                 span,

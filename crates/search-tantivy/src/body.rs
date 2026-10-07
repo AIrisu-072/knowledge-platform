@@ -223,7 +223,9 @@ fn metadata_json(unit: &KnowledgeUnit) -> Result<String, LexicalIndexError> {
     // snapshot is per generation and not stored, so a linked segment fits any.
     let mut stored = unit.clone();
     stored.text = String::new();
-    stored.provenance.source_snapshot.clear();
+    Arc::make_mut(&mut stored.provenance)
+        .source_snapshot
+        .clear();
     serde_json::to_string(&stored).map_err(|_| LexicalIndexError::UnitEncoding)
 }
 
@@ -380,11 +382,14 @@ pub(crate) fn enumerate(
         .map(|unit| IndexedUnitDoc {
             generation: key,
             parent_resource: unit.version.resource_id,
-            authoritative_representation_ref: unit.provenance.authoritative_representation_ref,
-            raw: unit.provenance.raw,
-            profile: unit.provenance.profile,
-            version: unit.version,
-            part: unit.part,
+            authoritative_representation_ref: unit
+                .provenance
+                .authoritative_representation_ref
+                .clone(),
+            raw: unit.provenance.raw.clone(),
+            profile: unit.provenance.profile.clone(),
+            version: Arc::unwrap_or_clone(unit.version),
+            part: Arc::unwrap_or_clone(unit.part),
             unit_id: unit.unit_id,
             ordinal: unit.ordinal,
             kind: unit.kind,

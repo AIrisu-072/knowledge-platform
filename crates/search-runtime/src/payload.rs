@@ -15,6 +15,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use search_application::ports::SemanticRegistrySnapshot;
+use search_application::search_core::knowledge_unit::{
+    restamp_source_snapshot, share_unit_context,
+};
 use search_application::search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
@@ -76,16 +79,16 @@ pub fn forget_verified_segments() {
 /// An item as stored in a segment: every Unit's Source snapshot is cleared.
 fn unbound(entry: &BodyItemEntry) -> BodyItemEntry {
     let mut stored = entry.clone();
-    for unit in &mut stored.units {
-        unit.provenance.source_snapshot.clear();
-    }
+    restamp_source_snapshot(&mut stored.units, "");
     stored
 }
 
 /// Checks a segment read from the database before it is cached: its digest,
 /// Unit count and every Unit's text digest.
 fn verified_segment(digest: &str, count: i64, text: &str) -> Result<BodyItemEntry, BundleError> {
-    let entry = restore::<BodyItemEntry>(text)?;
+    let mut entry = restore::<BodyItemEntry>(text)?;
+    // Decoding gives each Unit its own copy of the Part's shared fields.
+    share_unit_context(&mut entry.units);
     if sha256_text(&segment_digest(&entry).map_err(|_| BundleError::Digest)?) != digest
         || u64::try_from(count).ok() != Some(entry.units.len() as u64)
     {
@@ -366,7 +369,7 @@ fn summarize_segment(
         })
         .collect::<Result<Vec<_>, BundleError>>()?;
     for unit in &mut entry.units {
-        unit.provenance.source_snapshot = header.source_snapshot.clone();
+        Arc::make_mut(&mut unit.provenance).source_snapshot = header.source_snapshot.clone();
     }
     let single = BodyUnitManifest {
         key: header.key,
@@ -624,9 +627,7 @@ impl PgPayloadStore {
         let mut entries = Vec::with_capacity(list.len());
         for digest in &list {
             let mut entry = BodyItemEntry::clone(cache.get(digest).ok_or(BundleError::Shape)?);
-            for unit in &mut entry.units {
-                unit.provenance.source_snapshot = header.source_snapshot.clone();
-            }
+            restamp_source_snapshot(&mut entry.units, &header.source_snapshot);
             entries.push(entry);
         }
         if cache.len() > SEGMENT_CACHE_ITEMS {

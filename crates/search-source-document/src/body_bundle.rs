@@ -350,8 +350,8 @@ pub fn seal_lexical(
             return Err(failed("lexical seal: duplicate document"));
         }
         let matches = document.parent_resource == unit.version.resource_id
-            && document.version == unit.version
-            && document.part == unit.part
+            && document.version == *unit.version
+            && document.part == *unit.part
             && document.authoritative_representation_ref
                 == unit.provenance.authoritative_representation_ref
             && document.raw == unit.provenance.raw
@@ -449,8 +449,8 @@ mod tests {
         };
         KnowledgeUnit {
             unit_id: UnitId::derive(&version, &part, &profile(), &locator, ordinal).unwrap(),
-            version,
-            part,
+            version: version.into(),
+            part: part.into(),
             parent_unit_id: None,
             ordinal,
             kind: UnitKind::PlainText,
@@ -469,7 +469,8 @@ mod tests {
                 archive_inner_format: None,
                 profile: profile(),
                 parser_build_id: "build".into(),
-            },
+            }
+            .into(),
         }
     }
 
@@ -479,8 +480,8 @@ mod tests {
             key: key(),
             source_snapshot: "snapshot".into(),
             entries: vec![BodyItemEntry {
-                version: first.version.clone(),
-                part: first.part.clone(),
+                version: (*first.version).clone(),
+                part: (*first.part).clone(),
                 authoritative_representation_ref: "representation".into(),
                 raw: first.provenance.raw.clone(),
                 detected_format: Some(FormatId::Text),
@@ -498,8 +499,8 @@ mod tests {
         IndexedUnitDoc {
             generation: key(),
             parent_resource: unit.version.resource_id,
-            version: unit.version.clone(),
-            part: unit.part.clone(),
+            version: (*unit.version).clone(),
+            part: (*unit.part).clone(),
             authoritative_representation_ref: unit
                 .provenance
                 .authoritative_representation_ref

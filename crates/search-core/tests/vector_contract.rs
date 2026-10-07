@@ -12,6 +12,7 @@ use search_core::vector::{
     VectorNormalization, VectorPrecision, VectorProjectionManifest, VectorStorageKind,
     VectorUnitCoverage,
 };
+use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -70,8 +71,8 @@ fn unit(part_ordinal: u32) -> KnowledgeUnit {
     let text = "東京の予算".to_string();
     KnowledgeUnit {
         unit_id: UnitId::derive(&version, &part, &profile, &locator, 0).unwrap(),
-        version,
-        part,
+        version: version.into(),
+        part: part.into(),
         parent_unit_id: None,
         ordinal: 0,
         kind: UnitKind::PlainText,
@@ -90,7 +91,8 @@ fn unit(part_ordinal: u32) -> KnowledgeUnit {
             archive_inner_format: None,
             profile,
             parser_build_id: "reader-1".into(),
-        },
+        }
+        .into(),
     }
 }
 
@@ -118,8 +120,8 @@ fn authority(unit: &KnowledgeUnit) -> VectorAuthorityInput {
             source_id: unit.version.source_id,
             generation_id: ProjectionGenerationId::from_uuid(id(3)),
         },
-        version: unit.version.clone(),
-        part: unit.part.clone(),
+        version: (*unit.version).clone(),
+        part: (*unit.part).clone(),
         authoritative_representation_ref: unit.provenance.authoritative_representation_ref.clone(),
         raw: unit.provenance.raw.clone(),
         profile: unit.provenance.profile.clone(),
@@ -288,7 +290,7 @@ fn one_unit_two_parts_and_wrong_parent_rejected() {
             .is_err()
     );
     let mut wrong = hit.clone();
-    wrong.hit.part = units[1].part.clone();
+    wrong.hit.part = (*units[1].part).clone();
     assert!(
         wrong
             .validate(&spec, &units[0], &authority(&units[0]))
@@ -459,7 +461,7 @@ fn immutable_unit_fields_cannot_reuse_a_manifest_seal() {
         assert!(manifest.validate_against(&changed, &entries).is_err());
 
         let mut changed = input.clone();
-        changed.units[1].unit.provenance.parser_build_id = "reader-2".into();
+        Arc::make_mut(&mut changed.units[1].unit.provenance).parser_build_id = "reader-2".into();
         assert_ne!(
             manifest.unit_bindings_digest,
             stage(&spec, &changed, &entries).unit_bindings_digest
@@ -473,10 +475,11 @@ fn immutable_unit_fields_cannot_reuse_a_manifest_seal() {
         changed.units[1].unit.kind = UnitKind::Paragraph;
         assert!(manifest.validate_against(&changed, &entries).is_err());
         let mut changed = input.clone();
-        changed.units[1].unit.provenance.detected_format = FormatId::Csv;
+        Arc::make_mut(&mut changed.units[1].unit.provenance).detected_format = FormatId::Csv;
         assert!(manifest.validate_against(&changed, &entries).is_err());
         let mut changed = input;
-        changed.units[1].unit.provenance.archive_inner_format = Some(FormatId::Text);
+        Arc::make_mut(&mut changed.units[1].unit.provenance).archive_inner_format =
+            Some(FormatId::Text);
         assert!(manifest.validate_against(&changed, &entries).is_err());
     }
 
@@ -485,7 +488,7 @@ fn immutable_unit_fields_cannot_reuse_a_manifest_seal() {
         steps: vec![DocxStep::BodyBlock(0)],
     };
     docx.kind = UnitKind::Paragraph;
-    docx.provenance.detected_format = FormatId::Docx;
+    Arc::make_mut(&mut docx.provenance).detected_format = FormatId::Docx;
     docx.unit_id = UnitId::derive(
         &docx.version,
         &docx.part,
@@ -512,7 +515,7 @@ fn immutable_unit_fields_cannot_reuse_a_manifest_seal() {
         col: 0,
     };
     spreadsheet.kind = UnitKind::SpreadsheetCell;
-    spreadsheet.provenance.detected_format = FormatId::Xlsx;
+    Arc::make_mut(&mut spreadsheet.provenance).detected_format = FormatId::Xlsx;
     spreadsheet.unit_id = UnitId::derive(
         &spreadsheet.version,
         &spreadsheet.part,
@@ -525,7 +528,7 @@ fn immutable_unit_fields_cannot_reuse_a_manifest_seal() {
     let xlsx_input = input(&[spreadsheet]);
     let xlsx_manifest = stage(&spec, &xlsx_input, &sheet_entries);
     let mut xlsm_input = xlsx_input;
-    xlsm_input.units[0].unit.provenance.detected_format = FormatId::Xlsm;
+    Arc::make_mut(&mut xlsm_input.units[0].unit.provenance).detected_format = FormatId::Xlsm;
     let xlsm_manifest = stage(&spec, &xlsm_input, &sheet_entries);
     assert_ne!(
         xlsx_manifest.unit_bindings_digest,
@@ -608,7 +611,7 @@ fn stage_rejects_foreign_future_or_missing_parent_and_wrong_kind_or_format() {
         .is_err()
     );
     let mut wrong = valid.clone();
-    wrong.units[0].unit.provenance.detected_format = FormatId::Csv;
+    Arc::make_mut(&mut wrong.units[0].unit.provenance).detected_format = FormatId::Csv;
     assert!(
         VectorProjectionManifest::stage(
             &spec,
@@ -621,7 +624,7 @@ fn stage_rejects_foreign_future_or_missing_parent_and_wrong_kind_or_format() {
         .is_err()
     );
     let mut wrong = valid;
-    wrong.units[0].unit.provenance.archive_inner_format = Some(FormatId::Text);
+    Arc::make_mut(&mut wrong.units[0].unit.provenance).archive_inner_format = Some(FormatId::Text);
     assert!(
         VectorProjectionManifest::stage(
             &spec,
@@ -642,8 +645,8 @@ fn stage_rejects_foreign_future_or_missing_parent_and_wrong_kind_or_format() {
             line_end: 1,
         }),
     };
-    archive.provenance.detected_format = FormatId::Zip;
-    archive.provenance.archive_inner_format = Some(FormatId::Text);
+    Arc::make_mut(&mut archive.provenance).detected_format = FormatId::Zip;
+    Arc::make_mut(&mut archive.provenance).archive_inner_format = Some(FormatId::Text);
     archive.unit_id = UnitId::derive(
         &archive.version,
         &archive.part,
@@ -666,7 +669,7 @@ fn stage_rejects_foreign_future_or_missing_parent_and_wrong_kind_or_format() {
         .is_ok()
     );
     let mut wrong = archive_input.clone();
-    wrong.units[0].unit.provenance.archive_inner_format = Some(FormatId::Csv);
+    Arc::make_mut(&mut wrong.units[0].unit.provenance).archive_inner_format = Some(FormatId::Csv);
     assert!(
         VectorProjectionManifest::stage(
             &spec,
@@ -679,7 +682,7 @@ fn stage_rejects_foreign_future_or_missing_parent_and_wrong_kind_or_format() {
         .is_err()
     );
     let mut wrong = archive_input;
-    wrong.units[0].unit.provenance.archive_inner_format = None;
+    Arc::make_mut(&mut wrong.units[0].unit.provenance).archive_inner_format = None;
     assert!(
         VectorProjectionManifest::stage(
             &spec,

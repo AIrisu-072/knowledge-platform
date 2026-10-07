@@ -315,8 +315,8 @@ fn hit_for(unit: &KnowledgeUnit, pinned: &VectorAuthorityInput) -> VectorHitRef 
     VectorHitRef {
         generation: pinned.generation,
         unit_id: unit.unit_id,
-        version: unit.version.clone(),
-        part: unit.part.clone(),
+        version: (*unit.version).clone(),
+        part: (*unit.part).clone(),
         authoritative_representation_ref: unit.provenance.authoritative_representation_ref.clone(),
         raw: unit.provenance.raw.clone(),
         profile: unit.provenance.profile.clone(),
