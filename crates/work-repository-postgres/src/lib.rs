@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Separate Work schema, migration ledger and atomic workflow/operation/event transaction.
 mod agent;
+mod files;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row, types::Json};
 use std::{
@@ -11,7 +12,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 use work_application::{
     AgentExecutionAcceptance, AgentSourcePort, EvidenceSourcePort, EvidenceSourcePurpose,
-    WorkFuture, WorkRepository, command_digest, policy_command_digest,
+    WorkArtifactStore, WorkFuture, WorkRepository, command_digest, policy_command_digest,
 };
 use work_domain::*;
 
@@ -34,6 +35,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (6, include_str!("../migrations/0006_hold_resume.sql")),
     (7, include_str!("../migrations/0007_organization.sql")),
     (8, include_str!("../migrations/0008_attention.sql")),
+    (9, include_str!("../migrations/0009_work_files.sql")),
 ];
 const MIGRATION_LOCK: i64 = 0x574F524B504F4301;
 #[derive(Clone)]
@@ -41,6 +43,7 @@ pub struct PostgresWorkRepository {
     pool: PgPool,
     evidence_source: Option<Arc<dyn EvidenceSourcePort>>,
     agent_source: Option<Arc<dyn AgentSourcePort>>,
+    artifact_store: Option<Arc<dyn WorkArtifactStore>>,
 }
 impl PostgresWorkRepository {
     pub fn new(pool: PgPool) -> Self {
@@ -48,6 +51,7 @@ impl PostgresWorkRepository {
             pool,
             evidence_source: None,
             agent_source: None,
+            artifact_store: None,
         }
     }
     pub fn with_evidence_source(
@@ -58,6 +62,7 @@ impl PostgresWorkRepository {
             pool,
             evidence_source: Some(evidence_source),
             agent_source: None,
+            artifact_store: None,
         }
     }
     async fn load_policy(&self) -> Result<OrganizationPolicy, WorkError> {
@@ -262,12 +267,15 @@ impl PostgresWorkRepository {
             .load_for(actor, WorkTarget::Task(command.task_id()))
             .await?;
         let mut preview = observed.clone();
+        // Store receipts are taken after the full preview, outside any lock.
+        preview.defer_generation_receipts();
         let timestamp = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|_| WorkError::IntegrityViolation)?;
         // Full Work scope, bounds, OCC and selection closure precede provider fanout.
         let preview_result = preview.apply(actor, &command, &timestamp)?;
         validate_record_collections(&preview)?;
+        let verified = self.verify_generations(&preview_result).await;
         let sources = source_set(&preview.result_evidence(actor, &preview_result)?);
         let receipt = EvidencePreflight {
             started: Instant::now(),
@@ -313,6 +321,7 @@ impl PostgresWorkRepository {
         workflow.validate_integrity()?;
         workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
         workflow.attach_acknowledgements(actor, acknowledged);
+        workflow.attach_verified_generations(verified);
         let previous=sqlx::query("SELECT principal_id,command_digest,outcome FROM work.operation_ledger WHERE operation_id=$1")
             .bind(operation_id).fetch_optional(&mut *tx).await.map_err(database_error)?;
         if let Some(previous) = previous {
@@ -378,6 +387,10 @@ impl PostgresWorkRepository {
             MutationResult::FindingRegistered { .. } => "finding_registered",
             MutationResult::DecisionRecorded { .. } => "decision_recorded",
             MutationResult::DraftSaved { .. } => "draft_saved",
+            MutationResult::ArtifactCreated { .. } => "artifact_created",
+            MutationResult::ArtifactContentWritten { .. } => "artifact_content_written",
+            MutationResult::ArtifactDiscarded { .. } => "artifact_discarded",
+            MutationResult::SubmissionImported { .. } => "submission_imported",
             MutationResult::Claimed { .. } => "claimed",
             MutationResult::Submitted { .. } => "submitted",
             MutationResult::Returned { .. } => "returned",
@@ -653,6 +666,7 @@ fn work_event_payload(
         payload["assigneeResponsibilityId"] = serde_json::json!(assignment.acting_assignment_id);
         payload["attemptId"] = serde_json::json!(assignment.attempt_id);
     }
+    files::stage_payload(&mut payload, result);
     payload
 }
 fn validate_collection_bytes(
@@ -1102,6 +1116,43 @@ impl WorkRepository for PostgresWorkRepository {
             self.load_for(actor, WorkTarget::ReturnInstruction(id))
                 .await?
                 .return_instruction(actor, id)
+        })
+    }
+    fn write_artifact_content(
+        &self,
+        actor: VerifiedActor,
+        artifact_id: Uuid,
+        context: CommandContext,
+        expected_artifact_revision: i64,
+        bytes: Vec<u8>,
+    ) -> WorkFuture<'_, MutationResult> {
+        Box::pin(async move {
+            self.write_content(
+                actor,
+                artifact_id,
+                context,
+                expected_artifact_revision,
+                bytes,
+            )
+            .await
+        })
+    }
+    fn artifact_content(
+        &self,
+        actor: VerifiedActor,
+        artifact_id: Uuid,
+    ) -> WorkFuture<'_, (WorkFile, Vec<u8>)> {
+        Box::pin(async move { self.read_artifact_content(actor, artifact_id).await })
+    }
+    fn snapshot_content(
+        &self,
+        actor: VerifiedActor,
+        snapshot_id: Uuid,
+        artifact_id: Uuid,
+    ) -> WorkFuture<'_, (WorkFile, Vec<u8>)> {
+        Box::pin(async move {
+            self.read_snapshot_content(actor, snapshot_id, artifact_id)
+                .await
         })
     }
     fn execute(&self, actor: VerifiedActor, command: Command) -> WorkFuture<'_, MutationResult> {
