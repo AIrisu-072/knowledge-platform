@@ -13,6 +13,7 @@ import './design-system/global.css';
 
 const LazyTaskHomePage = lazy(() => import('./routes/TaskHomePage').then(({ TaskHomePage }) => ({ default: TaskHomePage })));
 const LazyOrganizationSearchPage = lazy(() => import('./routes/TaskHomePage').then(({ OrganizationSearchPage }) => ({ default: OrganizationSearchPage })));
+const LazyOrganizationResponsibilitiesPage = lazy(() => import('./routes/OrganizationResponsibilitiesPage').then(({ OrganizationResponsibilitiesPage }) => ({ default: OrganizationResponsibilitiesPage })));
 const LazyLocalWorkspacePage = lazy(() => import('./routes/LocalWorkspacePage').then(({ LocalWorkspacePage }) => ({ default: LocalWorkspacePage })));
 const LazyDocumentDetailPage = lazy(() => import('./routes/DocumentDetailPage').then(({ DocumentDetailPage }) => ({ default: DocumentDetailPage })));
 
@@ -49,8 +50,10 @@ const documentDetailRoute = createRoute({
 });
 const tasksRoute = createRoute({ getParentRoute: () => rootRoute, path: '/tasks', validateSearch: validateTaskSearch, component: () => <Suspense fallback={<p role="status">タスクを読み込み中…</p>}><LazyTaskHomePage /></Suspense> });
 const searchRoute = createRoute({ getParentRoute: () => rootRoute, path: '/search', component: () => <Suspense fallback={<p role="status">検索画面を読み込み中…</p>}><LazyOrganizationSearchPage /></Suspense> });
+// Reached from the task header only; never a primary navigation entry.
+const responsibilitiesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/organization/responsibilities', component: () => <Suspense fallback={<p role="status">担当と委任を読み込み中…</p>}><LazyOrganizationResponsibilitiesPage /></Suspense> });
 const localWorkspacesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/local-workspaces', component: () => <Suspense fallback={<p role="status">ローカルWorkspaceを読み込み中…</p>}><LazyLocalWorkspacePage /></Suspense> });
-const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute, tasksRoute, searchRoute, localWorkspacesRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute, tasksRoute, searchRoute, responsibilitiesRoute, localWorkspacesRoute]);
 const runtime = selectRuntime();
 const router = createRouter({ routeTree });
 const queryClient = new QueryClient({

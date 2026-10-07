@@ -12,7 +12,10 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub fn organization_root_grants() -> Vec<PolicyGrant> {
+/// The original two-principal fixture. An existing database initialized with
+/// exactly these grants stays accepted; its added principals simply have no
+/// Document access (an honest provider denial, never a widened grant).
+pub fn legacy_organization_root_grants() -> Vec<PolicyGrant> {
     let subject = |name| {
         PolicySubject::new(PolicySubjectKind::Principal, "organization-synthetic", name)
             .expect("fixed synthetic principal")
@@ -40,6 +43,23 @@ pub fn organization_root_grants() -> Vec<PolicyGrant> {
         )
         .expect("fixed read-only provider actions"),
     ]
+}
+/// New disposable fixtures additionally let every added synthetic Human
+/// principal read shared inputs. Work assignment never implies this grant.
+pub fn organization_root_grants() -> Vec<PolicyGrant> {
+    let mut grants = legacy_organization_root_grants();
+    for name in ["review-01", "approver-01", "multi-role-01", "delegate-01"] {
+        grants.push(
+            PolicyGrant::new(
+                PolicySubject::new(PolicySubjectKind::Principal, "organization-synthetic", name)
+                    .expect("fixed synthetic principal"),
+                [Action::Read, Action::ReadHistory],
+            )
+            .expect("fixed read actions"),
+        );
+    }
+    grants.sort_by(|a, b| a.subject().cmp(b.subject()));
+    grants
 }
 
 pub async fn bootstrap_document_policy(
@@ -74,7 +94,7 @@ pub async fn bootstrap_document_policy(
                 && policy.binding_mode == PolicyBindingMode::Explicit
                 && policy.policy_id == Some(policy.effective_policy_id)
                 && policy.effective_source == target
-                && actual == expected
+                && (actual == expected || actual == sorted(legacy_organization_root_grants()))
             {
                 Ok(())
             } else {
@@ -85,7 +105,11 @@ pub async fn bootstrap_document_policy(
     }
 }
 
-/// Both fixed users must be able to read the already-published shared input.
+fn sorted(mut grants: Vec<PolicyGrant>) -> Vec<PolicyGrant> {
+    grants.sort_by(|a, b| a.subject().cmp(b.subject()));
+    grants
+}
+/// Both original fixed users must be able to read the already-published shared input.
 /// A Work reference never publishes a document or expands its current ACL.
 pub async fn verify_shared_document(pool: &PgPool, id: Uuid) -> Result<(), &'static str> {
     let service =

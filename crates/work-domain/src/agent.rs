@@ -84,15 +84,10 @@ fn deserialize_requester_principal<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<VerifiedActor, D::Error> {
     let principal = String::deserialize(deserializer)?;
-    match principal.as_str() {
-        // Only this stored Agent field accepts the previous serde spellings.
-        "sales-01" | "sales01" => Ok(VerifiedActor::Sales01),
-        "office-01" | "office01" => Ok(VerifiedActor::Office01),
-        _ => Err(serde::de::Error::unknown_variant(
-            &principal,
-            &["sales-01", "office-01"],
-        )),
-    }
+    // Only this stored Agent field accepts the previous serde spellings.
+    VerifiedActor::from_principal_id(&principal)
+        .or_else(|| VerifiedActor::from_legacy_encoding(&principal))
+        .ok_or_else(|| serde::de::Error::custom("unknown synthetic principal"))
 }
 
 /// Trusted application-only input/output, deliberately not an HTTP request DTO.
@@ -123,17 +118,12 @@ impl AgentDispatchContext {
                 AgentReadTool::DocumentRevision,
                 AgentReadTool::DocumentVersionFiles,
             ]
-            || e.work_item_id
-                != match e.requested_by {
-                    VerifiedActor::Sales01 => SALES_TASK_ID,
-                    VerifiedActor::Office01 => OFFICE_TASK_ID,
-                }
             || e.attempt_id.is_nil()
             || e.task_revision < 0
             || e.effective_context_revision < 0
             || e.id.get_version_num() != 7
             || e.context_id != CONTEXT_ID
-            || e.requester_responsibility != e.requested_by.assignment_id()
+            || e.requester_responsibility.is_nil()
             || e.executed_by != SYNTHETIC_EXECUTOR
             || e.executor_invocation_kind != "agent"
             || e.provider_principal_bindings
@@ -282,7 +272,7 @@ impl Workflow {
         if e.requested_by != actor
             || e.context_id != self.context_id
             || e.attempt_id != item.attempt_id
-            || e.requester_responsibility != actor.assignment_id()
+            || item.acting_assignment_id != Some(e.requester_responsibility)
             || !self.can_read(actor, item)
         {
             return Err(WorkError::WorkItemNotFound);
@@ -381,7 +371,7 @@ impl Workflow {
                     work_item_id: task_id,
                     attempt_id: item.attempt_id,
                     requested_by: actor,
-                    requester_responsibility: actor.assignment_id(),
+                    requester_responsibility: command.context().acting_assignment_id,
                     executed_by: SYNTHETIC_EXECUTOR.into(),
                     executor_invocation_kind: "agent".into(),
                     provider_principal_bindings: vec![ProviderPrincipalBinding {

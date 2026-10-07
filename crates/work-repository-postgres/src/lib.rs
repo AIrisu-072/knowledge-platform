@@ -11,7 +11,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 use work_application::{
     AgentExecutionAcceptance, AgentSourcePort, EvidenceSourcePort, EvidenceSourcePurpose,
-    WorkFuture, WorkRepository, command_digest,
+    WorkFuture, WorkRepository, command_digest, policy_command_digest,
 };
 use work_domain::*;
 
@@ -24,6 +24,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (4, include_str!("../migrations/0004_agent.sql")),
     (5, include_str!("../migrations/0005_complete.sql")),
     (6, include_str!("../migrations/0006_hold_resume.sql")),
+    (7, include_str!("../migrations/0007_organization.sql")),
 ];
 const MIGRATION_LOCK: i64 = 0x574F524B504F4301;
 #[derive(Clone)]
@@ -50,6 +51,19 @@ impl PostgresWorkRepository {
             agent_source: None,
         }
     }
+    async fn load_policy(&self) -> Result<OrganizationPolicy, WorkError> {
+        let Json(policy): Json<OrganizationPolicy> =
+            sqlx::query_scalar("SELECT body FROM work.organization_policies WHERE id = $1")
+                .bind(ORGANIZATION_POLICY_ID)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(database_error)?
+                .ok_or(WorkError::DependencyUnavailable)?;
+        policy.validate_integrity()?;
+        Ok(policy)
+    }
+    /// Every read evaluates the current Organization policy at the current server
+    /// instant; a stored workflow never carries its own authorization.
     async fn load(&self) -> Result<Workflow, WorkError> {
         let Json(workflow): Json<Workflow> =
             sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id = $1")
@@ -59,7 +73,8 @@ impl PostgresWorkRepository {
                 .map_err(database_error)?
                 .ok_or(WorkError::DependencyUnavailable)?;
         workflow.validate_integrity()?;
-        Ok(workflow)
+        let policy = self.load_policy().await?;
+        Ok(workflow.with_authority(policy, OffsetDateTime::now_utc()))
     }
     async fn authorize_sources(
         &self,
@@ -122,11 +137,17 @@ impl PostgresWorkRepository {
              JOIN work.workflow_instances AS workflow ON workflow.id = ledger.workflow_id \
              WHERE ledger.operation_id = $1 AND workflow.id = $2")
             .bind(operation_id).bind(WORKFLOW_ID).fetch_optional(&self.pool).await.map_err(database_error)?;
-        row.map(|(Json(workflow), principal, digest, Json(outcome))| {
-            workflow.validate_integrity()?;
-            Ok((workflow, principal, digest, outcome))
-        })
-        .transpose()
+        let Some((Json(workflow), principal, digest, Json(outcome))) = row else {
+            return Ok(None);
+        };
+        workflow.validate_integrity()?;
+        let policy = self.load_policy().await?;
+        Ok(Some((
+            workflow.with_authority(policy, OffsetDateTime::now_utc()),
+            principal,
+            digest,
+            outcome,
+        )))
     }
     async fn disclose_result(
         &self,
@@ -206,6 +227,9 @@ impl PostgresWorkRepository {
             .format(&Rfc3339)
             .map_err(|_| WorkError::IntegrityViolation)?;
         let mut tx = self.pool.begin().await.map_err(database_error)?;
+        // Lock order: policy (share) before workflow (update). Policy writers take
+        // the policy update lock, so authority cannot change before this commit.
+        let policy = lock_policy(&mut tx, "FOR SHARE").await?;
         let Json(mut workflow): Json<Workflow> =
             sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id=$1 FOR UPDATE")
                 .bind(WORKFLOW_ID)
@@ -214,6 +238,7 @@ impl PostgresWorkRepository {
                 .map_err(database_error)?
                 .ok_or(WorkError::DependencyUnavailable)?;
         workflow.validate_integrity()?;
+        workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
         let previous=sqlx::query("SELECT principal_id,command_digest,outcome FROM work.operation_ledger WHERE operation_id=$1")
             .bind(operation_id).fetch_optional(&mut *tx).await.map_err(database_error)?;
         if let Some(previous) = previous {
@@ -277,6 +302,13 @@ impl PostgresWorkRepository {
             MutationResult::Completed { .. } => "completed",
             MutationResult::Held { .. } => "held",
             MutationResult::Resumed { .. } => "resumed",
+            MutationResult::Assigned { .. } => "assigned",
+            MutationResult::RoleAssignmentCreated { .. }
+            | MutationResult::RoleAssignmentRevoked { .. }
+            | MutationResult::DelegationCreated { .. }
+            | MutationResult::DelegationRevoked { .. } => {
+                return Err(WorkError::IntegrityViolation);
+            }
         };
         sqlx::query("UPDATE work.workflow_instances SET revision=$2,body=$3 WHERE id=$1")
             .bind(WORKFLOW_ID)
@@ -290,12 +322,12 @@ impl PostgresWorkRepository {
         // Candidate/decision records are not workflow transitions.
         if matches!(
             action,
-            "submitted" | "claimed" | "returned" | "completed" | "held" | "resumed"
+            "submitted" | "claimed" | "returned" | "completed" | "held" | "resumed" | "assigned"
         ) {
             sqlx::query("INSERT INTO work.workflow_history(id,workflow_id,operation_id,kind,occurred_at) VALUES($1,$2,$3,$4,$5)")
                 .bind(Uuid::now_v7()).bind(WORKFLOW_ID).bind(operation_id).bind(action).bind(now).execute(&mut *tx).await.map_err(database_error)?;
         }
-        let payload = serde_json::json!({"schemaVersion":1,"resourceType":"work_item","result":"committed","operationId":operation_id});
+        let payload = work_event_payload(&workflow, operation_id, &command, &result);
         sqlx::query("INSERT INTO work.event_staging(id,operation_id,workflow_id,principal_id,acting_assignment_id,task_id,action,occurred_at,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
             .bind(Uuid::now_v7()).bind(operation_id).bind(WORKFLOW_ID).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(command.task_id()).bind(action).bind(now).bind(Json(payload)).execute(&mut *tx).await.map_err(database_error)?;
         // Final local/freshness check under the same lock, with no remote call.
@@ -325,14 +357,150 @@ impl PostgresWorkRepository {
         }
     }
 }
+type LedgerRow = (String, Vec<u8>, Json<MutationResult>, bool);
+impl PostgresWorkRepository {
+    async fn ledger(&self, operation_id: Uuid) -> Result<Option<LedgerRow>, WorkError> {
+        sqlx::query_as("SELECT principal_id, command_digest, outcome, policy_id IS NOT NULL FROM work.operation_ledger WHERE operation_id=$1")
+            .bind(operation_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(database_error)
+    }
+    async fn recover_policy(
+        &self,
+        actor: VerifiedActor,
+        outcome: MutationResult,
+    ) -> Result<MutationResult, WorkError> {
+        self.load_policy()
+            .await?
+            .authorize_recovery(actor, &outcome, OffsetDateTime::now_utc())?;
+        Ok(outcome)
+    }
+    /// Separate policy aggregate: update lock, OCC, ledger and mandatory local
+    /// staging commit together. Exact replay returns the committed receipt only
+    /// while its record remains visible to the same actor.
+    async fn execute_policy_command(
+        &self,
+        actor: VerifiedActor,
+        command: PolicyCommand,
+    ) -> Result<MutationResult, WorkError> {
+        let context = command.context().clone();
+        if context.operation_id.get_version_num() != 7 || context.expected_revision < 0 {
+            return Err(WorkError::ValidationFailed);
+        }
+        let digest = policy_command_digest(actor, &command)?;
+        let replay = |principal: String, stored: Vec<u8>, outcome: MutationResult, policy: bool| {
+            if principal != actor.principal_id() {
+                return Err(WorkError::OrganizationRecordNotFound);
+            }
+            if stored != digest || !policy {
+                return Err(WorkError::OperationConflict);
+            }
+            Ok(outcome)
+        };
+        if let Some((principal, stored, Json(outcome), policy)) =
+            self.ledger(context.operation_id).await?
+        {
+            let outcome = replay(principal, stored, outcome, policy)?;
+            return self.recover_policy(actor, outcome).await;
+        }
+        let mut tx = self.pool.begin().await.map_err(database_error)?;
+        let mut policy = lock_policy(&mut tx, "FOR UPDATE").await?;
+        let previous: Option<LedgerRow> = sqlx::query_as("SELECT principal_id, command_digest, outcome, policy_id IS NOT NULL FROM work.operation_ledger WHERE operation_id=$1")
+            .bind(context.operation_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(database_error)?;
+        if let Some((principal, stored, Json(outcome), is_policy)) = previous {
+            let outcome = replay(principal, stored, outcome, is_policy)?;
+            tx.rollback().await.map_err(database_error)?;
+            return self.recover_policy(actor, outcome).await;
+        }
+        let now = OffsetDateTime::now_utc();
+        let timestamp = now
+            .format(&Rfc3339)
+            .map_err(|_| WorkError::IntegrityViolation)?;
+        let result = policy.apply(actor, &command, &timestamp)?;
+        let (action, payload) = policy_event(&context, &policy, &result)?;
+        sqlx::query("UPDATE work.organization_policies SET revision=$2, body=$3 WHERE id=$1")
+            .bind(ORGANIZATION_POLICY_ID)
+            .bind(policy.revision)
+            .bind(Json(&policy))
+            .execute(&mut *tx)
+            .await
+            .map_err(database_error)?;
+        sqlx::query("INSERT INTO work.operation_ledger(operation_id,workflow_id,policy_id,principal_id,acting_assignment_id,command_digest,outcome) VALUES($1,NULL,$2,$3,$4,$5,$6)")
+            .bind(context.operation_id).bind(ORGANIZATION_POLICY_ID).bind(actor.principal_id()).bind(context.acting_assignment_id).bind(&digest).bind(Json(&result))
+            .execute(&mut *tx).await.map_err(database_error)?;
+        sqlx::query("INSERT INTO work.event_staging(id,operation_id,workflow_id,policy_id,principal_id,acting_assignment_id,task_id,action,occurred_at,payload) VALUES($1,$2,NULL,$3,$4,$5,NULL,$6,$7,$8)")
+            .bind(Uuid::now_v7()).bind(context.operation_id).bind(ORGANIZATION_POLICY_ID).bind(actor.principal_id()).bind(context.acting_assignment_id).bind(action).bind(now).bind(Json(payload))
+            .execute(&mut *tx).await.map_err(database_error)?;
+        tx.commit()
+            .await
+            .map_err(|_| WorkError::CommitOutcomeUnknown)?;
+        Ok(result)
+    }
+}
+/// Structured policy staging without user-authored reason text.
+fn policy_event(
+    context: &CommandContext,
+    policy: &OrganizationPolicy,
+    result: &MutationResult,
+) -> Result<(&'static str, serde_json::Value), WorkError> {
+    let acting = policy.describe(context.acting_assignment_id);
+    let base = serde_json::json!({
+        "schemaVersion": 1,
+        "result": "committed",
+        "operationId": context.operation_id,
+        "policyRevision": policy.revision,
+        "actingResponsibilityKind": acting.as_ref().map(|value| value.kind),
+        "actingRoleId": acting.as_ref().map(|value| value.role_id),
+    });
+    let mut payload = base;
+    let action = match result {
+        MutationResult::RoleAssignmentCreated { assignment, .. }
+        | MutationResult::RoleAssignmentRevoked { assignment, .. } => {
+            payload["resourceType"] = "role_assignment".into();
+            payload["recordId"] = serde_json::json!(assignment.id);
+            payload["subjectPrincipalId"] = assignment.principal.principal_id().into();
+            payload["roleId"] = serde_json::json!(assignment.role_id);
+            payload["unitId"] = serde_json::json!(assignment.unit_id);
+            payload["validFrom"] = assignment.valid_from.clone().into();
+            payload["validUntil"] = serde_json::json!(assignment.valid_until);
+            if matches!(result, MutationResult::RoleAssignmentCreated { .. }) {
+                "role_assignment_created"
+            } else {
+                "role_assignment_revoked"
+            }
+        }
+        MutationResult::DelegationCreated { delegation, .. }
+        | MutationResult::DelegationRevoked { delegation, .. } => {
+            payload["resourceType"] = "delegation".into();
+            payload["recordId"] = serde_json::json!(delegation.id);
+            payload["sourceAssignmentId"] = serde_json::json!(delegation.source_assignment_id);
+            payload["delegatorPrincipalId"] = delegation.delegator.principal_id().into();
+            payload["recipientPrincipalId"] = delegation.recipient.principal_id().into();
+            payload["actions"] = serde_json::json!(delegation.actions);
+            payload["validFrom"] = delegation.valid_from.clone().into();
+            payload["validUntil"] = delegation.valid_until.clone().into();
+            if matches!(result, MutationResult::DelegationCreated { .. }) {
+                "delegation_created"
+            } else {
+                "delegation_revoked"
+            }
+        }
+        _ => return Err(WorkError::IntegrityViolation),
+    };
+    Ok((action, payload))
+}
 /// A complete visible collection must stay retrievable after every mutation,
 /// including claim/resubmit introducing received membership. This fixed two-person
 /// PoC is deliberately bounded, rather than pretending to provide pagination.
 fn validate_record_collections(workflow: &Workflow) -> Result<(), WorkError> {
-    for (actor, task) in [
-        (VerifiedActor::Sales01, SALES_TASK_ID),
-        (VerifiedActor::Office01, OFFICE_TASK_ID),
-    ] {
+    for (actor, task) in VerifiedActor::ALL
+        .into_iter()
+        .flat_map(|actor| [(actor, SALES_TASK_ID), (actor, OFFICE_TASK_ID)])
+    {
         if workflow.detail(actor, task).is_ok() {
             let evidence = workflow.list_evidence(actor, task)?;
             validate_collection_bytes(evidence.len(), serde_json::to_vec(&evidence))?;
@@ -348,6 +516,57 @@ fn validate_record_collections(workflow: &Workflow) -> Result<(), WorkError> {
         }
     }
     Ok(())
+}
+/// Lock the single Organization policy row; absence is an unavailable dependency.
+async fn lock_policy(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    mode: &str,
+) -> Result<OrganizationPolicy, WorkError> {
+    let sql = match mode {
+        "FOR SHARE" => "SELECT body FROM work.organization_policies WHERE id=$1 FOR SHARE",
+        _ => "SELECT body FROM work.organization_policies WHERE id=$1 FOR UPDATE",
+    };
+    let Json(policy): Json<OrganizationPolicy> = sqlx::query_scalar(sql)
+        .bind(ORGANIZATION_POLICY_ID)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(database_error)?
+        .ok_or(WorkError::DependencyUnavailable)?;
+    policy.validate_integrity()?;
+    Ok(policy)
+}
+/// Local mandatory staging only (not Audit delivery). Carries the acting
+/// responsibility kind and delegator so a later reviewed Audit extension can
+/// distinguish formal assignment from delegation without free text.
+fn work_event_payload(
+    workflow: &Workflow,
+    operation_id: Uuid,
+    command: &Command,
+    result: &MutationResult,
+) -> serde_json::Value {
+    let acting = command.context().acting_assignment_id;
+    let described = workflow.describe_responsibility(acting);
+    let mut payload = serde_json::json!({
+        "schemaVersion": 1,
+        "resourceType": "work_item",
+        "result": "committed",
+        "operationId": operation_id,
+        "actingResponsibilityKind": described.as_ref().map(|value| value.kind),
+        "actingRoleId": described.as_ref().map(|value| value.role_id),
+        "delegationId": described.as_ref().and_then(|value| {
+            (value.kind == ResponsibilityKind::Delegation).then_some(value.id)
+        }),
+        "delegatorPrincipalId": described
+            .as_ref()
+            .and_then(|value| value.delegator)
+            .map(|value| value.principal_id()),
+    });
+    if let MutationResult::Assigned { assignment, .. } = result {
+        payload["assigneePrincipalId"] = assignment.principal.principal_id().into();
+        payload["assigneeResponsibilityId"] = serde_json::json!(assignment.acting_assignment_id);
+        payload["attemptId"] = serde_json::json!(assignment.attempt_id);
+    }
+    payload
 }
 fn validate_collection_bytes(
     count: usize,
@@ -460,7 +679,7 @@ pub async fn check_schema_compatibility(pool: &PgPool) -> Result<(), WorkError> 
             .await
             .map_err(database_error)?;
     validate_migration_records(&records, true)?;
-    let ready: bool = sqlx::query_scalar("SELECT to_regclass('work.workflow_instances') IS NOT NULL AND to_regclass('work.operation_ledger') IS NOT NULL AND to_regclass('work.workflow_history') IS NOT NULL AND to_regclass('work.event_staging') IS NOT NULL")
+    let ready: bool = sqlx::query_scalar("SELECT to_regclass('work.workflow_instances') IS NOT NULL AND to_regclass('work.operation_ledger') IS NOT NULL AND to_regclass('work.workflow_history') IS NOT NULL AND to_regclass('work.event_staging') IS NOT NULL AND to_regclass('work.organization_policies') IS NOT NULL")
         .fetch_one(pool).await.map_err(database_error)?;
     if !ready {
         return Err(WorkError::IntegrityViolation);
@@ -471,6 +690,10 @@ pub async fn check_schema_compatibility(pool: &PgPool) -> Result<(), WorkError> 
 /// Document ID is a deliberately shared input reference, not private Work content.
 pub async fn seed_synthetic(pool: &PgPool, document_id: Option<Uuid>) -> Result<(), WorkError> {
     check_schema_compatibility(pool).await?;
+    // The separately owned synthetic Organization policy; never overwritten.
+    let policy = OrganizationPolicy::synthetic();
+    sqlx::query("INSERT INTO work.organization_policies(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
+        .bind(ORGANIZATION_POLICY_ID).bind(Json(policy)).execute(pool).await.map_err(database_error)?;
     let workflow = Workflow::synthetic(document_id);
     sqlx::query("INSERT INTO work.workflow_instances(id,revision,body) VALUES($1,0,$2) ON CONFLICT(id) DO NOTHING")
         .bind(WORKFLOW_ID).bind(Json(workflow)).execute(pool).await.map_err(database_error)?;
@@ -611,6 +834,28 @@ impl WorkRepository for PostgresWorkRepository {
             Ok(decisions)
         })
     }
+    fn organization(&self, actor: VerifiedActor) -> WorkFuture<'_, OrganizationView> {
+        Box::pin(async move {
+            self.load_policy()
+                .await?
+                .view(actor, OffsetDateTime::now_utc())
+        })
+    }
+    fn execute_policy(
+        &self,
+        actor: VerifiedActor,
+        command: PolicyCommand,
+    ) -> WorkFuture<'_, MutationResult> {
+        Box::pin(self.execute_policy_command(actor, command))
+    }
+    fn list_tasks_in(
+        &self,
+        actor: VerifiedActor,
+        view: TaskView,
+        scope: Option<Uuid>,
+    ) -> WorkFuture<'_, Vec<TaskSummary>> {
+        Box::pin(async move { self.load().await?.list_tasks_in(actor, view, scope) })
+    }
     fn list_tasks(&self, actor: VerifiedActor, view: TaskView) -> WorkFuture<'_, Vec<TaskSummary>> {
         Box::pin(async move { Ok(self.load().await?.list_tasks(actor, view)) })
     }
@@ -649,6 +894,12 @@ impl WorkRepository for PostgresWorkRepository {
     }
     fn recover(&self, actor: VerifiedActor, operation_id: Uuid) -> WorkFuture<'_, MutationResult> {
         Box::pin(async move {
+            if let Some((principal, _, Json(outcome), true)) = self.ledger(operation_id).await? {
+                if principal != actor.principal_id() {
+                    return Err(WorkError::WorkItemNotFound);
+                }
+                return self.recover_policy(actor, outcome).await;
+            }
             let (workflow, principal, _, outcome) = self
                 .operation(operation_id)
                 .await?

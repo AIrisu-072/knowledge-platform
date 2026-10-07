@@ -1,5 +1,15 @@
 # 文書アクセス設定の回復補修：実行状況
 
+## 2026-10-07 06:12 UTC — 補修head合格とOrganization追加後mainへの追従
+
+- PR100補修head ddc27de336605e283c2cad3854bc11ade0277521 / treef40adf34はCI37577926940の14jobsがすべてsuccess、全19checksは16success/既存条件skip3で終端。Document/Organization/bounded summaryもsuccess。新Rust1903/21/7成功（既存skip10/0/1）、DB36+Folder4の全40名一意PASSと、実test-mergeのtree・両parentを新ログから確認。全4runの公開artifactは0だった。
+- runtime stdoutの初回通常readはTransport closedで、生の件数・実失敗case・cleanup receiptは取得していない。新固定sourceの失敗伝播と新公式success stepで既存gateを評価し、生stdoutを直接読んだとは扱わない。旧head0936の失敗原因がこの補修だけだったとは断定せず、旧不合格も保持する。
+- 最終照合でmainがPR96統合04076b1f44aef17b1bf991320921289284ab7cccへ移動。旧base93947f3dとの合格を新mainの資格へ付け替えない。最新mainの61pathsとDocument25pathsが共有するのはActive・Organization操作手順の2文書だけで、製品sourceの競合はない。
+- local f68265811a634722a9a47d182d40daa4e493b252で通常統合。main59pathsとDocument23pathsは各親のbytesを保持し、Activeは双方の追記と公開全文、Organization手順は衝突のない3way結果を保存した。固定導入pin bbaはそのままで、Organization6profileの後続source向け節も「固定pin未収録」のまま保持する。
+- main由来のOrganization実装・受入runner/fixturesはそのまま取り込む。既存CI構成は不変。次は組合せGUI/型/build・限定unionレビュー・同PR新headの通常CI。新組合せの実hostedは未資格であり、他担当の権限/業務意味を補修しない。
+
+---
+
 ## 2026-10-07 05:38 UTC — 初回実受入の失敗とcache境界の反例
 
 - [PR100](https://github.com/AIrisu-072/knowledge-platform/pull/100)公開head0936a93decae951eb91224154dec8afca15e8bab / tree3843ca884958b7b83eba23f829c0b8c7e36b4415 / base93947f3d。全25filesの公開blob SHA・日本語本文・head/baseを照合済み。最新mainとの組合せは全GUI1606/65・schema/型/build・独立unionレビューGOだった。

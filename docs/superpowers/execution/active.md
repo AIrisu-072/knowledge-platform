@@ -12,6 +12,17 @@
 
 05:38追補：PR100 head0936a93dのDocument composition/summaryがFAIL、Org未実行。初回logはTransport closedで実失敗caseは未取得。別途、本番fresh cacheでは正常往復時にGETが増えないDOM反例を確認したため、追加受入のGET必須待受だけを限定補修する。旧head失敗と根因未確定を保持し、次sourceのCIで確認する。
 
+06:12追補：補修head ddc27de3は新CI14jobs/19checks合格、DB40とartifact0を確認。runtime stdout未取得の境界と旧FAILは保持する。mainがPR96統合04076b1fへ進んだため、Org source/受入をそのまま保持し、共有2文書の双方記録を通常統合。組合せレビュー/GUI/同PR通常CIを新たに確認する。
+
+---
+
+## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
+
+- main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先
+- PR43受入exact `6103e4d4`（tree `f2e13eee`）がmainの祖先であることと受入記録を確認。Phase0→3の凍結・PR62/67の既存機能を保持し、再実装しない。新しい判断5点は承認済みとして扱わない
+- [PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)（branch `claude/trusting-knuth-dn5cx4`）。初回独立reviewのNO-GO（差戻し後の閲覧・一覧上限・職務分離ほか）を修正し、再reviewはGO。修正前head `be1a1be` はhosted全job成功（Organization 13 stage）。修正後はローカルで全Rust・実PostgreSQL・GUI1429件・実browser 13 stageが成功
+- main `93947f3`（PR95 Desktop Workspace Runtime、PR97 Folderアクセス設定）を取り込み済み。次はexact-head CI合格→main統合→統合後CI→同名branchを作り直してU2
+
 ---
 
 ## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）

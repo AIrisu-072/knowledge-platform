@@ -94,11 +94,12 @@ async fn run() -> Result<(), String> {
                 Arc::new(DocumentAgentSource::new(documents)),
             ));
             // A previous process's queued/running work is uncertain, never replayed.
-            // Only this startup profile's nonterminal executions are affected.
-            repository
-                .interrupt_agent_executions(actor)
-                .await
-                .map_err(|_| "synthetic execution recovery unavailable")?;
+            // Only this startup profile's nonterminal executions are affected. A fresh
+            // schema starts before `seed-work`; an upgraded one with existing Work but no
+            // Organization policy fails here until the explicit seed step runs.
+            repository.interrupt_agent_executions(actor).await.map_err(
+                |_| "synthetic execution recovery unavailable (after upgrading, run `seed-work`)",
+            )?;
             let dispatcher = Arc::new(OwnedAgentDispatcher::new(repository.clone(), actor));
             let work = work_api_http::router_with_agent(repository, actor, dispatcher.clone());
             let joined = compose_routes(work, runtime.router());
