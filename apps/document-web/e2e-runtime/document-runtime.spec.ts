@@ -1,16 +1,16 @@
 import { assertApplicationJapaneseFonts } from './japanese-font';
 import { visualCheckpoint } from './visual-capture';
 import { startDiagnostics, finishDiagnostics, captureUiDiagnostics } from './startup-diagnostics';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Request } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, compareDocumentRevisions, compareDocumentVersions, getDocument,
-  getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
+  getDocumentAccessPolicy, getDocumentHistory, getDocumentVersion, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
   type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment, type ModelsHistory, type RevisionComparisonResponse,
-  type VersionList, type VersionDetail, type FileList,
+  type VersionList, type VersionDetail, type FileList, type ModelsDiffDisplayProjection,
 } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
 import { formatDateTime } from '../src/view-model/date-time';
@@ -290,6 +290,81 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   completed('version-created');
   await page.getByRole('button', { name: '版の一覧へ戻る', exact: true }).click();
   await page.getByRole('button', { name: /WORKING · 版 3/ }).click();
+  const workingSelection = page.getByRole('heading', { name: '選択中: WORKING · 版 3', exact: true });
+  await expect(workingSelection).toBeVisible();
+  const workingComparisonButton = page.getByRole('button', { name: '現行公開版とこの作業版を比較', exact: true });
+  await expect(workingComparisonButton).toBeEnabled();
+  const workingComparisonUrl = page.url();
+  const workingComparisonBaseId = before.currentVersionId;
+  if (!workingComparisonBaseId) throw Error('The seeded published Version 2 must remain current before comparison');
+  const readWorkingComparisonState = async () => ({
+    // history-purpose includes this WORKING for the human writer, unlike the read-only agent.
+    snapshot: await persistedSnapshot(human, documentId),
+    document: (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data,
+    base: (await getDocumentVersion({ ...humanOptions, path: { documentId, versionId: workingComparisonBaseId }, query: { purpose: 'published' } })).data,
+    target: (await getDocumentVersion({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data,
+  });
+  const beforeWorkingComparison = await readWorkingComparisonState();
+  expect(beforeWorkingComparison.document.currentVersionId).toBe(before.currentVersionId);
+  expect(beforeWorkingComparison.document.capabilities.compareVersions.status).toBe('available');
+  expect(beforeWorkingComparison.base).toMatchObject({ versionId: before.currentVersionId, versionNo: 2, lifecycleState: 'published', isCurrent: true });
+  expect(beforeWorkingComparison.target).toMatchObject({ versionId: created.targetVersionId, versionNo: 3, lifecycleState: 'working', isCurrent: false });
+  expect(beforeWorkingComparison.snapshot.revision).toBe(created.resultingRevision);
+  expect(beforeWorkingComparison.snapshot.versions).toHaveLength(3);
+  expect(beforeWorkingComparison.snapshot.versions.find(version => version.versionId === created.targetVersionId)!.files[0]!.hash).toBe(hash(changedContent));
+  const workingComparisonResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/comparisons`
+      && response.request().method() === 'POST';
+  });
+  const workingComparisonRequests: string[] = [];
+  const recordWorkingComparisonRequest = (req: Request) => {
+    const url = new URL(req.url());
+    if (url.origin === human && url.pathname.startsWith('/v1/')) workingComparisonRequests.push(`${req.method()} ${url.pathname}`);
+  };
+  page.on('request', recordWorkingComparisonRequest);
+  await workingComparisonButton.click();
+  const workingComparisonResult = await workingComparisonResponse;
+  expect(workingComparisonResult.status()).toBe(200);
+  expect(workingComparisonResult.request().postDataJSON()).toEqual({ baseVersionId: before.currentVersionId,
+    targetVersionId: created.targetVersionId, profile: 'document-diff-v0', projection: 'display', pageSize: 50 });
+  // Version display carries content items, not the formal Revision comparison's metadata snapshots or pair IDs.
+  const workingComparison = await workingComparisonResult.json() as ModelsDiffDisplayProjection;
+  expect(workingComparison).toMatchObject({ projection: 'display', verdict: 'different', coverage: 'full', pageSize: 50,
+    nextCursor: null, unverifiedRegions: [] });
+  expect(workingComparison.resultDigest).toMatch(/^[0-9a-f]{64}$/);
+  expect(workingComparison.items.length).toBeGreaterThan(0);
+  const baseLine = downloaded.toString('utf8').split('\n')[2]!;
+  const targetLine = changedContent.toString('utf8').split('\n')[2]!;
+  expect(workingComparison.items.some(item => item.base?.kind === 'text' && item.target?.kind === 'text'
+    && item.base.text.includes(baseLine) && item.target.text.includes(targetLine))).toBe(true);
+  const workingComparisonRegion = page.getByRole('region', { name: '公開前の内容比較', exact: true });
+  await expect(workingComparisonRegion).toBeVisible();
+  const workingComparisonFact = (label: string) => workingComparisonRegion.locator('dt').filter({ hasText: new RegExp(`^${label}$`) })
+    .locator('xpath=following-sibling::dd[1]');
+  await expect(workingComparisonFact('基準')).toHaveText(`Version 2 · ${beforeWorkingComparison.base.title}`);
+  await expect(workingComparisonFact('対象')).toHaveText(`WORKING · Version 3 · ${beforeWorkingComparison.target.title}`);
+  await expect(workingComparisonFact('基準版ID')).toHaveText(workingComparisonBaseId);
+  await expect(workingComparisonFact('対象版ID')).toHaveText(created.targetVersionId);
+  await expect(workingComparisonFact('本文')).toHaveText('差分あり');
+  await expect(workingComparisonFact('比較範囲')).toHaveText('全範囲');
+  await expect(workingComparisonRegion.getByRole('heading', { name: 'メタデータの変更', exact: true })).toBeHidden();
+  await expect(workingComparisonRegion.getByRole('listitem')).toHaveCount(workingComparison.items.length);
+  const textFragments = workingComparison.items.flatMap(item => [item.base, item.target])
+    .flatMap(fragment => fragment?.kind === 'text' ? [fragment.text] : []);
+  await expect(workingComparisonRegion.locator('pre')).toHaveText(textFragments);
+  // The existing one-line edit ends on this page; real 50+ pagination and multiple originals remain unqualified.
+  await expect(workingComparisonRegion.getByRole('button', { name: '内容比較をさらに表示', exact: true })).toBeHidden();
+  await expect(workingComparisonRegion.getByRole('button', { name: '内容比較の続きを再試行', exact: true })).toBeHidden();
+  await expect(workingComparisonRegion.getByRole('button', { name: '内容比較を最初から読み直す', exact: true })).toBeEnabled();
+  await workingComparisonRegion.getByRole('button', { name: '内容比較を閉じる', exact: true }).click();
+  await expect(workingComparisonRegion).toBeHidden();
+  await expect(workingSelection).toBeVisible();
+  await expect(page).toHaveURL(workingComparisonUrl);
+  page.off('request', recordWorkingComparisonRequest);
+  expect(workingComparisonRequests.filter(value => !value.startsWith('GET '))).toEqual([`POST /v1/documents/${documentId}/comparisons`]);
+  // Comparison/download audit may be appended. Authoritative data and both Version/read-state projections must not change.
+  expect(await readWorkingComparisonState()).toEqual(beforeWorkingComparison);
   await page.getByRole('button', { name: '公開する', exact: true }).click();
   const publishButton = page.getByRole('button', { name: '公開する', exact: true });
   await expect(publishButton).toBeDisabled();

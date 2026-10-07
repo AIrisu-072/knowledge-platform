@@ -1,5 +1,15 @@
 # Active Execution Pointer
 
+## 2026-10-07 01:28 UTC — 公開前WORKINGの内容比較
+
+- PR93統合main41b584ddを基点に、通常「版・改訂」から正規readで確認したcurrent published/選択WORKINGの固定IDを既存Version comparisonへ送る。[状況](document-working-comparison-status.md)と[限定計画](../plans/2026-10-07-document-working-comparison.md)が再開先
+- server capabilityを尊重し、Versionの内容差分を正式改訂snapshotと混ぜない。更新・拒否・遅延・失効時は旧結果を隠し、未確定変更要求を保持する。既存direct human journeyの公開前区間を再利用し、新backend/runner/proxy許可拡大は行わない
+- branchはfeat/document-working-comparison-20261007。次はTDD・独立review・同PR内のdocs/tests/実受入。PR93とmainの成功、旧失敗と資格制限の記録は以下に保持する
+
+01:48追補：GUI83e39dd2は明示ID/再読取/GC後拒否の反例を含む全1421/56・focused215/4・schema/型/build成功。受入0335975fは既存caseの公開前比較と再起動後入口無しだけを追加し、純粋81/型/MCP/収集18+5成功。導入4docs d40e7164は資格済み41bへ同期。独立reviewで実受入のWORKING見出し1件を訂正し、最終全1421/56を再確認。新操作節も同梱し、同機能Draft/hostedへ進む。新比較の実browser資格はまだ未取得。
+
+---
+
 ## 2026-10-07 00:10 UTC — 履歴日時のJST指定脱落を補修
 
 - [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93) head202dc5abの共有bounded summaryで、既存journeyの履歴日時toHaveText（document-runtime.spec.ts:195:49）を失敗箇所と確認。旧詳細のJST wrapperが共有component抽出時に脱落していた。[状況](document-history-workspace-status.md)に共有情報とsource照合を記録

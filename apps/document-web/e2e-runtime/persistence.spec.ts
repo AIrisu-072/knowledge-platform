@@ -68,6 +68,9 @@ test('both restarted composition roots retain document/revision/operation IDs an
       const currentVersion = snapshot.versions.find(version => version.versionId === snapshot.currentVersionId)!;
       const normalSelection = page.getByRole('heading', { name: `選択中: 版 ${currentVersion.versionNo}`, exact: true });
       await expect(normalSelection).toBeVisible();
+      // This document has no WORKING after publication; this does not qualify a positive comparison after restart.
+      expect(snapshot.versions.every(version => version.lifecycleState !== 'working')).toBe(true);
+      await expect(page.getByRole('button', { name: '現行公開版とこの作業版を比較', exact: true })).toBeHidden();
       const normalUrl = page.url();
       const readStateBeforeHistory = (await getDocument({ ...common, path: { documentId }, query: { view: 'published' } })).data.readState;
       const versionsBeforeHistory = (await listDocumentVersions({ ...common, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
