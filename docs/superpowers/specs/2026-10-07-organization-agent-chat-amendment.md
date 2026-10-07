@@ -23,7 +23,7 @@ U3（[作業ファイル・Handoff](2026-10-07-organization-work-files-handoff-a
 
 - `work-application` に `AgentExecutorPort` を置く。入力はWorkが組み立てて認可済みの `AgentDispatchContext`（実行ID・要求者と現在の担当・executorとprovider binding・許可された読取りtool・選択した根拠・文脈版）と残り時間、出力は `AgentOutput`（§3）だけ
 - executorは読取り専用。Work・Documentへ書かない。資格情報・物理パス・client由来のprincipalを受け取らない
-- 呼出しはWorkのrow lockの外。1回の上限時間は20秒。超過・executorの失敗は既存の `failed`（`dependency_unavailable`）として記録し、自動再実行しない
+- 呼出しはWorkのrow lockの外。1回の上限時間は20秒。超過・executorの失敗は既存の `failed`（`dependency_unavailable`）として記録し、自動再実行しない。executorが返した誤りの種類（結果不明・拒否・文脈の変化など）は記録に使わない。それらはWork自身が判定する
 - executorの出力はWorkのDomainが検証してから記録する（§3）。検証に失敗した出力は既存の `failed`（`invalid_output`）とし、一部だけを記録しない
 - 要求者・executor・providerの認可（既存の `AgentSourcePort` による選択した根拠ごとの再確認）、実行文脈の版の照合、遅延応答の遮断は変えない。記録の直前に従来どおり全ての選択した根拠を再確認し、いずれかが拒否なら記録しない
 - 実行の識別（`executedBy=organization-synthetic/agent-01`、provider binding `document/poc/poc-agent`、`simulated` などの表示）はDomainの固定の許可一覧のままとする。新しいexecutorは、仕様の承認を経て許可一覧へ加えるまで使えない（§9）
@@ -47,7 +47,7 @@ executorは次を返す。
 - 記録される `AgentResult` に次を追加する（いずれも空なら出力しない。U4以前の結果のJSONは不変）
   - `sourceOutcomes`、`generatedArtifactIds`、`suggestedActionIds`
 - `findingRevisionRefs` は0〜1件になる（U4以前の結果は従来どおり1件）。`evidenceRevisionRefs` は従来どおり選択した根拠
-- 合成executorの出力（固定）：既存のsummary・候補claim・不確実な点、全根拠 `referenced`、下書き1件（選択した根拠の一覧と「本文未分析・採否は人間が判断」の注記だけを含む固定文。依頼目的・原本本文は含めない）、提案2件（候補の確認、下書きの利用）
+- 合成executorの出力（固定）：summary（下書き・提案も作成したことが分かる文に変更）・既存の候補claim・不確実な点、全根拠 `referenced`、下書き1件（選択した根拠の一覧と「本文未分析・採否は人間が判断」の注記だけを含む固定文。依頼目的・原本本文は含めない）、提案2件（候補の確認、下書きの利用）
 
 ## 4. GeneratedArtifact（非公開の下書き候補）
 
@@ -91,9 +91,10 @@ executorは次を返す。
 ## 9. 実Agent/MCPへの接続手順（依頼者向け、本単位では実施しない）
 
 1. 依頼者がモデル・provider・資格情報の管理方式・実行環境を選定し、仕様（Domain §9の識別・認可の義務）を承認する
-2. `AgentExecutorPort` の新しい実装を、読取り専用の既存Document MCP（provider `poc`・principal `poc-agent` の起動時確認は不変）などに接続して作る。要求者の現在の権限とprovider principalの権限の両方を毎回確認できないproviderは使えない
-3. Domainの許可一覧（executorの識別・provider binding・`simulated` 等の表示）へ新しいexecutorを加える変更を、独立reviewと受入を経て行う
-4. 組立て（`organization-server` の起動処理）で合成executorの代わりに渡す。合成executorは試験用に残す
+2. 下書き候補・提案の本文はWorkの記録として保持される。実executorを接続する前に、根拠のprovider方針（`policyDisposition`、NO_RETENTION・複製禁止）に反する内容を候補へ書かないことの確認方法と、保持期間を決める（合成executorは根拠のID・版だけを書くため対象外）
+3. `AgentExecutorPort` の新しい実装を、読取り専用の既存Document MCP（provider `poc`・principal `poc-agent` の起動時確認は不変）などに接続して作る。要求者の現在の権限とprovider principalの権限の両方を毎回確認できないproviderは使えない
+4. Domainの許可一覧（executorの識別・provider binding・`simulated` 等の表示）へ新しいexecutorを加える変更を、独立reviewと受入を経て行う
+5. 組立て（`organization-server` の起動処理）で合成executorの代わりに渡す。合成executorは試験用に残す
 - 本番接続・実データ・サーバー反映は本単位で行わない
 
 ## 10. 新しい判断（承認済みとは扱わない）
@@ -106,6 +107,8 @@ executorは次を返す。
 6. executor 1回の上限時間を20秒、超過は `failed`（`dependency_unavailable`）とする（読取り専用のため外部の副作用は無い前提）
 7. Agent Chatは選んだ1件だけを展開し、他は折りたたむ（開いたときだけ読む）
 8. GeneratedArtifact・SuggestedActionの閲覧不可は `WORK_ITEM_NOT_FOUND` で返す
+9. 「作業文案に入れる」は作業中の文案を候補で置き換える（追記ではない）。未保存の変更がある場合は入れないため、置き換わるのは保存済みの文案の表示だけで、保存するまでserverの文案は変わらない
+10. executorの誤りは種類を問わず `dependency_unavailable` として記録する
 
 ## 11. 範囲外・残件
 
@@ -114,3 +117,4 @@ executorは次を返す。
 - 工程操作（提出・差戻・完了）の提案、Document・Searchへの操作の提案
 - 下書き候補のDocumentへの昇格、ファイル形式の下書き
 - Chatの自由対話（複数往復の文脈保持）・Chat本文の保存・個人Memory
+- 下書き候補・提案の保持期間・削除（Workflowの記録として残る）と、実executorの出力に対する根拠のNO_RETENTION方針の確認（§9の手順2）

@@ -4,7 +4,7 @@
 
 - U3は[PR #102](https://github.com/AIrisu-072/knowledge-platform/pull/102)でmain `3b06421` へ統合済み（[U3状況](organization-work-files-status.md)）。U4の再開先は[状況](organization-agent-chat-status.md)、[実装追補](../specs/2026-10-07-organization-agent-chat-amendment.md)、[小計画](../plans/2026-10-07-organization-agent-chat.md)
 - branch `claude/trusting-knuth-dn5cx4` をmain `3b06421` から作り直し、U4 commitを移した。AgentResultの構造化（下書き候補・型付き提案・根拠ごとの利用結果）、`AgentExecutorPort`（合成executorは実装の一つ）、Agent Chat（時系列、候補は読み直して未保存の文案へ、提案は読み直して通常の画面へ）
-- ローカルで全Rust・実PostgreSQL・GUI 1642件・実browser 23 stageが成功。新しい判断8点は承認済みとして扱わない
+- ローカルで全Rust・実PostgreSQL・GUI 1642件・実browser 23 stageが成功。新しい判断10点は承認済みとして扱わない
 - 次は独立review→修正→PR→exact-head CI→main統合→統合後CI
 
 ---

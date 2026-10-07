@@ -155,10 +155,13 @@ async fn execute_once(
         return Err(WorkError::WorkContextStale);
     }
     // The executor runs outside every Work lock with a fixed bound. It is
-    // read-only, so expiry leaves no remote side effect to reconcile.
+    // read-only, so expiry leaves no remote side effect to reconcile. Any
+    // executor error is only "unavailable": commit uncertainty, denial and
+    // staleness are Work's own verdicts, never an adapter's claim.
     let output = tokio::time::timeout(budget, executor.execute(context.clone(), budget))
         .await
-        .map_err(|_| WorkError::DependencyUnavailable)??;
+        .map_err(|_| WorkError::DependencyUnavailable)?
+        .map_err(|_| WorkError::DependencyUnavailable)?;
     // Finish validates the proposal, reauthorizes each selected source outside
     // Work locks, then checks this exact context under its transaction.
     repository.finish_agent_execution(context, output).await?;

@@ -433,7 +433,8 @@ KP_ORGANIZATION_PROFILE=sales-01 KP_ORGANIZATION_DOCUMENT_ID="$document_id" \
 ### 実Agent/MCPへの接続（依頼者向け、本PoCでは実施しない）
 
 1. 依頼者がモデル・provider・資格情報の管理方式・実行環境を選定し、Domain設計§9の識別・認可の義務を満たす仕様として承認する
-2. `work-application` の `AgentExecutorPort` を実装するadapterを作る。入力はWorkが組み立てた認可済みの実行文脈だけで、読取り専用。要求者の現在の権限とprovider principalの権限の両方を毎回確認できないproviderは使わない。既存Document MCP（provider `poc`・principal `poc-agent` の起動時確認）は変更しない
-3. Domainの固定の許可一覧（executorの識別・provider binding・模擬処理の表示）へ新しいexecutorを加える変更を、独立reviewと受入を経て行う
-4. `organization-server` の起動処理で合成executorの代わりに渡す。合成executorは試験用に残す
-5. 本番接続・実データの使用・サーバーへの反映は、この手順の承認後に別途行う
+2. 下書き候補・提案の本文はWorkの記録として残るため、根拠のprovider方針（NO_RETENTION・複製禁止）に反する内容を書かないことの確認方法と保持期間を決める
+3. `work-application` の `AgentExecutorPort` を実装するadapterを作る。入力はWorkが組み立てた認可済みの実行文脈だけで、読取り専用。要求者の現在の権限とprovider principalの権限の両方を毎回確認できないproviderは使わない。既存Document MCP（provider `poc`・principal `poc-agent` の起動時確認）は変更しない
+4. Domainの固定の許可一覧（executorの識別・provider binding・模擬処理の表示）へ新しいexecutorを加える変更を、独立reviewと受入を経て行う
+5. `organization-server` の起動処理で合成executorの代わりに渡す。合成executorは試験用に残す
+6. 本番接続・実データの使用・サーバーへの反映は、この手順の承認後に別途行う

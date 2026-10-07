@@ -2,7 +2,7 @@ import { TextEncoder } from 'node:util';
 Object.assign(globalThis, { TextEncoder });
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { documentApi } from '../src/application/document-workspace';
 import { workApi, WorkApiError } from '../src/api/work-api';
@@ -64,7 +64,9 @@ function mockAgent(result: object = structured, execution: object = succeeded) {
   jest.spyOn(workApi, 'getAgentResult').mockResolvedValue(result as never);
   jest.spyOn(workApi, 'getGeneratedArtifact').mockResolvedValue(generated as never);
   jest.spyOn(workApi, 'getSuggestedAction').mockImplementation(async (id) => (id === review.id ? review : adopt) as never);
+  jest.spyOn(workApi, 'getFinding').mockResolvedValue(agentFinding as never);
 }
+const agentFinding = { id: 'synthetic-finding', revision: 1, contextId: task.contextId, taskId: task.id, attemptId: task.attemptId, claim: '合成候補', evidenceRevisionRefs: refs, author: 'organization-synthetic/agent-01', originExecutionId: 'execution-1', actingAssignmentId: 'assignment-sales', createdAt: '2026-10-07T09:00:01Z', visibility: 'work_item_private', uncertainty: [], conflicts: [], supersedesFindingId: null };
 async function openAgent() {
   await screen.findByRole('heading', { name: '内容確認' });
   await userEvent.click(screen.getByRole('button', { name: 'Agent' }));
@@ -111,6 +113,7 @@ test('choosing a review proposal re-reads it and opens the Evidence module witho
   await userEvent.click(within(item).getByRole('button', { name: '提案を開く' }));
   expect(await screen.findByRole('region', { name: '根拠・候補・人間判断' })).toBeVisible();
   expect(workApi.getSuggestedAction).toHaveBeenCalledWith('suggested-1');
+  expect(workApi.getFinding).toHaveBeenCalledWith('synthetic-finding');
   expect(jest.mocked(workApi.getSuggestedAction).mock.calls.filter(([id]) => id === 'suggested-1')).toHaveLength(2);
   expect(await screen.findByText(/候補 synthetic-finding を根拠・判断モジュールで確認し、人間判断を記録してください。提案は実行されていません。/)).toBeVisible();
   expect(decide).not.toHaveBeenCalled();
@@ -156,6 +159,10 @@ test('the thread keeps earlier requests collapsed and reads only the focused exe
   setup();
   jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, agentExecutionIds: ['execution-0', 'execution-1'] } as never);
   mockAgent();
+  // Candidates belong to exactly one execution; the earlier one produced none.
+  const earlier = { ...structured, generatedArtifactIds: undefined, suggestedActionIds: undefined };
+  jest.mocked(workApi.getAgentExecution).mockImplementation(async (id) => ({ ...succeeded, id, result: id === 'execution-0' ? earlier : structured }) as never);
+  jest.mocked(workApi.getAgentResult).mockImplementation(async (id) => (id === 'execution-0' ? earlier : structured) as never);
   const module = await openAgent();
   const thread = within(module).getByRole('list', { name: 'Agentとのやり取り' });
   await within(thread).findByRole('region', { name: 'Agent実行 execution-1' });
@@ -174,4 +181,53 @@ test('denial of a candidate read hides private Agent content instead of showing 
   expect(screen.queryByText('合成の構造化結果')).not.toBeInTheDocument();
   expect(screen.queryByRole('region', { name: 'Agent実行 execution-1' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Agentへの依頼目的')).not.toBeInTheDocument();
+});
+
+test('a review proposal whose finding re-read no longer matches its execution is refused', async () => {
+  setup(); mockAgent();
+  jest.mocked(workApi.getFinding).mockResolvedValue({ ...agentFinding, originExecutionId: 'other-execution' } as never);
+  const module = await openAgent();
+  const item = await within(module).findByRole('listitem', { name: '提案 suggested-1' });
+  await userEvent.click(within(item).getByRole('button', { name: '提案を開く' }));
+  expect(await within(item).findByRole('alert')).toHaveTextContent('提案の対象が現在の結果と一致しません');
+  expect(screen.queryByRole('region', { name: '根拠・候補・人間判断' })).not.toBeInTheDocument();
+});
+
+test('losing draft editing while the candidate is re-read leaves the Work draft untouched', async () => {
+  setup(); mockAgent();
+  let release!: (value: never) => void;
+  let calls = 0;
+  jest.mocked(workApi.getGeneratedArtifact).mockImplementation(() => { calls += 1; return calls === 2 ? new Promise((done) => { release = done; }) : Promise.resolve(generated as never); });
+  const module = await openAgent();
+  const candidate = await within(module).findByRole('article', { name: '下書き候補 generated-1' });
+  await userEvent.click(within(candidate).getByRole('button', { name: '作業文案に入れる' }));
+  await waitFor(() => expect(calls).toBe(2));
+  // Same task revision: only the current editing right changes.
+  jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, canEdit: false, canSubmit: false } as never);
+  await userEvent.click(screen.getByRole('button', { name: '再読込' }));
+  await waitFor(() => expect(screen.queryByLabelText('作業中の文案')).not.toBeInTheDocument());
+  await act(async () => { release(generated as never); });
+  expect(await screen.findByText('現在の担当・状態では作業文案を編集できないため、下書き候補は入れていません。')).toBeVisible();
+  jest.mocked(workApi.getTask).mockResolvedValue(detail as never);
+  await userEvent.click(screen.getByRole('button', { name: '再読込' }));
+  expect(await screen.findByLabelText('作業中の文案')).toHaveValue('保存済みの文案');
+});
+
+test('a re-read candidate from another execution is treated as hidden and never enters the draft', async () => {
+  setup(); mockAgent();
+  let calls = 0;
+  jest.mocked(workApi.getGeneratedArtifact).mockImplementation(async () => { calls += 1; return (calls === 1 ? generated : { ...generated, executionId: 'other-execution' }) as never; });
+  const module = await openAgent();
+  const candidate = await within(module).findByRole('article', { name: '下書き候補 generated-1' });
+  await userEvent.click(within(candidate).getByRole('button', { name: '作業文案に入れる' }));
+  await screen.findByText(/内容を非表示にしました/);
+  expect(screen.queryByText('【合成Agentの下書き】確認メモ')).not.toBeInTheDocument();
+});
+
+test('a transient stale-context candidate read is retried instead of left as an error', async () => {
+  setup(); mockAgent();
+  jest.mocked(workApi.getGeneratedArtifact).mockRejectedValueOnce(new WorkApiError(409, 'WORK_CONTEXT_STALE')).mockResolvedValue(generated as never);
+  const module = await openAgent();
+  expect(await within(module).findByRole('article', { name: '下書き候補 generated-1' }, { timeout: 3000 })).toHaveTextContent('確認メモの下書き（合成）');
+  expect(within(module).queryByRole('alert')).not.toBeInTheDocument();
 });

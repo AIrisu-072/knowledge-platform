@@ -510,6 +510,26 @@ async fn executor_port_output_is_validated_bounded_and_never_retried() {
             },
             Some(AgentFailureCode::DependencyUnavailable),
         ),
+        // An adapter's own error never claims Work's commit uncertainty or a
+        // provider/context verdict: Work alone decides those.
+        (
+            "executor claims commit uncertainty",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Err(WorkError::CommitOutcomeUnknown),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::DependencyUnavailable),
+        ),
+        (
+            "executor claims denial",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Err(WorkError::Forbidden),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::DependencyUnavailable),
+        ),
         (
             "invalid output",
             ScriptedExecutor {

@@ -77,9 +77,14 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
   const textDrafts = task.workingArtifacts.filter((value) => value.schemaId === 'organization.text-draft.v1');
   const savedText = textDrafts[0]?.value?.text ?? '';
   const draftBlocked = !task.canEdit ? 'この工程では作業文案を編集できません。' : textDrafts.length > 1 ? '複数の文案があるため入れられません。' : transient.draft !== null && transient.draft !== savedText ? '保存していない文案の変更があります。保存してから使ってください。' : busy ? '処理中の操作があります。完了後に使ってください。' : null;
+  // The re-read is asynchronous: decide with the state current when it returns.
+  const editable = useRef({ allowed: false, savedText: '' });
+  editable.current = { allowed: task.canEdit && textDrafts.length <= 1 && !busy, savedText };
   const useDraft = (text: string) => {
     if (!active.current) return;
-    setTransient((previous) => previous.draft !== null && previous.draft !== savedText
+    const { allowed, savedText: saved } = editable.current;
+    if (!allowed) { setTransient((previous) => ({ ...previous, notice: '現在の担当・状態では作業文案を編集できないため、下書き候補は入れていません。' })); return; }
+    setTransient((previous) => previous.draft !== null && previous.draft !== saved
       ? { ...previous, notice: '保存していない文案の変更があるため、下書き候補は入れていません。' }
       : { ...previous, draft: text, notice: 'Agentの下書き候補を作業中の文案に入れました（未保存）。内容を確認し、「文案を保存」で保存してください。' });
     window.setTimeout(() => document.getElementById('work-draft')?.focus(), 0);
@@ -113,7 +118,7 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
             {execution.status === 'outcome_unknown' && <p role="status">実行の結果は不明です。自動再実行しません。再依頼は新しい実行になります。</p>}
             {execution.status === 'failed' && <p role="alert">実行を完了できませんでした。現在の根拠と担当を確認してください。</p>}
             {execution.status === 'cancelled' && <p>未完了の実行を取り消しました。確定済みの候補を消す操作ではありません。</p>}
-            <div className={shared.actions}><button type="button" disabled={current.isFetching} onClick={() => { void current.refetch(); if (execution.status === 'succeeded') void result.refetch(); }}>実行状態を再読込</button>{activeStatus(execution.status) && <button type="button" disabled={busy && !recoveringRequest} onClick={() => start({ kind: 'agent_execution_cancelled', taskId: task.id, executionId: execution.id, input: { ...command(), taskId: task.id } })}>実行を取消</button>}</div>
+            <div className={shared.actions}><button type="button" disabled={current.isFetching} onClick={() => { void current.refetch(); if (execution.status === 'succeeded') { void result.refetch(); void client.invalidateQueries({ queryKey: candidateScope }); } }}>実行状態を再読込</button>{activeStatus(execution.status) && <button type="button" disabled={busy && !recoveringRequest} onClick={() => start({ kind: 'agent_execution_cancelled', taskId: task.id, executionId: execution.id, input: { ...command(), taskId: task.id } })}>実行を取消</button>}</div>
             <details><summary>実行の担当・範囲</summary><p>依頼者 {execution.requestedBy}<br />担当 {execution.requesterResponsibility}<br />実行者 {execution.executedBy} · {execution.executorInvocationKind}<br />提供側 {execution.providerPrincipalBindings.map((binding) => `${binding.providerId}: ${binding.principalId} (${binding.invocationKind})`).join('、')}<br />タスク {execution.workItemId} · 試行 {execution.attemptId}<br />文脈版 {execution.effectiveContextRevision}</p><time dateTime={execution.startedAt}>{formatDateTime(execution.startedAt)}</time></details>
             {execution.status === 'succeeded' && result.isPending && <p role="status">現在の権限で結果を確認中…</p>}
             {execution.status === 'succeeded' && result.isSuccess && <>
@@ -123,8 +128,8 @@ export function AgentContextModule({ session, task, applyResult, onDenied, refre
               {result.data.findingRevisionRefs.length > 0
                 ? <><p>保存した候補：{result.data.findingRevisionRefs.map((ref) => `${ref.id}（版 ${ref.revision}）`).join('、')}</p><button type="button" disabled={task.revision < execution.taskRevision} onClick={openEvidence}>候補を根拠モジュールで確認</button></>
                 : <p className={shared.muted}>根拠付きの候補はありません。提案は検証済みの候補ではありません。</p>}
-              {(result.data.generatedArtifactIds ?? []).map((id) => <GeneratedArtifactCard key={id} id={id} scope={candidateScope} onDenied={deny} draftBlocked={draftBlocked} useDraft={useDraft} />)}
-              {(result.data.suggestedActionIds ?? []).length > 0 && <section aria-label="Agentの提案"><h4>提案（実行されません。選ぶと通常の画面を開きます）</h4><ul className={chat.suggestions}>{result.data.suggestedActionIds!.map((id) => <SuggestedActionItem key={id} id={id} scope={candidateScope} onDenied={deny} draftBlocked={draftBlocked} useDraft={useDraft} result={result.data} reviewFinding={reviewFinding} />)}</ul></section>}
+              {(result.data.generatedArtifactIds ?? []).map((id) => <GeneratedArtifactCard key={id} id={id} execution={execution} scope={candidateScope} onDenied={deny} draftBlocked={draftBlocked} useDraft={useDraft} />)}
+              {(result.data.suggestedActionIds ?? []).length > 0 && <section aria-label="Agentの提案"><h4>提案（実行されません。選ぶと通常の画面を開きます）</h4><ul className={chat.suggestions}>{result.data.suggestedActionIds!.map((id) => <SuggestedActionItem key={id} id={id} execution={execution} scope={candidateScope} onDenied={deny} draftBlocked={draftBlocked} useDraft={useDraft} result={result.data} reviewFinding={reviewFinding} />)}</ul></section>}
             </>}
           </div>
         </section>}

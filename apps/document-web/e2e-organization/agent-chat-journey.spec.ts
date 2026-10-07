@@ -106,6 +106,8 @@ test('Agent Chatで構造化結果を確認し、提案から通常の画面で�
     await sales.getByRole('button', { name: 'Agent', exact: true }).click();
     const salesModule = sales.getByRole('region', { name: '合成Agent', exact: true });
     // Earlier attempts' Agent records never attach to this attempt's chat.
+    await expect(salesModule.getByLabel('Agentへの依頼目的', { exact: true })).toBeEnabled();
+    await expect(salesModule.getByLabel(`Agentの根拠 ${salesEvidence.id}`, { exact: true })).toBeVisible();
     await expect(salesModule.getByRole('list', { name: 'Agentとのやり取り', exact: true })).toHaveCount(0);
     const salesRequest = await requestAgent(sales, salesTaskId, salesModule, salesPurpose, salesEvidence.id);
     agentChatAction('agent-chat-result');
