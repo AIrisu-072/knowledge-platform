@@ -1169,3 +1169,193 @@ fn creation_into_a_parent_moved_out_of_the_binding_leaves_no_orphan_file() {
     created.sort();
     assert_eq!(on_disk, created, "a refused creation left its file behind");
 }
+
+// ----- independent review findings (2026-10-07) -----
+
+fn break_registry_writes(fixture: &Fixture) {
+    // A directory in place of the temporary file makes every save fail.
+    fs::create_dir(fixture.state().join("registry.json.tmp")).unwrap();
+}
+
+fn restore_registry_writes(fixture: &Fixture) {
+    fs::remove_dir(fixture.state().join("registry.json.tmp")).unwrap();
+}
+
+#[test]
+fn failed_registry_write_changes_nothing_in_memory_or_after_restart() {
+    let fixture = Fixture::new();
+    let a = fixture.folder("a");
+    let b = fixture.folder("b");
+    let (view, binding) = {
+        let rt = fixture.open();
+        let view = new_workspace(&rt, "w");
+        let (view, binding) = attach(&rt, &view, &a);
+
+        break_registry_writes(&fixture);
+        let detach_id = op();
+        assert_eq!(
+            code(rt.detach_directory(&ctx(&view), &binding, &detach_id)),
+            RuntimeErrorCode::OutcomeUnknown
+        );
+        // The retry must not report a detach that never reached disk.
+        assert_eq!(
+            code(rt.detach_directory(&ctx(&view), &binding, &detach_id)),
+            RuntimeErrorCode::OutcomeUnknown
+        );
+        let listed = rt.list_workspaces().unwrap();
+        assert!(
+            listed[0]
+                .bindings
+                .iter()
+                .any(|item| item.binding_id == binding)
+        );
+        assert_eq!(
+            code(rt.rename_workspace(&ctx(&view), "renamed", &op())),
+            RuntimeErrorCode::OutcomeUnknown
+        );
+        assert_eq!(rt.list_workspaces().unwrap()[0].name, "w");
+        let selection = select(&rt, &view, &b);
+        let attach_id = op();
+        assert_eq!(
+            code(rt.attach_directory(&ctx(&view), &selection, &attach_id)),
+            RuntimeErrorCode::OutcomeUnknown
+        );
+        assert_eq!(rt.list_workspaces().unwrap()[0].bindings.len(), 2);
+        // Once writes work again the same attach completes exactly once.
+        restore_registry_writes(&fixture);
+        let attached = rt
+            .attach_directory(&ctx(&view), &selection, &attach_id)
+            .unwrap();
+        assert_eq!(attached.workspace.bindings.len(), 3);
+        (attached.workspace, binding)
+    };
+    let rt = fixture.open();
+    let restored = rt.list_workspaces().unwrap();
+    assert_eq!(restored, vec![view.clone()]);
+    assert!(
+        restored[0]
+            .bindings
+            .iter()
+            .any(|item| item.binding_id == binding)
+    );
+}
+
+#[test]
+fn workspace_creation_operations_are_never_forgotten() {
+    let fixture = Fixture::new();
+    let rt = fixture.open();
+    let id = op();
+    let created = rt.create_workspace("w", &id).unwrap();
+    let mut view = created.workspace.clone();
+    for i in 0..600 {
+        view = rt
+            .rename_workspace(&ctx(&view), &format!("n{i}"), &op())
+            .unwrap();
+    }
+    match rt.recover_workspace(&id) {
+        RuntimeWorkspaceOutcome::Ready { receipt } => assert_eq!(receipt, created.receipt),
+        other => panic!("forgotten creation: {other:?}"),
+    }
+    assert_eq!(
+        rt.create_workspace("w", &id).unwrap().receipt,
+        created.receipt
+    );
+    assert_eq!(rt.list_workspaces().unwrap().len(), 1);
+    assert_eq!(
+        fs::read_dir(fixture.state().join("managed"))
+            .unwrap()
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_fifo_with_a_waiting_writer_is_never_opened() {
+    let fixture = Fixture::new();
+    let folder = fixture.folder("folder");
+    let fifo_path = folder.join("pipe.txt");
+    let c_path =
+        std::ffi::CString::new(fifo_path.clone().into_os_string().into_encoded_bytes()).unwrap();
+    // SAFETY: valid NUL-terminated path for a test FIFO.
+    assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+    let released = Arc::new(AtomicBool::new(false));
+    let writer = {
+        let released = Arc::clone(&released);
+        let path = fifo_path.clone();
+        std::thread::spawn(move || {
+            // Blocks until some reader opens the FIFO.
+            let _file = fs::OpenOptions::new().write(true).open(path).unwrap();
+            released.store(true, Ordering::SeqCst);
+        })
+    };
+    let rt = fixture.open();
+    let view = new_workspace(&rt, "w");
+    let (view, binding) = attach(&rt, &view, &folder);
+    let error = rt
+        .open_read(&ctx(&view), &local(&binding, &["pipe.txt"]), "x")
+        .unwrap_err();
+    assert_eq!(error.code, RuntimeErrorCode::Denied);
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(
+        !released.load(Ordering::SeqCst),
+        "the broker opened the FIFO"
+    );
+    // Release the writer for cleanup.
+    drop(fs::File::open(&fifo_path).unwrap());
+    writer.join().unwrap();
+}
+
+#[test]
+fn a_bound_folder_recreated_with_a_reused_inode_is_reported_replaced() {
+    let fixture = Fixture::new();
+    let folder = fixture.folder("folder");
+    let rt = fixture.open();
+    let view = new_workspace(&rt, "w");
+    let (view, binding) = attach(&rt, &view, &folder);
+    let mut replaced = false;
+    for _ in 0..50 {
+        fs::remove_dir(&folder).unwrap();
+        fs::create_dir(&folder).unwrap();
+        let error = rt.list_entries(&ctx(&view), &local(&binding, &[]), None);
+        if let Err(error) = error {
+            assert_eq!(error.reason, Some(RuntimeErrorReason::FolderReplaced));
+            replaced = true;
+            continue;
+        }
+        panic!("a recreated folder was accepted as the bound folder");
+    }
+    assert!(replaced);
+}
+
+#[test]
+fn handles_of_an_outdated_context_do_not_hold_limit_slots() {
+    let fixture = Fixture::new();
+    let folder = fixture.folder("folder");
+    let other = fixture.folder("other");
+    for i in 0..5 {
+        fs::write(folder.join(format!("{i}.txt")), b"x").unwrap();
+    }
+    let rt = fixture.open();
+    let view = new_workspace(&rt, "w");
+    let (view, binding) = attach(&rt, &view, &folder);
+    let page = rt
+        .list_entries(&ctx(&view), &local(&binding, &[]), None)
+        .unwrap();
+    for entry in &page.entries[..4] {
+        rt.open_read(
+            &ctx(&view),
+            &local(&binding, &[&entry.name]),
+            &entry.file_identity,
+        )
+        .unwrap();
+    }
+    // Attaching another folder moves the context; the old handles are dead.
+    let (view, _) = attach(&rt, &view, &other);
+    let fifth = &page.entries[4];
+    rt.open_read(
+        &ctx(&view),
+        &local(&binding, &[&fifth.name]),
+        &fifth.file_identity,
+    )
+    .unwrap();
+}

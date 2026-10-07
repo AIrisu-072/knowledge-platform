@@ -274,3 +274,44 @@ fn picker_failure_is_reported_and_releases_the_picker() {
     );
     let _ = PathBuf::new();
 }
+
+struct PanickingPicker;
+
+impl DirectoryPicker for PanickingPicker {
+    fn available(&self) -> bool {
+        true
+    }
+    fn pick_directory(&self) -> PickerOutcome {
+        panic!("native dialog failed");
+    }
+}
+
+#[test]
+fn a_panicking_native_picker_does_not_leave_the_picker_busy() {
+    let temp = tempfile::tempdir().unwrap();
+    let rt = LocalWorkspaceRuntime::open(temp.path().join("state")).unwrap();
+    let ok = FakePicker::new(vec![PickerOutcome::Cancelled]);
+    let created = call(
+        &rt,
+        &ok,
+        "workspace.create",
+        json!({"name": "w", "operationId": "o1"}),
+    )
+    .unwrap();
+    let w = &created["workspace"];
+    let context = json!({"workspaceId": w["workspaceId"], "effectiveContextRevision": w["effectiveContextRevision"]});
+    let request = json!({"context": context});
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        wire::dispatch(
+            Ok(&rt),
+            &PanickingPicker,
+            "directory.choose",
+            request.clone(),
+        )
+    }));
+    assert!(outcome.is_err());
+    assert_eq!(
+        call(&rt, &ok, "directory.choose", request).unwrap(),
+        Value::Null
+    );
+}

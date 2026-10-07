@@ -253,6 +253,7 @@ struct Selection {
     workspace_id: String,
     path: PathBuf,
     identity: (u64, u64),
+    birth: Option<(i64, i64)>,
     label: String,
     created: Instant,
 }
@@ -471,7 +472,10 @@ impl LocalWorkspaceRuntime {
             )
         };
         let dir = Dir::open_absolute(&path).map_err(|_| replaced())?;
-        if dir.stat.identity() != (binding.dev, binding.ino) {
+        // dev/ino alone accept a folder recreated with a reused inode number.
+        if dir.stat.identity() != (binding.dev, binding.ino)
+            || (binding.birth.is_some() && dir.stat.birth != binding.birth)
+        {
             return Err(replaced());
         }
         Ok(dir)
@@ -502,8 +506,22 @@ impl LocalWorkspaceRuntime {
         }
     }
 
-    fn persist(&self, state: &State) -> RuntimeResult<()> {
-        registry::save(&self.state_root, &state.registry)
+    /// Persist `next` and adopt it only after the write succeeded. When the
+    /// write fails, memory mirrors whatever the disk now holds, so a failed
+    /// change is never reported as done by a retry nor undone by a restart.
+    fn commit(&self, state: &mut State, next: RegistryFile) -> RuntimeResult<()> {
+        match registry::save(&self.state_root, &next) {
+            Ok(()) => {
+                state.registry = next;
+                Ok(())
+            }
+            Err(error) => {
+                if let Ok(Some(on_disk)) = registry::load(&self.state_root) {
+                    state.registry = on_disk;
+                }
+                Err(error)
+            }
+        }
     }
 
     fn check_context<'a>(
@@ -552,19 +570,15 @@ impl LocalWorkspaceRuntime {
                 // Reserve the identities before touching the filesystem so a
                 // lost response or crash recovers the same root, never another.
                 let ids = (random_id("w_"), random_id("b_"));
-                state.registry.upsert_operation(OperationRecord {
+                let mut next = state.registry.clone();
+                next.upsert_operation(OperationRecord {
                     id: operation_id.to_owned(),
                     kind: OperationKind::CreateWorkspace,
                     digest,
                     state: OperationState::Pending,
                     result: serde_json::json!({"workspaceId": ids.0, "managedBindingId": ids.1, "name": name}),
                 });
-                self.persist(&state).map_err(|_| {
-                    RuntimeError::with(
-                        RuntimeErrorCode::Unavailable,
-                        RuntimeErrorReason::RegistryWriteFailed,
-                    )
-                })?;
+                self.commit(&mut state, next)?;
                 ids
             }
         };
@@ -615,8 +629,9 @@ impl LocalWorkspaceRuntime {
         }
         // Opened no-follow: a planted symlink in place of the root is refused.
         let root = managed_parent.open_child_dir(managed_binding_id)?;
-        if state.registry.workspace(workspace_id).is_none() {
-            state.registry.workspaces.push(WorkspaceRecord {
+        let mut next = state.registry.clone();
+        if next.workspace(workspace_id).is_none() {
+            next.workspaces.push(WorkspaceRecord {
                 id: workspace_id.to_owned(),
                 name,
                 revision: 1,
@@ -629,18 +644,14 @@ impl LocalWorkspaceRuntime {
                     path: None,
                     dev: root.stat.dev,
                     ino: root.stat.ino,
+                    birth: root.stat.birth,
                 }],
             });
         }
-        if let Some(op) = state
-            .registry
-            .operations
-            .iter_mut()
-            .find(|op| op.id == operation_id)
-        {
+        if let Some(op) = next.operations.iter_mut().find(|op| op.id == operation_id) {
             op.state = OperationState::Completed;
         }
-        self.persist(state)?;
+        self.commit(state, next)?;
         let record = state
             .registry
             .workspace(workspace_id)
@@ -702,20 +713,20 @@ impl LocalWorkspaceRuntime {
             return Ok(self.view(record));
         }
         Self::check_context(&state, context)?;
-        let record = state
-            .registry
+        let mut next = state.registry.clone();
+        let record = next
             .workspace_mut(&context.workspace_id)
             .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
         record.name = name;
         record.revision += 1;
-        state.registry.upsert_operation(OperationRecord {
+        next.upsert_operation(OperationRecord {
             id: operation_id.to_owned(),
             kind: OperationKind::RenameWorkspace,
             digest,
             state: OperationState::Completed,
             result: serde_json::Value::Null,
         });
-        self.persist(&state)?;
+        self.commit(&mut state, next)?;
         let record = state
             .registry
             .workspace(&context.workspace_id)
@@ -789,6 +800,7 @@ impl LocalWorkspaceRuntime {
                 label: label_of(&canonical),
                 path: canonical,
                 identity: dir.stat.identity(),
+                birth: dir.stat.birth,
                 created: Instant::now(),
             },
         );
@@ -833,12 +845,15 @@ impl LocalWorkspaceRuntime {
                 RuntimeErrorReason::SelectionExpired,
             );
         }
-        let Some(chosen) = state.selections.remove(&selection.selection_id) else {
+        let Some(chosen) = state.selections.get(&selection.selection_id) else {
             return not_found();
         };
         // The folder must still be the very directory that was picked.
         let dir = Dir::open_absolute(&chosen.path)?;
-        if dir.stat.identity() != chosen.identity || chosen.identity == self.state_identity {
+        if dir.stat.identity() != chosen.identity
+            || dir.stat.birth != chosen.birth
+            || chosen.identity == self.state_identity
+        {
             return err(
                 RuntimeErrorCode::Conflict,
                 RuntimeErrorReason::FolderReplaced,
@@ -865,18 +880,20 @@ impl LocalWorkspaceRuntime {
             return err(RuntimeErrorCode::Limit, RuntimeErrorReason::TooMany);
         }
         let binding_id = random_id("b_");
-        let record = state
-            .registry
-            .workspace_mut(&context.workspace_id)
-            .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
-        record.bindings.push(BindingRecord {
+        let binding = BindingRecord {
             id: binding_id.clone(),
             source: BindingSource::Explicit,
-            label: chosen.label,
-            path: Some(chosen.path),
+            label: chosen.label.clone(),
+            path: Some(chosen.path.clone()),
             dev: chosen.identity.0,
             ino: chosen.identity.1,
-        });
+            birth: chosen.birth,
+        };
+        let mut next = state.registry.clone();
+        let record = next
+            .workspace_mut(&context.workspace_id)
+            .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
+        record.bindings.push(binding);
         record.revision += 1;
         record.revision_binding += 1;
         let receipt = BindingReceipt {
@@ -884,7 +901,7 @@ impl LocalWorkspaceRuntime {
             binding_id,
             runtime_revision: format!("r{}", record.revision),
         };
-        state.registry.upsert_operation(OperationRecord {
+        next.upsert_operation(OperationRecord {
             id: operation_id.to_owned(),
             kind: OperationKind::AttachDirectory,
             digest,
@@ -892,7 +909,10 @@ impl LocalWorkspaceRuntime {
             result: serde_json::to_value(&receipt)
                 .map_err(|_| RuntimeError::new(RuntimeErrorCode::OutcomeUnknown))?,
         });
-        self.persist(&state)?;
+        // The selection stays usable until the binding is durably recorded,
+        // so an exact retry after a failed write can still complete.
+        self.commit(&mut state, next)?;
+        state.selections.remove(&selection.selection_id);
         let record = state
             .registry
             .workspace(&context.workspace_id)
@@ -933,22 +953,22 @@ impl LocalWorkspaceRuntime {
             }
             Some(_) => {}
         }
-        let record = state
-            .registry
+        let mut next = state.registry.clone();
+        let record = next
             .workspace_mut(&context.workspace_id)
             .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
         record.bindings.retain(|b| b.id != binding_id);
         record.revision += 1;
         record.revision_binding += 1;
-        state.handles.retain(|_, h| h.binding_id != binding_id);
-        state.registry.upsert_operation(OperationRecord {
+        next.upsert_operation(OperationRecord {
             id: operation_id.to_owned(),
             kind: OperationKind::DetachDirectory,
             digest,
             state: OperationState::Completed,
             result: serde_json::Value::Null,
         });
-        self.persist(&state)?;
+        self.commit(&mut state, next)?;
+        state.handles.retain(|_, h| h.binding_id != binding_id);
         let record = state
             .registry
             .workspace(&context.workspace_id)
@@ -1103,7 +1123,17 @@ impl LocalWorkspaceRuntime {
             );
         }
         let now = Instant::now();
-        state.handles.retain(|_, h| h.expires > now);
+        // Expired handles and handles of an outdated context can never be
+        // read again, so they must not hold limit slots.
+        let State {
+            registry, handles, ..
+        } = &mut *state;
+        handles.retain(|_, h| {
+            h.expires > now
+                && registry
+                    .workspace(&h.workspace_id)
+                    .is_some_and(|w| context_revision(w) == h.context_revision)
+        });
         let retained: u64 = state.handles.values().map(|h| h.bytes.len() as u64).sum();
         if state.handles.len() >= MAX_READ_HANDLES
             || retained + stat.size > MAX_RETAINED_SNAPSHOT_BYTES
@@ -1200,7 +1230,8 @@ impl LocalWorkspaceRuntime {
     /// Exclusive, no-overwrite creation below a binding. An exact retry of the
     /// same operation returns its stored receipt only while the created file
     /// still has the recorded identity; uncertain completion is never retried
-    /// under a new name.
+    /// under a new name, and a file is adopted only if it carries the identity
+    /// recorded right after our own exclusive create.
     pub fn create_file(
         &self,
         context: &ContextRef,
@@ -1224,18 +1255,18 @@ impl LocalWorkspaceRuntime {
             serde_json::json!([context.workspace_id, target, content_sha256, bytes.len()]),
         );
         let mut state = lock(&self.state);
-        if let Some(op) = state.registry.operation(operation_id).cloned() {
-            if op.kind != OperationKind::CreateFile || op.digest != digest {
+        match state.registry.operation(operation_id).cloned() {
+            Some(op) if op.kind != OperationKind::CreateFile || op.digest != digest => {
                 return mismatch();
             }
-            let record = state
-                .registry
-                .workspace(&context.workspace_id)
-                .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
-            let (dir, leaf) = self.open_parent(record, &target)?;
-            if op.state == OperationState::Completed {
+            Some(op) if op.state == OperationState::Completed => {
                 let receipt: FileReceipt = serde_json::from_value(op.result)
                     .map_err(|_| RuntimeError::new(RuntimeErrorCode::OutcomeUnknown))?;
+                let record = state
+                    .registry
+                    .workspace(&context.workspace_id)
+                    .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
+                let (dir, leaf) = self.open_parent(record, &target)?;
                 let current = dir.stat_child(&leaf)?;
                 if file_identity(&state.key, &current) != receipt.file_identity {
                     return err(
@@ -1245,51 +1276,81 @@ impl LocalWorkspaceRuntime {
                 }
                 return Ok(receipt);
             }
-            // Pending after a crash or failed registry write: adopt only the
-            // exact recorded content, otherwise the outcome stays uncertain.
-            if let Ok((file, stat)) = dir.open_child_file(&leaf) {
-                let existing = platform::read_stable(&file, &stat)?;
-                if stat.nlink != 1 || sha256_hex(&existing) != content_sha256 {
-                    return err(
-                        RuntimeErrorCode::Conflict,
-                        RuntimeErrorReason::AlreadyExists,
-                    );
+            Some(op) => {
+                // Pending after a crash, lost response or failed registry
+                // write. It must still be a current request.
+                let record = Self::check_context(&state, context)?.clone();
+                let (dir, leaf) = self.open_parent(&record, &target)?;
+                let recorded = op
+                    .result
+                    .get("fileIdentity")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned);
+                match dir.stat_child(&leaf) {
+                    Err(error) if error.code == RuntimeErrorCode::NotFound => {}
+                    Err(error) => return Err(error),
+                    Ok(existing) => {
+                        let ours = recorded
+                            .as_deref()
+                            .is_some_and(|id| id == file_identity(&state.key, &existing));
+                        if !ours {
+                            return err(
+                                RuntimeErrorCode::Conflict,
+                                RuntimeErrorReason::AlreadyExists,
+                            );
+                        }
+                        let (file, stat) = dir.open_child_file(&leaf)?;
+                        let content = platform::read_stable(&file, &stat)?;
+                        if stat.nlink == 1 && sha256_hex(&content) == content_sha256 {
+                            let receipt = self.file_receipt(
+                                &state,
+                                operation_id,
+                                &target,
+                                &stat,
+                                &content_sha256,
+                            );
+                            return self.complete_create(&mut state, operation_id, digest, receipt);
+                        }
+                        // Our own partially written file: remove it and create again.
+                        if !remove_own_file(&dir, &leaf, &existing) {
+                            return Err(RuntimeError::new(RuntimeErrorCode::OutcomeUnknown));
+                        }
+                    }
                 }
-                let receipt =
-                    self.file_receipt(&state, operation_id, &target, &stat, &content_sha256);
-                return self.complete_create(&mut state, operation_id, digest, receipt);
             }
-        } else {
-            Self::check_context(&state, context)?;
-            state.registry.upsert_operation(OperationRecord {
-                id: operation_id.to_owned(),
-                kind: OperationKind::CreateFile,
-                digest: digest.clone(),
-                state: OperationState::Pending,
-                result: serde_json::Value::Null,
-            });
-            self.persist(&state).map_err(|_| {
-                RuntimeError::with(
-                    RuntimeErrorCode::Unavailable,
-                    RuntimeErrorReason::RegistryWriteFailed,
-                )
-            })?;
+            None => {
+                Self::check_context(&state, context)?;
+                let mut next = state.registry.clone();
+                next.upsert_operation(OperationRecord {
+                    id: operation_id.to_owned(),
+                    kind: OperationKind::CreateFile,
+                    digest: digest.clone(),
+                    state: OperationState::Pending,
+                    result: serde_json::Value::Null,
+                });
+                self.commit(&mut state, next).map_err(|_| {
+                    RuntimeError::with(
+                        RuntimeErrorCode::Unavailable,
+                        RuntimeErrorReason::RegistryWriteFailed,
+                    )
+                })?;
+            }
         }
-        let result = self.create_new_file(
-            &state,
-            &context.workspace_id,
+        match self.create_new_file(
+            &mut state,
+            context,
             &target,
             bytes,
             &content_sha256,
             operation_id,
-        );
-        match result {
+        ) {
             Ok(receipt) => self.complete_create(&mut state, operation_id, digest, receipt),
             Err(error) => {
                 if error.code != RuntimeErrorCode::OutcomeUnknown {
-                    // Definite failure: nothing was created, forget the attempt.
-                    state.registry.operations.retain(|op| op.id != operation_id);
-                    let _ = self.persist(&state);
+                    // Definite failure: nothing of ours remains, forget the attempt.
+                    let mut next = state.registry.clone();
+                    next.operations.retain(|op| op.id != operation_id);
+                    let _ = self.commit(&mut state, next);
                 }
                 Err(error)
             }
@@ -1315,8 +1376,8 @@ impl LocalWorkspaceRuntime {
 
     fn create_new_file(
         &self,
-        state: &State,
-        workspace_id: &str,
+        state: &mut State,
+        context: &ContextRef,
         target: &LocalRef,
         bytes: &[u8],
         content_sha256: &str,
@@ -1324,33 +1385,61 @@ impl LocalWorkspaceRuntime {
     ) -> RuntimeResult<FileReceipt> {
         let record = state
             .registry
-            .workspace(workspace_id)
+            .workspace(&context.workspace_id)
+            .cloned()
             .ok_or_else(|| RuntimeError::new(RuntimeErrorCode::NotFound))?;
-        let (dir, leaf) = self.open_parent(record, target)?;
+        let (dir, leaf) = self.open_parent(&record, target)?;
         let mut file = dir.create_child_file(&leaf)?;
-        let created = platform::fstat_file(&file)?;
-        let written = platform::write_all_durable(&mut file, bytes);
-        // Post-verify confinement: the parent reached again from the binding
-        // root must be the same directory the file was created in, and the
-        // name must still denote the new inode. Otherwise remove our own file.
-        let same_parent = self
-            .open_parent(record, target)
-            .is_ok_and(|(again, _)| again.stat.identity() == dir.stat.identity());
-        let still_ours = dir
-            .stat_child(&leaf)
-            .is_ok_and(|s| s.identity() == created.identity());
-        if !same_parent || !still_ours {
-            // Removal is relative to the pinned parent, so it reaches the file
-            // even when that directory was moved outside the binding.
-            if still_ours {
-                let _ = dir.unlink_child_file(&leaf);
+        // Anything that goes wrong from here removes our own file; if that
+        // removal cannot be proven the outcome is unknown and stays pending.
+        let abandon = |created: Option<&Stat>, error: RuntimeError| -> RuntimeError {
+            let removed = created.is_some_and(|created| remove_own_file(&dir, &leaf, created));
+            if removed {
+                error
+            } else {
+                RuntimeError::new(RuntimeErrorCode::OutcomeUnknown)
             }
-            return err(
-                RuntimeErrorCode::Conflict,
-                RuntimeErrorReason::ConcurrentChange,
-            );
+        };
+        let created = match platform::fstat_file(&file) {
+            Ok(created) => created,
+            Err(error) => return Err(abandon(None, error)),
+        };
+        // Record our identity before writing so a retry can recognise this
+        // file (and only this file) as ours.
+        let mut next = state.registry.clone();
+        if let Some(op) = next.operations.iter_mut().find(|op| op.id == operation_id) {
+            op.result = serde_json::json!({"fileIdentity": file_identity(&state.key, &created)});
         }
-        if written.is_err() {
+        if self.commit(state, next).is_err() {
+            return Err(abandon(
+                Some(&created),
+                RuntimeError::with(
+                    RuntimeErrorCode::Unavailable,
+                    RuntimeErrorReason::RegistryWriteFailed,
+                ),
+            ));
+        }
+        if let Err(error) = platform::write_all_durable(&mut file, bytes) {
+            return Err(abandon(Some(&created), error));
+        }
+        // Post-verify confinement: the parent reached again from the binding
+        // root must be the same directory the file was created in. Removal is
+        // relative to the pinned parent, so it reaches the file even when that
+        // directory was moved outside the binding.
+        let same_parent = self
+            .open_parent(&record, target)
+            .is_ok_and(|(again, _)| again.stat.identity() == dir.stat.identity());
+        if !same_parent {
+            return Err(abandon(
+                Some(&created),
+                RuntimeError::with(
+                    RuntimeErrorCode::Conflict,
+                    RuntimeErrorReason::ConcurrentChange,
+                ),
+            ));
+        }
+        let still_ours = dir.stat_child(&leaf).is_ok_and(|s| same_file(&s, &created));
+        if !still_ours {
             return Err(RuntimeError::new(RuntimeErrorCode::OutcomeUnknown));
         }
         let stat = platform::fstat_file(&file)
@@ -1365,7 +1454,8 @@ impl LocalWorkspaceRuntime {
         digest: String,
         receipt: FileReceipt,
     ) -> RuntimeResult<FileReceipt> {
-        state.registry.upsert_operation(OperationRecord {
+        let mut next = state.registry.clone();
+        next.upsert_operation(OperationRecord {
             id: operation_id.to_owned(),
             kind: OperationKind::CreateFile,
             digest,
@@ -1373,8 +1463,23 @@ impl LocalWorkspaceRuntime {
             result: serde_json::to_value(&receipt)
                 .map_err(|_| RuntimeError::new(RuntimeErrorCode::OutcomeUnknown))?,
         });
-        self.persist(state)?;
+        self.commit(state, next)?;
         Ok(receipt)
+    }
+}
+
+fn same_file(a: &Stat, b: &Stat) -> bool {
+    a.identity() == b.identity() && a.birth == b.birth
+}
+
+/// Remove the file we created, but only while the name still denotes it.
+/// Returns whether nothing of ours is left under that name.
+fn remove_own_file(dir: &Dir, leaf: &str, created: &Stat) -> bool {
+    match dir.stat_child(leaf) {
+        Ok(current) if same_file(&current, created) => dir.unlink_child_file(leaf).is_ok(),
+        // Another file now has the name: ours is elsewhere and cannot be found.
+        Ok(_) => false,
+        Err(error) => error.code == RuntimeErrorCode::NotFound,
     }
 }
 
@@ -1397,8 +1502,9 @@ mod crash_recovery_tests {
 
     fn pending(rt: &LocalWorkspaceRuntime, record: OperationRecord) {
         let mut state = lock(&rt.state);
-        state.registry.upsert_operation(record);
-        rt.persist(&state).unwrap();
+        let mut next = state.registry.clone();
+        next.upsert_operation(record);
+        rt.commit(&mut state, next).unwrap();
     }
 
     #[test]
@@ -1441,7 +1547,7 @@ mod crash_recovery_tests {
     }
 
     #[test]
-    fn pending_file_creation_adopts_only_the_exact_recorded_content() {
+    fn pending_file_creation_adopts_only_its_own_recorded_file() {
         let temp = tempfile::tempdir().unwrap();
         let rt = LocalWorkspaceRuntime::open(temp.path().join("state")).unwrap();
         let created = rt.create_workspace("w", "op-w").unwrap().workspace;
@@ -1454,7 +1560,8 @@ mod crash_recovery_tests {
             locator: vec![],
         };
         let root = rt.managed_path(&created.managed_binding_id);
-        let record = |op: &str, name: &str, bytes: &[u8]| {
+        let key = lock(&rt.state).key;
+        let record = |op: &str, name: &str, bytes: &[u8], identity: Option<String>| {
             let mut target = parent.clone();
             target.locator.push(name.to_owned());
             OperationRecord {
@@ -1470,28 +1577,65 @@ mod crash_recovery_tests {
                     ]),
                 ),
                 state: OperationState::Pending,
-                result: serde_json::Value::Null,
+                result: identity.map_or(
+                    serde_json::Value::Null,
+                    |id| serde_json::json!({"fileIdentity": id}),
+                ),
             }
         };
-        // Written before the crash with exactly the requested bytes: adopted.
-        pending(&rt, record("op-same", "same.txt", b"abc"));
+        let identity_of = |name: &str| {
+            let dir = Dir::open_absolute(&root).unwrap();
+            file_identity(&key, &dir.stat_child(name).unwrap())
+        };
+        // Crash after our exclusive create was recorded and fully written: adopted.
         std::fs::write(root.join("same.txt"), b"abc").unwrap();
+        pending(
+            &rt,
+            record("op-same", "same.txt", b"abc", Some(identity_of("same.txt"))),
+        );
         let receipt = rt
             .create_file(&context, &parent, "same.txt", b"abc", "op-same")
             .unwrap();
         assert_eq!(receipt.size_bytes, 3);
-        // A different file under that name is never claimed as ours.
-        pending(&rt, record("op-other", "other.txt", b"abc"));
-        std::fs::write(root.join("other.txt"), b"partial").unwrap();
+        // Crash during our write: our partial file is replaced by the full content.
+        std::fs::write(root.join("partial.txt"), b"a").unwrap();
+        pending(
+            &rt,
+            record(
+                "op-partial",
+                "partial.txt",
+                b"abc",
+                Some(identity_of("partial.txt")),
+            ),
+        );
+        rt.create_file(&context, &parent, "partial.txt", b"abc", "op-partial")
+            .unwrap();
+        assert_eq!(std::fs::read(root.join("partial.txt")).unwrap(), b"abc");
+        // Someone else's file with the very same bytes is never claimed as ours.
+        std::fs::write(root.join("foreign.txt"), b"abc").unwrap();
+        pending(&rt, record("op-foreign", "foreign.txt", b"abc", None));
         let error = rt
-            .create_file(&context, &parent, "other.txt", b"abc", "op-other")
+            .create_file(&context, &parent, "foreign.txt", b"abc", "op-foreign")
             .unwrap_err();
         assert_eq!(error.code, RuntimeErrorCode::Conflict);
-        assert_eq!(std::fs::read(root.join("other.txt")).unwrap(), b"partial");
+        assert_eq!(std::fs::read(root.join("foreign.txt")).unwrap(), b"abc");
         // Nothing was written before the crash: the create proceeds once.
-        pending(&rt, record("op-none", "none.txt", b"xyz"));
+        pending(&rt, record("op-none", "none.txt", b"xyz", None));
         rt.create_file(&context, &parent, "none.txt", b"xyz", "op-none")
             .unwrap();
         assert_eq!(std::fs::read(root.join("none.txt")).unwrap(), b"xyz");
+        // A pending retry under an outdated context is refused like a new request.
+        pending(&rt, record("op-stale", "stale.txt", b"s", None));
+        let stale = ContextRef {
+            effective_context_revision: "c999".into(),
+            ..context.clone()
+        };
+        assert_eq!(
+            rt.create_file(&stale, &parent, "stale.txt", b"s", "op-stale")
+                .unwrap_err()
+                .code,
+            RuntimeErrorCode::StaleContext
+        );
+        assert!(!root.join("stale.txt").exists());
     }
 }

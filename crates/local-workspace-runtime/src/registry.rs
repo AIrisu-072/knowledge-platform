@@ -35,6 +35,9 @@ pub struct BindingRecord {
     pub path: Option<PathBuf>,
     pub dev: u64,
     pub ino: u64,
+    /// Creation time when the filesystem reports it (absent in old records).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birth: Option<(i64, i64)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,19 +107,22 @@ impl RegistryFile {
             return;
         }
         self.operations.push(record);
-        // Bounded retry memory: evict the oldest completed records first.
+        // Bounded retry memory. Workspace creations are never forgotten (they
+        // are bounded by the Workspace limit), so the same operation ID can
+        // never create a second Workspace or managed root. Among the rest the
+        // oldest completed record goes first, then the oldest pending one.
         while self.operations.len() > MAX_OPERATIONS {
-            match self
+            let evictable = |op: &&OperationRecord| op.kind != OperationKind::CreateWorkspace;
+            let index = self
                 .operations
                 .iter()
-                .position(|op| op.state == OperationState::Completed)
-            {
+                .position(|op| evictable(&op) && op.state == OperationState::Completed)
+                .or_else(|| self.operations.iter().position(|op| evictable(&op)));
+            match index {
                 Some(index) => {
                     self.operations.remove(index);
                 }
-                None => {
-                    self.operations.remove(0);
-                }
+                None => break,
             }
         }
     }

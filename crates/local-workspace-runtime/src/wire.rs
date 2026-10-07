@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::{
     Capabilities, ContextRef, DirectorySelection, LocalRef, LocalWorkspaceRuntime,
-    MAX_CREATE_BYTES, RuntimeError, RuntimeErrorCode, RuntimeErrorReason, base64,
+    MAX_CREATE_BYTES, PickerTicket, RuntimeError, RuntimeErrorCode, RuntimeErrorReason, base64,
 };
 
 /// The single IPC command name registered by the desktop shell.
@@ -134,6 +134,19 @@ struct CreateFile {
     operation_id: String,
 }
 
+struct PickerGuard<'a> {
+    runtime: &'a LocalWorkspaceRuntime,
+    ticket: Option<PickerTicket>,
+}
+
+impl Drop for PickerGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(ticket) = self.ticket.take() {
+            let _ = self.runtime.finish_directory_selection(ticket, None);
+        }
+    }
+}
+
 fn invalid() -> RuntimeError {
     RuntimeError::with(
         RuntimeErrorCode::InvalidLocator,
@@ -192,9 +205,15 @@ pub fn dispatch(
                     RuntimeErrorReason::UnsupportedPlatform,
                 ));
             }
-            // The broker lock is not held while the native dialog is open.
-            let ticket = rt.begin_directory_selection(&r.context)?;
-            match picker.pick_directory() {
+            // The broker lock is not held while the native dialog is open. The
+            // guard releases the picker even if the dialog code panics.
+            let mut guard = PickerGuard {
+                runtime: rt,
+                ticket: Some(rt.begin_directory_selection(&r.context)?),
+            };
+            let outcome = picker.pick_directory();
+            let ticket = guard.ticket.take().ok_or_else(invalid)?;
+            match outcome {
                 PickerOutcome::Chosen(path) => {
                     json(rt.finish_directory_selection(ticket, Some(path))?)
                 }

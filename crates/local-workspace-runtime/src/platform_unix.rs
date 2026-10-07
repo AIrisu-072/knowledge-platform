@@ -152,6 +152,19 @@ mod stat_impl {
     }
 }
 
+fn clear_errno() {
+    // SAFETY: the errno location is a valid thread-local integer.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe {
+        *libc::__errno_location() = 0
+    };
+    // SAFETY: the errno location is a valid thread-local integer.
+    #[cfg(target_vendor = "apple")]
+    unsafe {
+        *libc::__error() = 0
+    };
+}
+
 fn last_errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
@@ -249,21 +262,35 @@ impl Dir {
     }
 
     pub fn open_child_file(&self, name: &str) -> RuntimeResult<(File, Stat)> {
-        let name = c_name(name)?;
+        let classify = |kind: Kind| -> RuntimeResult<()> {
+            match kind {
+                Kind::Regular => Ok(()),
+                Kind::Directory => Err(RuntimeError::new(RuntimeErrorCode::NotFound)),
+                Kind::Symlink => err(RuntimeErrorCode::Denied, RuntimeErrorReason::SymbolicLink),
+                Kind::Other => err(RuntimeErrorCode::Denied, RuntimeErrorReason::SpecialFile),
+            }
+        };
+        // Classify before opening: opening a FIFO releases a blocked writer
+        // and opening a device node can have side effects.
+        let before = self.stat_child(name)?;
+        classify(before.kind)?;
+        let c = c_name(name)?;
         // SAFETY: valid directory descriptor and NUL-terminated relative name.
-        let fd = unsafe { libc::openat(self.fd.as_raw_fd(), name.as_ptr(), READ_FLAGS) };
+        let fd = unsafe { libc::openat(self.fd.as_raw_fd(), c.as_ptr(), READ_FLAGS) };
         if fd < 0 {
             return Err(map_errno(last_errno()));
         }
         // SAFETY: `fd` was just returned by openat and is owned here.
         let file = unsafe { File::from_raw_fd(fd) };
         let stat = fstat_file(&file)?;
-        match stat.kind {
-            Kind::Regular => Ok((file, stat)),
-            Kind::Directory => Err(RuntimeError::new(RuntimeErrorCode::NotFound)),
-            Kind::Symlink => err(RuntimeErrorCode::Denied, RuntimeErrorReason::SymbolicLink),
-            Kind::Other => err(RuntimeErrorCode::Denied, RuntimeErrorReason::SpecialFile),
+        classify(stat.kind)?;
+        if stat.identity() != before.identity() {
+            return err(
+                RuntimeErrorCode::Conflict,
+                RuntimeErrorReason::ConcurrentChange,
+            );
         }
+        Ok((file, stat))
     }
 
     /// Exclusive, no-follow creation of a new regular file.
@@ -328,9 +355,16 @@ impl Dir {
         let mut names = Vec::new();
         let mut result = Ok(());
         loop {
+            // readdir reports both the end and an error with null; only
+            // errno tells them apart, so it is cleared before every call.
+            clear_errno();
             // SAFETY: `stream` is valid; readdir returns null at the end.
             let entry = unsafe { libc::readdir(stream) };
             if entry.is_null() {
+                let errno = last_errno();
+                if errno != 0 {
+                    result = Err(map_errno(errno));
+                }
                 break;
             }
             // SAFETY: readdir returned a valid entry with a NUL-terminated name
@@ -408,7 +442,8 @@ impl<'a> ReadLease<'a> {
     fn acquire(file: &'a File) -> RuntimeResult<Self> {
         let fd = file.as_raw_fd();
         // Lease-break notifications use SIGURG, whose default action is to
-        // ignore it; the default SIGIO would terminate the process.
+        // ignore it; the default SIGIO would terminate the process. A host
+        // that installs its own SIGURG handler will also see these signals.
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         return err(
             RuntimeErrorCode::Unavailable,
@@ -455,6 +490,38 @@ impl Drop for ReadLease<'_> {
     }
 }
 
+/// Local filesystems whose read leases exclude every writer of the inode.
+/// Network and FUSE filesystems (NFS, SMB/CIFS, sshfs, 9p, ...) can accept a
+/// local lease while a remote writer still changes the file, and overlay
+/// mounts can be written through their lower/upper directories, so they are
+/// not listed and reads there fail closed.
+#[cfg(target_os = "linux")]
+pub const LOCAL_CAPTURE_FILESYSTEMS: &[i64] = &[
+    0xEF53,      // ext2/ext3/ext4
+    0x5846_5342, // xfs
+    0x9123_683E, // btrfs
+    0x0102_1994, // tmpfs
+    0xF2F5_2010, // f2fs
+    0x4d44,      // vfat
+    0x2011_BAB0, // exfat
+    0x7366_746E, // ntfs3
+    0x2FC1_2FC1, // zfs
+    0xCA45_1A4E, // bcachefs
+];
+
+#[cfg(target_os = "linux")]
+#[allow(clippy::unnecessary_cast)]
+fn capture_filesystem_is_local(file: &File) -> RuntimeResult<bool> {
+    let mut fs = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: live descriptor and a properly sized out-parameter.
+    if unsafe { libc::fstatfs(file.as_raw_fd(), fs.as_mut_ptr()) } != 0 {
+        return Err(map_errno(last_errno()));
+    }
+    // SAFETY: fstatfs succeeded and initialized the structure.
+    let fs = unsafe { fs.assume_init() };
+    Ok(LOCAL_CAPTURE_FILESYSTEMS.contains(&(fs.f_type as i64)))
+}
+
 /// Verified stable copy. On Linux a read lease proves no other writer has the
 /// inode open and excludes new writers until the copy is finished; two complete
 /// reads bracketed by metadata observations (identity, birth, size, link count,
@@ -468,6 +535,12 @@ pub fn read_stable(file: &File, first: &Stat) -> RuntimeResult<Vec<u8>> {
             RuntimeErrorReason::ConcurrentChange,
         )
     };
+    if !capture_filesystem_is_local(file)? {
+        return err(
+            RuntimeErrorCode::Unavailable,
+            RuntimeErrorReason::SafeCaptureUnavailable,
+        );
+    }
     let lease = ReadLease::acquire(file)?;
     // Writes that completed before the lease would show up here.
     if fstat_file(file)? != *first {
@@ -544,3 +617,18 @@ pub fn create_private_dir_all(path: &Path) -> RuntimeResult<()> {
 }
 
 pub const SUPPORTED: bool = true;
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lease_capture_is_limited_to_local_filesystems() {
+        let local = tempfile::tempfile().unwrap();
+        // The test temporary directory lives on a listed local filesystem.
+        assert!(capture_filesystem_is_local(&local).unwrap());
+        // procfs (like network/FUSE mounts) is not listed: reads fail closed.
+        let proc_file = File::open("/proc/self/status").unwrap();
+        assert!(!capture_filesystem_is_local(&proc_file).unwrap());
+    }
+}
