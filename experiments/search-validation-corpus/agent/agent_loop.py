@@ -25,6 +25,7 @@ Usage: agent_loop.py --variant NAME --system PROMPT.md --tools TOOLS.json
 import argparse
 import concurrent.futures
 import json
+import os
 import re
 import statistics
 import sys
@@ -305,7 +306,7 @@ def main() -> int:
     parser.add_argument("--corpus", nargs="+", required=True)
     parser.add_argument("--ingest", nargs="+", required=True)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--endpoint", default="http://100.109.60.64:8000")
+    parser.add_argument("--endpoint", default=os.environ.get("AGENT_LLM_ENDPOINT"), help="OpenAI-compatible base URL")
     parser.add_argument("--model", default="bonsai-2-27b")
     parser.add_argument("--actor", default="poc-human")
     parser.add_argument("--budget", type=int, default=60)
