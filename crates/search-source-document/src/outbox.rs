@@ -835,6 +835,9 @@ pub struct DocumentOutboxIndexer<R, E, T = MemoryDocumentIndexRuntime> {
     gate: Mutex<()>,
     body: Option<Arc<dyn BodyItemExtractor>>,
     completion: Option<Arc<dyn SearchEventCompletionPort>>,
+    /// The current key this indexer published or confirmed, with the content
+    /// fingerprint of the Document snapshot it was built from.
+    built_from: std::sync::Mutex<Option<(ProjectionGenerationKey, [u8; 32])>>,
 }
 
 /// One fenced delivery: the event, both live leases, the runner's
@@ -879,7 +882,21 @@ impl<R, E, T: DocumentIndexRuntime> DocumentOutboxIndexer<R, E, T> {
             gate: Mutex::new(()),
             body: None,
             completion: None,
+            built_from: std::sync::Mutex::new(None),
         }
+    }
+
+    fn remember_built_from(&self, key: ProjectionGenerationKey, fingerprint: [u8; 32]) {
+        if let Ok(mut built_from) = self.built_from.lock() {
+            *built_from = Some((key, fingerprint));
+        }
+    }
+
+    fn built_from(&self) -> Option<(ProjectionGenerationKey, [u8; 32])> {
+        self.built_from
+            .lock()
+            .ok()
+            .and_then(|built_from| *built_from)
     }
 
     /// P6-S04: an event-origin build completes only through this atomic
@@ -898,6 +915,28 @@ impl<R, E, T: DocumentIndexRuntime> DocumentOutboxIndexer<R, E, T> {
         self.body = Some(extractor);
         self
     }
+}
+
+/// Everything a build reads from one Document snapshot except the snapshot
+/// token itself: equal fingerprints build the same generation.
+fn snapshot_fingerprint(snapshot: &DocumentOutboxSnapshot) -> [u8; 32] {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    for (tier, records) in [
+        ("live", &snapshot.live),
+        ("historical", &snapshot.historical),
+    ] {
+        hasher.update(tier.as_bytes());
+        hasher.update((records.len() as u64).to_be_bytes());
+        for record in records {
+            let mut record = record.clone();
+            record.snapshot.source_snapshot.clear();
+            let text = format!("{record:?}");
+            hasher.update((text.len() as u64).to_be_bytes());
+            hasher.update(text.as_bytes());
+        }
+    }
+    hasher.finalize().into()
 }
 
 /// Every Live item binding that must still hold right before publication.
@@ -1096,6 +1135,27 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         if let Some(delivery) = delivery {
             delivery.check()?;
         }
+        let fingerprint = snapshot_fingerprint(&snapshot);
+        // An earlier build already covered this exact Document content (the
+        // build that published the current key read every change so far).
+        if let (false, Some(delivery), Some(fenced), Some(current)) =
+            (full_rebuild, delivery, &fenced_current, expected_current)
+            && self.built_from() == Some((current, fingerprint))
+            && fenced.key == Some(current)
+        {
+            let outcome = delivery
+                .completion
+                .complete_event_if_current(CompleteEventRequest {
+                    fence: delivery.fence,
+                    expected_current: fenced.clone(),
+                    candidate: current,
+                    manifest_digest: fenced.manifest_digest.clone().unwrap_or_default(),
+                    bundle_digest: fenced.bundle_digest.clone().unwrap_or_default(),
+                    mode: CompletionMode::ReuseCurrent,
+                })
+                .await?;
+            return fenced_outcome(outcome);
+        }
         let source_snapshot = one_source_snapshot(&snapshot)?;
         let body_snapshot = self.body.as_ref().map(|_| snapshot.clone());
         let live_count = snapshot.live.len();
@@ -1232,6 +1292,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
                 && current.coverage == manifest.coverage
         }) {
             let key = current.key();
+            self.remember_built_from(key, fingerprint);
             if let (Some(delivery), Some(snapshot)) = (delivery, &fenced_current) {
                 // The current READY bundle is re-validated by the port.
                 if snapshot.key != Some(key) {
@@ -1402,6 +1463,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
             return match completion {
                 Ok(SearchCompletionOutcome::Published(published)) if published == key => {
                     self.runtime.settled(key).await?;
+                    self.remember_built_from(key, fingerprint);
                     Ok(Some(IndexingOutcome::Published(key)))
                 }
                 Ok(outcome) => {
@@ -1414,7 +1476,7 @@ impl<R: DocumentOutboxReader, E: IndexingReceiptStore, T: DocumentIndexRuntime>
         }
         let published = self.runtime.publish_if_current(key, expected_current).await;
         match published {
-            Ok(true) => {}
+            Ok(true) => self.remember_built_from(key, fingerprint),
             Ok(false) => {
                 self.cleanup_unpublished(key).await.map_err(|error| {
                     SearchError::OperationFailed(format!(
