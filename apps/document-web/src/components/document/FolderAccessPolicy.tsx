@@ -1,3 +1,4 @@
+import { documentAccessPolicyOperations } from '../../application/document-access-policy';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
@@ -26,7 +27,9 @@ export function FolderAccessPolicy({ root, selected, contextKey }: {
   root?: FolderDetail; contextKey: string;
   selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
-  const client = useQueryClient(); const store = folderAccessPolicyOperations(client);
+  const client = useQueryClient();
+  const documentPolicyStore = documentAccessPolicyOperations(client);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get); const store = folderAccessPolicyOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
   const createStore = rootFolderOperations(client); const renameStore = folderRenameOperations(client); const moveStore = folderMoveOperations(client); const documentStore = documentMoveOperations(client);
   const create = useSyncExternalStore(createStore.subscribe, createStore.get); const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
@@ -45,8 +48,8 @@ export function FolderAccessPolicy({ root, selected, contextKey }: {
   useEffect(() => { generation.current += 1; refreshing.current = false; setReading(false); setOpen(false); }, [contextKey]);
   useEffect(() => () => { generation.current += 1; }, []);
   useEffect(() => { if (!currentRead && !refreshing.current) clearConfirmation(); }, [currentRead]);
-  const unresolved = [create, rename, move, documentMove].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [createStore.get(), renameStore.get(), moveStore.get(), documentStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const unresolved = [documentPolicyOperation, create, rename, move, documentMove].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [documentPolicyStore.get(), createStore.get(), renameStore.get(), moveStore.get(), documentStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
   const pending = operation?.status === 'pending'; const unknown = operation?.status === 'unknown';
   const selectedDetail = selected?.folder.capabilities ? { ...selected.folder, parentFolderId: selected.context.sourceParentId, capabilities: selected.folder.capabilities } : undefined;
   const entryAllowed = Boolean(root && selected?.readReady && selected.context !== blockedSelection.current && canManageFolderPolicy(selectedDetail, root.folderId) && !unresolved);

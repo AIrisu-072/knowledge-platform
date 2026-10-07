@@ -1,5 +1,21 @@
 # Active Execution Pointer
 
+## 2026-10-07 04:36 UTC — 文書アクセス設定の回復補修
+
+- PR97統合main bba1d6ddを基点に、既に接続済みDocument ACLの結果不明要求の固定・往復保持・関連read失効を優先する。[状況](document-access-policy-recovery-status.md)と[限定計画](../plans/2026-10-07-document-access-policy-recovery.md)が再開先
+- operationIdが変わる実route反例から、Folder側の既存パターンを再利用する。権限/継承/本文の意味、新主体、backendを増やさず合成fixtureだけで検証する。既読capability・原本構成・旧版取下げは別候補として保留
+- branchはfix/document-access-policy-recovery-20261007。PR97の最終合格/未取得境界は同PR本文へ保存済み。main自身のruntime3stepは成功し、残CIを独立監視中。次はTDD・独立review・同機能PRでの実受入
+
+05:00追補：実wireでoperationId/bodyが変わるREDから、Document固定store・Home/Detail回復入口・同期read失効へ補修。途中全1580/62合格後、管理可否を通常読取の失敗にしない正規observer再利用とJST表示の反例を追加修正し、最終全体検証/独立reviewへ進む。受入2filesと導入4docsを同機能へ保持。main bba自身の全CI/DB/artifact0は確認済み、今回のhostedは未資格。
+
+05:08追補：最終GUI1583/62・focused307/5・schema/型/buildと独立全体レビューが成功。公開前mainがPR95統合93947f3dへ進んだため、他担当のRuntime/Shell/CIをそのまま保持し、Active両記録だけを通常統合して組合せ確認へ進む。新headのhostedはまだ未資格。
+
+05:38追補：PR100 head0936a93dのDocument composition/summaryがFAIL、Org未実行。初回logはTransport closedで実失敗caseは未取得。別途、本番fresh cacheでは正常往復時にGETが増えないDOM反例を確認したため、追加受入のGET必須待受だけを限定補修する。旧head失敗と根因未確定を保持し、次sourceのCIで確認する。
+
+06:12追補：補修head ddc27de3は新CI14jobs/19checks合格、DB40とartifact0を確認。runtime stdout未取得の境界と旧FAILは保持する。mainがPR96統合04076b1fへ進んだため、Org source/受入をそのまま保持し、共有2文書の双方記録を通常統合。組合せレビュー/GUI/同PR通常CIを新たに確認する。
+
+---
+
 ## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
 
 - main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先

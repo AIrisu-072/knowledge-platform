@@ -2,6 +2,28 @@
 
 ## 対象ソースと確認状況
 
+固定ソースは[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)統合main `bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab` / tree `84b0b0d48d3dfdc8b0a5b66ec53f9cc070aa6420` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37570945202](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
+
+採用sourceは旧pin d515までの文書GUI/Folder操作/絞り込み/文書移動/正式改訂・比較の続き表示・両履歴/旧原本・履歴一覧入口/JST表示・PR94公開前WORKING内容比較を保持し、PR97の非root Folderアクセス設定GUIと、アクセス設定変更後の旧原本・比較結果の遅延保存/復活を抑止する関連guardを含む。これらは旧固定版d515には含まれない。現在開発中のDocument AccessTabのUNKNOWN固定要求・画面往復保持・関連read失効の回復補修は新pin bba1d6ddに未収録で、追加される操作説明は後続source向けである。exact run/job URL・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
+
+2026-10-07 04:38 UTCに証拠を整理し、mainの通常CI全13jobs/13checks成功・completed/successと終端後公開artifact0を確認した。[runtime job112629195726](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202/job/112629195726)のcheckout/Document/Organization/summary各step成功は直接観測した。runtime stdoutは元tool初回のTransport closedで未取得のため、head/clean/qualified・GUI/browser件数・provenance/再起動/cleanup receiptの印字値は未読のままである。固定mainのsourceが実build・全必須工程・Agent provenance・同じowned DB/storageでのHTTP再起動・owned cleanupを強制し、失敗時に非zeroとなることと今回成功stepを対応させ、既存必須gateを合格と評価した。PR97/旧pinの値やローカルGUI件数を今回hosted値へ移さない。
+
+Document22工程/選択18＋5、Agent9 groups、Organization8工程/選択2＋2は固定source構成と今回成功実行からの対応推論である。PR94は既存単一原本の公開Version2対WORKING Version3の内容差分、固定payload、状態不変、閉じた後の従来公開を確認するsourceに対応する。HTTP再起動後は同文書が公開済みでWORKINGと比較入口がないことだけを確認し、正のWORKING比較を実証したとはしない。従来の履歴一覧/旧原本/少数events等の個別assertionも同じ証拠境界を保つ。summaryはbrowser件数/skipped=0を直接検査しないため、no-skipの対応は固定選択source/configにskip/only/expected-failure/CLI narrowing経路がない範囲に限る。Organizationのowned-container-removedも今回は直接stdoutではない。HTTP再起動をPostgreSQLプロセス再起動へ読み替えない。[新Rust実DB job112629195607](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202/job/112629195607)のmain bba1d6dd checkout、1849成功/10skip＋21成功/0skip＋7成功/1skip、DB36/Folder4の各1本PASSは正式ログで直接確認した。
+
+旧d515→bba1d6ddの新しいGit show/object bytes照合で、既存CLI/env/identity/bootstrap、Document/Workのmigration/台帳、Cargo manifest/lock/deny、Rust/Node/pnpm設定/lock、生成SDK/schema、PDFium scriptの17objectsは不変。sourceの業務schema不変を対象既存DBの更新安全性の実証とはしない。実行例は保持し、Linux手順のKP_SOURCE_SHAだけを更新する。
+
+PR97の追加範囲は、既存合成Sharedの2groupへの4GUI PUT（agent履歴権限off→復元→継承→個別設定）、exact subject/payload/operationId/revisionと正規GET、別requestによる既知成功receiptの再送、継承Documentへの効果、Root/HumanOnly/Document不変、後続Agent権限の復旧である。最終GETをprivate stateへ保存し、同owned DB/storageでのHTTP再起動後にGET/revisionとGUIを照合する。[固定journey source](https://github.com/AIrisu-072/knowledge-platform/blob/bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab/apps/document-web/e2e-runtime/document-runtime.spec.ts)と[固定persistence source](https://github.com/AIrisu-072/knowledge-platform/blob/bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab/apps/document-web/e2e-runtime/persistence.spec.ts)、今回Document成功stepの対応評価であり、個々のHTTP応答やassertion値の直接公開ログではない。実通信断・自己失権・親並行変更を新hostedで再現したとは扱わず、read-to-commitの原子的保証も追加しない。
+
+正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本・複数原本の公開前比較は実GUI未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
+
+資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identity/TLSの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91/93/94/97と過去mainのstdout未取得を後続成功だけで解消済みとしない。
+
+### 過去の受入記録
+
+#### 2026-10-07 02:50 UTC PR94統合mainの固定版
+
+以下の「固定版」「今回」「未収録」は当時のpinと非root Folderアクセス設定GUI開発時点を指す。
+
 固定ソースは[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)統合main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4` / tree `29f75ce9c8bc2c9d283a2ae9484529bcb8d6555d` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37562024089](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
 
 採用sourceは旧pin41bまでの文書GUI/Folder操作/絞り込み/文書移動/正式改訂・比較の続き表示・両履歴/旧原本・履歴一覧入口/JST表示を保持し、PR94の公開前WORKINGと現行公開版の内容比較を含む。この比較は旧固定版41bに未収録。現在開発中の非root Folderアクセス設定GUIは新pin d515にも未収録で、追加される操作説明は後続source向けである。exact run/job URL・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
@@ -15,8 +37,6 @@ Document22工程/選択18＋5、Agent9 groups、Organization8工程/選択2＋2�
 正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本・複数原本の公開前比較は実GUI未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
 
 資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identity/TLSの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91/93/94と過去mainのstdout未取得を後続成功だけで解消済みとしない。
-
-### 過去の受入記録
 
 #### 2026-10-07 01:35 UTC PR93統合mainの固定版
 

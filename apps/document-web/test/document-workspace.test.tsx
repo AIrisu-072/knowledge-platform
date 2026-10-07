@@ -1,3 +1,4 @@
+import { documentAccessPolicyOperations, sendDocumentAccessPolicyOperation } from '../src/application/document-access-policy';
 import { folderAccessPolicyOperations, sendFolderAccessPolicyOperation } from '../src/application/document-folder-access-policy';
 import { refreshFolderMoveReads } from '../src/application/document-folder-move';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -78,7 +79,7 @@ function mockApi() {
   api.getVersionEditManifest.mockImplementation((id, sourceVersionId, purpose) => Promise.resolve({ documentId: id, sourceVersionId, purpose, documentRevision: 7, title: '受入手順', items: [{ contentItemId: 'primary-item', logicalPath: 'primary', ordinal: 0, representations: [{ role: 'authoritative', representationId: 'primary-representation', fileId: 'source-file', mediaType: 'text/plain', originalFilename: 'source.txt', sizeBytes: 8 }] }] }));
   api.publishVersion.mockResolvedValue({ publishOperationId: 'pub', documentId, documentVersionId: versionId, resultingDocumentRevision: 8, publishedAt: '2026-10-01T02:00:00Z' });
   api.schedulePublication.mockResolvedValue({ publishOperationId: 'pub', documentId, targetVersionId: versionId, acceptedRevision: 8, scheduledPublishAt: '2026-10-02T02:00:00Z' });
-  api.setDocumentAccessPolicy.mockResolvedValue({ operationId: 'op', resourceId: documentId, resultingRevision: 5, changed: true, occurredAt: '2026-10-01T02:00:00Z' });
+  api.setDocumentAccessPolicy.mockImplementation((id, body) => Promise.resolve({ operationId: body.operationId, resourceId: id, resultingRevision: body.expectedPolicyRevision + 1, changed: true, occurredAt: '2026-10-01T02:00:00Z' }));
   api.downloadVersionFile.mockResolvedValue(new Blob(['original']));
   return api;
 }
@@ -462,7 +463,7 @@ test('an explicit policy can be changed back to inheritance with a reason and it
     reason: '親フォルダーの設定へ戻す',
     mode: 'inherit',
   });
-  expect(screen.queryByText(documentId)).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '文書アクセス設定の保存結果' })).toHaveTextContent(documentId);
 });
 
 function listItem(view: 'published' | 'authoring') {
@@ -1430,4 +1431,19 @@ test('比較原本の旧BlobをACL全read reset後の同値fresh readで復活�
   await act(async () => { await refreshFolderMoveReads(h.client); });
   await act(async () => { resolveBlob(new Blob(['old before ACL reset'])); });
   expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); expect(signal.aborted).toBe(true); h.client.clear();
+});
+
+test.each(['基準原本を確認', '対象原本を確認'])('Document ACL送信後の詳細routeで%sのBlobと成功receiptが同tickでも保存しない', async label => {
+  const api = mockApi(); const { client, router } = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: '受入手順' });
+  let resolveReceipt!: (value: { operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }) => void;
+  const receipt = new Promise<{ operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }>(resolve => { resolveReceipt = resolve; });
+  const running = sendDocumentAccessPolicyOperation({ store: documentAccessPolicyOperations(client), targetDocumentId: documentId, context: { documentId, title: '資料', view: 'published' }, request: { operationId: 'policy', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' }, send: () => receipt, invalidate: () => refreshFolderMoveReads(client) });
+  await act(async () => { await router.navigate({ to: '/documents/$documentId', params: { documentId }, search: validateDetailSearch({ view: 'published', tab: 'compare' }) }); });
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: label }));
+  api.getDocument.mockRejectedValue(new Error('current read denied'));
+  await act(async () => { resolveReceipt({ operationId: 'policy', resourceId: documentId, resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }); resolveBlob(new Blob(['late'])); await running; });
+  expect(documentAccessPolicyOperations(client).get()?.status).toBe('succeeded'); expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); client.clear();
 });

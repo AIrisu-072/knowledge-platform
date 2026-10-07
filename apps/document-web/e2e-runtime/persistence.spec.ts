@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { BinaryTransportBridge, getDocument, getFolderAccessPolicy, getSession, listDocumentVersions, type ModelsHistory, type VersionList, type VersionDetail, type FileList, type ModelsAccessPolicyRead, type PolicyGrantInput } from '@knowledge-platform/document-api-client';
+import { BinaryTransportBridge, getDocument, getDocumentAccessPolicy, getFolderAccessPolicy, getSession, listDocumentVersions, type ModelsHistory, type VersionList, type VersionDetail, type FileList, type ModelsAccessPolicyRead, type PolicyGrantInput } from '@knowledge-platform/document-api-client';
 import { hash, options, persistedSnapshot, runtime, type PersistedState } from './support';
 import { formatDateTime } from '../src/view-model/date-time';
 
@@ -9,6 +9,7 @@ test('both restarted composition roots retain document/revision/operation IDs an
   const context = await runtime();
   const state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState & {
     folderAccessPolicy: Omit<ModelsAccessPolicyRead, 'effectiveGrants'> & { effectiveGrants: PolicyGrantInput[] };
+    documentAccessPolicy: Omit<ModelsAccessPolicyRead, 'effectiveGrants'> & { effectiveGrants: PolicyGrantInput[] };
   };
   expect(state.documents.map(item => item.key).sort()).toEqual(['c3-consistency', 'c3-diff-recovery', 'c3-dsi-recovery', 'gui-initial', 'pdf', 'regulation']);
   expect((await getSession(options(context.human))).data.principal.principalId).toBe('poc-human');
@@ -50,6 +51,34 @@ test('both restarted composition roots retain document/revision/operation IDs an
     await expect(page.getByRole('complementary', { name: '原本と版' })).toBeVisible();
     if (key === 'regulation') {
       const documentId = snapshot.documentId;
+      const documentPolicy = (await getDocumentAccessPolicy({ ...options(context.human), path: { documentId } })).data;
+      const documentGrants = documentPolicy.effectiveGrants.map(({ subjectKind, identityProvider, subjectId, actions }) =>
+        ({ subjectKind, identityProvider, subjectId, actions: [...actions].sort() }))
+        .sort((left, right) => JSON.stringify([left.subjectKind, left.identityProvider, left.subjectId])
+          .localeCompare(JSON.stringify([right.subjectKind, right.identityProvider, right.subjectId])));
+      expect({ ...documentPolicy, effectiveGrants: documentGrants }).toEqual(state.documentAccessPolicy);
+      expect(documentPolicy).toMatchObject({ target: { kind: 'document', id: documentId }, bindingMode: 'explicit',
+        effectivePolicyId: documentPolicy.policyId, effectiveSource: { kind: 'document', id: documentId } });
+      expect(documentPolicy.policyId).not.toBeNull();
+      expect(documentGrants).toEqual(grants);
+      const documentPolicyResponse = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/access-policy` && response.request().method() === 'GET';
+      });
+      await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
+      const documentPolicyResult = await documentPolicyResponse;
+      expect(documentPolicyResult.status()).toBe(200); expect(await documentPolicyResult.json()).toEqual(documentPolicy);
+      await expect(page.getByRole('radio', { name: 'この文書だけに個別設定', exact: true })).toBeChecked();
+      const effectiveDocumentPolicy = page.getByRole('region', { name: '現在有効なアクセス権', exact: true });
+      await expect(effectiveDocumentPolicy.getByRole('rowheader')).toHaveCount(documentGrants.length);
+      for (const [index, grant] of documentPolicy.effectiveGrants.entries()) {
+        const row = effectiveDocumentPolicy.getByRole('row').nth(index + 1);
+        await expect(row.getByRole('rowheader')).toHaveText(grant.presentation.displayName ?? grant.subjectId);
+        await expect(row.getByRole('cell')).toHaveText((['read', 'readHistory', 'write', 'publish', 'administer'] as const)
+          .map(action => grant.actions.includes(action) ? '許可' : '—'));
+      }
+      // HTTP再起動後は保存した正規policyを照合する。操作結果storeの永続化は要求しない。
+      await expect(page.getByRole('region', { name: '文書アクセス設定の保存結果', exact: true })).toBeHidden();
       const historyReadState = (await getDocument({ ...options(context.human), path: { documentId }, query: { view: 'published' } })).data.readState;
       const historyRegion = page.getByRole('region', { name: '変更履歴', exact: true });
       let initialHistory: ModelsHistory | undefined;
