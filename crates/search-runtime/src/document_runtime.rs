@@ -256,6 +256,9 @@ struct GraphPlan {
     owners: Vec<(ResourceId, DocumentId)>,
 }
 
+/// READY generations kept behind the current one for in-flight readers.
+const RETAINED_PREVIOUS_GENERATIONS: usize = 1;
+
 pub struct PgDocumentIndexRuntime {
     pool: PgPool,
     lexical_root: PathBuf,
@@ -839,6 +842,11 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             if let Ok(mut pending) = self.pending.lock() {
                 pending.remove(&key);
             }
+            // Best effort: superseded READY generations would otherwise stay
+            // on disk forever; a pinned one is retried at the next publication.
+            let _ = PgGenerationGc::new(self.pool.clone(), &self.lexical_root)
+                .retire_superseded(key.source_id, RETAINED_PREVIOUS_GENERATIONS)
+                .await;
             Ok(true)
         })
     }
