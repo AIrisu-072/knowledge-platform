@@ -25,9 +25,13 @@ fn sales_a(policy: &OrganizationPolicy) -> Workflow {
     Workflow::synthetic(None).with_authority(policy.clone(), at(T0))
 }
 fn context_b(policy: &OrganizationPolicy) -> Workflow {
-    Workflow::from_fixture(context_fixture(CONTEXT_B_WORKFLOW_ID).unwrap(), None, at(T0))
-        .unwrap()
-        .with_authority(policy.clone(), at(T0))
+    Workflow::from_fixture(
+        context_fixture(CONTEXT_B_WORKFLOW_ID).unwrap(),
+        None,
+        at(T0),
+    )
+    .unwrap()
+    .with_authority(policy.clone(), at(T0))
 }
 fn claim(w: &mut Workflow, actor: VerifiedActor, acting: Uuid, task_id: Uuid) {
     let revision = w.detail_or_queue_revision(task_id);
@@ -145,7 +149,10 @@ fn a_private_file_becomes_an_immutable_generation_and_is_pinned_only_with_a_serv
     assert_eq!(created.visibility, "work_item_private");
     assert_eq!(created.value, None);
     let file = created.file.clone().unwrap();
-    assert_eq!((file.file_name.as_str(), file.media_type.as_str()), ("合成_資金計画.txt", "text/plain"));
+    assert_eq!(
+        (file.file_name.as_str(), file.media_type.as_str()),
+        ("合成_資金計画.txt", "text/plain")
+    );
     assert_eq!(file.generation, None);
     // A file without registered content never enters a handoff.
     let command = submit_command(&w, &[&created]);
@@ -160,12 +167,18 @@ fn a_private_file_becomes_an_immutable_generation_and_is_pinned_only_with_a_serv
     }
     for (command, error) in [
         (mismatched, WorkError::ValidationFailed),
-        (write_command(&w, &created, 0, HASH_A), WorkError::ValidationFailed),
+        (
+            write_command(&w, &created, 0, HASH_A),
+            WorkError::ValidationFailed,
+        ),
         (
             write_command(&w, &created, MAX_FILE_BYTES + 1, HASH_A),
             WorkError::ValidationFailed,
         ),
-        (write_command(&w, &created, 12, "ABC"), WorkError::ValidationFailed),
+        (
+            write_command(&w, &created, 12, "ABC"),
+            WorkError::ValidationFailed,
+        ),
         (
             write_command(&w, &created, 12, &HASH_A.to_uppercase()),
             WorkError::ValidationFailed,
@@ -176,7 +189,15 @@ fn a_private_file_becomes_an_immutable_generation_and_is_pinned_only_with_a_serv
             Err(error)
         );
     }
-    let stale = write_command(&w, &WorkingArtifact { revision: 3, ..created.clone() }, 12, HASH_A);
+    let stale = write_command(
+        &w,
+        &WorkingArtifact {
+            revision: 3,
+            ..created.clone()
+        },
+        12,
+        HASH_A,
+    );
     assert_eq!(
         w.clone().apply(VerifiedActor::Sales01, &stale, T1),
         Err(WorkError::RevisionConflict)
@@ -185,7 +206,12 @@ fn a_private_file_becomes_an_immutable_generation_and_is_pinned_only_with_a_serv
     assert_eq!(written.revision, 1);
     let first = generation(&written);
     assert_eq!(
-        (first.size_bytes, first.sha256.as_str(), first.stored_at.as_str(), first.provider_id.as_str()),
+        (
+            first.size_bytes,
+            first.sha256.as_str(),
+            first.stored_at.as_str(),
+            first.provider_id.as_str()
+        ),
         (MAX_FILE_BYTES, HASH_A, T1, WORK_ARTIFACT_PROVIDER_ID)
     );
     // Re-registering content makes a new generation; the old one is never edited.
@@ -206,15 +232,21 @@ fn a_private_file_becomes_an_immutable_generation_and_is_pinned_only_with_a_serv
         Err(WorkError::WorkArtifactUnavailable)
     );
     verified(&mut w, &[second.id]);
-    let MutationResult::Submitted { snapshot, next_task, .. } =
-        w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
+    let MutationResult::Submitted {
+        snapshot,
+        next_task,
+        ..
+    } = w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
     else {
         panic!()
     };
     let pinned = &snapshot.artifacts[0];
     assert_eq!((pinned.artifact_id, pinned.revision), (rewritten.id, 2));
     assert_eq!(pinned.value, None);
-    assert_eq!(pinned.file.as_ref().unwrap().generation, Some(second.clone()));
+    assert_eq!(
+        pinned.file.as_ref().unwrap().generation,
+        Some(second.clone())
+    );
     // The submitter's draft stays private to its attempt; the next step reads only the pinned member.
     assert_eq!(
         w.artifact(VerifiedActor::Office01, rewritten.id),
@@ -225,7 +257,12 @@ fn a_private_file_becomes_an_immutable_generation_and_is_pinned_only_with_a_serv
         Err(WorkError::WorkArtifactNotFound),
         "an eligible-only processor has no handoff membership before claiming"
     );
-    claim(&mut w, VerifiedActor::Office01, OFFICE_ASSIGNMENT_ID, next_task.id);
+    claim(
+        &mut w,
+        VerifiedActor::Office01,
+        OFFICE_ASSIGNMENT_ID,
+        next_task.id,
+    );
     assert_eq!(
         w.snapshot_file(VerifiedActor::Office01, snapshot.id, rewritten.id)
             .unwrap()
@@ -268,12 +305,34 @@ fn file_names_and_media_types_are_bounded_labels_never_local_paths() {
         "タブ\t.txt",
         &"あ".repeat(86),
     ] {
-        assert_eq!(attempt(name, "text/plain"), Err(WorkError::ValidationFailed), "{name:?}");
+        assert_eq!(
+            attempt(name, "text/plain"),
+            Err(WorkError::ValidationFailed),
+            "{name:?}"
+        );
     }
-    for media in ["", "text", "text/", "/plain", "text/plain extra", "テキスト/plain", &format!("a/{}", "b".repeat(126))] {
-        assert_eq!(attempt("資料.txt", media), Err(WorkError::ValidationFailed), "{media:?}");
+    for media in [
+        "",
+        "text",
+        "text/",
+        "/plain",
+        "text/plain extra",
+        "テキスト/plain",
+        &format!("a/{}", "b".repeat(126)),
+    ] {
+        assert_eq!(
+            attempt("資料.txt", media),
+            Err(WorkError::ValidationFailed),
+            "{media:?}"
+        );
     }
-    assert!(attempt(&"あ".repeat(85), "application/vnd.openxmlformats-officedocument.wordprocessingml.document").is_ok());
+    assert!(
+        attempt(
+            &"あ".repeat(85),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        .is_ok()
+    );
     assert!(attempt("合成 資料(1).pdf", "application/pdf").is_ok());
 }
 
@@ -295,7 +354,11 @@ fn only_the_current_assignee_creates_writes_or_reads_files_and_reassignment_revo
     let created = create(&mut w, "合成_見積.txt");
     let written = write(&mut w, &created, 10, HASH_A);
     assert!(w.artifact_file(VerifiedActor::Sales01, written.id).is_ok());
-    for actor in [VerifiedActor::Office01, VerifiedActor::Approver01, VerifiedActor::Delegate01] {
+    for actor in [
+        VerifiedActor::Office01,
+        VerifiedActor::Approver01,
+        VerifiedActor::Delegate01,
+    ] {
         assert_eq!(
             w.artifact_file(actor, written.id),
             Err(WorkError::WorkArtifactNotFound),
@@ -349,10 +412,22 @@ fn discarding_removes_only_an_unsubmitted_record_and_text_drafts_keep_their_shap
     // The existing text draft JSON is unchanged: no file or provenance keys.
     let json = serde_json::to_value(&memo).unwrap();
     assert_eq!(
-        json.as_object().unwrap().keys().cloned().collect::<BTreeSet<_>>(),
-        ["attemptId", "id", "revision", "schemaId", "taskId", "value", "visibility"]
-            .map(String::from)
-            .into()
+        json.as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        [
+            "attemptId",
+            "id",
+            "revision",
+            "schemaId",
+            "taskId",
+            "value",
+            "visibility"
+        ]
+        .map(String::from)
+        .into()
     );
     let file = create(&mut w, "外す資料.txt");
     // A text save cannot target a file record.
@@ -360,20 +435,24 @@ fn discarding_removes_only_an_unsubmitted_record_and_text_drafts_keep_their_shap
         task_id: w.source.id,
         artifact_id: Some(file.id),
         context: ctx(SALES_ASSIGNMENT_ID, w.source.revision),
-        value: TextValue { text: "上書き".into() },
+        value: TextValue {
+            text: "上書き".into(),
+        },
     };
     assert_eq!(
         w.clone().apply(VerifiedActor::Sales01, &overwrite, T0),
         Err(WorkError::ValidationFailed)
     );
-    let discard = |w: &Workflow, artifact: &WorkingArtifact, revision: i64| Command::DiscardArtifact {
-        task_id: w.source.id,
-        artifact_id: artifact.id,
-        context: ctx(SALES_ASSIGNMENT_ID, w.source.revision),
-        expected_artifact_revision: revision,
-    };
+    let discard =
+        |w: &Workflow, artifact: &WorkingArtifact, revision: i64| Command::DiscardArtifact {
+            task_id: w.source.id,
+            artifact_id: artifact.id,
+            context: ctx(SALES_ASSIGNMENT_ID, w.source.revision),
+            expected_artifact_revision: revision,
+        };
     assert_eq!(
-        w.clone().apply(VerifiedActor::Sales01, &discard(&w, &file, 1), T0),
+        w.clone()
+            .apply(VerifiedActor::Sales01, &discard(&w, &file, 1), T0),
         Err(WorkError::RevisionConflict)
     );
     let command = discard(&w, &file, 0);
@@ -410,19 +489,30 @@ fn discarding_removes_only_an_unsubmitted_record_and_text_drafts_keep_their_shap
 fn a_returned_attempt_explicitly_imports_the_prior_submission_and_resubmits_without_changing_it() {
     let policy = OrganizationPolicy::synthetic();
     let mut w = context_b(&policy);
-    claim(&mut w, VerifiedActor::Sales01, SALES_ASSIGNMENT_ID, CONTEXT_B_SALES_TASK_ID);
+    claim(
+        &mut w,
+        VerifiedActor::Sales01,
+        SALES_ASSIGNMENT_ID,
+        CONTEXT_B_SALES_TASK_ID,
+    );
     let memo = text(&mut w, "合成の初回メモ");
     let created = create(&mut w, "合成_資金使途.txt");
     let file = write(&mut w, &created, 20, HASH_A);
     verified(&mut w, &[generation(&file).id]);
     let command = submit_command(&w, &[&memo, &file]);
-    let MutationResult::Submitted { snapshot: first, .. } =
-        w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
+    let MutationResult::Submitted {
+        snapshot: first, ..
+    } = w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
     else {
         panic!()
     };
     let frozen = serde_json::to_value(&first).unwrap();
-    claim(&mut w, VerifiedActor::Review01, REVIEW_ASSIGNMENT_ID, CONTEXT_B_REVIEW_TASK_ID);
+    claim(
+        &mut w,
+        VerifiedActor::Review01,
+        REVIEW_ASSIGNMENT_ID,
+        CONTEXT_B_REVIEW_TASK_ID,
+    );
     // Import is only for an attempt created by a return.
     let import = |w: &Workflow, snapshot_id: Uuid| Command::ImportSubmission {
         task_id: CONTEXT_B_SALES_TASK_ID,
@@ -452,11 +542,25 @@ fn a_returned_attempt_explicitly_imports_the_prior_submission_and_resubmits_with
     )
     .unwrap();
     // The new attempt starts with no private draft and must be claimed first.
-    assert!(w.artifacts.iter().all(|value| value.attempt_id != w.source.attempt_id));
-    assert!(w.clone().apply(VerifiedActor::Sales01, &import(&w, first.id), T1).is_err());
-    claim(&mut w, VerifiedActor::Sales01, SALES_ASSIGNMENT_ID, CONTEXT_B_SALES_TASK_ID);
+    assert!(
+        w.artifacts
+            .iter()
+            .all(|value| value.attempt_id != w.source.attempt_id)
+    );
+    assert!(
+        w.clone()
+            .apply(VerifiedActor::Sales01, &import(&w, first.id), T1)
+            .is_err()
+    );
+    claim(
+        &mut w,
+        VerifiedActor::Sales01,
+        SALES_ASSIGNMENT_ID,
+        CONTEXT_B_SALES_TASK_ID,
+    );
     assert_eq!(
-        w.clone().apply(VerifiedActor::Sales01, &import(&w, Uuid::now_v7()), T1),
+        w.clone()
+            .apply(VerifiedActor::Sales01, &import(&w, Uuid::now_v7()), T1),
         Err(WorkError::WorkArtifactNotFound)
     );
     let command = import(&w, first.id);
@@ -483,7 +587,8 @@ fn a_returned_attempt_explicitly_imports_the_prior_submission_and_resubmits_with
     // The file is referenced, not copied: the same immutable generation.
     assert_eq!(generation(&artifacts[1]), generation(&file));
     assert_eq!(
-        w.clone().apply(VerifiedActor::Sales01, &import(&w, first.id), T1),
+        w.clone()
+            .apply(VerifiedActor::Sales01, &import(&w, first.id), T1),
         Err(WorkError::ValidationFailed),
         "the same submission is imported once"
     );
@@ -491,8 +596,11 @@ fn a_returned_attempt_explicitly_imports_the_prior_submission_and_resubmits_with
     let reworked = write(&mut w, &artifacts[1], 30, HASH_B);
     verified(&mut w, &[generation(&reworked).id]);
     let command = submit_command(&w, &[&artifacts[0], &reworked]);
-    let MutationResult::Submitted { snapshot: second, next_task, .. } =
-        w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
+    let MutationResult::Submitted {
+        snapshot: second,
+        next_task,
+        ..
+    } = w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
     else {
         panic!()
     };
@@ -500,11 +608,21 @@ fn a_returned_attempt_explicitly_imports_the_prior_submission_and_resubmits_with
     assert_eq!(next_task.attempt_number, 2);
     // The earlier submission and its pinned generation are byte-for-byte unchanged.
     assert_eq!(
-        serde_json::to_value(w.snapshots.iter().find(|value| value.id == first.id).unwrap())
-            .unwrap(),
+        serde_json::to_value(
+            w.snapshots
+                .iter()
+                .find(|value| value.id == first.id)
+                .unwrap()
+        )
+        .unwrap(),
         frozen
     );
-    claim(&mut w, VerifiedActor::Review01, REVIEW_ASSIGNMENT_ID, CONTEXT_B_REVIEW_TASK_ID);
+    claim(
+        &mut w,
+        VerifiedActor::Review01,
+        REVIEW_ASSIGNMENT_ID,
+        CONTEXT_B_REVIEW_TASK_ID,
+    );
     assert_eq!(
         w.snapshot_file(VerifiedActor::Review01, second.id, reworked.id)
             .unwrap()
@@ -518,4 +636,46 @@ fn a_returned_attempt_explicitly_imports_the_prior_submission_and_resubmits_with
             .generation,
         Some(generation(&file))
     );
+    // A second return: the new attempt imports only the submission it refers to,
+    // never the still-readable predecessor.
+    let review = w.next.clone().unwrap();
+    let transition = w
+        .detail(VerifiedActor::Review01, review.id)
+        .unwrap()
+        .task
+        .return_transition
+        .unwrap();
+    w.apply(
+        VerifiedActor::Review01,
+        &Command::Return {
+            task_id: review.id,
+            context: ctx(REVIEW_ASSIGNMENT_ID, review.revision),
+            expected_attempt_id: review.attempt_id,
+            previous_submission_id: transition.previous_submission_id,
+            target_task_id: transition.target_task_id,
+            transition_id: transition.transition_id,
+            reason: "合成の再差戻理由".into(),
+        },
+        T1,
+    )
+    .unwrap();
+    claim(
+        &mut w,
+        VerifiedActor::Sales01,
+        SALES_ASSIGNMENT_ID,
+        CONTEXT_B_SALES_TASK_ID,
+    );
+    assert!(w.snapshot(VerifiedActor::Sales01, first.id).is_ok());
+    assert_eq!(
+        w.clone()
+            .apply(VerifiedActor::Sales01, &import(&w, first.id), T1),
+        Err(WorkError::WorkArtifactNotFound)
+    );
+    let command = import(&w, second.id);
+    let MutationResult::SubmissionImported { artifacts, .. } =
+        w.apply(VerifiedActor::Sales01, &command, T1).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(generation(&artifacts[1]), generation(&reworked));
 }
