@@ -560,9 +560,12 @@ $export_line$;
 -- Fingerprint, posture and the recovery gate (design §7.3, §11)
 -- ---------------------------------------------------------------------------
 
--- (system_identifier, database oid, timeline). On a standby the WAL insert
--- position is unavailable; the timeline is reported as 'standby', which never
--- matches, so publication stays closed there.
+-- (system_identifier, database oid, timeline), each the canonical decimal
+-- text of an int8 (the int8_text kind of audit.recovery.epoch_started). The
+-- timeline is the first 8 hex digits of the current WAL file name, in
+-- decimal. On a standby the WAL insert position is unavailable; the timeline
+-- is reported as 'standby', which never matches, so publication stays closed
+-- there (and no epoch can start: begin_recovery_epoch writes).
 CREATE FUNCTION audit_store.current_fingerprint(
     OUT system_identifier TEXT, OUT database_oid OID, OUT timeline TEXT)
 LANGUAGE sql VOLATILE SECURITY DEFINER
@@ -570,7 +573,8 @@ SET search_path = pg_catalog, pg_temp AS $current_fingerprint$
     SELECT (SELECT c.system_identifier::text FROM pg_control_system() AS c),
            (SELECT d.oid FROM pg_database AS d WHERE d.datname = current_database()),
            CASE WHEN pg_is_in_recovery() THEN 'standby'
-                ELSE substr(pg_walfile_name(pg_current_wal_lsn()), 1, 8) END
+                ELSE (('x' || substr(pg_walfile_name(pg_current_wal_lsn()), 1, 8))::bit(32)
+                      ::bigint)::text END
 $current_fingerprint$;
 
 -- Content-free privilege posture (design §7.3). Each row is a violation.
@@ -1358,7 +1362,7 @@ BEGIN
     IF NOT audit_store.is_identifier(p_source)
        OR p_adapter_version IS NULL OR p_adapter_version < 1
        OR coalesce(cardinality(p_types), 0) > 1000
-       OR EXISTS (SELECT 1 FROM unnest(p_types) AS t WHERE NOT audit_store.is_identifier(t))
+       OR EXISTS (SELECT 1 FROM unnest(p_types) AS t WHERE NOT audit_store.is_event_type(t))
        OR (p_last_seq IS NULL) <> (p_last_event_id IS NULL)
        OR (p_last_seq IS NULL) <> (p_last_digest IS NULL)
        OR (p_last_seq IS NOT NULL AND (p_last_seq < 1 OR octet_length(p_last_digest) <> 32)) THEN
@@ -1603,9 +1607,9 @@ DECLARE
     v_counts TEXT[] := ARRAY[
         'count_delivered_missing', 'count_digest_mismatch', 'count_ok', 'count_pending',
         'count_quarantined', 'count_quarantined_conflict', 'count_quarantined_stored',
-        'count_replay_record_lost', 'count_source_tampered', 'count_store_only',
-        'count_unaudited_replay', 'count_unregistered', 'repaired_delivered_missing',
-        'repaired_quarantined_stored', 'repaired_unregistered'];
+        'count_relay_catalog_skew', 'count_replay_record_lost', 'count_source_tampered',
+        'count_store_only', 'count_unaudited_replay', 'count_unregistered',
+        'repaired_delivered_missing', 'repaired_quarantined_stored', 'repaired_unregistered'];
     v_out JSONB;
     k TEXT;
 BEGIN
@@ -1632,11 +1636,6 @@ BEGIN
         RETURN jsonb_build_object('event_id', p_details ->> 'event_id',
                                   'mismatch_code', p_details ->> 'mismatch_code');
     ELSIF p_type = 'audit.reconciliation.completed' THEN
-        -- count_relay_catalog_skew is optional so that the Store accepts the
-        -- reconcile counts of both the current and the amended catalog.
-        IF p_details ? 'count_relay_catalog_skew' THEN
-            v_counts := v_counts || ARRAY['count_relay_catalog_skew'];
-        END IF;
         IF v_keys IS DISTINCT FROM (
                SELECT array_agg(x ORDER BY x) FROM unnest(
                    v_counts || ARRAY['id_set_digest', 'mode', 'run_id', 'watermark']) AS x)
@@ -2459,13 +2458,14 @@ DECLARE
 BEGIN
     h := audit_store.lock_head();
     PERFORM audit_store.require_gate(h);
-    -- CATALOG-AMENDMENT: add 'head_seq' (= p_to) when the catalog has it.
+    -- The head (head_seq, head_epoch, head_chain) is the last scanned row.
     v_details := jsonb_build_object(
         'trigger', p_trigger,
         'from_seq', p_from,
         'to_seq', p_to,
         'watermark', p_watermark,
         'checked', p_checked,
+        'head_seq', p_to,
         'head_epoch', p_head_epoch,
         'head_chain', encode(p_head_chain, 'hex'),
         'outcome', CASE WHEN v_total = 0 THEN 'ok' ELSE 'violations' END,
@@ -3390,12 +3390,13 @@ BEGIN
                 SELECT e.chain, e.recovery_epoch INTO v_chain_at, v_epoch_at
                 FROM audit_store.events AS e WHERE e.seq = p_checkpoint_seq;
             END IF;
-            -- CATALOG-AMENDMENT: once checkpoint_classification has
-            -- 'epoch_mismatch', a matching chain with a different epoch maps
-            -- to it instead of 'mismatch'.
+            -- As audit_core::compare_checkpoint: a different chain is a
+            -- rewrite; the same chain under another epoch is an altered
+            -- epoch column or checkpoint log.
             v_cp_class := CASE WHEN v_chain_at IS DISTINCT FROM decode(p_checkpoint_chain, 'hex')
-                                    OR v_epoch_at IS DISTINCT FROM p_checkpoint_epoch
                                THEN 'mismatch'
+                               WHEN v_epoch_at IS DISTINCT FROM p_checkpoint_epoch
+                               THEN 'epoch_mismatch'
                                WHEN p_checkpoint_seq = v_head THEN 'match'
                                ELSE 'ahead' END;
         END IF;

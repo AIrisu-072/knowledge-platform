@@ -314,6 +314,22 @@ async fn invalid_rows_quarantine_and_catalog_skew_is_held() {
         report["delivered"]["quarantined"]["invalid_field"],
         json!(2)
     );
+    // Reconcile counts the held rows as their own class and records the
+    // count in audit.reconciliation.completed (count_relay_catalog_skew).
+    let run = audit_relay::reconcile::Reconciler::new(
+        env.worker.pool.clone(),
+        Arc::new(env.operator_client().await),
+    )
+    .run(false)
+    .await
+    .expect("reconcile");
+    assert_eq!(run.counts.relay_catalog_skew, 2);
+    assert_eq!(run.counts.pending, 0, "held skew is not plain pending");
+    assert_eq!(run.counts.quarantined, 5);
+    assert!(audit_relay::reconcile::alarms(&run.counts).contains(&"relay_catalog_skew"));
+    let recorded = env.controls("audit.reconciliation.completed").await;
+    let details = &recorded.last().expect("recorded").1;
+    assert_eq!(details["count_relay_catalog_skew"], json!(2));
 }
 
 #[tokio::test]

@@ -50,7 +50,7 @@ audit-relay replay --event-id <uuid>             # Storeへ replay_requested を
 - quarantine（終端）は、Storeの構造化verdict（`conflict`、`rejected_<code>`。`audit_core::IngestRow::into_result` だけが作る）とrelay側の判定（`source_digest_mismatch`、`actor_mismatch`、catalog不適合）だけ。source改変は先に `audit.integrity.source_mismatch_detected` を記録し（event・codeごとに1回）、記録できなければ保留する。
 - quarantine codeはStoreのcode形式 `[a-z0-9_]{1,64}` に従う（replayが `quarantine_code` として記録できるように）。relayの拒否codeはそのまま、Storeの拒否は `rejected_<code>` を64 byteで切る。
 - それ以外（通信断、timeout、全SQLSTATE、結果不明、recovery mode、後退、posture違反、未登録type、ingest主体の拒否）は外部障害として試行を返却して保留し、circuit breakerを開く。breakerはingestの構造化結果でだけ閉じる。
-- relayのcatalogより新しいtype・fieldは `relay_catalog_skew` として保留し、healthで警報する。
+- relayのcatalogより新しいtype・fieldは `relay_catalog_skew` として保留し、healthで警報する。reconcileはこの保留を独立したclass `relay_catalog_skew`（pendingとは別、`count_relay_catalog_skew`）として数え、警報を出す（`audit_relay.delivery_view` の `last_error_code` で判定する）。
 - `outage_streak` は、audit-coreが残余とするoutage（`store_internal`、`store_other`。`OutageCode::counts_toward_outage_streak`）が、別の配送の成功を挟んで続いた場合だけ数える。上限で `outage_suspected_event_specific` としてquarantineする。
 - claimの前のgate（`BreakerAdmission`）：catalogの期待（source、adapter_version、type一覧。`ProbeExpectation::from_catalog`）と、Storeの現在のrecovery epochで最後にackしたreceiptを渡してprobeする。epochが前回と違えばそのepochのack headで2回目のprobeをする。順序は、同じepochで検知済みの後退（sticky）→ Storeの状態（recovery mode、posture、read-only）→ 後退 → 未登録type（`store_unregistered_type`）。
 - 後退（operationalなStoreが最後にackしたreceiptを解決できない。fingerprintで見えないin-place restoreなど）を検知すると、`audit_store.report_regression` で報告し（Storeが再確認して `recovery_pending` にする）、recovery epochが変わるまでclaimを止める。fingerprintで検知されたrestoreはrecovery modeとして止まり、operatorが `begin-recovery-epoch --relay-max-seq` でrelayの最大seqを記録する。

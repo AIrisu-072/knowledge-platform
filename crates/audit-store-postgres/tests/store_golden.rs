@@ -165,7 +165,10 @@ async fn a_forgotten_bump_is_a_conflict_not_an_overwrite() {
         changed.as_value()["data"]["provenance"]["adapter_version"],
         LEGACY_ADAPTER_VERSION
     );
-    assert_eq!(store.ingest(&changed).await, Err(StoreError::Conflict));
+    assert!(matches!(
+        store.ingest(&changed).await,
+        Err(StoreError::Conflict { .. })
+    ));
     let (head_seq, _, _) = head(&db.admin).await;
     let conflicts = control_events(&db.admin, "audit.integrity.conflict_detected").await;
     assert_eq!(conflicts.len(), 1);

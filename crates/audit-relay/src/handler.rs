@@ -69,8 +69,8 @@ pub fn streak_countable(code: &str) -> bool {
 /// The quarantine code of a Store structured verdict.
 pub fn verdict_code(error: &StoreError) -> String {
     match error {
-        StoreError::Conflict => STORE_CONFLICT.to_owned(),
-        StoreError::Rejected { code } => {
+        StoreError::Conflict { .. } => STORE_CONFLICT.to_owned(),
+        StoreError::Rejected { code, .. } => {
             let mut text = format!("{STORE_REJECTED_PREFIX}{}", code.as_str());
             text.truncate(64);
             text

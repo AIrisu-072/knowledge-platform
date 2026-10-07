@@ -178,13 +178,16 @@ async fn idempotency_outcomes_and_conflicts() {
     // Same commitment and adapter version, different projection: conflict
     // (a forgotten adapter_version bump).
     let reprojected = document_created(id, doc, "2026-10-01T00:00:01.000000Z", 7);
-    assert_eq!(store.ingest(&reprojected).await, Err(StoreError::Conflict));
+    assert!(matches!(
+        store.ingest(&reprojected).await,
+        Err(StoreError::Conflict { .. })
+    ));
     // Different commitment: conflict.
     let other_commitment = document_created(id, doc, OCCURRED, 8);
-    assert_eq!(
+    assert!(matches!(
         store.ingest(&other_commitment).await,
-        Err(StoreError::Conflict)
-    );
+        Err(StoreError::Conflict { .. })
+    ));
 
     // A newer adapter version re-projecting the same source row converges.
     // AuditEnvelope only carries the catalog's adapter version, so the v2
@@ -438,7 +441,7 @@ async fn structural_rejections_are_verdict_rows_and_version_skew_is_an_outage() 
     }
     assert_eq!(head(&db.admin).await.0, before, "nothing was stored");
 
-    // A control envelope is refused locally with the Store's verdict shape,
+    // A control envelope is refused locally by audit-core's origin precheck,
     // without any SQL call.
     let control = audit_core::AuditEnvelope::from_value(
         control_envelope_value("audit.access.denied"),
@@ -448,7 +451,7 @@ async fn structural_rejections_are_verdict_rows_and_version_skew_is_an_outage() 
     let error = store.ingest(&control).await.expect_err("refused");
     assert!(matches!(
         &error,
-        StoreError::Rejected { code } if code.as_str() == "control_type_forbidden"
+        StoreError::Rejected { code, .. } if code.as_str() == "control_type_forbidden"
     ));
     assert!(error.is_terminal());
     assert_eq!(head(&db.admin).await.0, before);
@@ -842,7 +845,7 @@ async fn relay_receipts_and_relay_control_events() {
                 c.origin,
                 c.event_type.as_str(),
                 c.target_event_id,
-                c.code.as_deref()
+                c.code.as_ref().map(audit_core::BoundedCode::as_str)
             ))
             .collect::<Vec<_>>(),
         vec![
@@ -1067,7 +1070,14 @@ async fn probe_reports_missing_types_and_identity_regression() {
     )
     .await;
     let status = store.probe(&expectation(None)).await.expect("probe");
-    assert_eq!(status.missing_types, vec!["folder.moved".to_owned()]);
+    assert_eq!(
+        status
+            .missing_types
+            .iter()
+            .map(audit_core::EventTypeName::as_str)
+            .collect::<Vec<_>>(),
+        ["folder.moved"]
+    );
     assert_eq!(status.admission(), Err(OutageCode::UnregisteredType));
     // The probe records nothing.
     assert_eq!(head(&db.admin).await.0, receipt.seq);

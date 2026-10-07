@@ -31,8 +31,8 @@ use std::sync::Arc;
 
 use audit_core::catalog::DOCUMENT_SOURCE;
 use audit_core::{
-    ControlReceiptRow, Origin, ReceiptRow, ReconcileCounts, ReconcileMode, RelayControl,
-    RelayControlKind, StoreError,
+    BoundedCode, ControlReceiptRow, Origin, ReceiptRow, ReconcileCounts, ReconcileMode,
+    RelayControl, RelayControlKind, StoreError,
 };
 use serde::{Serialize, Serializer};
 use serde_json::json;
@@ -42,6 +42,7 @@ use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::handler::CATALOG_SKEW;
 use crate::store::{LostRange, RelayStore};
 
 pub const RECONCILIATION_TYPE: &str = "audit.reconciliation.completed";
@@ -65,6 +66,9 @@ pub struct DeliveryRow {
     pub quarantine_code: Option<String>,
     pub source_commitment: Option<Vec<u8>>,
     pub source_intact: Option<bool>,
+    /// The bounded code of the last failed attempt (`relay_catalog_skew`
+    /// marks a row held because the relay's catalog cannot project it).
+    pub last_error_code: Option<String>,
 }
 
 fn delivery_row(row: &PgRow) -> Result<DeliveryRow, sqlx::Error> {
@@ -80,6 +84,7 @@ fn delivery_row(row: &PgRow) -> Result<DeliveryRow, sqlx::Error> {
         quarantine_code: row.try_get("quarantine_code")?,
         source_commitment: row.try_get("source_commitment")?,
         source_intact: row.try_get("source_intact")?,
+        last_error_code: row.try_get("last_error_code")?,
     })
 }
 
@@ -158,6 +163,9 @@ pub enum Class {
     Quarantined,
     Unregistered,
     SourceTampered,
+    /// Undelivered and held because the relay's catalog cannot project it
+    /// (a newer producer type or key, design §6.3).
+    RelayCatalogSkew,
 }
 
 /// Classifies one delivery row against its Store receipt (origin relay).
@@ -191,6 +199,7 @@ pub fn classify(row: &DeliveryRow, receipt: Option<&ReceiptRow>) -> Class {
             }
             _ => Class::Quarantined,
         },
+        _ if row.last_error_code.as_deref() == Some(CATALOG_SKEW) => Class::RelayCatalogSkew,
         _ => Class::Pending,
     }
 }
@@ -206,6 +215,7 @@ fn add(counts: &mut ReconcileCounts, class: Class) {
         Class::Quarantined => &mut counts.quarantined,
         Class::Unregistered => &mut counts.unregistered,
         Class::SourceTampered => &mut counts.source_tampered,
+        Class::RelayCatalogSkew => &mut counts.relay_catalog_skew,
     };
     *counter += 1;
 }
@@ -221,6 +231,7 @@ pub fn alarms(counts: &ReconcileCounts) -> Vec<&'static str> {
         (counts.quarantined_conflict, "quarantined_conflict"),
         (counts.replay_record_lost, "replay_record_lost"),
         (counts.unregistered, "unregistered"),
+        (counts.relay_catalog_skew, "relay_catalog_skew"),
     ]
     .into_iter()
     .filter(|(count, _)| *count > 0)
@@ -243,6 +254,7 @@ pub fn counts_json(counts: &ReconcileCounts) -> serde_json::Value {
         "store_only": counts.store_only,
         "unaudited_replay": counts.unaudited_replay,
         "replay_record_lost": counts.replay_record_lost,
+        "relay_catalog_skew": counts.relay_catalog_skew,
         "repaired_delivered_missing": counts.repaired_delivered_missing,
         "repaired_quarantined_stored": counts.repaired_quarantined_stored,
         "repaired_unregistered": counts.repaired_unregistered,
@@ -278,15 +290,16 @@ pub fn resolve_history(
         return HistoryVerdict::Unaudited;
     };
     let resolved = controls.get(&seq).is_some_and(|control| {
+        let code = control.code.as_ref().map(BoundedCode::as_str);
         control.origin == Origin::RelayControl
-            && control.event_type == expected
+            && control.event_type.as_str() == expected
             && control.recovery_epoch == row.control_epoch
             && if expected == REPLAY_TYPE {
                 control.target_event_id == Some(row.event_id)
-                    && control.code.is_some()
-                    && control.code == row.quarantine_code
+                    && code.is_some()
+                    && code == row.quarantine_code.as_deref()
             } else {
-                control.code.as_deref() == Some(ReconcileMode::Repair.as_str())
+                code == Some(ReconcileMode::Repair.as_str())
             }
     });
     if resolved && (expected != REPLAY_TYPE || claimed.insert(seq)) {
@@ -646,6 +659,7 @@ impl Reconciler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use audit_core::EventTypeName;
 
     fn row(state: &str) -> DeliveryRow {
         DeliveryRow {
@@ -660,6 +674,7 @@ mod tests {
             quarantine_code: None,
             source_commitment: Some(vec![2; 32]),
             source_intact: Some(true),
+            last_error_code: None,
         }
     }
 
@@ -668,7 +683,7 @@ mod tests {
             event_id: Uuid::from_u128(1),
             seq,
             origin: Origin::Relay,
-            event_type: "document.created".into(),
+            event_type: EventTypeName::new("document.created").expect("type"),
             envelope_digest: [digest; 32],
             source_commitment: Some([commitment; 32]),
             expired: false,
@@ -707,6 +722,15 @@ mod tests {
             "only delivery_unknown_at_limit is repairable"
         );
         assert_eq!(classify(&row("pending"), None), Class::Pending);
+        let mut held = row("pending");
+        held.last_error_code = Some(CATALOG_SKEW.into());
+        assert_eq!(classify(&held, None), Class::RelayCatalogSkew);
+        let mut leased = row("leased");
+        leased.last_error_code = Some(CATALOG_SKEW.into());
+        assert_eq!(classify(&leased, None), Class::RelayCatalogSkew);
+        let mut outage = row("pending");
+        outage.last_error_code = Some("store_connection".into());
+        assert_eq!(classify(&outage, None), Class::Pending);
         assert_eq!(classify(&row("unregistered"), None), Class::Unregistered);
         let mut tampered = row("delivered");
         tampered.source_intact = Some(false);
@@ -733,9 +757,9 @@ mod tests {
             seq,
             recovery_epoch: epoch,
             origin: Origin::RelayControl,
-            event_type: REPLAY_TYPE.into(),
+            event_type: EventTypeName::new(REPLAY_TYPE).expect("type"),
             target_event_id: Some(Uuid::from_u128(event)),
-            code: Some(code.into()),
+            code: BoundedCode::new(code),
         }
     }
 
@@ -818,13 +842,13 @@ mod tests {
             seq: 40,
             recovery_epoch: 1,
             origin: Origin::RelayControl,
-            event_type: RECONCILIATION_TYPE.into(),
+            event_type: EventTypeName::new(RECONCILIATION_TYPE).expect("type"),
             target_event_id: None,
-            code: Some("repair".into()),
+            code: BoundedCode::new("repair"),
         };
         let read_only = ControlReceiptRow {
             seq: 41,
-            code: Some("read_only".into()),
+            code: BoundedCode::new("read_only"),
             ..run.clone()
         };
         let controls: HashMap<i64, ControlReceiptRow> =
@@ -858,12 +882,40 @@ mod tests {
         let counts = ReconcileCounts {
             unaudited_replay: 1,
             replay_record_lost: 2,
+            relay_catalog_skew: 3,
             ok: 5,
             ..ReconcileCounts::default()
         };
-        assert_eq!(alarms(&counts), ["unaudited_replay", "replay_record_lost"]);
+        assert_eq!(
+            alarms(&counts),
+            [
+                "unaudited_replay",
+                "replay_record_lost",
+                "relay_catalog_skew"
+            ]
+        );
         let value = counts_json(&counts);
         assert_eq!(value["replay_record_lost"], 2);
-        assert_eq!(value.as_object().expect("object").len(), 15);
+        assert_eq!(value["relay_catalog_skew"], 3);
+        // One report key per ReconcileCounts field, and the recorded
+        // control event carries every count_<class> / repaired_<class>
+        // field of the catalog entry.
+        assert_eq!(value.as_object().expect("object").len(), 16);
+        let details = RelayControl::from(RelayControlKind::ReconciliationCompleted {
+            run_id: Uuid::from_u128(1),
+            mode: ReconcileMode::ReadOnly,
+            watermark: 0,
+            id_set_digest: [0; 32],
+            counts,
+        })
+        .details();
+        for (key, count) in value.as_object().expect("object") {
+            let field = if key.starts_with("repaired_") {
+                key.clone()
+            } else {
+                format!("count_{key}")
+            };
+            assert_eq!(details.get(&field), Some(count), "{field}");
+        }
     }
 }

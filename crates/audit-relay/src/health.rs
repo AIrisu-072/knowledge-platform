@@ -125,11 +125,13 @@ async fn store_gate(
 /// Expected catalog types the Store has not registered (`None` when the
 /// login cannot probe, e.g. an operator login without the ingest role).
 async fn catalog_skew(store: &dyn RelayStore) -> Option<Vec<String>> {
-    store
-        .probe(&expectation(None))
-        .await
-        .ok()
-        .map(|status| status.missing_types)
+    store.probe(&expectation(None)).await.ok().map(|status| {
+        status
+            .missing_types
+            .iter()
+            .map(|name| name.as_str().to_owned())
+            .collect()
+    })
 }
 
 /// Builds the health JSON.

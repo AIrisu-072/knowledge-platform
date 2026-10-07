@@ -8,20 +8,21 @@
 //! posture, a denied ingest identity or an unexpected/malformed response — is
 //! an outage that holds delivery.
 //!
-//! The row decoders ([`decode_receipt`], [`decode_control_receipt`]) are the
-//! only places that build audit-core receipt rows; a malformed row is
+//! The row decoders ([`decode_receipt`], [`decode_control_receipt`]) read
+//! plain column values into audit-core's raw rows and leave validation to
+//! [`ReceiptRow::decode`] / [`ControlReceiptRow::decode`]; a malformed row is
 //! `Outage{Other}`.
 
 use std::fmt;
 use std::future::Future;
 use std::time::Duration;
 
-use audit_core::codes::RejectionCode;
 use audit_core::port::{BoxFuture, MAX_RECEIPT_LOOKUP};
 use audit_core::{
-    AuditEnvelope, AuditStore, ControlReceipt, ControlReceiptRow, IngestReceipt, IngestRow, Origin,
-    OutageCode, ProbeExpectation, ReceiptIdentity, ReceiptRow, RelayControl, StoreError,
-    StoreState, StoreStatus, classify_sqlstate,
+    AuditEnvelope, AuditStore, ControlReceipt, ControlReceiptRow, EventTypeName, IngestReceipt,
+    IngestRow, OutageCode, ProbeExpectation, RawControlReceiptRow, RawReceiptRow, ReceiptIdentity,
+    ReceiptRow, RelayControl, StoreError, StoreState, StoreStatus, classify_sqlstate,
+    precheck_ingest,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -132,19 +133,10 @@ impl PostgresAuditStore {
     }
 
     async fn call_ingest(&self, envelope: &AuditEnvelope) -> Result<IngestReceipt, StoreError> {
-        // A control envelope never reaches the Store: refuse it locally with
-        // the Store's own verdict shape (the only constructor of verdicts is
-        // IngestRow::into_result).
-        if envelope.origin() != Origin::Relay {
-            return IngestRow {
-                status: "rejected".to_owned(),
-                seq: None,
-                envelope_digest: None,
-                adapter_version: None,
-                code: Some(RejectionCode::ControlTypeForbidden.as_str().to_owned()),
-            }
-            .into_result();
-        }
+        // A control envelope never reaches the Store: audit-core's local
+        // origin precheck refuses it (`control_type_forbidden`). Every other
+        // verdict comes from the ingest result row (IngestRow::into_result).
+        precheck_ingest(envelope)?;
         let text = envelope.to_json_string();
         let row = self
             .bounded(
@@ -356,6 +348,17 @@ fn decode_ingest_row(row: &PgRow) -> Result<IngestRow, StoreError> {
     })
 }
 
+/// `missing_types` as plain text, each built through
+/// [`EventTypeName::new`]; a name outside the catalog grammar is
+/// `Outage{Other}`.
+fn decode_missing_types(row: &PgRow) -> Result<Vec<EventTypeName>, StoreError> {
+    let names: Vec<String> = row.try_get("missing_types").map_err(|_| other())?;
+    names
+        .iter()
+        .map(|name| EventTypeName::new(name).ok_or_else(other))
+        .collect()
+}
+
 fn decode_probe_row(row: &PgRow) -> Result<StoreStatus, StoreError> {
     let status: String = row.try_get("status").map_err(|_| other())?;
     match status.as_str() {
@@ -372,52 +375,40 @@ fn decode_probe_row(row: &PgRow) -> Result<StoreStatus, StoreError> {
         head_seq: row.try_get("head_seq").map_err(|_| other())?,
         recovery_epoch: row.try_get("recovery_epoch").map_err(|_| other())?,
         state,
-        missing_types: row.try_get("missing_types").map_err(|_| other())?,
+        missing_types: decode_missing_types(row)?,
         regression_detected: row.try_get("regression_detected").map_err(|_| other())?,
         last_verified_seq: row.try_get("last_verified_seq").map_err(|_| other())?,
     })
 }
 
-fn digest32(bytes: Vec<u8>) -> Result<[u8; 32], StoreError> {
-    <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| other())
-}
-
-/// Decodes one `lookup_receipts` / `list_source_receipts` row. The only
-/// builder of [`ReceiptRow`] in this crate.
+/// Decodes one `lookup_receipts` / `list_source_receipts` row: the columns
+/// are read as plain values into [`RawReceiptRow`] and validated only by
+/// [`ReceiptRow::decode`]. A row that cannot be read or fails the decoder is
+/// `Outage{Other}`.
 pub fn decode_receipt(row: &PgRow) -> Result<ReceiptRow, StoreError> {
-    let origin: String = row.try_get("origin").map_err(|_| other())?;
-    let commitment: Option<Vec<u8>> = row.try_get("source_commitment").map_err(|_| other())?;
-    Ok(ReceiptRow {
+    ReceiptRow::decode(RawReceiptRow {
         seq: row.try_get("seq").map_err(|_| other())?,
         event_id: row.try_get("event_id").map_err(|_| other())?,
-        origin: Origin::parse(&origin).ok_or_else(other)?,
+        origin: row.try_get("origin").map_err(|_| other())?,
         event_type: row.try_get("event_type").map_err(|_| other())?,
-        envelope_digest: digest32(row.try_get("envelope_digest").map_err(|_| other())?)?,
-        source_commitment: commitment.map(digest32).transpose()?,
+        envelope_digest: row.try_get("envelope_digest").map_err(|_| other())?,
+        source_commitment: row.try_get("source_commitment").map_err(|_| other())?,
         expired: row.try_get("expired").map_err(|_| other())?,
         recovery_epoch: row.try_get("recovery_epoch").map_err(|_| other())?,
     })
 }
 
-/// Decodes one `lookup_control_receipts` row. The only builder of
-/// [`ControlReceiptRow`] in this crate; a code that is not a bounded code is
-/// malformed.
+/// Decodes one `lookup_control_receipts` row through
+/// [`ControlReceiptRow::decode`] (a code that is not a bounded code, a
+/// non-control origin or type is malformed).
 pub fn decode_control_receipt(row: &PgRow) -> Result<ControlReceiptRow, StoreError> {
-    let origin: String = row.try_get("origin").map_err(|_| other())?;
-    let code: Option<String> = row.try_get("code").map_err(|_| other())?;
-    if code
-        .as_deref()
-        .is_some_and(|c| audit_core::port::BoundedCode::new(c).is_none())
-    {
-        return Err(other());
-    }
-    Ok(ControlReceiptRow {
+    ControlReceiptRow::decode(RawControlReceiptRow {
         seq: row.try_get("seq").map_err(|_| other())?,
         recovery_epoch: row.try_get("recovery_epoch").map_err(|_| other())?,
-        origin: Origin::parse(&origin).ok_or_else(other)?,
+        origin: row.try_get("origin").map_err(|_| other())?,
         event_type: row.try_get("event_type").map_err(|_| other())?,
         target_event_id: row.try_get("target_event_id").map_err(|_| other())?,
-        code,
+        code: row.try_get("code").map_err(|_| other())?,
     })
 }
 

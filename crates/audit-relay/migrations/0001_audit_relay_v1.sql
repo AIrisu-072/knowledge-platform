@@ -887,7 +887,7 @@ CREATE FUNCTION audit_relay.delivery_view(o public.audit_outbox_events,
 RETURNS TABLE (event_id UUID, state TEXT, registration_kind TEXT, delivered_at TIMESTAMPTZ,
                store_seq BIGINT, store_envelope_digest BYTEA, store_outcome TEXT,
                store_recovery_epoch BIGINT, quarantine_code TEXT, source_commitment BYTEA,
-               source_intact BOOLEAN)
+               source_intact BOOLEAN, last_error_code TEXT)
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $delivery_view$
     SELECT o.event_id,
@@ -901,14 +901,17 @@ SET search_path = pg_catalog, pg_temp AS $delivery_view$
            CASE WHEN d.event_id IS NOT NULL
                 THEN audit_relay.commitment(d.commitment_salt, d.source_digest) END,
            CASE WHEN d.event_id IS NOT NULL
-                THEN audit_relay.source_digest(o) IS NOT DISTINCT FROM d.source_digest END
+                THEN audit_relay.source_digest(o) IS NOT DISTINCT FROM d.source_digest END,
+           -- A bounded code ([a-z0-9_]{1,64}, table CHECK): reconcile counts
+           -- rows held as relay_catalog_skew (design §12).
+           d.last_error_code
 $delivery_view$;
 
 CREATE FUNCTION audit_relay.reconcile_page(p_after UUID, p_limit INTEGER)
 RETURNS TABLE (event_id UUID, state TEXT, registration_kind TEXT, delivered_at TIMESTAMPTZ,
                store_seq BIGINT, store_envelope_digest BYTEA, store_outcome TEXT,
                store_recovery_epoch BIGINT, quarantine_code TEXT, source_commitment BYTEA,
-               source_intact BOOLEAN)
+               source_intact BOOLEAN, last_error_code TEXT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $reconcile_page$
 #variable_conflict use_column
@@ -933,7 +936,7 @@ CREATE FUNCTION audit_relay.lookup_deliveries(p_event_ids UUID[])
 RETURNS TABLE (event_id UUID, state TEXT, registration_kind TEXT, delivered_at TIMESTAMPTZ,
                store_seq BIGINT, store_envelope_digest BYTEA, store_outcome TEXT,
                store_recovery_epoch BIGINT, quarantine_code TEXT, source_commitment BYTEA,
-               source_intact BOOLEAN)
+               source_intact BOOLEAN, last_error_code TEXT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $lookup_deliveries$
 #variable_conflict use_column
