@@ -2,6 +2,7 @@
 members = [
   "crates/audit-core",
   "crates/audit-store-postgres",
+  "crates/audit-relay",
   "crates/outbox-delivery",
   "crates/document-sandbox-runner",
   "crates/search-runtime",

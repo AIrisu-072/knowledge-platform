@@ -301,6 +301,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "audit-relay"
+version = "0.0.0"
+dependencies = [
+ "audit-core",
+ "audit-store-postgres",
+ "document-repository-postgres",
+ "outbox-delivery",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "testcontainers",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "audit-store-postgres"
 version = "0.0.0"
 dependencies = [
