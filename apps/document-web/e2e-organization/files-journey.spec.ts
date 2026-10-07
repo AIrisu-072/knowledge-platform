@@ -93,8 +93,11 @@ test('差戻し後に前回の提出を取り込み、作業ファイルを共�
 
     filesAction('files-download');
     const download = await downloadFrom(review, '受領したスナップショット', `${fileName} を取得`);
-    expect(download.name).toBe(fileName);
     expect(download.bytes).toEqual(bytes);
+    // The authoritative name is the server's attachment header; a browser's local
+    // save name depends on the host's filesystem encoding.
+    const pinned = await request.get(`${context.review}/v1/organization/handoff-snapshots/${submitted.result.snapshot.id}/artifacts/${fileArtifactId}/content`);
+    expect(pinned.headers()['content-disposition']).toContain(`filename*=UTF-8''${encodeURIComponent(fileName)}`);
     await expect(received).not.toContainText('資金計画メモ。差戻し後に追加');
 
     filesAction('files-complete');
