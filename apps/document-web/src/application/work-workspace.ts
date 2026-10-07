@@ -15,8 +15,8 @@ export function validateTaskSearch(value: Record<string, unknown>): TaskSearch {
 }
 export function workErrorMessage(error: unknown): string {
   if (error instanceof WorkApiError) {
-    if (error.code === 'WORK_ARTIFACT_UNAVAILABLE') return '作業用保存領域でファイルを確認できません。内容は表示・提出していません。時間をおいて再試行してください。';
     if (error.outcomeUnknown) return '結果を確認できません。操作が確定した可能性があります。同じ操作IDで結果を確認してください。';
+    if (error.code === 'WORK_ARTIFACT_UNAVAILABLE') return '作業用保存領域でファイルを確認できません。内容は表示していません。時間をおいて再試行してください。';
     if (error.status === 409) return '競合が発生しました。入力を保持しています。現在の状態を再読込して確認してください。';
     if ([401, 403, 404].includes(error.status)) return 'この情報を現在の担当では利用できません。権限または対象を確認してください。';
   }
@@ -69,4 +69,5 @@ export function executeWorkOperation(operation: WorkOperation): Promise<WorkResu
 export function actingFor(session: Pick<WorkSession, 'principalId' | 'actingAssignmentId'>, task: { assignment?: { principalId: string; actingAssignmentId: string } | null }): string {
   return task.assignment && task.assignment.principalId === session.principalId ? task.assignment.actingAssignmentId : (session.actingAssignmentId ?? '');
 }
+export function isStaleArtifact(error: unknown): boolean { return error instanceof WorkApiError && error.status === 404 && error.code === 'WORK_ARTIFACT_NOT_FOUND'; }
 export function isOperationNotFound(error: unknown): boolean { return error instanceof WorkApiError && error.status === 404 && error.code === 'WORK_ITEM_NOT_FOUND'; }

@@ -10,7 +10,7 @@ import { EvidenceContextModule, decisionLabel } from '../components/evidence/Evi
 import { useEvidenceRecords, evidenceRecordsKey } from '../application/use-evidence-records';
 import { selectedHandoffIsClosed, toggleReference } from '../application/evidence-workspace';
 import { createOperationId } from '../application/operation-id';
-import { workApi, actingFor, executeWorkOperation, isOperationNotFound, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, MAX_WORK_FILE_BYTES, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction, type WorkingArtifact } from '../application/work-workspace';
+import { workApi, actingFor, executeWorkOperation, isOperationNotFound, isStaleArtifact, validateTaskSearch, workErrorMessage, isDisclosureDenied, isUnknownOutcome, taskStateLabel, MAX_WORK_FILE_BYTES, type TaskSearch, type TaskSummary, type TaskDetail, type WorkSession, type WorkResult, type WorkCommand, type WorkOperation, type HandoffSnapshot, type ReturnInstruction, type WorkingArtifact } from '../application/work-workspace';
 import { WorkFileDownload, declaredMediaType, formatBytes, workFileProblem } from '../components/organization/WorkFiles';
 import { formatDateTime } from '../view-model/date-time';
 import { TaskAssignmentPanel, TaskAssignmentSummary } from '../components/organization/TaskAssignmentPanel';
@@ -218,7 +218,18 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
       if (result.kind === 'artifact_discarded') setNotice('ファイルを外しました。保存済みの内容は削除していません。');
       if (result.kind === 'submission_imported') setNotice('前回の提出内容を新しい作業へ取り込みました。前回の提出は変更されません。');
     },
-    onError: (error, input) => { if (!mounted.current) return; const unresolved = Boolean(input.recovery) || isUnknownOutcome(error); setTransient((previous) => ({ ...previous, unknown: unresolved, operation: unresolved ? previous.operation : null, error })); if (isDisclosureDenied(error) && !(input.recovery && isOperationNotFound(error))) { setDenied(true); setTransient({ draft: null, reason: null, operation: null, unknown: false, notice: '', error }); onDenied(); } setConfirmation(null); },
+    onError: (error, input) => {
+      if (!mounted.current) return;
+      // A draft or file record removed meanwhile (another tab, a committed discard)
+      // is stale state of a still-readable task: refresh, never treat it as denial.
+      const kind = input.operation?.kind ?? transient.operation?.kind;
+      if (isStaleArtifact(error) && kind && ['draft_saved', 'artifact_content_written', 'artifact_discarded', 'submitted'].includes(kind)) {
+        setTransient((previous) => ({ ...previous, unknown: false, operation: null, error: null, notice: '対象の文案・ファイルは既に外されたか変更されています。現在の状態を再読込しました。' }));
+        setConfirmation(null);
+        void refresh();
+        return;
+      }
+      const unresolved = Boolean(input.recovery) || isUnknownOutcome(error); setTransient((previous) => ({ ...previous, unknown: unresolved, operation: unresolved ? previous.operation : null, error })); if (isDisclosureDenied(error) && !(input.recovery && isOperationNotFound(error))) { setDenied(true); setTransient({ draft: null, reason: null, operation: null, unknown: false, notice: '', error }); onDenied(); } setConfirmation(null); },
     retry: false,
   });
   function command(): WorkCommand {
@@ -258,10 +269,11 @@ function TaskAction({ session, task, detail, snapshot, applyResult, refresh, onD
         <p className={styles.muted}>非公開 · 選んだファイルだけをサーバーの作業用保存領域（共有provider）へ保存します。提出までは担当者だけが取得でき、提出で固定した内容だけを次担当へ渡します。端末上の場所（パス）は送信しません。1ファイル8MiBまで。</p>
         {files.length ? <ul aria-label="作業ファイルの一覧">{files.map((value) => <li key={value.id}><span>{value.file!.fileName}</span> <span className={styles.muted}>{value.file!.generation ? `${formatBytes(value.file!.generation.sizeBytes)} · 保存済み` : '内容未登録'}{value.derivedFrom ? ' · 前回の提出から取込み' : ''}</span>
           {value.file!.generation && <WorkFileDownload file={value.file!} label={`${value.file!.fileName} を取得`} read={(signal) => workApi.readArtifactContent(value.id, value.file!.generation!, signal)} />}
-          {!value.file!.generation && <label>内容を登録 <input type="file" aria-label={`${value.file!.fileName} の内容を登録`} disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return; const problem = workFileProblem(selected, MAX_WORK_FILE_BYTES); setFileProblem(problem ?? ''); if (!problem) startOperation({ kind: 'artifact_content_written', taskId: task.id, artifactId: value.id, content: selected, input: { ...command(), expectedArtifactRevision: value.revision } }); }} /></label>}
+          {!value.file!.generation && session.capabilities.fileUpload && <label>内容を登録 <input type="file" aria-label={`${value.file!.fileName} の内容を登録`} disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return; const problem = workFileProblem(selected, MAX_WORK_FILE_BYTES); setFileProblem(problem ?? ''); if (!problem) startOperation({ kind: 'artifact_content_written', taskId: task.id, artifactId: value.id, content: selected, input: { ...command(), expectedArtifactRevision: value.revision } }); }} /></label>}
           <button type="button" aria-label={`${value.file!.fileName} を外す`} disabled={busy} onClick={() => startOperation({ kind: 'artifact_discarded', taskId: task.id, artifactId: value.id, input: { ...command(), expectedArtifactRevision: value.revision } })}>外す</button></li>)}</ul> : <p className={styles.muted}>添付したファイルはありません</p>}
-        <label htmlFor="work-file">作業ファイルを追加</label>
-        <input id="work-file" type="file" disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return; const problem = workFileProblem(selected, MAX_WORK_FILE_BYTES); setFileProblem(problem ?? ''); if (problem) return; pendingUpload.current = selected; startOperation({ kind: 'artifact_created', taskId: task.id, input: { ...command(), file: { fileName: selected.name, mediaType: declaredMediaType(selected) } } }); }} />
+        {!session.capabilities.fileUpload && <p className={styles.muted}>このサーバーでは作業ファイルを保存できません。</p>}
+        {session.capabilities.fileUpload && <><label htmlFor="work-file">作業ファイルを追加</label>
+        <input id="work-file" type="file" disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return; const problem = workFileProblem(selected, MAX_WORK_FILE_BYTES); setFileProblem(problem ?? ''); if (problem) return; pendingUpload.current = selected; startOperation({ kind: 'artifact_created', taskId: task.id, input: { ...command(), file: { fileName: selected.name, mediaType: declaredMediaType(selected) } } }); }} /></>}
         {fileProblem && <p role="alert">{fileProblem}</p>}
       </section>
     </div>}

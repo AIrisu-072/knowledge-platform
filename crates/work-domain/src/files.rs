@@ -54,7 +54,14 @@ pub(crate) enum GenerationReceipts {
     Verified(Arc<BTreeSet<Uuid>>),
 }
 
-/// A display label only: never a path, separator, control character or dot entry.
+/// Bidirectional and invisible format controls that can disguise an extension.
+fn disguising(value: char) -> bool {
+    matches!(
+        value,
+        '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'
+    )
+}
+/// A display label only: never a path, separator, control/format character or dot entry.
 pub(crate) fn valid_file_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= MAX_FILE_NAME_BYTES
@@ -62,7 +69,7 @@ pub(crate) fn valid_file_name(name: &str) -> bool {
         && name != ".."
         && !name
             .chars()
-            .any(|value| value == '/' || value == '\\' || value.is_control())
+            .any(|value| value == '/' || value == '\\' || value.is_control() || disguising(value))
 }
 pub(crate) fn valid_media_type(value: &str) -> bool {
     let token = |part: &str| {

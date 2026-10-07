@@ -312,9 +312,9 @@ test('content upload carries identity in headers and binds the receipt to its op
     fetchMock.mockResolvedValue(response({ kind: 'artifact_content_written', task, artifact: other }));
     await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: true });
   }
-  // The store refusing the bytes is definite: nothing committed.
+  // A 503 on a mutation stays unknown: the same operation may commit through another request.
   fetchMock.mockResolvedValue(response({ code: 'WORK_ARTIFACT_UNAVAILABLE' }, 503));
-  await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ status: 503, code: 'WORK_ARTIFACT_UNAVAILABLE', outcomeUnknown: false });
+  await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ status: 503, code: 'WORK_ARTIFACT_UNAVAILABLE', outcomeUnknown: true });
   fetchMock.mockResolvedValue(response({ code: 'COMMIT_OUTCOME_UNKNOWN' }, 503));
   await expect(workApi.writeArtifactContent('file-1', command, content)).rejects.toMatchObject({ outcomeUnknown: true });
 });

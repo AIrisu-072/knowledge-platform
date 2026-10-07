@@ -45,7 +45,7 @@ export function WorkFileDownload({ file, label, read }: { file: WorkFile; label:
 export function workFileProblem(file: File, maxBytes: number): string | null {
   if (file.size === 0) return '空のファイルは添付できません。';
   if (file.size > maxBytes) return 'ファイルは8MiB以内にしてください。';
-  if (!file.name || file.name === '.' || file.name === '..' || /[\\/\p{Cc}]/u.test(file.name) || new TextEncoder().encode(file.name).length > 255) return 'ファイル名に使えない文字が含まれているか、長すぎます（UTF-8で255バイト以内）。';
+  if (!file.name || file.name === '.' || file.name === '..' || /[\\/\p{Cc}\u061C\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/u.test(file.name) || new TextEncoder().encode(file.name).length > 255) return 'ファイル名に使えない文字が含まれているか、長すぎます（UTF-8で255バイト以内）。';
   return null;
 }
 /** The declared type is metadata only; anything unusual becomes opaque bytes. */

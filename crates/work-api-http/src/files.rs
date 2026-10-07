@@ -163,9 +163,27 @@ pub(super) async fn discard(
 ) -> Result<Json<MutationResult>, Problem> {
     let artifact_id = path_id(path)?;
     let body = json_body(body)?;
-    let artifact = state.repository.artifact(state.actor, artifact_id).await?;
+    // The record is gone after a committed discard: an exact retry still replays
+    // by its operation (the digest is checked again), never a hidden 404.
+    let task_id = match state.repository.artifact(state.actor, artifact_id).await {
+        Ok(artifact) => artifact.task_id,
+        Err(WorkError::WorkArtifactNotFound) => {
+            match state
+                .repository
+                .recover(state.actor, body.operation_id)
+                .await
+            {
+                Ok(MutationResult::ArtifactDiscarded {
+                    task,
+                    artifact_id: discarded,
+                }) if discarded == artifact_id => task.id,
+                _ => return Err(Problem(WorkError::WorkArtifactNotFound)),
+            }
+        }
+        Err(error) => return Err(Problem(error)),
+    };
     let command = Command::DiscardArtifact {
-        task_id: artifact.task_id,
+        task_id,
         artifact_id,
         context: CommandContext {
             operation_id: body.operation_id,

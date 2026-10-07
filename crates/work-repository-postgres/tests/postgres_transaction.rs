@@ -2484,6 +2484,82 @@ async fn private_files_are_stored_outside_locks_pinned_with_receipts_and_staged_
             .await,
         Err(WorkError::WorkArtifactNotFound)
     );
+    // A content write is resolved by its operation even after its record was
+    // discarded: nothing is stored again and other bytes are a conflict.
+    let MutationResult::ArtifactCreated {
+        artifact: extra,
+        task,
+    } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::CreateFileArtifact {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                context: acting(SALES_ASSIGNMENT_ID, task.revision),
+                file_name: "外す資料.txt".into(),
+                media_type: "text/plain".into(),
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let extra_write = acting(SALES_ASSIGNMENT_ID, task.revision);
+    let MutationResult::ArtifactContentWritten { task, .. } = repository
+        .write_artifact_content(
+            VerifiedActor::Sales01,
+            extra.id,
+            extra_write.clone(),
+            0,
+            b"discard me".to_vec(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let MutationResult::ArtifactDiscarded { task, .. } = repository
+        .execute(
+            VerifiedActor::Sales01,
+            Command::DiscardArtifact {
+                task_id: CONTEXT_C_SALES_TASK_ID,
+                artifact_id: extra.id,
+                context: acting(SALES_ASSIGNMENT_ID, task.revision),
+                expected_artifact_revision: 1,
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let puts = store.puts.load(Ordering::SeqCst);
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                extra.id,
+                extra_write.clone(),
+                0,
+                b"discard me".to_vec()
+            )
+            .await,
+        Err(WorkError::WorkArtifactNotFound),
+        "the receipt names a record that is no longer current"
+    );
+    assert_eq!(
+        repository
+            .write_artifact_content(
+                VerifiedActor::Sales01,
+                extra.id,
+                extra_write,
+                0,
+                b"other".to_vec()
+            )
+            .await,
+        Err(WorkError::OperationConflict)
+    );
+    assert_eq!(store.puts.load(Ordering::SeqCst), puts);
     // Without a store receipt nothing is committed.
     let instance_revision = || async {
         sqlx::query_scalar::<_, i64>("SELECT revision FROM work.workflow_instances WHERE id=$1")
@@ -2590,6 +2666,9 @@ async fn private_files_are_stored_outside_locks_pinned_with_receipts_and_staged_
             "claimed",
             "artifact_created",
             "artifact_content_written",
+            "artifact_created",
+            "artifact_content_written",
+            "artifact_discarded",
             "submitted",
             "claimed"
         ]
@@ -2600,7 +2679,7 @@ async fn private_files_are_stored_outside_locks_pinned_with_receipts_and_staged_
             .all(|(_, payload)| !payload.contains("住所変更届_添付"))
     );
     assert!(staged[2].1.contains(&generation.sha256));
-    assert!(staged[3].1.contains(&generation.id.to_string()));
+    assert!(staged[6].1.contains(&generation.id.to_string()));
     sqlx::raw_sql("DROP SCHEMA work CASCADE")
         .execute(&pool)
         .await

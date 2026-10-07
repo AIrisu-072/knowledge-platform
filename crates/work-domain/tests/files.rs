@@ -303,6 +303,10 @@ fn file_names_and_media_types_are_bounded_labels_never_local_paths() {
         "C:\\Users\\synthetic\\資料.txt",
         "改行\n.txt",
         "タブ\t.txt",
+        "請求書\u{202E}fdp.exe",
+        "見積\u{200F}.txt",
+        "合成\u{2066}資料.txt",
+        "\u{FEFF}資料.txt",
         &"あ".repeat(86),
     ] {
         assert_eq!(

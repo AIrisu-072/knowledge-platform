@@ -248,15 +248,16 @@ async function request<T>(path: string, decode: (value: unknown) => T, method = 
   if (!response.ok) {
     let code = 'request_failed';
     try { const problem = object(await response.json()); if (typeof problem.code === 'string') code = problem.code; } catch { /* Never render untrusted response bodies. */ }
-    throw new WorkApiError(response.status, code, method !== 'GET' && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN') && code !== 'WORK_ARTIFACT_UNAVAILABLE');
+    throw new WorkApiError(response.status, code, method !== 'GET' && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN'));
   }
   try { return decode(await response.json()); } catch { throw new WorkApiError(response.status, 'invalid_response', method !== 'GET'); }
 }
-/** The store refusing a generation is a definite failure: nothing was committed. */
+/** A failed mutation at 5xx stays unknown (the same operation may commit
+ * through another in-flight request); recovery resolves it by operation ID. */
 async function failure(response: Response, mutation: boolean): Promise<never> {
   let code = 'request_failed';
   try { const problem = object(await response.json()); if (typeof problem.code === 'string') code = problem.code; } catch { /* Never render untrusted response bodies. */ }
-  throw new WorkApiError(response.status, code, mutation && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN') && code !== 'WORK_ARTIFACT_UNAVAILABLE');
+  throw new WorkApiError(response.status, code, mutation && (response.status >= 500 || code === 'COMMIT_OUTCOME_UNKNOWN'));
 }
 /** Binary content upload: operation identity travels in headers, never a local path. */
 async function upload(artifactId: string, command: WorkCommand & { expectedArtifactRevision: number }, content: Blob): Promise<WorkResult> {

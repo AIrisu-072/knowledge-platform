@@ -58,13 +58,35 @@ impl PostgresWorkRepository {
         if bytes.is_empty() || bytes.len() as u64 > MAX_FILE_BYTES {
             return Err(WorkError::ValidationFailed);
         }
-        let workflow = self
-            .load_for(actor, WorkTarget::Artifact(artifact_id))
-            .await?;
-        let artifact = workflow.artifact(actor, artifact_id)?;
         let identity = content_identity(&bytes);
+        // A committed operation replays (or conflicts) by its digest even when its
+        // record has since been discarded; nothing is stored again.
+        let committed = self.operation(actor, context.operation_id).await?;
+        let replay = committed.is_some();
+        let (workflow, task_id) = match committed {
+            Some((workflow, principal, _, outcome)) => {
+                if principal != actor.principal_id() {
+                    return Err(WorkError::WorkItemNotFound);
+                }
+                match outcome {
+                    MutationResult::ArtifactContentWritten { artifact, .. }
+                        if artifact.id == artifact_id =>
+                    {
+                        (workflow, artifact.task_id)
+                    }
+                    _ => return Err(WorkError::OperationConflict),
+                }
+            }
+            None => {
+                let workflow = self
+                    .load_for(actor, WorkTarget::Artifact(artifact_id))
+                    .await?;
+                let task_id = workflow.artifact(actor, artifact_id)?.task_id;
+                (workflow, task_id)
+            }
+        };
         let command = Command::WriteArtifactContent {
-            task_id: artifact.task_id,
+            task_id,
             artifact_id,
             generation: GenerationInput {
                 id: context.operation_id,
@@ -74,11 +96,7 @@ impl PostgresWorkRepository {
             context,
             expected_artifact_revision,
         };
-        if self
-            .operation(actor, command.context().operation_id)
-            .await?
-            .is_none()
-        {
+        if !replay {
             let timestamp = OffsetDateTime::now_utc()
                 .format(&Rfc3339)
                 .map_err(|_| WorkError::IntegrityViolation)?;

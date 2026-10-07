@@ -4,7 +4,7 @@
 use document_application::{FileStorage, StorageError, StoreFileRequest};
 use document_domain::{FileId, MediaType, StorageKey};
 use document_storage_fs::FileSystemStorage;
-use std::path::Path;
+use std::{future::Future, path::Path, time::Duration};
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 use work_application::{StoredGeneration, WorkArtifactStore, WorkFuture, content_identity};
@@ -12,6 +12,13 @@ use work_domain::{FileGeneration, MAX_FILE_BYTES, WorkError};
 
 /// Below the configured storage root; Document's own listing never sees it.
 pub const WORK_ARTIFACT_NAMESPACE: &str = "work-artifacts";
+/// A hung volume is unavailable, never an indefinitely pending request.
+const STORE_BUDGET: Duration = Duration::from_secs(5);
+async fn bounded<T>(work: impl Future<Output = Result<T, WorkError>>) -> Result<T, WorkError> {
+    tokio::time::timeout(STORE_BUDGET, work)
+        .await
+        .map_err(|_| WorkError::WorkArtifactUnavailable)?
+}
 
 pub struct FileSystemWorkArtifactStore {
     storage: FileSystemStorage,
@@ -45,62 +52,73 @@ impl FileSystemWorkArtifactStore {
         }
         Ok(Some(bytes))
     }
+    /// A generation is immutable: the same bytes replay, other bytes conflict.
+    async fn existing(&self, id: Uuid, bytes: &[u8]) -> Result<Option<()>, WorkError> {
+        match self.stored(id).await? {
+            Some(existing) if existing == bytes => Ok(Some(())),
+            Some(_) => Err(WorkError::OperationConflict),
+            None => Ok(None),
+        }
+    }
+    async fn put_bounded(&self, id: Uuid, bytes: Vec<u8>) -> Result<StoredGeneration, WorkError> {
+        if bytes.is_empty() || bytes.len() as u64 > MAX_FILE_BYTES {
+            return Err(WorkError::ValidationFailed);
+        }
+        let identity = content_identity(&bytes);
+        if self.existing(id, &bytes).await?.is_some() {
+            return Ok(identity);
+        }
+        let media = MediaType::new("application/octet-stream")
+            .map_err(|_| WorkError::IntegrityViolation)?;
+        let stored = match self
+            .storage
+            .put_immutable(StoreFileRequest::new(
+                FileId::from_uuid(id),
+                Box::pin(std::io::Cursor::new(bytes.clone())),
+                media,
+            ))
+            .await
+        {
+            Ok(stored) => stored,
+            // Only other bytes finalized under this generation are a conflict;
+            // any other I/O failure is unavailability.
+            Err(_) => {
+                return match self.existing(id, &bytes).await {
+                    Ok(Some(())) => Ok(identity),
+                    Err(WorkError::OperationConflict) => Err(WorkError::OperationConflict),
+                    _ => Err(WorkError::WorkArtifactUnavailable),
+                };
+            }
+        };
+        let hash: String = stored
+            .content_hash()
+            .as_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        if hash != identity.sha256 || stored.size_bytes().get() as u64 != identity.size_bytes {
+            return Err(WorkError::WorkArtifactUnavailable);
+        }
+        Ok(identity)
+    }
+    async fn read_bounded(&self, generation: FileGeneration) -> Result<Vec<u8>, WorkError> {
+        let bytes = self
+            .stored(generation.id)
+            .await?
+            .ok_or(WorkError::WorkArtifactUnavailable)?;
+        let identity = content_identity(&bytes);
+        if identity.size_bytes != generation.size_bytes || identity.sha256 != generation.sha256 {
+            return Err(WorkError::WorkArtifactUnavailable);
+        }
+        Ok(bytes)
+    }
 }
 impl WorkArtifactStore for FileSystemWorkArtifactStore {
     fn put(&self, generation_id: Uuid, bytes: Vec<u8>) -> WorkFuture<'_, StoredGeneration> {
-        Box::pin(async move {
-            if bytes.is_empty() || bytes.len() as u64 > MAX_FILE_BYTES {
-                return Err(WorkError::ValidationFailed);
-            }
-            let identity = content_identity(&bytes);
-            // A generation is immutable: the same bytes replay, other bytes conflict.
-            if let Some(existing) = self.stored(generation_id).await? {
-                return if existing == bytes {
-                    Ok(identity)
-                } else {
-                    Err(WorkError::OperationConflict)
-                };
-            }
-            let media = MediaType::new("application/octet-stream")
-                .map_err(|_| WorkError::IntegrityViolation)?;
-            let stored = self
-                .storage
-                .put_immutable(StoreFileRequest::new(
-                    FileId::from_uuid(generation_id),
-                    Box::pin(std::io::Cursor::new(bytes)),
-                    media,
-                ))
-                .await
-                .map_err(|error| match error {
-                    // The final object appeared with other bytes meanwhile.
-                    StorageError::FinalizeFailed => WorkError::OperationConflict,
-                    _ => WorkError::WorkArtifactUnavailable,
-                })?;
-            let hash: String = stored
-                .content_hash()
-                .as_bytes()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect();
-            if hash != identity.sha256 || stored.size_bytes().get() as u64 != identity.size_bytes {
-                return Err(WorkError::WorkArtifactUnavailable);
-            }
-            Ok(identity)
-        })
+        Box::pin(bounded(self.put_bounded(generation_id, bytes)))
     }
     fn read(&self, generation: FileGeneration) -> WorkFuture<'_, Vec<u8>> {
-        Box::pin(async move {
-            let bytes = self
-                .stored(generation.id)
-                .await?
-                .ok_or(WorkError::WorkArtifactUnavailable)?;
-            let identity = content_identity(&bytes);
-            if identity.size_bytes != generation.size_bytes || identity.sha256 != generation.sha256
-            {
-                return Err(WorkError::WorkArtifactUnavailable);
-            }
-            Ok(bytes)
-        })
+        Box::pin(bounded(self.read_bounded(generation)))
     }
 }
 
@@ -172,6 +190,22 @@ mod tests {
                 .put(Uuid::now_v7(), vec![0; MAX_FILE_BYTES as usize + 1])
                 .await,
             Err(WorkError::ValidationFailed)
+        );
+        // An I/O failure at the generation's location is unavailability, never a
+        // claim that other bytes were stored under the same operation.
+        let blocked = Uuid::now_v7();
+        let simple = blocked.simple().to_string();
+        std::fs::create_dir_all(
+            root.path()
+                .join(WORK_ARTIFACT_NAMESPACE)
+                .join("objects")
+                .join(&simple[..2])
+                .join(blocked.to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            store.put(blocked, b"synthetic".to_vec()).await,
+            Err(WorkError::WorkArtifactUnavailable)
         );
         let full = vec![7; MAX_FILE_BYTES as usize];
         let full_id = Uuid::now_v7();

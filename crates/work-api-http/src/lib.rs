@@ -398,6 +398,10 @@ async fn create_artifact(
     let task_id = path_id(path)?;
     let command = match json_body(body)? {
         CreateArtifactBody::Text(body) => body.command(task_id, None),
+        // Without a composed Work store a file record could never get content.
+        CreateArtifactBody::File(_) if !state.repository.artifact_store_available() => {
+            return Err(Problem(WorkError::WorkArtifactUnavailable));
+        }
         CreateArtifactBody::File(body) => body.command(task_id),
     };
     Ok(Json(state.repository.execute(state.actor, command).await?))

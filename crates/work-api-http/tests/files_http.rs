@@ -19,6 +19,10 @@ struct Recorder {
     commands: Mutex<Vec<Command>>,
     reads: Mutex<Vec<(Option<Uuid>, Uuid)>>,
     content: Mutex<Option<Result<Vec<u8>, WorkError>>>,
+    /// No composed Work store.
+    storeless: std::sync::atomic::AtomicBool,
+    /// The record was discarded by a committed operation.
+    discarded: Mutex<Option<Uuid>>,
 }
 fn summary() -> TaskSummary {
     Workflow::synthetic(None)
@@ -70,7 +74,18 @@ impl WorkRepository for Recorder {
         Box::pin(async { Err(WorkError::WorkItemNotFound) })
     }
     fn artifact(&self, _: VerifiedActor, id: Uuid) -> WorkFuture<'_, WorkingArtifact> {
-        Box::pin(async move { Ok(artifact(id)) })
+        // Once a discard committed, no record of this double is current any more.
+        let gone = self.discarded.lock().unwrap().is_some();
+        Box::pin(async move {
+            if gone {
+                Err(WorkError::WorkArtifactNotFound)
+            } else {
+                Ok(artifact(id))
+            }
+        })
+    }
+    fn artifact_store_available(&self) -> bool {
+        !self.storeless.load(std::sync::atomic::Ordering::SeqCst)
     }
     fn snapshot(&self, _: VerifiedActor, _: Uuid) -> WorkFuture<'_, HandoffSnapshot> {
         Box::pin(async { Err(WorkError::WorkArtifactNotFound) })
@@ -88,7 +103,15 @@ impl WorkRepository for Recorder {
         })
     }
     fn recover(&self, _: VerifiedActor, _: Uuid) -> WorkFuture<'_, MutationResult> {
-        Box::pin(async { Err(WorkError::WorkItemNotFound) })
+        let discarded = *self.discarded.lock().unwrap();
+        Box::pin(async move {
+            discarded
+                .map(|artifact_id| MutationResult::ArtifactDiscarded {
+                    task: summary(),
+                    artifact_id,
+                })
+                .ok_or(WorkError::WorkItemNotFound)
+        })
     }
     fn write_artifact_content(
         &self,
@@ -348,4 +371,60 @@ async fn file_records_discard_and_import_map_to_their_commands_only() {
             Command::ImportSubmission { snapshot_id: imported, expected_attempt_id: SALES_ATTEMPT_ID, .. },
         ] if file_name == "合成.pdf" && media_type == "application/pdf" && *discarded == artifact_id && *imported == snapshot_id
     ));
+}
+
+#[tokio::test]
+async fn a_discard_retry_replays_after_the_record_is_gone_and_files_need_a_store() {
+    let repository = Arc::new(Recorder::default());
+    let artifact_id = Uuid::now_v7();
+    *repository.discarded.lock().unwrap() = Some(artifact_id);
+    let body = json!({"operationId": Uuid::now_v7(), "expectedRevision": 2, "actingAssignmentId": SALES_ASSIGNMENT_ID, "expectedArtifactRevision": 1});
+    let post = |uri: String, body: Value| {
+        Request::post(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+    let (status, _, _) = send(
+        &repository,
+        post(
+            format!("/v1/organization/working-artifacts/{artifact_id}/discard"),
+            body.clone(),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(matches!(
+        &repository.commands.lock().unwrap()[..],
+        [Command::DiscardArtifact { task_id: SALES_TASK_ID, artifact_id: replayed, .. }] if *replayed == artifact_id
+    ));
+    // Another missing record stays a hidden 404 and reaches no command.
+    let (status, _, body_bytes) = send(
+        &repository,
+        post(
+            format!(
+                "/v1/organization/working-artifacts/{}/discard",
+                Uuid::now_v7()
+            ),
+            body,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(code(&body_bytes), json!("WORK_ARTIFACT_NOT_FOUND"));
+    assert_eq!(repository.commands.lock().unwrap().len(), 1);
+    repository
+        .storeless
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let (status, _, body_bytes) = send(
+        &repository,
+        post(
+            format!("/v1/organization/tasks/{SALES_TASK_ID}/working-artifacts"),
+            json!({"operationId": Uuid::now_v7(), "expectedRevision": 2, "actingAssignmentId": SALES_ASSIGNMENT_ID, "file": {"fileName": "合成.txt", "mediaType": "text/plain"}}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(code(&body_bytes), json!("WORK_ARTIFACT_UNAVAILABLE"));
+    assert_eq!(repository.commands.lock().unwrap().len(), 1);
 }

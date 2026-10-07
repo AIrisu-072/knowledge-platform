@@ -18,8 +18,8 @@ const generation = { id: 'generation-1', sizeBytes: 6, sha256: 'a'.repeat(64), s
 const fileRecord = (extra: Record<string, unknown> = {}) => ({ id: 'file-1', taskId: task.id, attemptId: task.attemptId, revision: 0, schemaId: 'organization.work-file.v1', visibility: 'work_item_private', file: { fileName: '合成_見積.txt', mediaType: 'text/plain', generation: null }, ...extra });
 const detail = (workingArtifacts: unknown[], extra: Record<string, unknown> = {}) => ({ ...task, ...extra, inputResources: [], workingArtifacts, history: [], agentExecutionIds: [] });
 
-function setup(taskDetail: unknown, summary: Record<string, unknown> = task) {
-  jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
+function setup(taskDetail: unknown, summary: Record<string, unknown> = task, actor: unknown = session) {
+  jest.spyOn(workApi, 'getSession').mockResolvedValue(actor as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [summary], nextCursor: null } as never);
   jest.spyOn(workApi, 'listWorkContexts').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'listWorkViewProfiles').mockResolvedValue({ items: [], nextCursor: null });
@@ -74,7 +74,32 @@ test('empty, oversized or path-like files are refused before any request', async
   expect(await screen.findByText('ファイルは8MiB以内にしてください。')).toBeVisible();
   await userEvent.upload(input, new File(['x'], 'a\nb.txt'));
   expect(await screen.findByText(/ファイル名に使えない文字/)).toBeVisible();
+  await userEvent.upload(input, new File(['x'], '請求書\u202Efdp.exe'));
+  expect(await screen.findByText(/ファイル名に使えない文字/)).toBeVisible();
   expect(created).not.toHaveBeenCalled();
+});
+
+test('a record removed meanwhile is stale state: the task refreshes and is never hidden as denied', async () => {
+  setup(detail([memo, fileRecord({ revision: 1, file: { fileName: '合成_見積.txt', mediaType: 'text/plain', generation } })]));
+  const files = await screen.findByRole('region', { name: '作業ファイル' });
+  const discarded = jest.spyOn(workApi, 'discardArtifact').mockRejectedValue(new WorkApiError(404, 'WORK_ARTIFACT_NOT_FOUND'));
+  const reads = jest.mocked(workApi.getTask).mock.calls.length;
+  jest.mocked(workApi.getTask).mockResolvedValue(detail([memo]) as never);
+  await userEvent.click(within(files).getByRole('button', { name: '合成_見積.txt を外す' }));
+  await waitFor(() => expect(discarded).toHaveBeenCalled());
+  expect(await screen.findByText(/既に外されたか変更されています/)).toBeVisible();
+  await waitFor(() => expect(jest.mocked(workApi.getTask).mock.calls.length).toBeGreaterThan(reads));
+  expect(screen.queryByText(/現在の担当では利用できません/)).not.toBeInTheDocument();
+  expect(screen.getByLabelText('作業中の文案')).toHaveValue('保存済みの文案');
+});
+
+test('without a composed work store, files can be listed and removed but not added', async () => {
+  setup(detail([memo, fileRecord({ revision: 2 })]), task, { ...session, capabilities: { ...session.capabilities, fileUpload: false } });
+  const files = await screen.findByRole('region', { name: '作業ファイル' });
+  expect(within(files).getByText('このサーバーでは作業ファイルを保存できません。')).toBeVisible();
+  expect(within(files).queryByLabelText('作業ファイルを追加')).not.toBeInTheDocument();
+  expect(within(files).queryByLabelText('合成_見積.txt の内容を登録')).not.toBeInTheDocument();
+  expect(within(files).getByRole('button', { name: '合成_見積.txt を外す' })).toBeEnabled();
 });
 
 test('a file without content blocks submit; it is registered or discarded explicitly', async () => {
@@ -83,16 +108,24 @@ test('a file without content blocks submit; it is registered or discarded explic
   expect(await screen.findByText(/内容が未登録のファイルがあります/)).toBeVisible();
   expect(screen.getByRole('button', { name: '提出内容を確認' })).toBeDisabled();
   expect(within(files).getByRole('list', { name: '作業ファイルの一覧' })).toHaveTextContent('内容未登録');
-  const written = jest.spyOn(workApi, 'writeArtifactContent').mockRejectedValue(new WorkApiError(503, 'WORK_ARTIFACT_UNAVAILABLE', false));
+  const written = jest.spyOn(workApi, 'writeArtifactContent').mockRejectedValue(new WorkApiError(503, 'WORK_ARTIFACT_UNAVAILABLE', true));
   const chosen = new File(['合成'], '別名.txt');
   await userEvent.upload(within(files).getByLabelText('合成_見積.txt の内容を登録'), chosen);
   await waitFor(() => expect(written).toHaveBeenCalledWith('file-1', { operationId: expect.any(String), expectedRevision: 1, actingAssignmentId: 'assignment-sales', expectedArtifactRevision: 2 }, chosen));
-  // A refused store write is a definite failure, not an unknown commit.
-  expect(await screen.findByText(/作業用保存領域でファイルを確認できません/)).toBeVisible();
-  expect(screen.queryByText(/結果は未確認です/)).not.toBeInTheDocument();
+  // A 503 on the write is resolved by the same operation ID, never claimed as saved or not.
+  expect(await screen.findByText(/結果は未確認です/)).toBeVisible();
+  const recovered = jest.spyOn(workApi, 'getOperation').mockRejectedValue(new WorkApiError(404, 'WORK_ITEM_NOT_FOUND'));
+  await userEvent.click(screen.getByRole('button', { name: '同じ操作の結果を確認' }));
+  await waitFor(() => expect(recovered).toHaveBeenCalledWith(written.mock.calls[0]![1].operationId));
+  written.mockResolvedValue({ kind: 'artifact_content_written', task: { ...task, revision: 2 }, artifact: fileRecord({ revision: 3, file: { fileName: '合成_見積.txt', mediaType: 'text/plain', generation } }) } as never);
+  await userEvent.click(await screen.findByRole('button', { name: '同じ操作を再送' }));
+  await waitFor(() => expect(written).toHaveBeenCalledTimes(2));
+  expect(written.mock.calls[1]![1].operationId).toBe(written.mock.calls[0]![1].operationId);
+  expect(written.mock.calls[1]![2]).toBe(chosen);
+  expect(await screen.findByText(/作業用保存領域へ保存しました/)).toBeVisible();
   const discarded = jest.spyOn(workApi, 'discardArtifact').mockResolvedValue({ kind: 'artifact_discarded', task: { ...task, revision: 2 }, artifactId: 'file-1' } as never);
   await userEvent.click(within(files).getByRole('button', { name: '合成_見積.txt を外す' }));
-  await waitFor(() => expect(discarded).toHaveBeenCalledWith('file-1', { operationId: expect.any(String), expectedRevision: 1, actingAssignmentId: 'assignment-sales', expectedArtifactRevision: 2 }));
+  await waitFor(() => expect(discarded).toHaveBeenCalledWith('file-1', { operationId: expect.any(String), expectedRevision: 2, actingAssignmentId: 'assignment-sales', expectedArtifactRevision: 3 }));
   expect(await screen.findByText(/保存済みの内容は削除していません/)).toBeVisible();
   await waitFor(() => expect(screen.getByRole('button', { name: '提出内容を確認' })).toBeEnabled());
 });

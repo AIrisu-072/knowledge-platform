@@ -42,7 +42,7 @@ Domain §7の「Work authorityが所有する別のmetadataと保存namespace（
 | `visibility` | `work_item_private` | 同左 |
 
 - 作成時は `generation` が無い（内容未登録）。内容未登録・登録失敗・結果不明のファイルは提出できない
-- `fileName` は表示名だけであり、ローカルのパスではない。パス区切り（`/`、`\`）、制御文字、`.`・`..`、空、255 bytes超を拒否する。ブラウザが渡すのも名前だけで、serverはパスを受け取らない
+- `fileName` は表示名だけであり、ローカルのパスではない。パス区切り（`/`、`\`）、制御文字、拡張子を偽装できる双方向・不可視の書式文字（U+061C、U+200B〜U+200F、U+202A〜U+202E、U+2066〜U+2069、U+FEFF）、`.`・`..`、空、255 bytes超を拒否する。ブラウザが渡すのも名前だけで、serverはパスを受け取らない
 - `mediaType` は `type/subtype` 形式（127 bytes以内）の申告値として記録するだけで、取得時の応答には使わない（§6）
 - 1ファイルは1 byte以上8 MiB以下。1試行の成果物（文案とファイルの合計）は16件以内（既存 `MAX_ARTIFACTS`）
 - 内容の再登録は同じ成果物に新しい世代を作る。前の世代・提出済みの固定内容は変更しない
@@ -61,7 +61,11 @@ Domain §7の「Work authorityが所有する別のmetadataと保存namespace（
 | `GET /handoff-snapshots/{id}/artifacts/{artifactId}/content` | 提出済みファイルの取得 | §6 |
 
 - 内容の登録は、先に認可（現在の担当者・現在の試行・成果物revision）を確認してからbytesを保存する。保存後にcommandが競合で失敗した内容は参照されないまま残る（Domain §7：非公開のまま、破壊的な削除はしない）
-- 同じ操作IDの再送は、同じbytesなら同じ結果を返し、異なるbytesなら `OPERATION_CONFLICT`
+- 同じ操作IDの再送は、同じbytesなら同じ結果を返し、異なるbytesなら `OPERATION_CONFLICT`。記録の有無より先にoperation ledgerを確認する（外した後の再送も保存領域へ書かない）。外す操作の再送も、記録が無くなった後に同じ操作の受領内容から再実行する
+- 保存領域の呼出しは1回5秒で打ち切り、`WORK_ARTIFACT_UNAVAILABLE` とする。保存先のI/O失敗は、同じ世代に別の内容が確定している場合だけ `OPERATION_CONFLICT`、それ以外は `WORK_ARTIFACT_UNAVAILABLE`
+- 変更操作の503は結果不明として扱い、同じ操作IDで照会する（同じ操作が別のrequestで確定しうるため）。読取りの503は「利用できません」と表示する
+- 保存領域が構成されていないserverはファイル作成を `WORK_ARTIFACT_UNAVAILABLE` で拒否し、sessionの `fileUpload` はfalse（画面は追加を出さない）
+- 他の画面・タブで外された文案・ファイルへの操作（`WORK_ARTIFACT_NOT_FOUND`）は、タスクが読める限り古い状態として再読込し、閲覧拒否として入力を消さない
 - 結果不明（`COMMIT_OUTCOME_UNKNOWN`）は既存どおり同じ操作IDで照会する
 
 ## 5. 提出時のHandoff Snapshot
@@ -114,5 +118,6 @@ Domain §7の「Work authorityが所有する別のmetadataと保存namespace（
 
 - Document Platformへの昇格（提出済みの内容を既存のDocument APIで文書化する明示操作）。Domain §7のとおり別操作であり、作業中の非公開境界を弱めない形で後続に分ける
 - ローカルWorkspace（Tauri担当のRuntime Contract・broker）からのファイル選択。本単位はブラウザのファイル選択だけで、Runtime Contractの読取りhandleから同じ内容登録APIへ渡す接続点だけを残す
-- 保存済み内容の削除・保持期間・orphanの回収、ウイルス検査、プレビュー
+- 保存済み内容の削除・保持期間・orphanの回収、容量の上限、ウイルス検査、プレビュー。PoCでは外す・差し替えの繰返しや競合で参照されない内容が増え、Documentと共有する保存rootの容量を消費しうる（本番前に上限・回収の判断が必要）
+- 書込み途中で停止した場合に残る `staging/{操作ID}.part` があると、同じ操作IDの再送は保存できない（結果不明のまま）。利用者はファイルを選び直して新しい操作で登録する
 - 本番の保存基盤・暗号化・backupの選定
