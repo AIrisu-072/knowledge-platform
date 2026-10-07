@@ -1,0 +1,1202 @@
+{
+  "version": 1,
+  "adapters": [
+    {
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "source_format": "document-audit-outbox-v0",
+      "adapter_version": 1,
+      "commitment": "required",
+      "registration": "required",
+      "trace_id": false
+    },
+    {
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "source_format": "audit-store-control-v1",
+      "adapter_version": 1,
+      "commitment": "forbidden",
+      "registration": "forbidden",
+      "trace_id": false
+    },
+    {
+      "source": "urn:knowledge-platform:audit-relay",
+      "origin": "relay_control",
+      "source_format": "audit-relay-control-v1",
+      "adapter_version": 1,
+      "commitment": "forbidden",
+      "registration": "forbidden",
+      "trace_id": false
+    }
+  ],
+  "events": [
+    {
+      "type": "document.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"}
+      },
+      "required": ["documentId"],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "document.version.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": [
+        "document/{resource.id}",
+        "document/{resource.id}/version/{resource.version_id}"
+      ],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
+        "versionNo": {"kind": "positive_counter"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": ["documentId", "documentVersionId"],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.updated",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
+        "versionNo": {"kind": "positive_counter"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "versionNo",
+        "baseDocumentVersionId",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.rebased",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
+        "versionNo": {"kind": "positive_counter"},
+        "baseDocumentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "versionNo",
+        "baseDocumentVersionId",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.published",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "publishOperationId": {"kind": "uuid"},
+        "expectedDocumentRevision": {"kind": "counter"},
+        "resultingDocumentRevision": {"kind": "counter"},
+        "result": {"kind": "enum", "values": ["success"]},
+        "publishedAt": {"kind": "legacy_time"},
+        "serviceExecutor": {"kind": "principal"}
+      },
+      "required": [
+        "publishOperationId",
+        "expectedDocumentRevision",
+        "resultingDocumentRevision",
+        "result",
+        "publishedAt"
+      ],
+      "reason": "absent",
+      "service_executor_field": "serviceExecutor",
+      "operation_id_field": "publishOperationId",
+      "publish_operation_id_field": "publishOperationId"
+    },
+    {
+      "type": "document.version.publication.scheduled",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
+        "publishOperationId": {"kind": "uuid"},
+        "scheduledPublishAt": {"kind": "legacy_time"},
+        "acceptedDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "scheduledPublishAt",
+        "acceptedDocumentRevision"
+      ],
+      "reason": "absent",
+      "operation_id_field": "publishOperationId",
+      "publish_operation_id_field": "publishOperationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.publication.cancelled",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
+        "publishOperationId": {"kind": "uuid"},
+        "resultingDocumentRevision": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "publish_operation_id_field": "publishOperationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.publication.terminal",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["failure"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "documentVersionId": {"kind": "uuid", "client_chosen": true},
+        "publishOperationId": {"kind": "uuid"},
+        "terminalReason": {
+          "kind": "enum",
+          "values": [
+            "identity_invalid",
+            "authorization_revoked",
+            "publish_quality_rejected",
+            "stale_publication_intent",
+            "publication_business_rule",
+            "publication_integrity_failure",
+            "semantic_inspection_rejected",
+            "publication_preflight_rejected"
+          ]
+        },
+        "resultingDocumentRevision": {"kind": "counter"},
+        "serviceExecutor": {"kind": "principal"}
+      },
+      "required": [
+        "documentId",
+        "documentVersionId",
+        "publishOperationId",
+        "terminalReason",
+        "resultingDocumentRevision"
+      ],
+      "reason": "absent",
+      "reason_code_field": "terminalReason",
+      "service_executor_field": "serviceExecutor",
+      "operation_id_field": "publishOperationId",
+      "publish_operation_id_field": "publishOperationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "documentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.withdrawn",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/version/{resource.version_id}"],
+      "fields": {
+        "documentId": {"kind": "uuid"},
+        "withdrawnDocumentVersionId": {"kind": "uuid", "client_chosen": true},
+        "formerCurrentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "resultingCurrentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "actor": {"kind": "principal"},
+        "restorationWithheldByValidation": {"kind": "boolean"},
+        "restorationWithheldReason": {
+          "kind": "nullable_enum",
+          "values": [
+            "base_unavailable_or_not_published",
+            "base_inspection_unavailable",
+            "base_quality_or_storage_unavailable",
+            "base_database_evidence_changed",
+            "base_not_qualified"
+          ]
+        },
+        "invalidatedScheduleCount": {"kind": "counter"}
+      },
+      "required": [
+        "documentId",
+        "withdrawnDocumentVersionId",
+        "formerCurrentVersionId",
+        "resultingCurrentVersionId",
+        "actor",
+        "restorationWithheldByValidation",
+        "restorationWithheldReason",
+        "invalidatedScheduleCount"
+      ],
+      "reason": "caller_text",
+      "duplicated_actor_field": "actor",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "withdrawnDocumentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.publication.ended",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "operationId": {"kind": "uuid"},
+        "documentId": {"kind": "uuid"},
+        "formerCurrentVersionId": {"kind": "uuid", "client_chosen": true},
+        "resultingCurrentVersionId": {"kind": "nullable_uuid", "client_chosen": true},
+        "resultingDocumentRevision": {"kind": "counter"},
+        "actor": {"kind": "principal"},
+        "invalidatedScheduleCount": {"kind": "counter"},
+        "endedAt": {"kind": "legacy_time"}
+      },
+      "required": [
+        "operationId",
+        "documentId",
+        "formerCurrentVersionId",
+        "resultingCurrentVersionId",
+        "resultingDocumentRevision",
+        "actor",
+        "invalidatedScheduleCount",
+        "endedAt"
+      ],
+      "reason": "caller_text",
+      "duplicated_actor_field": "actor",
+      "operation_id_field": "operationId",
+      "bindings": [
+        {"field": "documentId", "equals": "resource.id"},
+        {"field": "formerCurrentVersionId", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.metadata.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "document_id": {"kind": "uuid"},
+        "changed_keys": {
+          "kind": "enum_list",
+          "values": ["category", "document_type", "extensions", "owning_department"]
+        },
+        "document_revision": {"kind": "counter"}
+      },
+      "required": ["operation_id", "document_id", "changed_keys", "document_revision"],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "document_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "document.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Document"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "document_id": {"kind": "uuid"},
+        "from_folder_id": {"kind": "uuid", "client_chosen": true},
+        "to_folder_id": {"kind": "uuid", "client_chosen": true},
+        "document_revision": {"kind": "counter"},
+        "access_revision": {"kind": "counter"},
+        "visibility_changed": {"kind": "boolean"}
+      },
+      "required": [
+        "operation_id",
+        "document_id",
+        "from_folder_id",
+        "to_folder_id",
+        "document_revision",
+        "access_revision",
+        "visibility_changed"
+      ],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "document_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "folder.created",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Folder"],
+      "client_chosen_resource_ids": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["folder/{resource.id}"],
+      "fields": {
+        "folder_id": {"kind": "uuid", "client_chosen": true},
+        "parent_folder_id": {"kind": "uuid", "client_chosen": true},
+        "folder_revision": {"kind": "counter"},
+        "operation_id": {"kind": "uuid"}
+      },
+      "required": ["folder_id", "parent_folder_id", "folder_revision", "operation_id"],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "folder_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "folder.renamed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Folder"],
+      "client_chosen_resource_ids": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["folder/{resource.id}"],
+      "fields": {
+        "folder_id": {"kind": "uuid", "client_chosen": true},
+        "folder_revision": {"kind": "counter"},
+        "operation_id": {"kind": "uuid"}
+      },
+      "required": ["folder_id", "folder_revision", "operation_id"],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "folder_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "folder.moved",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "CONTENT_LIFECYCLE",
+      "resources": ["Folder"],
+      "client_chosen_resource_ids": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["folder/{resource.id}"],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "folder_id": {"kind": "uuid", "client_chosen": true},
+        "from_parent_id": {"kind": "uuid", "client_chosen": true},
+        "to_parent_id": {"kind": "uuid", "client_chosen": true},
+        "folder_revision": {"kind": "counter"},
+        "access_revision": {"kind": "counter"},
+        "subtree_affected": {"kind": "counter"}
+      },
+      "required": [
+        "operation_id",
+        "folder_id",
+        "from_parent_id",
+        "to_parent_id",
+        "folder_revision",
+        "access_revision",
+        "subtree_affected"
+      ],
+      "reason": "caller_text",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "folder_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "access_policy.changed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "ACCESS_POLICY",
+      "resources": ["Document", "Folder"],
+      "client_chosen_resource_ids": ["Folder"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": [
+        {"template": "document/{resource.id}", "resource": "Document"},
+        {"template": "folder/{resource.id}", "resource": "Folder"}
+      ],
+      "fields": {
+        "operation_id": {"kind": "uuid"},
+        "target_type": {"kind": "enum", "values": ["Document", "Folder"]},
+        "target_id": {"kind": "uuid", "client_chosen": true},
+        "policy_id": {"kind": "nullable_uuid"},
+        "policy_revision": {"kind": "counter"},
+        "access_revision": {"kind": "counter"},
+        "bootstrap": {"kind": "boolean"}
+      },
+      "required": [
+        "operation_id",
+        "target_type",
+        "target_id",
+        "policy_id",
+        "policy_revision",
+        "access_revision"
+      ],
+      "reason": "absent",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "target_type", "equals": "resource.type"},
+        {"field": "target_id", "equals": "resource.id"}
+      ]
+    },
+    {
+      "type": "document.version.read_confirmed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "document_version_id": {"kind": "uuid", "client_chosen": true}
+      },
+      "required": ["document_version_id"],
+      "reason": "absent",
+      "bindings": [
+        {"field": "document_version_id", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.file.access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": [
+        "document/{resource.id}/version/{resource.version_id}/representation/{details.representation_id}"
+      ],
+      "fields": {
+        "content_item_id": {"kind": "uuid"},
+        "representation_id": {"kind": "uuid"},
+        "purpose": {"kind": "enum", "values": ["authoring", "history", "published"]}
+      },
+      "required": ["content_item_id", "representation_id", "purpose"],
+      "reason": "absent"
+    },
+    {
+      "type": "document.diff.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/diff"],
+      "fields": {
+        "base_version_id": {"kind": "uuid", "client_chosen": true},
+        "target_version_id": {"kind": "uuid", "client_chosen": true},
+        "base_snapshot_digest": {"kind": "digest"},
+        "target_snapshot_digest": {"kind": "digest"},
+        "comparison_profile": {"kind": "enum", "values": ["document-diff-v0"]},
+        "resource_profile": {"kind": "enum", "values": ["diff-resource-v0"]},
+        "result_digest": {"kind": "digest"},
+        "verdict": {"kind": "enum", "values": ["different", "same", "unknown"]},
+        "coverage": {"kind": "enum", "values": ["full", "none", "partial"]},
+        "cache_hit": {"kind": "boolean"}
+      },
+      "required": [
+        "base_version_id",
+        "target_version_id",
+        "base_snapshot_digest",
+        "target_snapshot_digest",
+        "comparison_profile",
+        "resource_profile",
+        "result_digest",
+        "verdict",
+        "coverage",
+        "cache_hit"
+      ],
+      "reason": "absent",
+      "bindings": [
+        {"field": "target_version_id", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.revision_comparison.result_access_granted",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}/revision-comparison"],
+      "fields": {
+        "base_revision_id": {"kind": "uuid"},
+        "target_revision_id": {"kind": "uuid"},
+        "content_comparison_status": {
+          "kind": "enum",
+          "values": ["differentAuthoritativeVersions", "sameAuthoritativeVersion"]
+        },
+        "content_result_digest": {"kind": "nullable_digest"},
+        "content_audit_event_id": {"kind": "nullable_uuid"},
+        "metadata_comparison_status": {
+          "kind": "enum",
+          "values": ["different", "same", "unavailableLegacy"]
+        },
+        "base_metadata_snapshot_digest": {"kind": "nullable_digest"},
+        "target_metadata_snapshot_digest": {"kind": "nullable_digest"}
+      },
+      "required": [
+        "base_revision_id",
+        "target_revision_id",
+        "content_comparison_status",
+        "content_result_digest",
+        "content_audit_event_id",
+        "metadata_comparison_status",
+        "base_metadata_snapshot_digest",
+        "target_metadata_snapshot_digest"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "authorization.denied",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "SECURITY",
+      "resources": ["AccessPolicy"],
+      "version_required": false,
+      "results": ["denied"],
+      "subjects": ["authorization/denied"],
+      "fields": {
+        "action_code": {
+          "kind": "enum",
+          "values": [
+            "create_folder",
+            "lookup_management_operation",
+            "mark_version_read",
+            "move_document",
+            "move_folder",
+            "rename_folder",
+            "set_access_policy",
+            "update_document_metadata"
+          ]
+        },
+        "reason_code": {"kind": "enum", "values": ["forbidden"]}
+      },
+      "required": ["action_code", "reason_code"],
+      "reason": "absent",
+      "reason_code_field": "reason_code",
+      "nil_resource_allowed": true
+    },
+    {
+      "type": "audit.access.intent_opened",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "DATA_ACCESS",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "operation": {"kind": "enum", "values": ["investigate", "export", "verify", "identity_chain"]},
+        "filter_digest": {"kind": "hex_digest"},
+        "filter_event_types": {"kind": "event_type_list"},
+        "filter_source": {"kind": "source_urn"},
+        "filter_actor_issuer": {"kind": "principal_ref"},
+        "filter_actor_principal_id": {"kind": "principal_ref"},
+        "filter_resource_type": {"kind": "enum", "values": ["Document", "Folder", "AccessPolicy", "AuditStore"]},
+        "filter_resource_id": {"kind": "resource_ref"},
+        "filter_occurred_from": {"kind": "utc_timestamp"},
+        "filter_occurred_to": {"kind": "utc_timestamp"},
+        "filter_event_ids": {"kind": "uuid_list"},
+        "filter_seq_after": {"kind": "counter"},
+        "filter_seq_through": {"kind": "positive_counter"},
+        "watermark": {"kind": "counter"},
+        "page_size": {"kind": "positive_counter"},
+        "max_pages": {"kind": "positive_counter"},
+        "include_control": {"kind": "boolean"},
+        "expires_at": {"kind": "utc_timestamp"},
+        "token_digest": {"kind": "hex_digest"}
+      },
+      "required": [
+        "session_role",
+        "operation",
+        "filter_digest",
+        "watermark",
+        "page_size",
+        "max_pages",
+        "include_control",
+        "expires_at",
+        "token_digest"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.access.denied",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "SECURITY",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["denied"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "operation": {
+          "kind": "enum",
+          "values": [
+            "investigate",
+            "export",
+            "verify",
+            "identity_chain",
+            "close_access",
+            "integrity_verify",
+            "checkpoint",
+            "change_access",
+            "set_retention_policy",
+            "expire",
+            "purge_body",
+            "begin_recovery_epoch",
+            "declare_recovery_pending",
+            "record_relay_control",
+            "report_regression",
+            "ingest"
+          ]
+        },
+        "denial_code": {
+          "kind": "enum",
+          "values": ["unbound", "insufficient_capability", "invalid_input", "self_grant", "not_source_service"]
+        },
+        "required_capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]}
+      },
+      "required": ["session_role", "operation", "denial_code"],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.access.closed",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "DATA_ACCESS",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "intent_seq": {"kind": "positive_counter"},
+        "returned_count": {"kind": "counter"},
+        "page_count": {"kind": "counter"},
+        "page_digests_digest": {"kind": "hex_digest"}
+      },
+      "required": ["session_role", "intent_seq", "returned_count", "page_count", "page_digests_digest"],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.access_policy.changed",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "ACCESS_POLICY",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "change": {"kind": "enum", "values": ["granted", "revoked", "bound", "unbound", "bootstrap", "reapplied"]},
+        "target_issuer": {"kind": "principal_ref"},
+        "target_principal_id": {"kind": "principal_ref"},
+        "capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]},
+        "db_role": {"kind": "db_role"}
+      },
+      "required": ["session_role", "change", "target_issuer", "target_principal_id"],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.retention.policy_changed",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "CONFIGURATION",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "policy_id": {"kind": "code"},
+        "revision": {"kind": "positive_counter"},
+        "selector_event_types": {"kind": "event_type_list"},
+        "selector_event_classes": {
+          "kind": "enum_list",
+          "values": [
+            "SECURITY",
+            "PRIVILEGED_OPERATION",
+            "CONTENT_LIFECYCLE",
+            "ACCESS_POLICY",
+            "DATA_ACCESS",
+            "SEARCH_ACCESS",
+            "CONFIGURATION",
+            "SYSTEM_AUDIT"
+          ]
+        },
+        "selector_sources": {"kind": "source_list"},
+        "selector_digest": {"kind": "hex_digest"},
+        "retain_days": {"kind": "nullable_positive_counter"}
+      },
+      "required": ["session_role", "policy_id", "revision", "selector_digest", "retain_days"],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.retention.expired",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "PRIVILEGED_OPERATION",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "policy_id": {"kind": "code"},
+        "revision": {"kind": "positive_counter"},
+        "selector_event_types": {"kind": "event_type_list"},
+        "selector_event_classes": {
+          "kind": "enum_list",
+          "values": [
+            "SECURITY",
+            "PRIVILEGED_OPERATION",
+            "CONTENT_LIFECYCLE",
+            "ACCESS_POLICY",
+            "DATA_ACCESS",
+            "SEARCH_ACCESS",
+            "CONFIGURATION",
+            "SYSTEM_AUDIT"
+          ]
+        },
+        "selector_sources": {"kind": "source_list"},
+        "selector_digest": {"kind": "hex_digest"},
+        "retain_days": {"kind": "positive_counter"},
+        "cutoff": {"kind": "utc_timestamp"},
+        "effective_cutoff": {"kind": "utc_timestamp"},
+        "tx_time": {"kind": "utc_timestamp"},
+        "limit": {"kind": "positive_counter"},
+        "count": {"kind": "counter"},
+        "first_seq": {"kind": "nullable_counter"},
+        "last_seq": {"kind": "nullable_counter"},
+        "expired_set_digest": {"kind": "hex_digest"}
+      },
+      "required": [
+        "session_role",
+        "policy_id",
+        "revision",
+        "selector_digest",
+        "retain_days",
+        "cutoff",
+        "effective_cutoff",
+        "tx_time",
+        "limit",
+        "count",
+        "first_seq",
+        "last_seq",
+        "expired_set_digest"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.retention.expire_refused",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "PRIVILEGED_OPERATION",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["failure"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "policy_id": {"kind": "code"},
+        "expected_revision": {"kind": "positive_counter"},
+        "current_revision": {"kind": "nullable_counter"},
+        "refusal": {"kind": "enum", "values": ["stale_revision", "not_expirable", "held"]},
+        "retain_days": {"kind": "nullable_positive_counter"},
+        "cutoff": {"kind": "utc_timestamp"},
+        "tx_time": {"kind": "utc_timestamp"}
+      },
+      "required": [
+        "session_role",
+        "policy_id",
+        "expected_revision",
+        "current_revision",
+        "refusal",
+        "retain_days",
+        "cutoff",
+        "tx_time"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.body.purged",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "PRIVILEGED_OPERATION",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "target_seq": {"kind": "positive_counter"},
+        "target_event_id": {"kind": "uuid"},
+        "purge_reason_code": {"kind": "enum", "values": ["minimization_failure", "prohibited_content", "adapter_defect"]}
+      },
+      "required": ["session_role", "target_seq", "target_event_id", "purge_reason_code"],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.integrity.verified",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "SYSTEM_AUDIT",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success", "failure"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "trigger": {"kind": "enum", "values": ["verify", "checkpoint"]},
+        "from_seq": {"kind": "counter"},
+        "to_seq": {"kind": "counter"},
+        "watermark": {"kind": "counter"},
+        "checked": {"kind": "counter"},
+        "head_seq": {"kind": "counter"},
+        "head_epoch": {"kind": "positive_counter"},
+        "head_chain": {"kind": "hex_digest"},
+        "outcome": {"kind": "enum", "values": ["ok", "violations"]},
+        "violations_total": {"kind": "counter"},
+        "violation_seq_gap": {"kind": "counter"},
+        "violation_prev_chain_mismatch": {"kind": "counter"},
+        "violation_chain_mismatch": {"kind": "counter"},
+        "violation_body_digest_mismatch": {"kind": "counter"},
+        "violation_identity_mismatch": {"kind": "counter"},
+        "violation_event_id_mismatch": {"kind": "counter"},
+        "violation_expiry_state_mismatch": {"kind": "counter"},
+        "violation_epoch_regressed": {"kind": "counter"},
+        "violation_retention_evidence_missing": {"kind": "counter"},
+        "violation_retention_evidence_mismatch": {"kind": "counter"},
+        "violation_purge_evidence_mismatch": {"kind": "counter"},
+        "violation_head_mismatch": {"kind": "counter"}
+      },
+      "required": [
+        "session_role",
+        "trigger",
+        "from_seq",
+        "to_seq",
+        "watermark",
+        "checked",
+        "head_seq",
+        "head_epoch",
+        "head_chain",
+        "outcome",
+        "violations_total",
+        "violation_seq_gap",
+        "violation_prev_chain_mismatch",
+        "violation_chain_mismatch",
+        "violation_body_digest_mismatch",
+        "violation_identity_mismatch",
+        "violation_event_id_mismatch",
+        "violation_expiry_state_mismatch",
+        "violation_epoch_regressed",
+        "violation_retention_evidence_missing",
+        "violation_retention_evidence_mismatch",
+        "violation_purge_evidence_mismatch",
+        "violation_head_mismatch"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.integrity.conflict_detected",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "SECURITY",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["failure"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "event_id": {"kind": "uuid"},
+        "existing_seq": {"kind": "positive_counter"},
+        "existing_origin": {"kind": "enum", "values": ["relay", "store", "relay_control"]},
+        "conflict_kind": {
+          "kind": "enum",
+          "values": ["identity_mismatch", "commitment_mismatch", "projection_mismatch", "digest_mismatch"]
+        },
+        "commitment_match": {"kind": "boolean"},
+        "existing_adapter_version": {"kind": "positive_counter"},
+        "submitted_adapter_version": {"kind": "positive_counter"}
+      },
+      "required": [
+        "session_role",
+        "event_id",
+        "existing_seq",
+        "existing_origin",
+        "conflict_kind",
+        "commitment_match",
+        "existing_adapter_version",
+        "submitted_adapter_version"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.recovery.epoch_started",
+      "source": "urn:knowledge-platform:audit-store",
+      "origin": "store",
+      "event_class": "SYSTEM_AUDIT",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "classification": {"kind": "enum", "values": ["restore", "planned_move", "regression"]},
+        "old_epoch": {"kind": "positive_counter"},
+        "new_epoch": {"kind": "positive_counter"},
+        "restored_head_seq": {"kind": "counter"},
+        "restored_head_chain": {"kind": "hex_digest"},
+        "checkpoint_epoch": {"kind": "nullable_counter"},
+        "checkpoint_seq": {"kind": "nullable_counter"},
+        "checkpoint_chain": {"kind": "nullable_hex_digest"},
+        "checkpoint_classification": {
+          "kind": "nullable_enum",
+          "values": ["match", "ahead", "store_behind", "mismatch", "epoch_mismatch"]
+        },
+        "identity_range_digest": {"kind": "hex_digest"},
+        "relay_max_seq": {"kind": "nullable_counter"},
+        "lost_from_seq": {"kind": "positive_counter"},
+        "lost_upper_seq": {"kind": "counter"},
+        "lost_upper_known": {"kind": "boolean"},
+        "regression_reported_seq": {"kind": "nullable_counter"},
+        "regression_reported_event_id": {"kind": "nullable_uuid"},
+        "regression_reported_digest": {"kind": "nullable_hex_digest"},
+        "regression_reported_by": {"kind": "nullable_db_role"},
+        "regression_reported_at": {"kind": "nullable_utc_timestamp"},
+        "regression_head_seq": {"kind": "nullable_counter"},
+        "old_system_identifier": {"kind": "int8_text"},
+        "old_database_oid": {"kind": "int8_text"},
+        "old_timeline": {"kind": "int8_text"},
+        "new_system_identifier": {"kind": "int8_text"},
+        "new_database_oid": {"kind": "int8_text"},
+        "new_timeline": {"kind": "int8_text"}
+      },
+      "required": [
+        "session_role",
+        "classification",
+        "old_epoch",
+        "new_epoch",
+        "restored_head_seq",
+        "restored_head_chain",
+        "checkpoint_epoch",
+        "checkpoint_seq",
+        "checkpoint_chain",
+        "checkpoint_classification",
+        "identity_range_digest",
+        "relay_max_seq",
+        "lost_from_seq",
+        "lost_upper_seq",
+        "lost_upper_known",
+        "regression_reported_seq",
+        "regression_reported_event_id",
+        "regression_reported_digest",
+        "regression_reported_by",
+        "regression_reported_at",
+        "regression_head_seq",
+        "old_system_identifier",
+        "old_database_oid",
+        "old_timeline",
+        "new_system_identifier",
+        "new_database_oid",
+        "new_timeline"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.delivery.replay_requested",
+      "source": "urn:knowledge-platform:audit-relay",
+      "origin": "relay_control",
+      "event_class": "PRIVILEGED_OPERATION",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "event_id": {"kind": "uuid"},
+        "quarantine_code": {"kind": "code"}
+      },
+      "required": ["session_role", "event_id", "quarantine_code"],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.reconciliation.completed",
+      "source": "urn:knowledge-platform:audit-relay",
+      "origin": "relay_control",
+      "event_class": "SYSTEM_AUDIT",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["success"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "run_id": {"kind": "uuid"},
+        "mode": {"kind": "enum", "values": ["read_only", "repair"]},
+        "watermark": {"kind": "counter"},
+        "id_set_digest": {"kind": "hex_digest"},
+        "count_ok": {"kind": "counter"},
+        "count_delivered_missing": {"kind": "counter"},
+        "count_digest_mismatch": {"kind": "counter"},
+        "count_quarantined_stored": {"kind": "counter"},
+        "count_quarantined_conflict": {"kind": "counter"},
+        "count_pending": {"kind": "counter"},
+        "count_quarantined": {"kind": "counter"},
+        "count_unregistered": {"kind": "counter"},
+        "count_source_tampered": {"kind": "counter"},
+        "count_store_only": {"kind": "counter"},
+        "count_unaudited_replay": {"kind": "counter"},
+        "count_replay_record_lost": {"kind": "counter"},
+        "count_relay_catalog_skew": {"kind": "counter"},
+        "repaired_delivered_missing": {"kind": "counter"},
+        "repaired_quarantined_stored": {"kind": "counter"},
+        "repaired_unregistered": {"kind": "counter"}
+      },
+      "required": [
+        "session_role",
+        "run_id",
+        "mode",
+        "watermark",
+        "id_set_digest",
+        "count_ok",
+        "count_delivered_missing",
+        "count_digest_mismatch",
+        "count_quarantined_stored",
+        "count_quarantined_conflict",
+        "count_pending",
+        "count_quarantined",
+        "count_unregistered",
+        "count_source_tampered",
+        "count_store_only",
+        "count_unaudited_replay",
+        "count_replay_record_lost",
+        "count_relay_catalog_skew",
+        "repaired_delivered_missing",
+        "repaired_quarantined_stored",
+        "repaired_unregistered"
+      ],
+      "reason": "absent"
+    },
+    {
+      "type": "audit.integrity.source_mismatch_detected",
+      "source": "urn:knowledge-platform:audit-relay",
+      "origin": "relay_control",
+      "event_class": "SECURITY",
+      "resources": ["AuditStore"],
+      "version_required": false,
+      "results": ["failure"],
+      "subjects": ["audit-store"],
+      "fields": {
+        "session_role": {"kind": "db_role"},
+        "event_id": {"kind": "uuid"},
+        "mismatch_code": {"kind": "enum", "values": ["source_digest_mismatch", "actor_mismatch"]}
+      },
+      "required": ["session_role", "event_id", "mismatch_code"],
+      "reason": "absent"
+    }
+  ]
+}

@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
+- branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+
+---
+
 ## 2026-10-07 08:40 UTC — Organization 複数担当PoC（U1〜U4）完了
 
 - U4は[PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104)でmain `d92ca6d` へ統合済み（[U4状況](organization-agent-chat-status.md)）。U1〜U4の4単位（複数担当・役割・委任、複数文脈・注意・表示Profile、作業ファイル・Handoff・差戻し後の作業、Agentの構造化結果・Agent Chat）はすべてmainへ統合し、各統合前のexact-head CIと統合後のmain CIで確認済み（U4の統合後CIは本記録のPRで確認する）

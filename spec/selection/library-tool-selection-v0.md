@@ -269,6 +269,8 @@ PoCに失敗した場合もOpenAPI 3.2.1を3.1へ落とさず、利用可能subs
 
 OpenTelemetry Rustは2026-09時点で公式statusがTraces / Metrics / LogsともBetaのため、Infrastructure Adapterに封じ込めversion pinを行う。
 
+Audit Infrastructure v1（2026-10-07、[決定記録](../../docs/decisions/2026-10-07-audit-envelope-store-integrity.md)）：`cloudevents-sdk` はPOC REQUIREDのまま変えない。Audit envelopeには、`audit-core` の閉じた最小CloudEvents 1.0.2 structured JSON実装を使う（§6.3の受入項目をconformance試験として適用）。Audit Storeは、v1/PoCに限りPostgreSQL 18＋SQLxを別database・別schema・別ledgerで暫定採用し、本番前に再選定する。retention（方針データ、年数固定なし）とtamper-evidence（hash chain＋帯域外checkpoint）の判断は同記録による。新しい外部依存は追加しない。
+
 ## 6.2 OTel PoC acceptance
 
 - Trace ContextがHTTP → async task → outbox workerへ伝播
