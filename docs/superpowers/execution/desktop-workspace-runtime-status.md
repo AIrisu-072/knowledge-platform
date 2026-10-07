@@ -1,5 +1,29 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-07 04:20 UTC — 修正commitの再reviewと追加修正
+
+- 修正commit（c5f9564/4df588a）の独立再review：
+  - 旧指摘1〜5、10、11は修正済みと確認されました。
+  - 6、7、8、13、14は一部修正にとどまり、新しい欠陥が5件見つかりました。そのうち4件は再reviewで実際に再現されています。
+- 再現された新規欠陥（N1、N2、N4、N5）と、上限処理の問題（N3）の修正（3446677/af55c22）。いずれもREDの反例試験を先に追加しています。
+  - N1（Medium）：再試行が、利用者による同じファイルの上書き編集を消し得ました。意図bytesの真の接頭辞（自分の書込み途中）である場合だけ作り直し、それ以外はconflictとして保持します。
+  - N2（Medium）：結果不明のまま解除できたため、画面が固着しました。未確定の間は解除・追加・名前変更を無効にします。
+  - N3（Low）：保留中の作成予約に上限が無く、直前に追加した記録が押し出されることがありました。予約を16件に制限し、記録の上限を1024件へ広げ、直前に追加した記録は押し出しません。
+  - N4（Low–Medium）：再確認が `stale_context` になると、操作を破棄していました。操作IDを保持し、Workspaceを更新して再確認します。
+  - N5（Low）：作成ダイアログを閉じられませんでした。「あとで確認する」を追加し、一覧から同じ入力で再開できます。
+  - 応答の照合を追加しました：名前変更・解除の応答のWorkspace、解除済みのbinding、回復receiptの操作ID。
+- 残存事項（記録のみで、このPRでは直していません）：
+  - FreeBSD等ではerrnoを消去できず、一覧がfail-closedになります。
+  - 種類を確認してから開くまでの間にFIFOへ差し替えられた場合の、短い競合（Linuxでは `O_PATH` 化で解消できます）。
+  - musl版ではbtimeが無く、識別子の強化が効きません。
+  - 作成直後、identityを記録する前にcrashすると、空ファイルが残ります。再試行は `AlreadyExists` になります。`O_TMPFILE`+`linkat` 化が候補です。
+  - 作成receiptの `sha256` は形式だけを確認しています。
+- 修正後のローカル検証：
+  - broker：単体12、統合37、wire 5、合計54件。clippy、fmt。
+  - GUI：全59 suites／1444件、型検査、本番build。
+  - 既存mock E2E 6件、desktop-bridge E2E 6件（Chromium 1194）。
+- 次のexact action：push → 新headの全必須CIを確認 → Draft解除と統合を判断 → 統合後のmain CIを確認。
+
 ## 2026-10-07 04:00 UTC — 独立reviewの指摘を修正（PR95）
 
 - [PR95](https://github.com/AIrisu-072/knowledge-platform/pull/95)（Draft）。初回head `592ba99` のCI run 37567267684では、rust-testを除く全job（security、policy、rust-static、desktop-runtime-bridge、document-poc-runtime、portability-macos等）がSUCCESSでした。rust-testは実行中のまま、次のpushで置き換えました。

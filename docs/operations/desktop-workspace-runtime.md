@@ -25,7 +25,7 @@ desktop版で使える予定の操作（画面とbrokerは実装・試験済み�
 ## 開発者向けの検証コマンド
 
 ```bash
-# broker（Linux）：単体11＋統合37＋wire 5
+# broker（Linux）：単体12＋統合37＋wire 5
 cargo test -p local-workspace-runtime
 cargo clippy -p local-workspace-runtime --all-targets --locked -- -D warnings
 
