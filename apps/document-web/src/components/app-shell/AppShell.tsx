@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { validateListSearch } from '../../application/search-state';
 import { validateTaskSearch } from '../../application/work-workspace';
 import { useOrganizationContext } from '../../application/organization-context';
+import { RuntimeIndicator } from './RuntimeIndicator';
 import styles from './AppShell.module.css';
 
 export type AppShellProps = {
@@ -10,7 +11,7 @@ export type AppShellProps = {
   contextPanel?: ReactNode;
   contextPanelLabel?: string;
   navigationContent?: ReactNode;
-  activeNavigation?: 'documents' | 'editing' | 'history' | 'tasks' | 'search';
+  activeNavigation?: 'documents' | 'editing' | 'history' | 'tasks' | 'search' | 'local-workspaces';
   mainLabel?: string;
   headerContext?: ReactNode;
   showContextPanel?: boolean;
@@ -43,6 +44,7 @@ export function AppShell({
           <span className={styles.brandName}>Knowledge Platform<small>文書管理</small></span>
         </Link>}
         <div className={styles.headerContext}>{headerContext}</div>
+        <RuntimeIndicator />
       </header>
       <div className={styles.body}>
         <nav className={styles.navigation} aria-label="メインナビゲーション">
