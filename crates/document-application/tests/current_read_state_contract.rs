@@ -9,7 +9,9 @@ use document_application::{
     ReadStateMutationKind, ReadStateMutationResult, ReadStateOperationId, RepositoryError,
     VerifiedActorContext, canonical_json_bytes, read_state_command_digest,
 };
-use document_domain::{DocumentId, DocumentVersionId, PolicySubject, PolicySubjectKind, PrincipalRef};
+use document_domain::{
+    DocumentId, DocumentVersionId, PolicySubject, PolicySubjectKind, PrincipalRef,
+};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
@@ -87,15 +89,22 @@ fn virtual_unread_and_legacy_row_preserve_exact_projection() {
         read_state_revision: 1,
     };
     assert!(historical.is_read());
-    assert!(!CurrentReadProjection { needs_recheck: true, ..historical }.is_read());
+    assert!(
+        !CurrentReadProjection {
+            needs_recheck: true,
+            ..historical
+        }
+        .is_read()
+    );
 }
 
 #[test]
 fn operation_id_requires_uuid_v7_and_rfc_variant() {
     assert!(ReadStateOperationId::try_from_uuid(Uuid::nil()).is_err());
-    assert!(ReadStateOperationId::try_from_uuid(
-        Uuid::from_u128(0x00000000000070000000000000000001)
-    ).is_err());
+    assert!(
+        ReadStateOperationId::try_from_uuid(Uuid::from_u128(0x00000000000070000000000000000001))
+            .is_err()
+    );
     assert_eq!(command().operation_id.as_uuid().get_version_num(), 7);
 }
 
@@ -106,8 +115,16 @@ async fn actor_and_invocation_only_come_from_current_trusted_context() {
     for kind in [InvocationKind::Agent, InvocationKind::Service] {
         let ctx = context("test-idp", kind);
         let cmd = command();
-        assert_eq!(service.mutate_read_state(&ctx, cmd).await, Err(ApplicationError::Forbidden));
-        assert_eq!(service.get_current_read_state(&ctx, cmd.document_id, cmd.document_version_id).await, Err(ApplicationError::Forbidden));
+        assert_eq!(
+            service.mutate_read_state(&ctx, cmd).await,
+            Err(ApplicationError::Forbidden)
+        );
+        assert_eq!(
+            service
+                .get_current_read_state(&ctx, cmd.document_id, cmd.document_version_id)
+                .await,
+            Err(ApplicationError::Forbidden)
+        );
     }
     assert_eq!(repository.calls.load(Ordering::SeqCst), 0);
 }
@@ -120,14 +137,30 @@ async fn revision_is_nonnegative_javascript_safe_integer_before_repository_use()
     let ctx = context("test-idp", InvocationKind::HumanInteractive);
     for revision in [-1, 9_007_199_254_740_992, i64::MAX] {
         assert!(matches!(
-            service.mutate_read_state(&ctx, ReadStateMutation { expected_read_state_revision: revision, ..command() }).await,
+            service
+                .mutate_read_state(
+                    &ctx,
+                    ReadStateMutation {
+                        expected_read_state_revision: revision,
+                        ..command()
+                    }
+                )
+                .await,
             Err(ApplicationError::Validation(_))
         ));
     }
     assert_eq!(repository.calls.load(Ordering::SeqCst), 0);
     for revision in [0, MAX_READ_STATE_REVISION] {
         assert!(matches!(
-            service.mutate_read_state(&ctx, ReadStateMutation { expected_read_state_revision: revision, ..command() }).await,
+            service
+                .mutate_read_state(
+                    &ctx,
+                    ReadStateMutation {
+                        expected_read_state_revision: revision,
+                        ..command()
+                    }
+                )
+                .await,
             Err(ApplicationError::CurrentReadStateCommitOutcomeUnknown { .. })
         ));
     }
@@ -139,15 +172,40 @@ fn canonical_digest_binds_actor_operation_target_kind_and_revision() {
     let cmd = command();
     let original = read_state_command_digest(&ctx, &cmd).unwrap();
     for modified in [
-        ReadStateMutation { kind: ReadStateMutationKind::Reset, ..cmd },
-        ReadStateMutation { expected_read_state_revision: 1, ..cmd },
-        ReadStateMutation { document_id: DocumentId::from_uuid(Uuid::from_u128(13)), ..cmd },
-        ReadStateMutation { document_version_id: DocumentVersionId::from_uuid(Uuid::from_u128(14)), ..cmd },
-        ReadStateMutation { operation_id: ReadStateOperationId::try_from_uuid(Uuid::now_v7()).unwrap(), ..cmd },
+        ReadStateMutation {
+            kind: ReadStateMutationKind::Reset,
+            ..cmd
+        },
+        ReadStateMutation {
+            expected_read_state_revision: 1,
+            ..cmd
+        },
+        ReadStateMutation {
+            document_id: DocumentId::from_uuid(Uuid::from_u128(13)),
+            ..cmd
+        },
+        ReadStateMutation {
+            document_version_id: DocumentVersionId::from_uuid(Uuid::from_u128(14)),
+            ..cmd
+        },
+        ReadStateMutation {
+            operation_id: ReadStateOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+            ..cmd
+        },
     ] {
-        assert_ne!(original, read_state_command_digest(&ctx, &modified).unwrap());
+        assert_ne!(
+            original,
+            read_state_command_digest(&ctx, &modified).unwrap()
+        );
     }
-    assert_ne!(original, read_state_command_digest(&context("other-idp", InvocationKind::HumanInteractive), &cmd).unwrap());
+    assert_ne!(
+        original,
+        read_state_command_digest(
+            &context("other-idp", InvocationKind::HumanInteractive),
+            &cmd
+        )
+        .unwrap()
+    );
     let canonical = canonical_json_bytes(&json!({
         "schemaVersion": 1,
         "identityProvider": "test-idp",
@@ -158,10 +216,11 @@ fn canonical_digest_binds_actor_operation_target_kind_and_revision() {
         "versionId": cmd.document_version_id.as_uuid().to_string(),
         "kind": "VIEW",
         "expectedReadStateRevision": 0
-    })).unwrap();
-    let expected: [u8; 32] = Sha256::digest(
-        [b"document-current-read-state-v1\0".as_slice(), &canonical].concat()
-    ).into();
+    }))
+    .unwrap();
+    let expected: [u8; 32] =
+        Sha256::digest([b"document-current-read-state-v1\0".as_slice(), &canonical].concat())
+            .into();
     assert_eq!(original, expected);
 }
 
@@ -171,9 +230,12 @@ async fn unknown_outcome_keeps_operation_document_and_version_identity() {
     let result = CurrentReadStateService::new(Arc::new(FakeRepository::default()))
         .mutate_read_state(&context("test-idp", InvocationKind::HumanInteractive), cmd)
         .await;
-    assert_eq!(result, Err(ApplicationError::CurrentReadStateCommitOutcomeUnknown {
-        operation_id: cmd.operation_id,
-        document_id: cmd.document_id,
-        document_version_id: cmd.document_version_id,
-    }));
+    assert_eq!(
+        result,
+        Err(ApplicationError::CurrentReadStateCommitOutcomeUnknown {
+            operation_id: cmd.operation_id,
+            document_id: cmd.document_id,
+            document_version_id: cmd.document_version_id,
+        })
+    );
 }

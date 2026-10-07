@@ -24,7 +24,7 @@ fn hex(bytes: &[u8]) -> String {
 fn packaged_migrations_preserve_canonical_sql_and_unique_versions() {
     assert_eq!(
         MIGRATOR.iter().map(|m| m.version).collect::<Vec<_>>(),
-        (1..=11).collect::<Vec<_>>()
+        (1..=12).collect::<Vec<_>>()
     );
     for (sql, expected) in [
         (
@@ -159,7 +159,7 @@ async fn assert_integrated(pool: &PgPool) {
 }
 
 #[tokio::test]
-async fn fresh_history_applies_all_eleven_migrations() {
+async fn fresh_history_applies_all_twelve_migrations() {
     let (_container, pool) = postgres().await;
     migrate(&pool).await.unwrap();
     assert_integrated(&pool).await;

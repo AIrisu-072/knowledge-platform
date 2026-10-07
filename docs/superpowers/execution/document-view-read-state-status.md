@@ -2,6 +2,13 @@
 
 Status: ACTIVE
 
+## 2026-10-07 10:40 UTC — 第2保存単位のbackend core
+
+- PR106の初段head5fca7835/tree0d592f03を公開し、6fileのblob・tree・parent・branch・本文を照合した。同head CI37606340153の実ログで新GET欠如のNode REDと、current_read_state_contract.rsの新契約未定義E0432を確認した。fmt失敗も別に記録し、hostedの実formatter diffに従って修正した
+- 新backend core25filesはAPI/SDK生成、API契約19件・SDK試験12件・型/lintが成功。Application/共有projection/HTTP/migration0012/receipt・CAS・Auditのsourceを保存する。旧PUTと既存wire形を保持する
+- この段階のRust sourceは新しいcompile/実行が未完。DB/HTTP反例sourceと関連規範は続行中であり、backend完成・実DB合格とは扱わない。GUIも新しい欠如/可視性/navigation反例から再実装中
+- 次は同じPRへ残る試験とGUIを追加し、通常hostedのRust/実DB/実GUI資格を確認する。初段のbaseline runtime成功は今回の新機能成功へ転用しない
+
 ## 2026-10-07 10:02 UTC
 
 - 利用者が承認した詳細正常表示→既読、未読戻し→再確認目印、初回日時/過去Audit保持、読了証明に使わない意味を再実装する。[限定要件](../specs/2026-10-07-document-view-read-state-design.md)と[計画](../plans/2026-10-07-document-view-read-state.md)に従う

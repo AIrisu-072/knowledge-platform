@@ -109,6 +109,14 @@ export type CancelPublicationResult = ModelsCancelPublicationResult;
 
 export type EndPublicationResult = ModelsEndPublicationResult;
 
+export type CurrentReadProjection = ModelsCurrentReadProjection;
+
+export type CurrentReadState = ModelsCurrentReadState;
+
+export type ReadStateMutationResult = ModelsReadStateMutationResult;
+
+export type ReadStateMutationRequest = CommandsReadStateMutationRequest;
+
 export type ReadStateResult = ModelsReadStateResult;
 
 export type SourceEvidence = ModelsSourceEvidence;
@@ -281,6 +289,14 @@ export type CommandsPolicyInherit = {
 export type CommandsPublishVersion = {
     operationId: OperationId;
     expectedRevision: number;
+};
+
+export type CommandsReadStateMutationRequest = {
+    /**
+     * 完全再送でも固定するUUIDv7。
+     */
+    operationId: string;
+    expectedReadStateRevision: number;
 };
 
 export type CommandsRebaseVersion = {
@@ -458,6 +474,28 @@ export type ModelsCreateDocumentResult = {
     documentId: string;
     documentVersionId: string;
     fileId: string;
+};
+
+export type ModelsCurrentReadProjection = {
+    firstReadAt: string | null;
+    needsRecheck: boolean;
+    readStateRevision: number;
+    /**
+     * firstReadAtがnullではなく、needsRecheckがfalseの場合にtrue。
+     */
+    isRead: boolean;
+};
+
+export type ModelsCurrentReadState = {
+    documentId: string;
+    versionId: string;
+    firstReadAt: string | null;
+    needsRecheck: boolean;
+    readStateRevision: number;
+    /**
+     * firstReadAtがnullではなく、needsRecheckがfalseの場合にtrue。
+     */
+    isRead: boolean;
 };
 
 export type ModelsDiffChange = {
@@ -836,6 +874,17 @@ export type PublishedDocumentDetail = {
     readState: GuiReadState;
     displayTimestamp: GuiDisplayTimestamp;
     capabilities: ModelsDocumentCapabilities;
+};
+
+export type ModelsReadStateMutationResult = {
+    operationId: string;
+    documentId: string;
+    versionId: string;
+    kind: 'VIEW' | 'RESET';
+    expectedReadStateRevision: number;
+    changed: boolean;
+    occurredAt: string;
+    resultingReadState: ModelsCurrentReadProjection;
 };
 
 export type ModelsReadStateResult = {
@@ -2035,6 +2084,44 @@ export type SetDocumentAccessPolicyResponses = {
 
 export type SetDocumentAccessPolicyResponse = SetDocumentAccessPolicyResponses[keyof SetDocumentAccessPolicyResponses];
 
+export type GetCurrentDocumentVersionReadStateData = {
+    body?: never;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query?: never;
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state';
+};
+
+export type GetCurrentDocumentVersionReadStateErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type GetCurrentDocumentVersionReadStateError = GetCurrentDocumentVersionReadStateErrors[keyof GetCurrentDocumentVersionReadStateErrors];
+
+export type GetCurrentDocumentVersionReadStateResponses = {
+    /**
+     * 本人の現在状態を新たに取得した結果。操作資格のヒントであり、変更が必ず成功することを保証しない。
+     */
+    200: ModelsCurrentReadState;
+};
+
+export type GetCurrentDocumentVersionReadStateResponse = GetCurrentDocumentVersionReadStateResponses[keyof GetCurrentDocumentVersionReadStateResponses];
+
 export type MarkDocumentVersionReadData = {
     body?: never;
     path: {
@@ -2072,6 +2159,82 @@ export type MarkDocumentVersionReadResponses = {
 };
 
 export type MarkDocumentVersionReadResponse = MarkDocumentVersionReadResponses[keyof MarkDocumentVersionReadResponses];
+
+export type RecordDocumentVersionViewData = {
+    body: CommandsReadStateMutationRequest;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query?: never;
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state/view';
+};
+
+export type RecordDocumentVersionViewErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type RecordDocumentVersionViewError = RecordDocumentVersionViewErrors[keyof RecordDocumentVersionViewErrors];
+
+export type RecordDocumentVersionViewResponses = {
+    /**
+     * 操作確定時の変更しないreceipt。このsnapshotは現在状態ではない。
+     */
+    200: ModelsReadStateMutationResult;
+};
+
+export type RecordDocumentVersionViewResponse = RecordDocumentVersionViewResponses[keyof RecordDocumentVersionViewResponses];
+
+export type ResetDocumentVersionReadStateData = {
+    body: CommandsReadStateMutationRequest;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query?: never;
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state/reset';
+};
+
+export type ResetDocumentVersionReadStateErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type ResetDocumentVersionReadStateError = ResetDocumentVersionReadStateErrors[keyof ResetDocumentVersionReadStateErrors];
+
+export type ResetDocumentVersionReadStateResponses = {
+    /**
+     * 操作確定時の変更しないreceipt。このsnapshotは現在状態ではない。
+     */
+    200: ModelsReadStateMutationResult;
+};
+
+export type ResetDocumentVersionReadStateResponse = ResetDocumentVersionReadStateResponses[keyof ResetDocumentVersionReadStateResponses];
 
 export type GetDocumentHistoryData = {
     body?: never;

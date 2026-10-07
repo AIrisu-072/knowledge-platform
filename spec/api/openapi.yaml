@@ -417,7 +417,7 @@ paths:
     put:
       tags:
       - ReadState
-      summary: Explicit HumanInteractive read confirmation
+      summary: 旧PUTによるHumanInteractive本人の初回既読確認
       operationId: markDocumentVersionRead
       description: The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
       responses:
@@ -427,6 +427,53 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+    get:
+      tags: [ReadState]
+      summary: 現行公開版に対する本人の現在の既読状態を取得する
+      operationId: getCurrentDocumentVersionReadState
+      description: HumanInteractive本人の、現在Readが許可された現行PUBLISHEDかつ未終了の版に限定する。新たに取得した整合した200の応答をGUIの操作資格のヒントとし、変更時に認可とCASを再検査する。旧版ではSTALE_VERSIONより先にReadHistoryを要求する。Agentの通常の文書参照は引き続き利用できる。
+      responses:
+        '200': {$ref: '#/components/responses/CurrentReadState'}
+        '401': {$ref: '#/components/responses/Problem'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/documents/{documentId}/versions/{versionId}/read-state/view:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags: [ReadState]
+      summary: 通常詳細の正常な表示を記録する
+      operationId: recordDocumentVersionView
+      description: HumanInteractive本人の状態だけを扱う。現在Readと必要なReadHistoryを確認してからreceiptを再生し、receiptの照合は現行版判定とCASより先に行う。再生は現在状態を変更しない。完全再送ではpath、UUIDv7のoperationId、expectedReadStateRevisionを固定する。状態、receipt、実遷移のAuditを原子的に確定する。503 COMMIT_OUTCOME_UNKNOWNはretryableとexactRetryを返す。9007199254740991を超える増分は422で拒否する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReadStateMutationRequest'}
+            example: {operationId: 0199a8ad-cf25-7f22-8fd5-5facbb735015, expectedReadStateRevision: 0}
+      responses:
+        '200': {$ref: '#/components/responses/ReadStateMutationResult'}
+        '401': {$ref: '#/components/responses/Problem'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/documents/{documentId}/versions/{versionId}/read-state/reset:
+    parameters:
+    - $ref: '#/components/parameters/documentId'
+    - $ref: '#/components/parameters/versionId'
+    post:
+      tags: [ReadState]
+      summary: 現在既読の版を再確認のため未読に戻す
+      operationId: resetDocumentVersionReadState
+      description: HumanInteractive本人の状態だけを扱う。現在Readと必要なReadHistoryを確認してからreceiptを再生し、receiptの照合は現行版判定とCASより先に行う。再生は現在状態を変更しない。完全再送ではpath、UUIDv7のoperationId、expectedReadStateRevisionを固定する。状態、receipt、実遷移のAuditを原子的に確定する。503 COMMIT_OUTCOME_UNKNOWNはretryableとexactRetryを返す。9007199254740991を超える増分は422で拒否する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReadStateMutationRequest'}
+            example: {operationId: 0199a8ad-cf25-7f22-8fd5-5facbb735015, expectedReadStateRevision: 1}
+      responses:
+        '200': {$ref: '#/components/responses/ReadStateMutationResult'}
+        '401': {$ref: '#/components/responses/Problem'}
+        default: {$ref: '#/components/responses/Problem'}
   /v1/documents/{documentId}/history:
     parameters:
     - $ref: '#/components/parameters/documentId'
@@ -804,6 +851,14 @@ components:
       $ref: ./schemas/document/models.yaml#/$defs/CancelPublicationResult
     EndPublicationResult:
       $ref: ./schemas/document/models.yaml#/$defs/EndPublicationResult
+    CurrentReadProjection:
+      $ref: ./schemas/document/models.yaml#/$defs/CurrentReadProjection
+    CurrentReadState:
+      $ref: ./schemas/document/models.yaml#/$defs/CurrentReadState
+    ReadStateMutationResult:
+      $ref: ./schemas/document/models.yaml#/$defs/ReadStateMutationResult
+    ReadStateMutationRequest:
+      $ref: ./schemas/document/commands.yaml#/$defs/ReadStateMutationRequest
     ReadStateResult:
       $ref: ./schemas/document/models.yaml#/$defs/ReadStateResult
     SourceEvidence:
@@ -1817,6 +1872,34 @@ components:
       headers:
         Cache-Control:
           description: Sensitive response is never shared or stored.
+          schema: {type: string, const: 'private, no-store'}
+    CurrentReadState:
+      description: 本人の現在状態を新たに取得した結果。操作資格のヒントであり、変更が必ず成功することを保証しない。
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CurrentReadState'}
+          example: {documentId: 00000000-0000-4000-8000-000000000001, versionId: 00000000-0000-4000-8000-000000000022, firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false}
+      headers:
+        Cache-Control:
+          description: 機密性のある応答を共有・保存しない。
+          schema: {type: string, const: 'private, no-store'}
+    ReadStateMutationResult:
+      description: 操作確定時の変更しないreceipt。このsnapshotは現在状態ではない。
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReadStateMutationResult'}
+          example:
+            operationId: 0199a8ad-cf25-7f22-8fd5-5facbb735015
+            documentId: 00000000-0000-4000-8000-000000000001
+            versionId: 00000000-0000-4000-8000-000000000022
+            kind: VIEW
+            expectedReadStateRevision: 0
+            changed: true
+            occurredAt: '2029-01-05T00:00:00Z'
+            resultingReadState: {firstReadAt: '2029-01-05T00:00:00Z', needsRecheck: false, readStateRevision: 1, isRead: true}
+      headers:
+        Cache-Control:
+          description: 機密性のある応答を共有・保存しない。
           schema: {type: string, const: 'private, no-store'}
     ReadStateResult:
       description: ReadStateResult

@@ -896,3 +896,36 @@ $defs:
       nextCursor: {type: [string, 'null']}
       displayAuditEventId: {type: string, format: uuid}
       displayResultAuditEventId: {type: string, format: uuid}
+  CurrentReadProjection:
+    type: object
+    additionalProperties: false
+    required: [firstReadAt, needsRecheck, readStateRevision, isRead]
+    properties:
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      needsRecheck: {type: boolean}
+      readStateRevision: {type: integer, minimum: 0, maximum: 9007199254740991}
+      isRead: {type: boolean, description: firstReadAtがnullではなく、needsRecheckがfalseの場合にtrue。}
+  CurrentReadState:
+    type: object
+    additionalProperties: false
+    required: [documentId, versionId, firstReadAt, needsRecheck, readStateRevision, isRead]
+    properties:
+      documentId: {type: string, format: uuid}
+      versionId: {type: string, format: uuid}
+      firstReadAt: {type: [string, 'null'], format: date-time}
+      needsRecheck: {type: boolean}
+      readStateRevision: {type: integer, minimum: 0, maximum: 9007199254740991}
+      isRead: {type: boolean, description: firstReadAtがnullではなく、needsRecheckがfalseの場合にtrue。}
+  ReadStateMutationResult:
+    type: object
+    additionalProperties: false
+    required: [operationId, documentId, versionId, kind, expectedReadStateRevision, changed, occurredAt, resultingReadState]
+    properties:
+      operationId: {type: string, format: uuid}
+      documentId: {type: string, format: uuid}
+      versionId: {type: string, format: uuid}
+      kind: {type: string, enum: [VIEW, RESET]}
+      expectedReadStateRevision: {type: integer, minimum: 0, maximum: 9007199254740991}
+      changed: {type: boolean}
+      occurredAt: {type: string, format: date-time}
+      resultingReadState: {$ref: '#/$defs/CurrentReadProjection'}
