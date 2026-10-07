@@ -357,7 +357,21 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: /規程サンプル/ }).click();
   await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === `/documents/${documentId}` && url.searchParams.get('view') === 'authoring');
+  const documentPolicyRequests: Request[] = [];
+  const captureDocumentPolicy = (req: Request) => {
+    const url = new URL(req.url());
+    if (url.origin === human && /^\/v1\/documents\/[^/]+\/access-policy$/.test(url.pathname) && req.method() === 'PUT') documentPolicyRequests.push(req);
+  };
+  page.on('request', captureDocumentPolicy);
+  const documentPolicyRead = () => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/access-policy` && response.request().method() === 'GET';
+  });
+  const initialDocumentPolicyResponse = documentPolicyRead();
   await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
+  const initialDocumentPolicyResult = await initialDocumentPolicyResponse;
+  expect(initialDocumentPolicyResult.status()).toBe(200);
+  expect(await initialDocumentPolicyResult.json()).toEqual(originalDocumentPolicy);
   await expect(page.getByRole('heading', { name: '現在有効なアクセス権' })).toBeVisible();
   await expect(page.getByRole('rowheader', { name: /poc-agents/ })).toBeVisible();
   await page.getByRole('radio', { name: 'この文書だけに個別設定' }).check();
@@ -365,13 +379,75 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('radio', { name: 'この文書だけに個別設定' })).toBeChecked();
   await expect(page.getByLabel('変更理由')).toHaveValue('Synthetic runtime acceptance: preserve read-only agent grant');
   await visualCheckpoint(page, '10-access-policy-effective-draft-1440.png');
-  const policyResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/access-policy`) && response.request().method() === 'PUT');
+  const policyResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/access-policy` && response.request().method() === 'PUT';
+  });
   await page.getByRole('button', { name: 'アクセス設定を保存', exact: true }).click();
-  expect((await policyResponse).status()).toBe(200);
-  await expect(page.getByRole('status')).toContainText('アクセス設定を保存しました');
+  const documentPolicyResult = await policyResponse;
+  expect(documentPolicyResult.status()).toBe(200);
+  const documentPolicyBody = documentPolicyResult.request().postData()!;
+  const documentPolicyPayload = documentPolicyResult.request().postDataJSON() as CommandsPolicyExplicit;
+  expect(documentPolicyPayload.operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  expect(folderOperations.has(documentPolicyPayload.operationId)).toBe(false);
+  expect({ ...documentPolicyPayload, grants: grantsOnly(documentPolicyPayload.grants) }).toEqual({
+    operationId: documentPolicyPayload.operationId, expectedPolicyRevision: originalDocumentPolicy.policyRevision,
+    mode: 'explicit', reason: 'Synthetic runtime acceptance: preserve read-only agent grant',
+    grants: originalGrants,
+  });
+  const documentPolicyReceipt = await documentPolicyResult.json() as MutationResult;
+  expect(documentPolicyReceipt).toMatchObject({ operationId: documentPolicyPayload.operationId, resourceId: documentId,
+    changed: true, resultingRevision: originalDocumentPolicy.policyRevision + 1 });
+  expect(Number.isFinite(Date.parse(documentPolicyReceipt.occurredAt))).toBe(true);
+  const documentPolicyOutcome = page.getByRole('region', { name: '文書アクセス設定の保存結果', exact: true });
+  await expect(documentPolicyOutcome.getByRole('status').filter({ hasText: 'アクセス設定を保存しました。' })).toBeVisible();
+  await expect(documentPolicyOutcome).toContainText(documentPolicyPayload.operationId);
+  await expect(documentPolicyOutcome.getByRole('textbox', { name: '変更理由', exact: true })).toHaveValue(documentPolicyPayload.reason);
+  await expect(documentPolicyOutcome.getByText(`送信時のpolicy revision：${documentPolicyPayload.expectedPolicyRevision}`, { exact: true })).toBeVisible();
+  await expect(documentPolicyOutcome.getByText(`保存結果のpolicy revision：${documentPolicyReceipt.resultingRevision}`, { exact: true })).toBeVisible();
   const policy = (await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data;
   expect(policy.bindingMode).toBe('explicit');
-  expect(policy.effectiveGrants.find(grant => grant.subjectId === 'poc-agents')!.actions.sort()).toEqual(['read', 'readHistory']);
+  expect(policy).toMatchObject({ target: { kind: 'document', id: documentId }, policyRevision: documentPolicyReceipt.resultingRevision,
+    effectivePolicyId: policy.policyId, effectiveSource: { kind: 'document', id: documentId } });
+  expect(policy.policyId).not.toBeNull();
+  expect(grantsOnly(policy.effectiveGrants)).toEqual(originalGrants);
+  expect(grantsOnly(policy.effectiveGrants).find(grant => grant.subjectId === 'poc-users')!.actions)
+    .toEqual(['administer', 'publish', 'read', 'readHistory', 'write']);
+  expect(grantsOnly(policy.effectiveGrants).find(grant => grant.subjectId === 'poc-agents')!.actions).toEqual(['read', 'readHistory']);
+  // 既知成功の同じbodyを完全再送する。実の応答喪失・自己失権後UNKNOWNの資格ではない。
+  const documentPolicyReplay = await request.put(documentPolicyResult.url(), {
+    data: documentPolicyBody, headers: { 'content-type': 'application/json' },
+  });
+  expect(documentPolicyReplay.status()).toBe(200);
+  expect(await documentPolicyReplay.json()).toEqual(documentPolicyReceipt);
+  expect((await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data).toEqual(policy);
+  expect((await getFolderAccessPolicy({ ...humanOptions, path: folderPath })).data).toEqual(currentFolderPolicy);
+  // 同じアプリ内の通常往復で成功receiptを保持する。確認して閉じた後は現在GETだけを根拠にする。
+  await page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '編集作業', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === '/documents' && url.searchParams.get('view') === 'authoring');
+  await expect(page.getByRole('button', { name: '文書アクセス設定の保存結果', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'PoC Shared', exact: true }).click();
+  await page.getByRole('button', { name: /規程サンプル/ }).click();
+  await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === `/documents/${documentId}` && url.searchParams.get('view') === 'authoring');
+  const returnedDocumentPolicyResponse = documentPolicyRead();
+  await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
+  const returnedDocumentPolicyResult = await returnedDocumentPolicyResponse;
+  expect(returnedDocumentPolicyResult.status()).toBe(200);
+  expect(await returnedDocumentPolicyResult.json()).toEqual(policy);
+  await expect(documentPolicyOutcome.getByRole('status').filter({ hasText: 'アクセス設定を保存しました。' })).toBeVisible();
+  await expect(documentPolicyOutcome).toContainText(documentPolicyPayload.operationId);
+  await expect(documentPolicyOutcome.getByRole('textbox', { name: '変更理由', exact: true })).toHaveValue(documentPolicyPayload.reason);
+  await expect(documentPolicyOutcome.getByText(`送信時のpolicy revision：${documentPolicyPayload.expectedPolicyRevision}`, { exact: true })).toBeVisible();
+  await expect(documentPolicyOutcome.getByText(`保存結果のpolicy revision：${documentPolicyReceipt.resultingRevision}`, { exact: true })).toBeVisible();
+  await documentPolicyOutcome.getByRole('button', { name: '確認して閉じる', exact: true }).click();
+  await expect(documentPolicyOutcome).toBeHidden();
+  await expect(page.getByRole('radio', { name: 'この文書だけに個別設定', exact: true })).toBeChecked();
+  expect((await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data).toEqual(policy);
+  page.off('request', captureDocumentPolicy);
+  expect(documentPolicyRequests).toHaveLength(1);
+  expect(new URL(documentPolicyRequests[0]!.url()).pathname).toBe(`/v1/documents/${documentId}/access-policy`);
+  expect(documentPolicyRequests[0]!.postData()).toBe(documentPolicyBody);
   completed('policy-saved');
 
   await page.getByRole('tab', { name: '版・改訂', exact: true }).click();
@@ -520,6 +596,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const savedState = JSON.parse(await readFile(context.statePath, 'utf8'));
   // 同じprivate stateを後続saveSnapshotも保存する。公開診断には追加しない。
   savedState.folderAccessPolicy = { ...currentFolderPolicy, effectiveGrants: grantsOnly(currentFolderPolicy.effectiveGrants) };
+  savedState.documentAccessPolicy = { ...policy, effectiveGrants: grantsOnly(policy.effectiveGrants) };
   await writeFile(context.statePath, JSON.stringify(savedState, null, 2), { mode: 0o600 });
   completed('snapshot-saved');
   await test.info().attach('shared-state.json', { body: Buffer.from(JSON.stringify(after, null, 2)), contentType: 'application/json' });

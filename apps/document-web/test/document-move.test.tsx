@@ -1,3 +1,4 @@
+import { documentAccessPolicyOperations } from '../src/application/document-access-policy';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -330,4 +331,12 @@ test.each(rootIdTypeCases)('Root ID $folderIdを$stage時に移動先の文字�
   }
   await waitFor(() => expect(within(dialog).getByLabelText(confirmation)).toBeEnabled()); expect(within(dialog).getByLabelText(confirmation)).not.toBeChecked(); submit(dialog); expect(h.api.moveDocument).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByLabelText(confirmation)); submit(dialog); await within(dialog).findByText('文書を移動しました。'); expect(h.api.moveDocument).toHaveBeenCalledTimes(1); expect(h.api.moveDocument.mock.calls[0]![1].toFolderId).toBe(rootId);
+});
+
+test.each(['pending', 'unknown'] as const)('Document ACL %s中は関連操作を開始せず保持入口を残す', async status => {
+  const { client } = setup();
+  await screen.findByRole('button', { name: title });
+  act(() => documentAccessPolicyOperations(client).put({ targetDocumentId: 'retained', context: { documentId: 'retained', title: '保持文書', view: 'published' }, request: { operationId: 'retained-policy', expectedPolicyRevision: 3, mode: 'inherit', reason: '理由' }, expectedChanged: true, status }));
+  expect(screen.getByRole('button', { name: title })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '文書アクセス設定の保存結果' })).toBeEnabled();
 });

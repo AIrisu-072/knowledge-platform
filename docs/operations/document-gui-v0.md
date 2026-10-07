@@ -1,8 +1,8 @@
 # 文書GUIの登録・フォルダー・属性・版履歴・原本編集・公開操作
 
-この手順は、既存Document APIを通常GUIから使う操作を説明する。固定導入版は[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)統合main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4` / tree `29f75ce9c8bc2c9d283a2ae9484529bcb8d6555d`。旧pin41bまでのRoot/Folder操作、絞り込み、文書移動、正式改訂/比較の続き表示、両履歴と旧原本、履歴一覧入口/JST表示を保持し、PR94の公開前WORKINGと現行公開版の内容比較を含む。この比較は旧固定版41bには含まれない。現在開発中の非root Folderアクセス設定GUIはこのpin d515に未収録で、追加される操作説明は後続source向けである。各節の初回統合履歴、PR公開headの資格、現在pinのmain自身の資格を区別する。資格は固定合成2profile・画像なしUbuntuの機能受入であり、対象PCでの手順実行・本番認証・見た目全体の比較検証を含まない。exact-headの資格記録は[手動導入手順](linux-manual-installation.md)を正本とし、実サーバーへの反映は所有者が手動で行う。
+この手順は、既存Document APIを通常GUIから使う操作を説明する。固定導入版は[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)統合main `bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab` / tree `84b0b0d48d3dfdc8b0a5b66ec53f9cc070aa6420`。旧pin d515までのRoot/Folder操作、絞り込み、文書移動、正式改訂/比較の続き表示、両履歴と旧原本、履歴一覧入口/JST表示・PR94公開前WORKING内容比較を保持し、PR97の非root Folderアクセス設定GUIと、アクセス設定変更後の旧原本・比較結果の遅延保存/復活を抑止する関連guardを含む。これらは旧固定版d515には含まれない。現在開発中のDocument AccessTabのUNKNOWN固定要求・画面往復保持・関連read失効の回復補修は新pin bba1d6ddに未収録で、追加される操作説明は後続source向けである。各節の初回統合履歴、PR公開headの資格、現在pinのmain自身の資格を区別する。資格は固定合成2profile・画像なしUbuntuの機能受入であり、対象PCでの手順実行・本番認証・見た目全体の比較検証を含まない。exact-headの資格記録は[手動導入手順](linux-manual-installation.md)を正本とし、実サーバーへの反映は所有者が手動で行う。
 
-現在pinの[push CI37562024089](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089)は全13jobs/13checks成功、fresh Rust/DB36/Folder4と終端後公開artifact0を確認した。runtimeのcheckout/Document/Organization/summary step成功と固定mainのsourceの強制終了条件を対応させて必須gate合格と評価する。元log tool初回がTransport closedでruntime stdoutは未取得のため、実測GUI/browser件数、head/clean/qualified/provenance/再起動/cleanupの印字値・個別receiptを直接確認したとは記録しない。PR94/旧pinの値やローカルGUI件数をhosted印字値へ転用しない。具体的な観測と推論の境界は手動導入手順に記録する。
+現在pinの[push CI37570945202](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202)は全13jobs/13checks成功、fresh Rust/DB36/Folder4と終端後公開artifact0を確認した。runtimeのcheckout/Document/Organization/summary step成功と固定mainのsourceの強制終了条件を対応させて必須gate合格と評価する。元log tool初回がTransport closedでruntime stdoutは未取得のため、実測GUI/browser件数、head/clean/qualified/provenance/再起動/cleanupの印字値・個別receiptを直接確認したとは記録しない。PR97/旧pinの値やローカルGUI件数をhosted印字値へ転用しない。具体的な観測と推論の境界は手動導入手順に記録する。
 
 資格対象は画像なしUbuntu実操作PoC。macOS golden比較は未実行・未更新で、WORKING更新時の影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。後続のフォルダー操作を追加した一覧画面も画像比較は未取得である。現在pinのhosted機能受入と、純粋/DOM確認・画像比較の資格を区別し、以下のsource上の操作説明だけで全visual資格を合格としない。
 
@@ -111,7 +111,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 選択したフォルダーのアクセス設定を変更する
 
-この節は現在開発中の非root Folderアクセス設定GUIの操作説明で、固定導入版d515には未収録である。実装・試験・受入の状態は[本機能の状況](../superpowers/execution/folder-access-policy-gui-status.md)を参照する。System Rootの設定変更、新しい主体の検索や手入力による追加は対象外である。
+この機能は[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)で統合し、現在の固定導入版bba1d6ddに含まれる。旧固定版d515には未収録。実装時点の反例・試験は[本機能の状況](../superpowers/execution/folder-access-policy-gui-status.md)、現在pinのmain自身の資格は[手動導入手順](linux-manual-installation.md)を参照する。既存合成Sharedの2groupへの4GUI PUT、既知成功receiptの別request再送、正規GETとHTTP再起動後のGET/GUI照合を、固定sourceと今回成功stepの対応から評価する。実通信断・自己失権・親並行変更のhosted再現は未資格。System Rootの設定変更、新しい主体の検索や手入力による追加は対象外である。
 
 1. 通常のフォルダーツリーでSystem Root以外の対象を選び、「選択したフォルダーのアクセス設定」を開く。URLのIDだけで開いた場合もツリーで選び直す。対象名・ID・現在の設定方式・設定元を確認する。必要な管理権限をサーバーが確認できる場合だけ編集できる
 2. 「設定方式」で「個別設定」または「上位の設定を継承」を選ぶ。個別設定では、現在の読取で確認した既存主体の「閲覧」「履歴閲覧」「編集」「公開」「アクセス管理」を変更できる。表示名が同じでも主体種別・認証元・IDが異なる行は別の主体である
@@ -165,7 +165,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 履歴一覧から公開終了・取下げ後の文書を読む
 
-この通常入口と一覧内の閲覧専用パネルは[PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)で統合し、現在の導入pin41bに含まれる。旧固定版933dには未収録。[履歴一覧の実行状況](../superpowers/execution/document-history-workspace-status.md)の初回実装・JST指定修復・過去失敗の記録と、[手動導入手順](linux-manual-installation.md)の現在main自身の資格を区別する。履歴一覧には現在の文書も含まれ、公開終了した文書だけを検索する条件ではない。
+この通常入口と一覧内の閲覧専用パネルは[PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)で統合し、現在の導入pin bba1d6ddに含まれる。旧固定版933dには未収録。[履歴一覧の実行状況](../superpowers/execution/document-history-workspace-status.md)の初回実装・JST指定修復・過去失敗の記録と、[手動導入手順](linux-manual-installation.md)の現在main自身の資格を区別する。履歴一覧には現在の文書も含まれ、公開終了した文書だけを検索する条件ではない。
 
 1. メインナビゲーションの「文書履歴」を開く。必要に応じて既存の文書名・属性・作成日時・フォルダー条件を設定し、現在の一覧から対象行を選ぶ。通常詳細を開けないことだけで履歴も読めないとは判断しない
 2. 「選択した文書の履歴」で代表版の文書名・版番号・正式改訂と、現在の文書属性を確認する。「公開終了済み」と代表版のPUBLISHED/WITHDRAWNは別の情報で、PUBLISHED表示だけでは現在公開中とは判断できない。フォルダーが「表示できません」の場合も最上位や選択中のフォルダーと決めつけない
@@ -181,7 +181,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 文書の変更履歴を読み進める
 
-この機能は[PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)で統合し、旧固定版933dと現在の固定導入版d515に含まれる。旧固定版e249には未収録。[履歴の実行状況](../superpowers/execution/document-history-pagination-status.md)は実装・初回統合の履歴であり、現在pinのmain自身の資格は[手動導入手順](linux-manual-installation.md)を参照する。履歴では記録された業務操作と、その記録の由来を確認する。
+この機能は[PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)で統合し、旧固定版933dと現在の固定導入版bba1d6ddに含まれる。旧固定版e249には未収録。[履歴の実行状況](../superpowers/execution/document-history-pagination-status.md)は実装・初回統合の履歴であり、現在pinのmain自身の資格は[手動導入手順](linux-manual-installation.md)を参照する。履歴では記録された業務操作と、その記録の由来を確認する。
 
 1. 通常の文書詳細で「履歴」を開き、「変更履歴」を確認する。最初は100件まで表示する。操作の記録・版からの履歴・由来不明を区別し、日時や実行者が不明な行を推測で補わない
 2. 「変更履歴をさらに表示」があれば押して続きを加える。読み込み中はボタンが無効になり、連打で同じページを重複追加しない。取得件数だけで続きの有無を判断せず、画面のボタンを確認する
@@ -195,7 +195,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## コンテンツ版の履歴と旧版原本を確認する
 
-この機能は[PR92](https://github.com/AIrisu-072/knowledge-platform/pull/92)で統合し、旧固定版933dと現在の固定導入版d515に含まれる。旧固定版e249には未収録。[実行状況](../superpowers/execution/document-content-history-status.md)の初回統合資格と、[手動導入手順](linux-manual-installation.md)の現在pinのmain資格を区別する。この節は通常に読める文書の詳細が対象で、公開終了して通常詳細を読めない文書を開く専用画面ではない。
+この機能は[PR92](https://github.com/AIrisu-072/knowledge-platform/pull/92)で統合し、旧固定版933dと現在の固定導入版bba1d6ddに含まれる。旧固定版e249には未収録。[実行状況](../superpowers/execution/document-content-history-status.md)の初回統合資格と、[手動導入手順](linux-manual-installation.md)の現在pinのmain資格を区別する。この節は通常に読める文書の詳細が対象で、公開終了して通常詳細を読めない文書を開く専用画面ではない。
 
 1. 文書の「版・改訂」で「コンテンツ版の履歴を開く」を押す。「コンテンツ版の履歴（閲覧専用）」に現在読める内容世代が表示される。Version番号は内容の世代で、正式なMajor.Minor改訂番号や更新競合用の番号とは異なる
 2. 「履歴のコンテンツ版を選択」で確認する版を明示的に選ぶ。最初は未選択であり、選んだ旧版を通常の公開・予約・編集の対象へ切り替える操作ではない。返された版の状態・現行表示を確認し、過去版がすべて公開済みとは決めつけない
@@ -209,7 +209,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 正式改訂の続きを表示する
 
-この機能は[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)で統合し、旧固定版e249/933dと現在の固定導入版d515に含まれる。旧固定版 `cd6aafcc` には含まれない。実受入の範囲は下記と[手動導入手順](linux-manual-installation.md)のmain資格を参照する。
+この機能は[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)で統合し、旧固定版e249/933dと現在の固定導入版bba1d6ddに含まれる。旧固定版 `cd6aafcc` には含まれない。実受入の範囲は下記と[手動導入手順](linux-manual-installation.md)のmain資格を参照する。
 
 1. 文書詳細の「版・改訂」を開き、「正式改訂」を確認する。正式な改訂番号の履歴と、上にあるWORKINGなどのコンテンツ版は別の一覧である
 2. 最初は新しい順に100件まで表示する。「正式改訂をさらに表示」があれば押して続きを加える。最後まで取得すると続きのボタンはなくなる。読み込み中の連打で同じページを重複追加しない
@@ -221,7 +221,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 公開前の作業版と公開版の内容を比較する
 
-この機能は[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)で統合し、現在の固定導入版d515に含まれる。旧固定版41bには含まれない。main自身の[push CI37562024089](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089)のDocument成功stepと同treeの選択sourceを対応させて資格を評価した。runtime stdoutは未取得であり、個別assertion値の直接観測ではない。[公開前比較の実行状況](../superpowers/execution/document-working-comparison-status.md)は時点別の記録として保持する。現在の公開版と選択したWORKINGの内容比較であり、次節の正式改訂間のメタデータ比較とは異なる。
+この機能は[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)で統合し、現在の固定導入版bba1d6ddに含まれる。旧固定版41bには含まれない。main自身の[push CI37570945202](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202)のDocument成功stepと同treeの選択sourceを対応させて資格を評価した。runtime stdoutは未取得であり、個別assertion値の直接観測ではない。[公開前比較の実行状況](../superpowers/execution/document-working-comparison-status.md)は時点別の記録として保持する。現在の公開版と選択したWORKINGの内容比較であり、次節の正式改訂間のメタデータ比較とは異なる。
 
 1. 「編集作業」から文書を開き、「版・改訂」で比較するWORKINGを選ぶ。現在の公開版と作業版を読めて、サーバーが比較操作を許可している場合に「現行公開版とこの作業版を比較」を押す。公開版や作業版がない場合に、別の版を推測して比較する操作ではない
 2. 「公開前の内容比較」で、比較に使った公開版と作業版の番号・題名を確認する。画面が読み取って確認した版を比較するため、その後も公開版が変わらないことを保証する表示ではない
@@ -236,7 +236,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 比較結果の続きを表示する
 
-この機能は[PR90](https://github.com/AIrisu-072/knowledge-platform/pull/90)で統合し、旧固定版933dと現在の固定導入版d515に含まれる。旧固定版e249には未収録。上記の正式改訂一覧の続き表示とは別の操作である。初回合格headの実結果はPR90本文、実装時点の履歴は[比較結果の実行状況](../superpowers/execution/document-comparison-pagination-status.md)、現在pinのmain自身の資格は[手動導入手順](linux-manual-installation.md)で確認し、旧headの受入結果を転用しない。
+この機能は[PR90](https://github.com/AIrisu-072/knowledge-platform/pull/90)で統合し、旧固定版933dと現在の固定導入版bba1d6ddに含まれる。旧固定版e249には未収録。上記の正式改訂一覧の続き表示とは別の操作である。初回合格headの実結果はPR90本文、実装時点の履歴は[比較結果の実行状況](../superpowers/execution/document-comparison-pagination-status.md)、現在pinのmain自身の資格は[手動導入手順](linux-manual-installation.md)で確認し、旧headの受入結果を転用しない。
 
 1. 正式改訂から「基準」「対象」を明示して「新旧比較」を開く。選んだ組合せを確認し、未取得の古い改訂を別の改訂へ置き換えず、先に正式改訂一覧の続きを取得するか明示的に選び直す
 2. 「比較結果をさらに表示」があれば押す。既存APIへ50件を上限とする読取を要求し、本文差分（`displayItems`）と未比較範囲（`unverifiedRegions`）の両方を取得順に加える。自動で全件を取得しない。本文差分が0件や50件未満でも続きはあり得るため、続きの表示を確認する。終端では続きのボタンがなくなる
@@ -249,7 +249,7 @@ Rootと選択親は、進行中または未確認の作成を1つだけ共有し
 
 ## 文書を別のフォルダーへ移動する
 
-この機能は[PR88](https://github.com/AIrisu-072/knowledge-platform/pull/88)で統合し、旧固定版e249/933dと現在の固定導入版d515に含まれる。旧固定版 `cd6aafcc` には含まれない。フォルダーそのものの移動とは別の操作である。
+この機能は[PR88](https://github.com/AIrisu-072/knowledge-platform/pull/88)で統合し、旧固定版e249/933dと現在の固定導入版bba1d6ddに含まれる。旧固定版 `cd6aafcc` には含まれない。フォルダーそのものの移動とは別の操作である。
 
 1. 通常の公開一覧または「編集作業」から文書の詳細を開き、「文書を移動」を押す。現在の文書情報と元の所属を読み直す。元所属を表示できない文書、終了後の文書、読めない移動先はこの画面の対象外で、URLのIDから補って操作しない
 2. 移動先ツリーで読めるフォルダーを選び、文書名・文書ID、元所属名・ID、移動先名・IDを確認する。System Rootも移動先に選べる。移動先が見えていても移動できる保証にはならず、最終的な認可はサーバーが確認する
@@ -311,6 +311,20 @@ Organizationの手動導入ではschedulerを起動しない。この取消GUI�
 
 取下げと公開終了は異なる操作である。取下げ後には直前版へ復帰する場合があるが、公開終了は現行版を無くして通常公開を終了する。
 
+## 文書アクセス設定の保存結果を確認する
+
+文書詳細の「アクセス」では、既存主体の権限と、個別設定・親フォルダーからの継承を変更できる。この節で追加する結果不明・画面往復時の回復補修は固定導入版bbaには未収録で、[本補修の状況](../superpowers/execution/document-access-policy-recovery-status.md)を参照する。新しい主体や権限規則を追加するものではない。
+
+1. 通常に読める文書の詳細から「アクセス」を開き、対象文書と現在有効なアクセス権を確認する。既存の主体だけを編集し、「変更理由」を入力して「アクセス設定を保存」を押す。管理できるかどうかと更新の競合は、最後にサーバーが判定する
+2. 送信が始まったら操作ID・対象・設定方式・主体と権限・理由を固定する。保存結果を待つ間や結果が不明な間は、その要求を書き換えて送らない。「同じ内容で再試行」は同じ要求の結果確認に使う
+3. 別のタブ、一覧、別文書へ移動した後は「文書アクセス設定の保存結果」を開く。表示された文書ID・文書名は送信時の対象であり、現在選択している別文書へ要求を移すものではない。保存によって通常のアクセス画面を開けなくなった場合も、文書一覧または文書詳細の保持結果から確認する
+4. 成功したら「アクセス設定を保存しました。」または「アクセス設定の変更はありませんでした。」と、操作時点の結果を確認し、「確認して閉じる」を押す。現在の表示更新に失敗しても、確定した保存を失敗扱いにして新しく送信しない。現在状態はあらためて正規の読取で確認する
+5. 初回の要求が明確に拒否された場合は「拒否された操作を確認して終了」で記録を確認し、現在の文書を読み直して変更案を見直す。送信前の設定変化や読取失効では「最新の状態を取得して見直す」を使う。背景の読取だけで変更案や操作IDを無言に置き換えない
+
+結果不明の後に403・404・409等が返っても、最初の保存が未実行だった証拠にはならない。自分の管理権限がなくなった場合などは同じ要求の結果も読めないことがある。現在の設定が同じに見えても操作の成功記録へ代えず、保持した操作IDと対象IDを添えて管理者へ確認する。保持は同じアプリのメモリー内だけで、ページ再読み込み・タブ終了を跨ぐ保存はない。
+
+送信時の固定内容と、現在のアクセス設定は別に表示する。読取が拒否・失効したときに古い設定を現在値として見せず、確定後は関連する文書・履歴・比較・原本の読取も無効化する。結果不明の文書/フォルダー操作がある場合は、新しい関連操作を始める前に保持結果を確認する。単体の応答喪失・自己失権の反例と、合成hostedで確認する正常保存・既知成功の再送・往復・HTTP再起動は区別して記録する。今回のhosted資格は本補修の状況とPR本文を参照する。
+
 ## 結果不明・競合・権限失効
 
 - 取下げ・公開終了で結果不明と表示されたら、「同じ内容で再試行」を使う。操作ID、対象、理由、期待するrevisionを変えずにサーバーへ照会・再送する
@@ -325,6 +339,25 @@ Organizationの手動導入ではschedulerを起動しない。この取消GUI�
 過去版選択の取下げ、原本の追加・削除・並替、初回文書登録自体の複数原本化は別途扱う。予約取消の読取補修は既存予約IDの追加に限り、予約/取消の業務意味や新しい権限規則は変更しない。
 
 ## 過去の固定導入版の記録
+
+### 2026-10-07 PR94統合main d515の案内
+
+以下の「固定導入版」「現在pin」「未収録」は当時の案内である。現在pinの収録範囲・資格は冒頭と手動導入手順を参照する。
+
+この手順は、既存Document APIを通常GUIから使う操作を説明する。固定導入版は[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)統合main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4` / tree `29f75ce9c8bc2c9d283a2ae9484529bcb8d6555d`。旧pin41bまでのRoot/Folder操作、絞り込み、文書移動、正式改訂/比較の続き表示、両履歴と旧原本、履歴一覧入口/JST表示を保持し、PR94の公開前WORKINGと現行公開版の内容比較を含む。この比較は旧固定版41bには含まれない。現在開発中の非root Folderアクセス設定GUIはこのpin d515に未収録で、追加される操作説明は後続source向けである。各節の初回統合履歴、PR公開headの資格、現在pinのmain自身の資格を区別する。資格は固定合成2profile・画像なしUbuntuの機能受入であり、対象PCでの手順実行・本番認証・見た目全体の比較検証を含まない。exact-headの資格記録は[手動導入手順](linux-manual-installation.md)を正本とし、実サーバーへの反映は所有者が手動で行う。
+
+現在pinの[push CI37562024089](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089)は全13jobs/13checks成功、fresh Rust/DB36/Folder4と終端後公開artifact0を確認した。runtimeのcheckout/Document/Organization/summary step成功と固定mainのsourceの強制終了条件を対応させて必須gate合格と評価する。元log tool初回がTransport closedでruntime stdoutは未取得のため、実測GUI/browser件数、head/clean/qualified/provenance/再起動/cleanupの印字値・個別receiptを直接確認したとは記録しない。PR94/旧pinの値やローカルGUI件数をhosted印字値へ転用しない。具体的な観測と推論の境界は手動導入手順に記録する。
+
+資格対象は画像なしUbuntu実操作PoC。macOS golden比較は未実行・未更新で、WORKING更新時の影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。後続のフォルダー操作を追加した一覧画面も画像比較は未取得である。現在pinのhosted機能受入と、純粋/DOM確認・画像比較の資格を区別し、以下のsource上の操作説明だけで全visual資格を合格としない。
+
+当時のFolderアクセス設定節の適用版案内：
+
+この節は現在開発中の非root Folderアクセス設定GUIの操作説明で、固定導入版d515には未収録である。実装・試験・受入の状態は[本機能の状況](../superpowers/execution/folder-access-policy-gui-status.md)を参照する。System Rootの設定変更、新しい主体の検索や手入力による追加は対象外である。
+
+当時の公開前比較節の適用版案内：
+
+この機能は[PR94](https://github.com/AIrisu-072/knowledge-platform/pull/94)で統合し、現在の固定導入版d515に含まれる。旧固定版41bには含まれない。main自身の[push CI37562024089](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37562024089)のDocument成功stepと同treeの選択sourceを対応させて資格を評価した。runtime stdoutは未取得であり、個別assertion値の直接観測ではない。[公開前比較の実行状況](../superpowers/execution/document-working-comparison-status.md)は時点別の記録として保持する。現在の公開版と選択したWORKINGの内容比較であり、次節の正式改訂間のメタデータ比較とは異なる。
+
 
 ### 2026-10-07 PR93統合main41bの案内
 

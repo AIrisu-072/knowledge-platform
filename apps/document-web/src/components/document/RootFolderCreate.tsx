@@ -1,3 +1,4 @@
+import { documentAccessPolicyOperations } from '../../application/document-access-policy';
 import { folderAccessPolicyOperations } from '../../application/document-folder-access-policy';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,6 +24,8 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
   const client = useQueryClient();
+  const documentPolicyStore = documentAccessPolicyOperations(client);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
   const policyStore = folderAccessPolicyOperations(client);
   const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get);
   const documentMoveStore = documentMoveOperations(client);
@@ -33,9 +36,9 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
   const moveStore = folderMoveOperations(client);
   const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
-  const renameUnresolved = [rename, move, documentMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherUnresolvedNow = () => [renameStore.get(), moveStore.get(), documentMoveStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
-  const otherBlocked = policyOperation?.status === 'pending' || policyOperation?.status === 'unknown' ? 'アクセス設定の結果が未確定です。保持されている操作の結果を先に確認してください。' : move?.status === 'pending' || move?.status === 'unknown' || documentMove?.status === 'pending' || documentMove?.status === 'unknown'
+  const renameUnresolved = [documentPolicyOperation, rename, move, documentMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [documentPolicyStore.get(), renameStore.get(), moveStore.get(), documentMoveStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherBlocked = documentPolicyOperation?.status === 'pending' || documentPolicyOperation?.status === 'unknown' || policyOperation?.status === 'pending' || policyOperation?.status === 'unknown' ? 'アクセス設定の結果が未確定です。保持されている操作の結果を先に確認してください。' : move?.status === 'pending' || move?.status === 'unknown' || documentMove?.status === 'pending' || documentMove?.status === 'unknown'
     ? '移動結果が未確定です。保持されている移動操作の結果を先に確認してください。'
     : '改名結果が未確定です。保持されている改名操作の結果を先に確認してください。';
   const [open, setOpen] = useState(false);
