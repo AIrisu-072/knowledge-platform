@@ -47,8 +47,10 @@ def table_bytes() -> dict:
 
 
 def searchable(token: str, actor: str) -> bool:
-    status, body, _ = search_client.search(actor, token, "bodyRequired", 5)
-    return status == 200 and bool(body.get("items"))
+    """The document titled with this token is among the hits. Bigram term
+    matching also returns earlier probe documents, so any hit is not enough."""
+    status, body, _ = search_client.search(actor, token, "bodyRequired", 20)
+    return status == 200 and any(item.get("title") == token for item in body.get("items", []))
 
 
 def main() -> int:
