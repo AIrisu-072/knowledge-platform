@@ -1,5 +1,11 @@
 # Organization Agentの構造化結果・Agent Chat・executor adapter境界（U4）— Capability Execution Status
 
+## 2026-10-07 08:31 UTC — main統合
+
+- [PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104) をmain `d92ca6d` へsquash統合。exact head `8e8a893`（基点main `3b06421`）で全14 job成功、Organization Browser PoCは23 stageすべてpassed（agent-chat-journey／agent-chat-restart／agent-chat-persistenceを含む、cleanup完了）。統合後のtreeはhead `8e8a893` と同一
+- review修正前のhead `4460273` の `rust-test` は新しいpushで取り消されたもの（失敗ではない）。それ以外のjobは成功
+- 統合後のmain CIは、この記録を含む文書PRで確認する
+
 ## 2026-10-07 — 実装・ローカル検証・独立review修正完了、PR/hosted CIへ
 
 ### 位置付け
