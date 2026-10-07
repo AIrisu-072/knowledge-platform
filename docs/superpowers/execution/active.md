@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
+- branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+
+---
+
 ## 2026-10-07 01:28 UTC — 公開前WORKINGの内容比較
 
 - PR93統合main41b584ddを基点に、通常「版・改訂」から正規readで確認したcurrent published/選択WORKINGの固定IDを既存Version comparisonへ送る。[状況](document-working-comparison-status.md)と[限定計画](../plans/2026-10-07-document-working-comparison.md)が再開先
