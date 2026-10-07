@@ -2,7 +2,7 @@
 
 ## 状態
 
-ADOPTED FOR v1 IMPLEMENTATION（Audit Infrastructure v1 track、2026-10-07）。設計の独立review 2回と最終確認を経たうえで、依頼者の実装指示の範囲で採用する。Document担当・Search担当には、設計§13のhandoffで影響の確認を求める。依頼者の実装指示（Audit Outboxから監査Storeまでの配送・保存・検証の完成）と TC:797（`audit_outbox_events` の行・配送状態・ackは独立したAudit経路が所有する）に基づく。設計の詳細は[配送・保存・検証設計](../superpowers/specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)。Document担当・Search担当への影響は同設計§13のhandoffで共有する。本番採用・本番DB移行・deployは意味しない。
+ADOPTED FOR v1 IMPLEMENTATION（Audit Infrastructure v1 track、2026-10-07）。設計の独立review 3回（最終reviewの指摘は改訂3で反映）を経て、依頼者の実装指示の範囲で採用する。Document担当・Search担当には、設計§13のhandoffで影響の確認を求める。依頼者の実装指示（Audit Outboxから監査Storeまでの配送・保存・検証の完成）と TC:797（`audit_outbox_events` の行・配送状態・ackは独立したAudit経路が所有する）に基づく。設計の詳細は[配送・保存・検証設計](../superpowers/specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)。Document担当・Search担当への影響は同設計§13のhandoffで共有する。本番採用・本番DB移行・deployは意味しない。
 
 ## D1. CloudEvents envelopeは自前の最小実装とする
 
@@ -64,7 +64,7 @@ ADOPTED FOR v1 IMPLEMENTATION（Audit Infrastructure v1 track、2026-10-07）。
 
 ## D5. 自由記述reasonはStoreへ複製しない
 
-- **判断：** reasonを持つ7種（withdrawn、publication.ended、metadata.changed、moved、folder.created/renamed/moved）は、Storeへ配送する。理由文そのものは複製せず、`{provided, utf8_bytes, text_retained: "source_systems"}` だけを記録する。Storeへ渡すsource commitmentはsalt付きで、Storeの読者が理由文を推測確認することはできない。
+- **判断：** reasonを持つ7種（withdrawn、publication.ended、metadata.changed、moved、folder.created/renamed/moved）は、Storeへ配送する。理由文そのものは複製せず、`{provided, utf8_bytes, text_retained: "source_systems"}` だけを記録する。Storeへ渡すsource commitmentはsalt付きである。Storeの読者は理由文を取得できず、推測確認もできない。ただし、正確なUTF-8 byte数による長さの区別だけは残る。
 - **根拠：** OA:646「許可された理由分類」「無制限の入力を複製しない」、OA §19、依頼者の「顧客データ等を無条件保存しない」。
 - **旧判断（PR44/45）との違い：**
   - PR44/45は、reasonを持つeventを配送しない（quarantineする）と判断していた。この判断では取下げ・metadata/ACL変更がStoreへ届かず、今回の要求を満たさないため、置き換える。

@@ -1,6 +1,6 @@
 # Audit Infrastructure v1：監査Outboxから監査Storeまでの配送・保存・検証 設計
 
-Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最終確認reviewの対象）。2026-10-07、基点main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4`（push CI 37562024089 SUCCESS）。
+Status: DESIGN REVISION 3（独立review 1・再review・最終reviewの指摘を反映）。2026-10-07、基点main `d515aa38085c9ed7e41f8103d9c1a6c576025fd4`（push CI 37562024089 SUCCESS）。
 
 本書は未統合Draft [PR44](https://github.com/AIrisu-072/knowledge-platform/pull/44)（設計）と [PR45](https://github.com/AIrisu-072/knowledge-platform/pull/45)（schema/legacy contract）を置き換える。旧設計の脅威分析・失敗モデルは入力として尊重する。ただし旧基点 `d71753d` は30 merge古く、旧方針「reasonを持つevent・通常ACL変更を配送しない」は今回の要求（取下げ・metadata/ACL変更をStoreまで届ける）と衝突する。旧PRのstackには依存しない。決定事項は [決定記録](../../decisions/2026-10-07-audit-envelope-store-integrity.md) に記す。
 
@@ -86,7 +86,7 @@ Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最�
 | `data` | payload v1（§4.2） |
 
 - 未知の属性・extension attributeは拒否する。重複keyは拒否する（PR45のparserを流用する）。
-- 大きさの上限は、Store側でPostgreSQLのjsonb text（正本）が32 KiB以下であることとする。Rust側ではcompactなserializeで24 KiB以下を要求する。この関係により、Rustが受理したenvelopeはStoreでも受理される。
+- 大きさの上限は、PostgreSQLのjsonb text（正本、`": "` と `", "` の区切りを含む）が32 KiB以下であることとする。Rustは同じ規則でjsonb相当の長さを計算し、32 KiB（`JSONB_TEXT_LIMIT`）以下を要求する。Storeでも同じ上限を検査する。
 
 ### 4.2 payload v1
 
@@ -104,7 +104,7 @@ Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最�
   "correlation": {"operation_id": "<uuid>", "publish_operation_id": "<uuid>", "source_correlation_id": "<uuid>"},
   "details": {"<allowlisted legacy key>": "<typed value>"},
   "extensions": {},
-  "provenance": {"source_format": "document-audit-outbox-v0", "adapter_version": 1, "source_commitment": "<hex>"}
+  "provenance": {"source_format": "document-audit-outbox-v0", "adapter_version": 1, "source_commitment": "<hex>", "registration": "trigger"}
 }
 ```
 
@@ -117,14 +117,15 @@ Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最�
   - `operation_id` は、そのeventを作ったcommandの呼出側idempotency keyである。published・scheduled・terminalでは `publishOperationId`、management系では `operation_id` / `operationId` から写像する。
   - `publish_operation_id` は、publish予約・実行を識別する `publishOperationId` である。cancelledでは `publish_operation_id` だけを設定し、`operation_id` は設定しない（cancel自身のIDはpayloadに無い。ledgerを結合して補完しない）。
   - `source_correlation_id` は、stagingの `trace_id` 列の値で、canonicalな小文字UUIDに限る（現producerはUUIDかNULLのみ）。それ以外の値は `invalid_source_correlation` としてquarantineする。W3C traceとは名乗らない。
-  - `trace_id`（W3Cの32桁hex、非ゼロ）は予約fieldである。将来Documentがtraceparent列を追加した場合だけ、その専用列から設定する。legacy `trace_id` 列からの推測は禁止する。
+  - `trace_id`（W3Cの32桁hex、非ゼロ）は予約fieldである。将来Documentがtraceparent列を追加した場合だけ、その専用列から設定する。legacy `trace_id` 列からの推測は禁止する。legacy adapter（`document-audit-outbox-v0`）の経路では、`trace_id` を拒否する。
 - `details` は種別ごとのallowlistであり、legacy key名を変えない。型はcatalogのkindで検証する。
 - `extensions` は、v1では空objectのみを許す。名前空間はcatalogに登録した後に許可する（§13）。
+- `provenance.registration` は、配送登録の経路（`trigger` / `backfill` / `repair`）である。repair登録は、登録前の改変を検出できない（§5.1）。
 - `provenance.source_commitment` は、salt付きのsource commitmentである（§5.2）。Document sourceでは必須とする。他のadapterでは任意とする（NO_RETENTION由来のsourceでは計算しない。commitmentが無い場合のduplicate規則は§7.2）。
 
 ### 4.3 catalog・schema・検証
 
-- 正本は `spec/telemetry/audit-event-catalog.json`。各typeについて、source、event_class、origin（`relay` / `store` / `relay_control`）、許可するresource種別、version要否、result、subject形の一覧、fields、required、reason扱い、reason_code_field、service_executor_field、operation_id_field、publish_operation_id_fieldを持つ。
+- 正本は `spec/telemetry/audit-event-catalog.json`。adapterごと（source、source_format、adapter_version、commitment・registrationの要否、trace_idの可否）の定義と、`registered_types` の元になる (source, type, adapter_version) の一覧もcatalogが持つ。各typeについて、source、event_class、origin（`relay` / `store` / `relay_control`）、許可するresource種別、version要否、result、subject形の一覧、fields、required、reason扱い、reason_code_field、service_executor_field、operation_id_field、publish_operation_id_fieldを持つ。
   - subject形は、placeholderを `resource.id` / `resource.version_id` / details fieldへ束縛した形の一覧である。例：`document.version.created` は `document/{resource.id}`（初回作成）と `document/{resource.id}/version/{resource.version_id}` の2形を許す。
 - kind（JSON整数は `is_i64`/`is_u64` のみ。浮動小数・指数表記は拒否）：
 
@@ -142,6 +143,10 @@ Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最�
   | `hex_digest` | 64桁の小文字hex |
 
   自由文字列のkindは無い。
+- adapter_versionの規律（§7.2）：`spec/telemetry/audit-adapter-golden.json` に、(source_format, adapter_version) ごとに代表fixtureの投影結果のdigestを固定する（version sectionは追加のみで、既存sectionは編集しない）。投影を変えて版を上げ忘れると、試験が失敗する。Store側でも、同じfixtureのjsonb digestを固定する。
+- nil UUIDのclient指定ID（folderId、targetVersionId等）は、producerが受け付けても `nil_client_id` としてquarantineする（Documentへの引継ぎ事項）。
+- principalの各部は、制御文字（Unicode Cc）に加え、Bidi制御、U+2028/2029、BOM、TAG、noncharacter、空白のみ・前後の空白を拒否する（標準JSON Schemaでは表せないので `rust_only:principal_charset`）。
+- `reason.utf8_bytes` は、DocumentのHTTP body上限（1,048,576）以下とする。
 - audit-coreの試験で、workspaceの `time` featureのもとで `OffsetDateTime` のserde出力が上記の9要素配列であることを固定する。audit系crateでは `time/serde-human-readable` を有効にしない。
 - `spec/telemetry/audit-event.schema.json` はcatalogからRustで生成する（`$defs`/`$ref` で共有部分を1回だけ定義する）。差分があれば試験が失敗する（生成の再現性。OA §29）。
   - 関係：「Rustが受理するものはschemaも受理する」。
@@ -172,19 +177,23 @@ Status: DESIGN REVISION 2（独立review 1・再reviewの指摘を反映。最�
 
 catalogに `origin: store` / `relay_control` として登録する。relayのRust validatorと `ingest` はこれらを拒否する（§7.2）。
 
+正本はcatalogで、ここは要約である。
+
 | type | origin | class | 主なdetails |
 |---|---|---|---|
-| `audit.access.intent_opened` | store | DATA_ACCESS | 操作（investigate/export/verify）、bounded filter shape、watermark、page上限、期限、token digest |
-| `audit.access.denied` | store | SECURITY | 操作、拒否code（unbound/insufficient_capability/invalid_input） |
-| `audit.access_policy.changed` | store | ACCESS_POLICY | 対象db_role、主体、capability、granted/revoked、bootstrap |
+| `audit.access.intent_opened` | store | DATA_ACCESS | 操作（investigate/export/verify/identity_chain）、型付きfilterの全値、filter_digest、watermark、page_size、max_pages、可視範囲、期限、token digest、session_role |
+| `audit.access.closed` | store | DATA_ACCESS | intent seq、返した件数、page digest |
+| `audit.access.denied` | store | SECURITY | 操作、拒否code（unbound/insufficient_capability/invalid_input/not_source_service）、session_role |
+| `audit.access_policy.changed` | store | ACCESS_POLICY | 対象（db_roleまたは主体）、capability、granted/revoked/bound/unbound、bootstrap |
 | `audit.retention.policy_changed` | store | CONFIGURATION | policy_id、revision、selector、retain_days（nullable） |
-| `audit.retention.expired` | store | PRIVILEGED_OPERATION | policy_id、revision、selector snapshot、cutoff、count、seq範囲、expired_set_digest |
-| `audit.body.purged` | store | PRIVILEGED_OPERATION | 対象seq、event_id、closed purge_reason_code |
-| `audit.integrity.verified` | store | SYSTEM_AUDIT | from/to seq、checked数、違反code別件数、head chain、outcome |
+| `audit.retention.expired` | store | PRIVILEGED_OPERATION | policy_id、revision、selector snapshot、retain_days、入力cutoff、effective_cutoff、transaction時刻、count、first/last seq、expired_set_digest |
+| `audit.retention.expire_refused` | store | PRIVILEGED_OPERATION | policy_id、revision、理由（stale/not_expirable/held） |
+| `audit.body.purged` | store | PRIVILEGED_OPERATION | target_seq、target_event_id、purge_reason_code |
+| `audit.integrity.verified` | store | SYSTEM_AUDIT | trigger（verify/checkpoint）、from/to seq、checked数、違反code別件数、head（epoch, seq, chain）、outcome |
 | `audit.integrity.conflict_detected` | store | SECURITY | event_id、既存seq、commitment一致の有無 |
-| `audit.recovery.epoch_started` | store | SYSTEM_AUDIT | 旧/新epoch、復元head、照合checkpoint、消失seq範囲（推定）、旧/新fingerprint |
+| `audit.recovery.epoch_started` | store | SYSTEM_AUDIT | 旧/新epoch、復元head（seq, chain）、照合checkpoint、分類（restore/planned_move/regression）、identity範囲digest、消失範囲（from、上限、上限既知か）、regressionの証拠、旧/新fingerprint |
 | `audit.delivery.replay_requested` | relay_control | PRIVILEGED_OPERATION | event_id、旧quarantine code |
-| `audit.reconciliation.completed` | relay_control | SYSTEM_AUDIT | run id、watermark、class別件数、repair件数、照合ID集合digest |
+| `audit.reconciliation.completed` | relay_control | SYSTEM_AUDIT | run id、watermark、class別件数（固定field）、repair件数、照合ID集合digest |
 | `audit.integrity.source_mismatch_detected` | relay_control | SECURITY | event_id、code（source_digest_mismatch / actor_mismatch） |
 
 control eventのenvelopeはSQLが組み立てる。試験では、生成されたcontrol eventをすべてRustのcatalogで検証し、SQLの組み立てがcatalogに適合することを担保する。`provenance` は `{source_format: "audit-store-control-v1" | "audit-relay-control-v1", adapter_version: 1}`（commitmentなし）とする。
@@ -199,11 +208,11 @@ stagingへのINSERT権限を持つrole（producer、現PoCではowner）は、�
 
 - `audit_relay.deliveries` を置く。列は次のとおり。
   - event_id（PK、FKで `audit_outbox_events` へ）、registered_at、registration_kind、source_digest、commitment_salt、legacy_attempt_count、legacy_delivered_at
-  - 配送状態：available_at、attempt_count、attempt_limit、lease_token/owner/expires_at、last_attempt_at、last_error_code、last_outage_code
+  - 配送状態：available_at、attempt_count、attempt_limit、lease_token/owner/expires_at、last_attempt_at、last_error_code、last_outage_code、outage_streak、last_outage_generation、last_outage_at
   - receipt：delivered_at、store_seq、store_envelope_digest、store_outcome
   - quarantine：quarantined_at、quarantine_code
   - replay_count
-- `audit_relay.delivery_history` は、replay/repair前の終端証拠を保存するappend-only表である。`audit_relay.delivery_policy` はsingletonで、revisionを持つ。
+- `audit_relay.delivery_history` は、replay/repair前の終端証拠を保存するappend-only表である（Store control eventの（epoch, seq）を持ち、control seqはUNIQUE）。`audit_relay.delivery_progress` はsingletonで、ackのたびに増えるsuccess_generationを持つ（§6.3）。`audit_relay.delivery_policy` はsingletonで、revisionを持つ。
 - 登録trigger：`AFTER INSERT ON public.audit_outbox_events FOR EACH ROW` で、同一transaction内にdeliveries行を作る。
   - 関数は `SECURITY DEFINER`、`SET search_path = pg_catalog, pg_temp`、全objectをschema修飾し、本体の冒頭で `TG_RELID = 'public.audit_outbox_events'::regclass AND TG_OP = 'INSERT' AND TG_LEVEL = 'ROW'` を確認する。
   - 登録が失敗すると元のINSERTが失敗し、producerは既存どおりrollbackする。producer roleに新しい権限は要らない（trigger関数のEXECUTEはPUBLICから剥奪する。triggerの発火にはEXECUTE権限が要らない）。
@@ -237,6 +246,9 @@ stagingへのINSERT権限を持つrole（producer、現PoCではowner）は、�
   - 現在のv1 PoCは、単一のsuperuser `KP_DATABASE_URL` でmigrateとserveを行っており、この要件を満たさない。そのため保護の対象は事故防止の範囲にとどまる。本番role分離はhandoff事項とする。
 
 ### 5.4 claim時のprojection（SQL側、definer関数内）
+
+- projectionは全域的（total）に作る。行の内容によって例外を起こさない（CASE guardで型を確かめてから演算する。例：`data` がscalar/arrayのときの `jsonb - text`）。どの失敗も行ごとのcodeになる。lockは `FOR UPDATE OF d SKIP LOCKED`（deliveriesのみ）とする。
+- `source_intact` は、text列をNULLにする場合でも、切り詰めない全行で計算する。source_digest_mismatchは、source_row_too_largeより優先する。
 
 - stagingの各text列は、1024 byteを超えると全体をNULLにして `source_row_too_large` とする。
 - `data` がobjectであることを確認し、`data - 'reason'` が16 KiB以下の場合だけ返す。
@@ -276,7 +288,8 @@ relay workerは、`audit_relay.claim` / `renew` / `settle_success` / `settle_fai
    - `transaction_read_only=off`
    - `pg_is_in_recovery()=false`
    - fingerprintの一致
-   - Store headがrelayのack済み最大seq以上（後退検知、§11）
+   - 束縛・権限（ingestと同じ判定）と、relayが送るcatalogの (source, type, adapter_version) が `registered_types` にあること（`probe(expected)`。不足があれば `store_catalog_skew` としてclaimしない）
+   - relayが最後にack済みの（store_seq, event_id, envelope digest）のidentity照合（後退検知、§11。seqの大小比較は使わない）
 2. claim：DB clock、`FOR UPDATE SKIP LOCKED`、新しいlease token、attempt上限は初回claimで固定する。
 3. handler：
    1. `source_intact` を確認する。
@@ -291,24 +304,27 @@ Store保存後・ack前にcrashした場合は、lease失効後の再配送でSt
 
 - Terminal（quarantine）は、次のいずれかに限る。
   - Storeの明示的な判定：`ingest` が構造化された結果行で返す `rejected:<code>` と `conflict`
-  - relay側の判定：`source_digest_mismatch`、`actor_mismatch`、catalog不適合（Rustの検証拒否）
-- それ以外のエラーは、すべて外部障害として扱い、試行を返却して保留する。具体例：
-  - transport/timeout
-  - SQLSTATEの全class：08・53・25006・57P0x・57014（statement timeout）・40001・40P01・55P03・class 58・XX・54000・42xxx（deployの食い違い）など
-  - `registered_types` に無いtype（catalogとStore migrationの版ずれ）
+  - relay側の判定：`source_digest_mismatch`、`actor_mismatch`、catalog不適合（Rustの検証拒否）。ただし `unknown_event_type` / `unknown_field` は例外とする（下記の版ずれ保留）
+- それ以外は、すべて外部障害として扱い、試行を返却して保留する。具体例：
+  - transport/timeout、結果不明
+  - SQLSTATEの全class：08・53・25006・57P0x・57014・40001・40P01・55P03・42xxx・58xxx・XX・54xxxなど。未知のcodeや形式不正も含む
+  - `ingest` の `outage:unregistered_type`（Store側の版ずれ）と `denied:<code>`（ingestを呼んだloginが登録済みsource serviceの主体でない場合）
   - `store_recovery_required` / `store_regressed` / `store_posture_invalid`
-- store実装の `settle_failure` は、ledgerに外部障害の印があれば次を行う。行のlock・tokenはfenceで確認する。
+- relay側の版ずれ（Documentのdeployがrelayより先で、未知のtypeやkeyが来る場合）：`relay_catalog_skew` として保留し、healthで警報を出す。quarantineしない。Storeへは何も保存しないので、最小化は保たれる。
+- store実装の `settle_failure` は、ledgerに外部障害の印があれば、fence付きで次を行う。
   1. `attempt_count` を1戻す。
-  2. `outage_streak` を加算する。
-  3. `outage_streak` に基づく上限付きbackoff（最大300 s）を設定する。
-  4. `last_outage_code` を記録する。
-
-  成功時に `outage_streak` を0へ戻す。runnerがattemptに基づいて計算するbackoffは使わず、store側で計算した値を使う。
-- 特定eventだけが外部障害を起こし続ける疑い（直後のprobeは成功するのにingestが外部障害で失敗する、が連続する場合）に備え、`outage_streak` がpolicyの上限（既定64）に達したら `outage_suspected_event_specific` としてquarantineする。Store全体の障害（probeも失敗する場合）は数えない。
-- circuit breaker：外部障害で開き、指数cooldownの後にhalf-openとなる（1 claimだけ許す）。ingestが成功した場合だけ閉じる（probeの成功だけでは閉じない）。breakerのpermitは、`preflight` / `renew` で常にUpdatedを返す（進行中のclaimをLostにしない）。
+  2. 上限付きbackoffを設定する（最大300 s。`outage_streak` に基づき、store側で計算する。runnerがattemptに基づいて計算するbackoffは使わない）。
+  3. `last_outage_code` と `last_outage_at` を記録する。
+- `outage_streak` を加算するのは、「残余の予期しない」code（`Internal` / `Other`）の場合だけとする。さらに、永続化されたsuccess_generationが、その行の前回の外部障害以降に進んでいる場合に限る（他の行は成功しているのに、この行だけが失敗し続ける状況）。`outage_streak` がpolicyの上限（既定64）に達したら、`outage_suspected_event_specific` としてquarantineする。Store全体の障害（gateの結果、既知のSQLSTATE class、transport）は数えない。成功時には `outage_streak` を0へ戻す。
+- circuit breaker：
+  - 外部障害で開き、指数cooldownの後にhalf-openとなる。closed以外の状態では、`max_claims_per_permit` は1を返す。
+  - 構造化された結果行（stored/duplicate系/conflict/rejected）を得たら閉じる。これはStoreが動いていることの証拠になる。
+  - ingestの結果を得ずにpermitが解放された場合は、half-openへ戻す。
+  - probeの失敗は `Ok(None)`（claimしない）として扱い、他のDeliveryErrorにはしない。permitの `preflight` / `renew` は常にUpdatedを返す（進行中のclaimをLostにしない）。
+- source改変の検出：`audit.integrity.source_mismatch_detected` を先に記録する（(event_id, code) で冪等）。Storeに記録できない間は、外部障害として保留し、quarantineしない。
 - 結果不明のまま上限に達した場合：reaperが `delivery_unknown_at_limit` としてquarantineする。Storeに保存済みであれば、reconcileが `quarantined_stored` として分類し、`--repair` がSQL側のfence付きでackする（§12）。
 
-policyの既定値：attempt 16、lease 30 s、backoff 1–300 s、batch 32、in-flight 4、outage_streak上限64（`DeliveryConfig::validate` の範囲内）。`statement_timeout` はrole単位で設定する。関数レベルの `SET` では、実行中の呼出しを制限できない。
+policyの既定値：attempt 16、lease 30 s、backoff 1–300 s、batch 32、in-flight 4、outage_streak上限64（`DeliveryConfig::validate` の範囲内）。`statement_timeout` はrole単位で設定する（関数レベルの `SET` では、実行中の呼出しを制限できない）。
 
 ### 6.4 quarantineとreplay
 
@@ -317,10 +333,10 @@ quarantineは削除でも成功でもなく、保持される終端証拠であ�
 1. Storeの `record_relay_control`（operatorのStore login。主体は本人）で `audit.delivery.replay_requested` を記録し、返されたseqを得る。記録できなければ中止する。
 2. `audit_relay.replay(event_id, control_seq)` を1 transactionで実行する。
    1. 行を `FOR UPDATE` でlockし、quarantined・未leaseであることを確認する。
-   2. 直前の終端証拠（attempt_count、attempt_limit、quarantine_code、quarantined_at、last_attempt_at）と `control_seq` を `delivery_history` に追加する。
+   2. 直前の終端証拠（attempt_count、attempt_limit、quarantine_code、quarantined_at、last_attempt_at）と、Store control eventの（epoch, seq）を `delivery_history` に追加する（control seqはUNIQUE。1件のreplay記録で複数のreplayを裏付けることはできない）。
    3. `attempt_count=0`、`attempt_limit=NULL`、`outage_streak=0`、quarantine列とlease列をNULL、`available_at=now()`、`replay_count+1` にする。
 
-信頼の限界：Document側の関数は、Storeの事実（ackのreceipt、replayのcontrol seq）をDB内で検証できない。「Storeに記録してから戻す」という順序はCLIが守る。直接SQLで行われたreplayは、reconcileの `unaudited_replay`（`delivery_history.control_seq` がStore上で、origin=relay_control・type=replay_requested・同じevent_idに解決できない）として検出する。restartは試行履歴をresetしない。resetするのは監査付きのreplay/repairだけである。
+信頼の限界：Document側の関数は、Storeの事実（ackのreceipt、replayのcontrol seq）をDB内で検証できない。「Storeに記録してから戻す」という順序はCLIが守る。直接SQLで行われたreplayは、reconcileの `unaudited_replay`（`delivery_history` の（epoch, seq）がStore上で、origin=relay_control・type=replay_requested・同じevent_id・同じ旧codeに1対1で解決できない）として検出する。宣言済みの消失範囲（§11）にあるseqは、`replay_record_lost` として区別する。restartは試行履歴をresetしない。resetするのは監査付きのreplay/repairだけである。
 
 ## 7. Audit Store（`audit_store` schema）
 
@@ -329,7 +345,8 @@ quarantineは削除でも成功でもなく、保持される終端証拠であ�
 - `publication_head`（singleton）：
   - last_seq、last_chain、recovery_epoch
   - store_fingerprint：(`pg_control_system().system_identifier`, database oid, 現timeline)
-  - recovery_pending
+  - recovery_pending：`report_regression`（relayがidentity照合の不一致を報告する）または `declare_recovery_pending`（maintain）が設定する。その証拠（報告されたidentity、session_user、時刻、報告時のhead）も保持する。解除するのは `begin_recovery_epoch` だけである。
+  - access_reapply_pending：`begin_recovery_epoch` が設定する。設定中は、investigate/exportのopen_accessを拒否する。administerの主体が権限の再適用を記録し、maintainの主体が現行retentionで `expire` を再実行すると解除される（§11）。
   - `last_chain` の初期値は `GENESIS = sha256('kp-audit-chain-genesis-v1')`、epochは1から始める。
 - `events`（永続identity、削除しない）：
   - seq PK、event_id UNIQUE
@@ -338,6 +355,7 @@ quarantineは削除でも成功でもなく、保持される終端証拠であ�
   - actor_issuer、actor_principal_id、resource_type、resource_id、result
   - envelope_digest、digest_algorithm、source_commitment、adapter_version
   - prev_chain、chain、recovery_epoch、expired_at、expired_by_seq
+  - ingested_by_db_role（参考情報。chainの対象外）
   - digest/chain列はすべてNOT NULLかつ32 byteのCHECK。`seq=1` ならprev_chain=GENESISのCHECK。
 - `event_bodies`：seq PK、FK、envelope jsonb。retention・purgeでのみ削除する。
 - `principal_bindings`：db_role（PK）、issuer、principal_id。ownerだけが管理する（§10.2）。
@@ -350,7 +368,7 @@ quarantineは削除でも成功でもなく、保持される終端証拠であ�
 
 ### 7.2 ingest（`audit_store.ingest(envelope jsonb)`、definer関数）
 
-1. 関数レベルで `synchronous_commit=on` と `SET LOCAL lock_timeout` を設定する。最初に `publication_head` を `FOR UPDATE` でlockする（全publicationの共通lock）。fingerprint・recovery_pending・postureを照合し、異常があれば `store_recovery_required` とする。
+1. 本体の最初で `PERFORM pg_catalog.set_config('synchronous_commit','on',true)` と `SET LOCAL lock_timeout` を実行する（関数レベルの `SET synchronous_commit` 句は、関数の終了時に戻ってcommitに効かないため使わない）。最初に `publication_head` を `FOR UPDATE` でlockする（全publicationの共通lock）。呼出元の `session_user` を束縛から解決し、登録済みのsource service主体（v1は `service/audit-relay`）でなければ `denied:not_source_service` を返す（Store全体の外部障害として扱う）。fingerprint・recovery_pending・postureを照合し、異常があれば `store_recovery_required` とする。
 2. 構造検査：
    - specversion、id形式、閉じた属性集合
    - envelopeのtextが32 KiB以下
@@ -390,7 +408,8 @@ head lockをcommitまで保持するので、seqの公開はcommit順になる�
   3. 非superuserのNOLOGIN owner（`audit_store_owner` / `audit_relay_owner`）が所有する。migrationは `SET ROLE audit_*_owner` の状態でobjectを作るか、作成後にownerを変更する。
   4. 各migrationの末尾で `REVOKE ALL ON ALL FUNCTIONS/TABLES/SEQUENCES IN SCHEMA ... FROM PUBLIC` を再実行する。`ALTER DEFAULT PRIVILEGES FOR ROLE audit_*_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`（IN SCHEMAを付けない全体形）も実行する。roleへGRANTしてもPUBLICの既定EXECUTEは消えないので、明示的に剥奪する。
   5. filterは静的SQLで処理する（jsonbから型付きで抽出し、未知keyを拒否し、`= ANY($n)` で照合する。LIKE・正規表現・動的SQLは使わない）。
-  6. 書込を伴う関数は、最初の文で `publication_head FOR UPDATE` を取り、その後に状態を読む（lock順：head → policy/grant → identity）。
+  6. 書込を伴う関数は、最初の文で `publication_head FOR UPDATE` を取り、その後に状態を読む（lock順：head → policy/grant → identity）。例外として、`verify` / `checkpoint` はlockを取らずにWを読み、seq≤Wを1つのsnapshotで走査し、結果を追記するときだけhead lockを取る（commit順のpublicationなので、W以下の集合は安定している）。範囲（from/to）は有界とする。
+  8. 書込を伴う関数はすべて、本体で `set_config('synchronous_commit','on',true)` を実行する。どの関数のproconfigにも `synchronous_commit` を含めない（試験で確認する）。`ALTER DATABASE` / `ALTER ROLE` でも `synchronous_commit=on` を設定する。ただしsessionはこれを上書きできる。relayと `audit-admin` は、接続後に `SHOW synchronous_commit` が `on` であることを確かめ、`options` を含む接続URLを拒否する。
   7. 読取専用の経路（`read_page`、recovery関数）では、`xmin` の比較を使わない（§10.3）。
 - `audit_store.posture_check()`（content-free）は、次の違反を返す。
   - ownerが非superuserでないもの
@@ -398,7 +417,10 @@ head lockをcommitまで保持するので、seqの公開はcommit順になる�
   - PUBLIC EXECUTE（aclexplodeのgrantee 0、またはproaclがNULL）
   - §10.1の行列と異なるACL
   - databaseのPUBLIC CONNECT/TEMP
-  - login roleのtimeout設定の欠落
+  - login roleのtimeout設定の欠落（role設定は既定値であり、sessionが上書きできる。posture_checkが確かめるのは既定値だけである）
+  - `synchronous_commit` のdatabase/role設定の欠落・弱化
+  - capability roleのmembership（ingestは `service/audit-relay` に束縛されたloginだけ、ownerのmembershipはbootstrap用loginだけ）
+  - 表・sequence・schemaのACL（relacl、nspacl）と `pg_default_acl`
   - 試験では各roleが許可されない関数で42501になること、temp tableによるshadowingが失敗することを確認する。
 
 ## 8. Integrity（決定記録 D3：方式比較と選択）
@@ -431,7 +453,13 @@ head lockをcommitまで保持するので、seqの公開はcommit順になる�
   - DB内verifyの結果やchain列は、真正性の証拠にならない。
   - `audit-admin export --identity-chain` は、本文を含まない（seq, event_id, envelope_digest, prev_chain, chain, epoch）行を出力する。
   - filter付きexportは「anchorのない部分集合」と表示する。
-- recovery epochの扱い：
+  - DB外の検証は、本文付きexportで次も確かめる。
+    - 失効行の `expired_by_seq` が、export内の `audit.retention.expired`（件数・seq範囲・expired_set_digestが参照集合と一致）または `audit.body.purged`（対象seqが一致）を指すこと。範囲外を指すものは「未検証の証拠」として件数を報告する。
+    - 失効はorigin=relayの行だけにあること。
+    - 行のoriginがbodyのtype・sourceと整合すること。
+    - epochの増加は+1ずつで、各増加がorigin=storeの `audit.recovery.epoch_started` の行に載っていること。
+    - checkpointの比較では、chainに加えてepochも比べる。
+- recovery epochの扱い（計画的な移動 `planned_move` も、消失範囲が空のepochとして扱う）：
   - 帯域外のcheckpoint記録（operatorがrestore時に、旧/新epoch、復元head、消失範囲、incident参照を追記する）にも同じ遷移がある場合に限り、DB外の検証は置換範囲内の不一致を「lost（recovery epoch k）」と報告する。この場合も「authentic」とはしない。
   - 帯域外の記録が無い、または食い違う場合は `unverified_recovery`（改変の疑い）とする。
   - 復元head以下のseqでの不一致は、常に改変として報告する。
@@ -457,7 +485,7 @@ head lockをcommitまで保持するので、seqの公開はcommit順になる�
      ```
 
      origin=store/relay_controlのcontrol event（verify・recoveryの根拠）は、v1では失効しない。
-  6. `audit.retention.expired` を先に記録し、そのseqで対象を印付けてから本文を削除する。記録する内容は、policy_id、revision、selector snapshot、retain_days、入力cutoff、effective_cutoff、transaction時刻、count、seq範囲、`expired_set_digest`。identity・digest・chainは残す。
+  6. `audit.retention.expired` を先に記録し、そのseqで対象を印付けてから本文を削除する（`expired_set_digest = sha256('kp-audit-expired-set-v1' || 印付けたseqの昇順int8beの連結)`）。記録する内容は、policy_id、revision、selector snapshot、retain_days、入力cutoff、effective_cutoff、transaction時刻、count、seq範囲、`expired_set_digest`。identity・digest・chainは残す。
 - 失効済みeventの再配送は `duplicate_expired` を返し、本文は復活しない。
 - `purge_body(event_id, purge_reason_code)`（maintain、origin=relayのみ）：最小化の失敗（adapterの不具合で禁止情報が入った等）への個別対処である。`audit.body.purged`（対象seq、event_id、code）を先に記録し、その行に印を付ける。
 - source stagingの削除（破壊的なcleanup）はv1では提供しない。Storeの失効は、source側のcopyを消したことを意味しない。
@@ -470,15 +498,16 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 
 | capability role | EXECUTE可能な関数 |
 |---|---|
-| `audit_store_ingest` | `ingest`、`probe`、`store_status`、`lookup_receipts`、`list_source_receipts`、`lookup_control_receipts` |
+| `audit_store_ingest` | `ingest`、`probe`、`report_regression`（`service/audit-relay` に束縛されたloginだけが持つ） |
+| `audit_store_reconciler` | `lookup_receipts`、`list_source_receipts`、`lookup_control_receipts`、`store_status`（content-free。serviceのloginとoperatorのloginに付与） |
 | `audit_store_relay_control` | `record_relay_control`（seqを返す） |
 | `audit_store_reader` | `open_access`（investigate/export）、`read_page`、`close_access` |
 | `audit_store_verifier` | `open_access`（verify/identity_chain）、`read_page`、`close_access`、`verify`、`checkpoint`、`verify_recovery`、`identity_chain_recovery_page` |
 | `audit_store_admin` | `change_access`、`set_retention_policy` |
-| `audit_store_maintainer` | `expire`、`purge_body`、`begin_recovery_epoch`、`rebind_fingerprint`、`verify_recovery`、`identity_chain_recovery_page` |
+| `audit_store_maintainer` | `expire`、`purge_body`、`begin_recovery_epoch`、`declare_recovery_pending`、`verify_recovery`、`identity_chain_recovery_page` |
 | owner（`audit_store_owner`）のmemberのみ | `bootstrap_administrator`、`bind_principal`、`unbind_principal` |
-| `audit_relay_worker` | `claim`、`renew`、`settle_*`、`reap_exhausted`、`status` |
-| `audit_relay_operator` | `replay`、`repair_ack_stored`、`repair_reset_missing`、`register_missing` |
+| `audit_relay_worker` | `claim`、`renew`、`settle_*`、`reap_exhausted`、`status`、`posture_check`、読取専用の `reconcile_page` / `reconcile_history_page` / `lookup_deliveries` |
+| `audit_relay_operator` | `replay`、`repair_ack_stored`、`repair_reset_missing`、`register_missing`、`status`、`posture_check`、`reconcile_page` / `reconcile_history_page` / `lookup_deliveries` |
 
 - PUBLICにはどの関数のEXECUTEも与えない。Store DBのCONNECT・TEMPもPUBLICから剥奪する。
 - Store roleには、`idle_in_transaction_session_timeout`、`statement_timeout`、`lock_timeout` をrole単位で設定する。
@@ -487,11 +516,13 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 | command | 接続 |
 |---|---|
 | `audit-relay run` | `AUDIT_SOURCE_DATABASE_URL`＝`audit_relay_worker` を持つlogin。`AUDIT_STORE_DATABASE_URL`＝`audit_store_ingest`＋`audit_store_relay_control` を持つloginで、`service/audit-relay` に束縛 |
-| `audit-relay replay` / `reconcile --repair` | operator本人のDocument login（`audit_relay_operator`）とStore login（`audit_store_relay_control`、本人の主体に束縛） |
+| `audit-relay replay` / `reconcile --repair` | operator本人のDocument login（`audit_relay_operator`）とStore login（`audit_store_relay_control`＋`audit_store_reconciler`、本人の主体に束縛） |
+| `audit-relay reconcile`（定期・読取専用） | serviceのlogin（worker、Store側はreconciler＋relay_control） |
 | `audit-admin` | operator本人のStore login |
 | `migrate` | 別のURL（runtimeでは使わない） |
 
-- migrate・bootstrapを除くcommandは、起動時にsessionが `rolsuper`、または `audit_*_owner` のmemberであれば拒否する（多層防御）。
+- migrate・bootstrap・bind・unbindを除くcommandは、起動時にsessionが `rolsuper`、または `audit_*_owner` のmemberであれば拒否する（多層防御）。
+- Document側の `reconcile_page` 等は、source_digestとsaltを返さない（`source_intact` はserver側で計算した真偽値だけを返す）。
 
 ### 10.2 主体の束縛（認証境界）
 
@@ -509,7 +540,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 ### 10.3 開示の2段階（fail-closed）
 
 1. `open_access(op, filter, page_size, max_pages)`
-   1. 主体・権限・入力を検査する。filter allowlist：event_types≤16、source、actor、resource、occurred範囲、event_ids≤100。page sizeはinvestigate 1–100、export・identity_chain 1–1000。max_pagesは最大100。
+   1. 主体・権限（opに応じたcapability role：investigate/exportはreader、verify/identity_chainはverifier）・入力を検査する。filter allowlist：event_types≤16、source、actor、resource、occurred範囲、event_ids≤100、`seq_after`（排他的下限）、`seq_through`（上限、W以下）。identity_chainと、検証用のexportでは、`seq_after` / `seq_through` だけを許し、全origin（control eventを含む）を対象にする。page sizeはinvestigate 1–100、export・identity_chain 1–1000。max_pagesは最大100。大きなStoreでは、intentを順に開いて連続範囲を検証する（各intentを記録する）。`access_reapply_pending` の間は、investigate/exportを拒否する。
    2. watermark W（現在head以下。clientは指定できない）と可視範囲を固定する。
    3. `audit.access.intent_opened`（op、型付きfilterの全値、filter_digest、W、page_size、max_pages、可視範囲、期限）を記録する。
    4. `access_intents` に、`creating_xid = pg_current_xact_id()`（savepoint内でも最上位transactionのID）とともに保存する。
@@ -519,12 +550,13 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 2. `read_page(token, after_seq)`。次の条件をすべて満たす場合だけデータを返す。
    - 入口で `pg_current_xact_id_if_assigned() IS NULL`（現transactionがまだ何も書いていない。savepointで書いて戻した場合も拒否される）であること。
    - `pg_xact_status(intent.creating_xid) IS NOT DISTINCT FROM 'committed'`（NULLや実行中は拒否）であること。
-   - `access_intents.filter_digest` が、chainに入ったintent eventのdigestと一致すること。
+   - filter・W・page_size・max_pages・可視範囲・opは、chainに入ったintent eventの本文から取り、`access_intents` の写しと一致することを確かめること。
+   - intentのcommitが永続化済みであること：committed判定の後に `X = pg_current_wal_insert_lsn()` を1回だけ取り、`pg_current_wal_flush_lsn() >= X` になるまで短い間隔で待つ（上限約2秒）。上限に達したら、再試行可能な `intent_not_durable` として何も返さない（commit recordはclogの更新より前に挿入されるので、commit_end_lsn ≤ X が成り立つ）。
    - 同じ `session_user` のものであること。
    - 期限内であること。
    - 現在の束縛と権限が有効であること（取消しは開いているtokenにも効く）。
 
-   開示する集合は「(filter ∩ seq≤W ∩ 可視範囲) をseq順に並べた先頭 max_pages×page_size 行」である。after_seqを任意に選んでも、この集合の外は返さない（state無しで有界）。read_pageはREAD ONLYなので、ここでの拒否はerrorとして返り、記録されない（拒否は何も開示しない）。READ ONLY設定やautocommitは呼出側の慣行であり、保証はserver側の上記の判定が担う。
+   開示する集合は「(filter ∩ seq_after<seq≤min(seq_through, W) ∩ 可視範囲) を、identity行（失効行を含む）のseq順に並べた先頭 max_pages×page_size 行」である。after_seqを任意に選んでも、この集合の外は返さない（state無しで有界）。read_pageはREAD ONLYなので、ここでの拒否はerrorとして返り、記録されない（拒否は何も開示しない）。READ ONLY設定やautocommitは呼出側の慣行であり、保証はserver側の上記の判定が担う。
 3. `close_access(token, returned_count, page_digests)`：件数とpage digestを記録する（任意）。開示の範囲は、chainに入ったintent eventで既に確定している。
 
 - 拒否の記録は、呼出側がBEGIN/ROLLBACKで包めば消せる。拒否は何も開示しないので、この限界を明記する。adminとmaintainの操作（変更系）は、変更とcontrol eventが同一transactionで成否を共にする。
@@ -541,13 +573,13 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 - export行の形式：
 
   ```
-  {"seq":…,"event_id":…,"origin":…,"envelope_digest":…,"prev_chain":…,"chain":…,"recovery_epoch":…,"expired":…,"envelope":<jsonb text原文>}
+  {"seq":…,"event_id":…,"origin":…,"envelope_digest":…,"prev_chain":…,"chain":…,"recovery_epoch":…,"expired":…,"expired_by_seq":…,"envelope":<jsonb text原文>}
   ```
 
   SQLで `envelope::text` を連結して生成し、serdeでの往復はしない。
 - `audit-core` のexport検証は、RawValueで原文を保持し、sha256とchainを再計算する。
 - manifestには、件数、seq範囲、watermark、page digest、intentのseq、照合したcheckpoint、GENESIS定数を記す。
-- relay用の `lookup_receipts` / `list_source_receipts` / `lookup_control_receipts` は、content-free（seq、event_id、origin、type、envelope digest、commitment、expired、control対象event_id）である。DB role（ingest）で制限し、呼出ごとのcontrol eventは作らない。reconcileは1 runにつき1件の `audit.reconciliation.completed` を記録する。healthは、content-freeで監査対象外の `store_status()` を使う。
+- relay用の `lookup_receipts` / `list_source_receipts` / `lookup_control_receipts` は、content-free（seq、epoch、event_id、origin、type、envelope digest、commitment、expired、control対象event_id）である。DB role（reconciler）で制限し、呼出ごとのcontrol eventは作らない（audit-of-auditの例外：本文を含まない）。reconcileは1 runにつき1件の `audit.reconciliation.completed` を記録する。healthは、content-freeで監査対象外の `store_status()` を使う。
 
 ## 11. Backup / restore 契約
 
@@ -563,20 +595,22 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
     - oidは同じcluster内でのrestoreを検知する。
     - timelineはPITR・promotionを検知する。
     - 残る限界：同じtimelineでのcrash recoveryのみの物理restore・snapshot restoreは、fingerprintでは検知できない。
-  - 後退検知：relayは、最後にack済みの（store_seq, event_id, envelope digest）を `lookup_receipts` でidentity照合する。不一致または欠落なら `store_regressed` とし、`begin_recovery_epoch` が実行されるまでclaimを止める（自動では解除しない）。
-  - recovery mode中は、publicationのすべての関数（ingest、record_relay_control、open_access、verify、checkpoint、change_access、bind/unbind、set_retention_policy、expire、purge_body、close_access）が `store_recovery_required` を返す。許可されるのは次の3つだけである。
+  - 後退検知：relayは、最後にack済みの（store_seq, event_id, envelope digest）を `lookup_receipts` でidentity照合する。不一致または欠落なら `store_regressed` とし、`report_regression` でStoreへ報告してrecovery_pendingを設定させる。Storeのrecovery epochが変わるまで、claimを止める（自動では解除しない）。同じtimelineでの物理restore・snapshot restore、async commitの消失など、fingerprintで検知できない場合も、この経路か、operatorの `declare_recovery_pending` でrecovery modeへ入る。operatorが把握しているrestoreでは、接続を止めてから `declare_recovery_pending` を実行し、その後に接続を再開する。ingest権限の保持者による悪用は、サービス停止にとどまる。
+  - recovery mode中は、publicationのすべての関数（ingest、record_relay_control、open_access、read_page、verify、checkpoint、change_access、bind/unbind、set_retention_policy、expire、purge_body、close_access）が `store_recovery_required` を返す。許可されるのは次に限る（網羅的な一覧）。
+    - content-freeの状態取得：`probe`、`store_status`、`posture_check`、`lookup_receipts`、`list_source_receipts`、`lookup_control_receipts`（本文を返さず、recovery状態を報告する）
     - `verify_recovery()`：READ ONLYでverifyと同じ検査を行い、何も追記しない。
     - `identity_chain_recovery_page(after_seq, limit)`：content-free、intentなし、本文なし。
+    - `report_regression` / `declare_recovery_pending`（recovery_pendingの設定のみ）
     - `begin_recovery_epoch`
 
-    recovery mode中の読取は、呼出ごとの監査記録を残さない（content-freeであり、restoreを行う者は既にownerの権限を持つため）。
-  - 計画的な移動（`pg_upgrade`、dump/restoreによる移行、計画的なpromotion）は、maintainの監査付き `rebind_fingerprint` で扱う（旧/新fingerprintを記録する）。
+    recovery mode中の読取は、呼出ごとの監査記録を残さない（content-freeであり、restoreを行う者は既にownerの権限を持つため）。`verify_recovery` と `identity_chain_recovery_page` は、recovery modeでない場合は `not_in_recovery` を返す。
+  - 計画的な移動（`pg_upgrade`、dump/restoreによる移行、計画的なpromotion）も、消失範囲が空の `begin_recovery_epoch`（分類 `planned_move`、照合checkpoint＝移動前のhead）で扱う。fingerprintを書き換える別の経路は設けない。
 - Store restoreの手順（relayは手順4まで停止）：
   1. 前提に従って新しいDBへrestoreし、権限を再適用する。
   2. `audit-admin verify --recovery` で内部整合を確認する。
   3. `audit-admin export --identity-chain --recovery` で、最新の外部checkpointとDB外で照合する。
   4. 帯域外の記録へepoch遷移を追記し、`begin_recovery_epoch(checkpoint)` を実行する。この関数は次を行う。
-     - fingerprint不一致か後退でなければ拒否する。
+     - fingerprint不一致かrecovery_pendingでなければ拒否する（解除するのはこの関数だけ）。
      - head lockの下で、自らverifyを再走査し、復元headを計算する。
      - control eventの記録：
        - 照合したcheckpointと照合の分類
@@ -591,8 +625,8 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   epochはchainを継続する（genesisへ戻さない）。
 - 限界：
   - Store内で生成されたcontrol event（閲覧intent、拒否、retention、replay、integrity、権限変更）は、backup以降の分がsourceを持たないため回復できない。RPOを縮めたい場合は、WAL archiving/PITRを運用上で選択する（新しい依存は不要）。
-  - 復元後にinvestigate/exportを再開する前に、権限の失効とretention revisionを帯域外の記録から再適用し、それをcontrol eventとして記録する。失効より前の古いbackupをrestoreすると失効済みの本文が戻り得るので、restore後に現行retentionを再適用して記録する。
-- source（Document DB）を古いbackupへ戻した場合、Storeにあってsourceに無いeventが生じ得る。reconcileはこれを `store_only` として報告し、自動では削除しない。Document DBのrestoreでも、`audit_relay` に対して同じ前提（globals、権限の再適用、posture確認）を適用する。
+  - 復元後は `access_reapply_pending` が設定され、investigate/exportは閉じたままになる。帯域外の記録から権限の失効・束縛解除・retention revisionを再適用し、それをcontrol eventとして記録し、現行retentionで `expire` を再実行すると開く。失効より前の古いbackupをrestoreすると失効済みの本文が戻り得るので、restore後に現行retentionを再適用して記録する。
+- source（Document DB）を古いbackupへ戻した場合、Storeにあってsourceに無いeventが生じ得る。reconcileはこれを `store_only` として報告し、自動では削除しない。Document DBのrestoreでも、`audit_relay` に対して同じ前提（globals、権限の再適用、`audit_relay.posture_check()`）を適用する。違反がある間、relayの `run` / `replay` / `repair` は起動を拒否し、healthで警報を出す。
 
 ## 12. Health・reconciliation・restart
 
@@ -603,7 +637,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   - Store head seq（stored）
   - 最終 `audit.integrity.verified`（origin=store）のseqと時刻（verified）、verification lag
   - 導入状態：登録trigger、guard trigger、digest関数の存在、policy revision
-  - reconcileの警報（unaudited_replay、delivered_missing、digest_mismatch）
+  - reconcileの警報（unaudited_replay、delivered_missing、digest_mismatch、store_only、relay_catalog_skew、store_catalog_skew、audit_relayのposture違反）
 
   labelは固定codeのみとし、principal・resource・payloadを出さない。
 - `audit-relay reconcile`（service identityで定期実行するread-only版と、operatorが実行する `--repair` 版）：deliveriesとStore receiptを照合する。event_idのbatch照会と、`list_source_receipts` によるseq順のpagingを組み合わせ、commitmentも比較して次に分類する。
@@ -620,7 +654,9 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   | unregistered | 配送登録が無い |
   | source_tampered | digestを再計算すると一致しない |
   | store_only | Storeにあるがsourceに無い |
-  | unaudited_replay | replayの記録がStoreで確認できない |
+  | unaudited_replay | replayの記録がStoreで1対1に確認できない |
+| replay_record_lost | replayの記録が宣言済みの消失範囲にある |
+| relay_catalog_skew | relayのcatalogに無いtype・keyのため保留中 |
 
 - `--repair` は次の処理だけを行う。新しいIDの生成や事実の書換えはしない。
   - delivered_missingをpendingへ戻す（履歴を保存）。
@@ -641,6 +677,8 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   - この表に触れる今後のDocument migrationには、Auditのreviewが要る。`DROP COLUMN ... CASCADE` を禁止する（digest関数が消え、producerのINSERTがruntimeで失敗するため）。
   - Documentへの引継ぎ：
     - `authorization.denied` の対象範囲と試験
+  - client指定IDにnil UUIDを受け付けないこと（現在はquarantine。§4.3）
+  - principal/issuerの文字種方針（identity adapter・IdPの責任。Storeはbidi等を拒否する）
     - 取下げ・公開終了時のschedule terminal audit
     - withdraw/endの理由文の上限
     - 通常ACLのreason未保存
@@ -669,7 +707,8 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
    - 拒否されること：機微key、未知key、型違反、浮動小数、上限超過、重複key、UUID以外のcorrelation、control偽装。
    - legacy_time配列の形。
    - 生成schemaの再現性と、Rust⊂schemaの関係。
-   - (source_format, adapter_version) ごとに、envelope digestを固定したfixture。
+   - (source_format, adapter_version) ごとに、envelope digestを固定したfixture（`spec/telemetry/audit-adapter-golden.json`、Store側はjsonb digest）。
+   - 失敗分類：全SQLSTATEが外部障害になり、terminalは構造化verdictだけであること。
 2. Store：
    - idempotency：duplicate、duplicate_reprojected、duplicate_expired、conflict（commitment違い、origin/source/type違い）。
    - append-only：UPDATE/DELETE/TRUNCATE/直接INSERTの拒否。
@@ -687,12 +726,17 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
    - export検証。
    - retention：NULL policyのnot_expirable、cutoff前後と実効cutoff、stale revision、hold、control eventが対象外であること、tombstoneの列集合、purge。
    - 検証の非再帰。
-   - fingerprint gateとrecovery mode（別container・同じoidへのrestore、許可された3関数以外の拒否、headが不変であること、epoch_startedがrestored_head+1に来ること）、posture違反での拒否。
+   - fingerprint gateとrecovery mode（別container・同じoidへのrestore、網羅的な一覧以外の拒否、headが不変であること、epoch_startedがrestored_head+1に来ること）、posture違反での拒否、`report_regression` / `declare_recovery_pending` によるrecovery mode、`planned_move` のepoch、`access_reapply_pending` によるinvestigate/exportの閉鎖と解除、recovery関数がrecovery外で `not_in_recovery` を返すこと。
+   - 永続性：ingest・open_accessのcommit時に `synchronous_commit=on` が効いていること。async commitのintentでは、flushまでread_pageが開示しないこと。proconfigに `synchronous_commit` を含む関数が無いこと。
+   - ingestを呼んだloginがsource service主体でない場合の `denied`。reconcilerの読取経路。
    - control eventのcatalog適合。
 3. 配送：
    - 登録triggerの失敗で業務がrollbackすること。
    - Store停止（接続拒否）、read-only、lock timeout、statement timeout、未登録type（版ずれ）で、業務は継続し、pendingが増え、試行を消費せず、復旧後に排出されること。
-   - breakerはingestが成功するまで閉じないこと。特定eventだけが外部障害を起こし続ける場合の上限。
+   - breakerは構造化された結果を得るまで閉じないこと。特定eventだけが残余の予期しないエラーを起こし続ける場合の上限（Store全体の障害は数えないこと）。
+   - relay側の版ずれ（未知type・key）が保留と警報になり、quarantineされないこと。
+   - claim projectionが、scalar/arrayの `data` でも例外を起こさないこと。改変かつoversizeの行が `source_digest_mismatch` になること。
+   - `audit_relay.posture_check()` の違反で、run/replay/repairが起動を拒否すること。
    - 不正schemaのquarantine、source改変の検出とcontrol event、staleなlease、commit結果不明。
    - 保存後・ack前のcrash（子processをkill -9してrestart）。最終試行での保存後crashと、`quarantined_stored` のfence付き修復（conflict codeは修復されないこと）。
    - 同時重複、adapter_version違いの再配送、上げ忘れでconflictになることとその修復。
