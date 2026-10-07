@@ -38,7 +38,10 @@ export type WorkSession = {
 
 export type TaskSummary = {
     id: string;
-    contextId: string;
+    /**
+     * 文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。
+     */
+    contextId: string | null;
     attemptId: string;
     revision: number;
     title: string;
@@ -71,7 +74,7 @@ export type TaskSummary = {
     dueAt: string | null;
     attention: Array<Attention>;
     /**
-     * 文脈の表示名。owner unitのcontext.read保有者と現在の担当者本人にだけ開示。
+     * 文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。
      */
     contextTitle: string | null;
 };
@@ -99,7 +102,10 @@ export type HistoryEntry = {
 
 export type TaskDetail = {
     id: string;
-    contextId: string;
+    /**
+     * 文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。
+     */
+    contextId: string | null;
     attemptId: string;
     revision: number;
     title: string;
@@ -136,7 +142,7 @@ export type TaskDetail = {
     dueAt: string | null;
     attention: Array<Attention>;
     /**
-     * 文脈の表示名。owner unitのcontext.read保有者と現在の担当者本人にだけ開示。
+     * 文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。
      */
     contextTitle: string | null;
 };

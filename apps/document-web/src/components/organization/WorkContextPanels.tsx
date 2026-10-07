@@ -36,7 +36,7 @@ export function TaskRowButton({ item, selected, hint, onSelect }: { item: TaskSu
  * whose context identity is not disclosed stay listed without a customer label. */
 export function ContextCollection({ contexts, contextError, tasks, selectedContext, selectedTask, hint, onContext, onTask }: { contexts: WorkContext[] | undefined; contextError: unknown; tasks: TaskSummary[]; selectedContext?: string; selectedTask?: string; hint: (item: TaskSummary) => string; onContext: (id: string) => void; onTask: (id: string) => void }) {
   const known = new Set((contexts ?? []).map((value) => value.id));
-  const other = tasks.filter((item) => !known.has(item.contextId));
+  const other = byDue(tasks.filter((item) => item.contextId === null || !known.has(item.contextId)));
   return <>
     {contextError ? <p className={styles.muted}>文脈の一覧を取得できません。タスクだけを表示します。</p> : null}
     {(contexts ?? []).map((context) => <section key={context.id} className={styles.contextGroup} aria-label={`文脈 ${context.title}`}>

@@ -229,7 +229,11 @@ async fn list_tasks(
         )
         .await?
         .into_iter()
-        .filter(|item| query.context_id.is_none_or(|id| item.context_id == id))
+        .filter(|item| {
+            query
+                .context_id
+                .is_none_or(|id| item.context_id == Some(id))
+        })
         .filter(|item| query.work_type_id.is_none_or(|id| item.work_type_id == id))
         .collect();
     // This fixed two-step PoC has no pagination token implementation: never silently truncate.

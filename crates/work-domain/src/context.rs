@@ -485,10 +485,13 @@ impl Workflow {
     }
     /// Exactly the list-row membership of either projection; never broader.
     fn listed(&self, actor: VerifiedActor, task_id: Uuid) -> bool {
+        self.listed_in(actor, task_id, None)
+    }
+    fn listed_in(&self, actor: VerifiedActor, task_id: Uuid, scope: Option<Uuid>) -> bool {
         [TaskView::Context, TaskView::Queue]
             .into_iter()
             .any(|view| {
-                self.list_tasks_in(actor, view, None)
+                self.list_tasks_in(actor, view, scope)
                     .is_ok_and(|items| items.iter().any(|item| item.id == task_id))
             })
     }
@@ -534,9 +537,11 @@ impl Workflow {
                     && value.allows(action)
             })
     }
+    /// Only an open attempt's assignee; a closed attempt keeps no context identity.
     fn assignee_in(&self, actor: VerifiedActor, scope: Option<Uuid>) -> bool {
         self.current_items().any(|item| {
-            self.can_read(actor, item)
+            item.state != TaskState::Completed
+                && self.can_read(actor, item)
                 && scope.is_none_or(|id| item.acting_assignment_id == Some(id))
         })
     }
@@ -583,7 +588,7 @@ impl Workflow {
             .collect();
         let attention_count = self
             .current_items()
-            .filter(|item| self.listed(actor, item.id))
+            .filter(|item| self.listed_in(actor, item.id, scope))
             .map(|item| self.attention_for(actor, item).len())
             .sum::<usize>();
         Some(WorkContextView {

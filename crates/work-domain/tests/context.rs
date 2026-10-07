@@ -767,3 +767,52 @@ fn due_attention_boundaries_and_owner_unit_context_scope() {
     );
     assert!(w.context_view(VerifiedActor::Sales01, None).is_some());
 }
+
+#[test]
+fn context_identity_follows_open_assignment_and_is_never_on_generic_rows_or_replays() {
+    let policy = OrganizationPolicy::synthetic();
+    let mut w = seeded(CONTEXT_B_WORKFLOW_ID, &policy, T0);
+    submit_sales(&mut w, T0);
+    let review_id = CONTEXT_B_REVIEW_TASK_ID;
+    // An eligible-only reviewer and a manager see neither the title nor the opaque context ID.
+    let queued = row(&w, VerifiedActor::Review01, TaskView::Queue, review_id).unwrap();
+    assert_eq!((queued.context_id, queued.context_title), (None, None));
+    let managed = row(&w, VerifiedActor::Approver01, TaskView::Queue, review_id).unwrap();
+    assert_eq!((managed.context_id, managed.context_title), (None, None));
+    // The owner unit's context reader keeps both.
+    let sales = row(&w, VerifiedActor::Sales01, TaskView::Context, review_id).unwrap();
+    assert_eq!(sales.context_id, Some(CONTEXT_B_ID));
+    let next = w.next.clone().unwrap();
+    let claimed = w
+        .apply(
+            VerifiedActor::Review01,
+            &Command::Claim {
+                task_id: review_id,
+                context: ctx(REVIEW_ASSIGNMENT_ID, next.revision),
+            },
+            T0,
+        )
+        .unwrap();
+    let MutationResult::Claimed { task } = &claimed else {
+        panic!()
+    };
+    assert_eq!(task.context_id, Some(CONTEXT_B_ID));
+    assert!(task.context_title.is_some());
+    assert!(w.context_view(VerifiedActor::Review01, None).is_some());
+    // Once the reviewer's attempt closes, its row and context keep no identity.
+    return_next(&mut w, VerifiedActor::Review01, REVIEW_ASSIGNMENT_ID);
+    let closed = row(&w, VerifiedActor::Review01, TaskView::Queue, review_id).unwrap();
+    assert_eq!(closed.state, TaskState::Completed);
+    assert_eq!((closed.context_id, closed.context_title), (None, None));
+    assert!(w.context_view(VerifiedActor::Review01, None).is_none());
+    // A stored receipt stays the committed receipt (§9); recovery still needs a
+    // currently readable target record.
+    assert_eq!(
+        w.authorize_recovery(VerifiedActor::Review01, &claimed),
+        Ok(())
+    );
+    assert_eq!(
+        w.authorize_recovery(VerifiedActor::Office01, &claimed),
+        Err(WorkError::WorkItemNotFound)
+    );
+}

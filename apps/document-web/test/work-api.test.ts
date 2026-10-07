@@ -264,3 +264,19 @@ test('context, attention and profile decoders are closed and bound to the reques
   fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: 'other' }], nextCursor: null }));
   await expect(workApi.listTasks('context', undefined, { contextId: 'context-1' })).rejects.toMatchObject({ code: 'invalid_response' });
 });
+
+test('an undisclosed context is null on rows; task and attempt still bind results and records', async () => {
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: null }], nextCursor: null }));
+  expect((await workApi.listTasks('queue')).items[0]!.contextId).toBeNull();
+  expect(fetchMock.mock.calls.at(-1)![0]).toBe('/v1/organization/tasks?view=queue&limit=100');
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: 7 }], nextCursor: null }));
+  await expect(workApi.listTasks('queue')).rejects.toMatchObject({ code: 'invalid_response' });
+  // A filter by context never accepts an undisclosed row.
+  fetchMock.mockResolvedValue(response({ items: [{ ...task, contextId: null }], nextCursor: null }));
+  await expect(workApi.listTasks('context', undefined, { contextId: 'context-1' })).rejects.toMatchObject({ code: 'invalid_response' });
+  const { recordsMatchTask } = await import('../src/application/evidence-workspace');
+  const record = { id: 'e', revision: 1, taskId: task.id, attemptId: task.attemptId, contextId: 'context-1' };
+  expect(recordsMatchTask({ ...task, contextId: null }, { evidence: [record], findings: [], decisions: [] })).toBe(true);
+  expect(recordsMatchTask({ ...task, contextId: null }, { evidence: [{ ...record, attemptId: 'other' }], findings: [], decisions: [] })).toBe(false);
+  expect(recordsMatchTask(task, { evidence: [{ ...record, contextId: 'other' }], findings: [], decisions: [] })).toBe(false);
+});

@@ -56,7 +56,7 @@ test('without an explicit view, the responsibility profile picks the projection 
 
 test('sales sees authorized contexts first and opens a context overview without private detail', async () => {
   const cSales = task('c-sales', { dueAt: '2026-10-07T08:00:00Z', attention: [overdue], contextTitle: contextC.title });
-  const other = task('hidden', { contextId: 'context-hidden', title: '事務内容確認', stepLabel: '事務内容確認', workTypeId: 'type-office', workTypeLabel: '事務内容確認' });
+  const other = task('hidden', { contextId: null, title: '事務内容確認', stepLabel: '事務内容確認', workTypeId: 'type-office', workTypeLabel: '事務内容確認' });
   const { router } = setup('/tasks', sales, [cSales, other], [contextC]);
   await waitFor(() => expect(workApi.listTasks).toHaveBeenCalledWith('context', undefined));
   const group = await screen.findByRole('region', { name: `文脈 ${contextC.title}` });
@@ -81,14 +81,14 @@ test('sales sees authorized contexts first and opens a context overview without 
 
 test('queue groups by WorkType and separates own work from eligible-only rows', async () => {
   const own = task('office-own', { title: '事務内容確認', stepLabel: '事務内容確認', workTypeId: 'type-office', workTypeLabel: '事務内容確認', state: 'active', canClaim: false, assignment: { principalId: 'office-01', displayName: '事務担当（模擬）', actingAssignmentId: 'office', actingKind: 'role_assignment', roleLabel: '事務処理', delegatorPrincipalId: null, responsibilityEffective: true }, contextTitle: '合成案件A・設備更新相談' });
-  const ready = task('office-ready', { title: '事務内容確認', stepLabel: '事務内容確認', workTypeId: 'type-office', workTypeLabel: '事務内容確認' });
-  const review = task('review-ready', { title: '審査内容確認', stepLabel: '審査内容確認', workTypeId: 'type-review', workTypeLabel: '審査内容確認', attention: [{ kind: 'returned', sourceId: null, dueAt: null }] });
+  const ready = task('office-ready', { contextId: null, title: '事務内容確認', stepLabel: '事務内容確認', workTypeId: 'type-office', workTypeLabel: '事務内容確認' });
+  const review = task('review-ready', { contextId: null, title: '審査内容確認', stepLabel: '審査内容確認', workTypeId: 'type-review', workTypeLabel: '審査内容確認', dueAt: '2026-10-07T12:00:00Z', attention: [{ kind: 'due_soon', sourceId: null, dueAt: '2026-10-07T12:00:00Z' }] });
   const { router } = setup('/tasks?view=queue', office, [own, ready, review]);
   const types = await screen.findByLabelText('業務の種類');
   expect(within(screen.getByRole('region', { name: '自分の担当' })).getByRole('button', { name: /事務内容確認/ })).toHaveTextContent('合成案件A・設備更新相談');
   const claimable = screen.getByRole('region', { name: '引受可能' });
   expect(within(claimable).getAllByRole('button')).toHaveLength(2);
-  expect(within(claimable).getByRole('button', { name: /審査内容確認/ })).toHaveTextContent('差戻し');
+  expect(within(claimable).getByRole('button', { name: /審査内容確認/ })).toHaveTextContent('期限間近');
   expect(claimable).not.toHaveTextContent('合成案件');
   await userEvent.click(within(types).getByRole('button', { name: '審査内容確認' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'queue', workTypeId: 'type-review' }));
@@ -116,4 +116,29 @@ test('the review profile opens Evidence first; the module choice grants nothing'
   await waitFor(() => expect(workApi.listTasks).toHaveBeenCalledWith('queue', undefined));
   const modules = await screen.findByLabelText('文脈モジュール');
   await waitFor(() => expect(within(modules).getByRole('button', { name: '根拠' })).toHaveAttribute('aria-pressed', 'true'));
+});
+
+test('an explicit queue view still applies the review profile and its initial module', async () => {
+  const claimed = task('review-own', { title: '審査内容確認', stepLabel: '審査内容確認', state: 'active', canClaim: false, workTypeId: 'type-review', workTypeLabel: '審査内容確認' });
+  setup(`/tasks?view=queue&taskId=${claimed.id}`, reviewer, [claimed]);
+  await waitFor(() => expect(workApi.listWorkViewProfiles).toHaveBeenCalled());
+  const modules = await screen.findByLabelText('文脈モジュール');
+  await waitFor(() => expect(within(modules).getByRole('button', { name: '根拠' })).toHaveAttribute('aria-pressed', 'true'));
+});
+
+test('context groups and undisclosed tasks are both ordered by the earliest due instant', async () => {
+  const later = task('c-later', { dueAt: '2026-10-08T09:00:00Z', contextTitle: contextC.title, title: '事務内容確認', stepLabel: '事務内容確認' });
+  const none = task('c-none', { dueAt: null, contextTitle: contextC.title });
+  const sooner = task('c-sooner', { dueAt: '2026-10-07T10:00:00Z', contextTitle: contextC.title, title: '審査内容確認', stepLabel: '審査内容確認' });
+  const hiddenLate = task('h-late', { contextId: null, dueAt: '2026-10-09T09:00:00Z', title: '事務内容確認', stepLabel: '事務内容確認' });
+  const hiddenSoon = task('h-soon', { contextId: null, dueAt: '2026-10-07T11:00:00Z', title: '審査内容確認', stepLabel: '審査内容確認' });
+  setup('/tasks', sales, [later, none, sooner, hiddenLate, hiddenSoon], [contextC]);
+  const group = await screen.findByRole('region', { name: `文脈 ${contextC.title}` });
+  const rows = within(group).getAllByRole('button').slice(1).map((button) => button.textContent ?? '');
+  expect(rows[0]).toContain('審査内容確認');
+  expect(rows[1]).toContain('事務内容確認');
+  expect(rows[2]).toContain('営業内容整理');
+  const undisclosed = within(screen.getByRole('region', { name: '文脈を表示しないタスク' })).getAllByRole('button').map((button) => button.textContent ?? '');
+  expect(undisclosed[0]).toContain('審査内容確認');
+  expect(undisclosed[1]).toContain('事務内容確認');
 });

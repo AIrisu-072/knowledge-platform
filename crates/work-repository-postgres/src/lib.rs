@@ -399,8 +399,10 @@ impl PostgresWorkRepository {
             .execute(&mut *tx)
             .await
             .map_err(database_error)?;
+        // Instances lock independently: the same operation ID committed first for a
+        // different instance is an operation conflict, not an unavailable dependency.
         sqlx::query("INSERT INTO work.operation_ledger(operation_id,workflow_id,principal_id,acting_assignment_id,command_digest,outcome) VALUES($1,$2,$3,$4,$5,$6)")
-            .bind(operation_id).bind(workflow.id).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(&digest).bind(Json(&result)).execute(&mut *tx).await.map_err(database_error)?;
+            .bind(operation_id).bind(workflow.id).bind(actor.principal_id()).bind(command.context().acting_assignment_id).bind(&digest).bind(Json(&result)).execute(&mut *tx).await.map_err(ledger_error)?;
         // Candidate/decision records are not workflow transitions.
         if matches!(
             action,
@@ -712,6 +714,12 @@ impl EvidencePreflight {
 }
 fn database_error(_: sqlx::Error) -> WorkError {
     WorkError::DependencyUnavailable
+}
+fn ledger_error(error: sqlx::Error) -> WorkError {
+    match error.as_database_error() {
+        Some(value) if value.is_unique_violation() => WorkError::OperationConflict,
+        _ => WorkError::DependencyUnavailable,
+    }
 }
 fn validate_migration_records(records: &[(i64, Vec<u8>)], complete: bool) -> Result<(), WorkError> {
     if records.len() > MIGRATIONS.len() || (complete && records.len() != MIGRATIONS.len()) {

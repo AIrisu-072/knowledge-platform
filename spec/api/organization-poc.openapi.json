@@ -2294,8 +2294,12 @@
             "format": "uuid"
           },
           "contextId": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。"
           },
           "attemptId": {
             "type": "string",
@@ -2468,7 +2472,7 @@
               "string",
               "null"
             ],
-            "description": "文脈の表示名。owner unitのcontext.read保有者と現在の担当者本人にだけ開示。"
+            "description": "文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。"
           }
         },
         "required": [
@@ -2599,8 +2603,12 @@
             "format": "uuid"
           },
           "contextId": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。"
           },
           "attemptId": {
             "type": "string",
@@ -2802,7 +2810,7 @@
               "string",
               "null"
             ],
-            "description": "文脈の表示名。owner unitのcontext.read保有者と現在の担当者本人にだけ開示。"
+            "description": "文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。"
           }
         },
         "required": [

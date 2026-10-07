@@ -306,7 +306,9 @@ pub struct TaskSummary {
     #[serde(default)]
     pub return_transition: Option<ReturnTransition>,
     pub id: Uuid,
-    pub context_id: Uuid,
+    /// Opaque context identity, disclosed exactly where `context_title` is.
+    #[serde(default)]
+    pub context_id: Option<Uuid>,
     pub attempt_id: Uuid,
     pub revision: i64,
     pub title: String,
@@ -1010,6 +1012,7 @@ impl Workflow {
             .flatten();
         let can_assign =
             item.state != TaskState::Completed && self.assigning_in(actor, scope).is_some();
+        let context_title = self.context_title_for(actor, scope);
         TaskSummary {
             can_hold: hold_action_id.is_some(),
             hold_action_id,
@@ -1044,7 +1047,8 @@ impl Workflow {
             work_type_label: work_type_label(item.work_type_id).into(),
             due_at: item.due_at.clone(),
             attention: self.attention_for(actor, item),
-            context_title: self.context_title_for(actor, scope),
+            context_id: context_title.is_some().then_some(self.context_id),
+            context_title,
             attempt_number: item.attempt_number,
             can_return: return_transition.is_some(),
             // Submission and return identifiers belong to the assignee's projection;
@@ -1052,7 +1056,6 @@ impl Workflow {
             return_instruction_id: readable.then_some(item.return_instruction_id).flatten(),
             return_transition,
             id: item.id,
-            context_id: self.context_id,
             attempt_id: item.attempt_id,
             revision: item.revision,
             title: label.into(),
