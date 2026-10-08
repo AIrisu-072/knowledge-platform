@@ -20,5 +20,6 @@ sha2.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+organization-server = { version = "0.0.0", path = "../organization-server" }
 testcontainers.workspace = true
 tempfile.workspace = true
