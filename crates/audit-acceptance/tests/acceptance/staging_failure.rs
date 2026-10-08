@@ -257,10 +257,12 @@ fn a_failed_staging_or_registration_rolls_the_business_transaction_back() {
 }
 
 async fn staging_failure() {
+    // The relay-origin Document types, as T1 selects them: a relay type of
+    // another source is not a Document producer and is not named here.
     let catalog: BTreeSet<&str> = Catalog::embedded()
         .events()
         .iter()
-        .filter(|spec| spec.origin == Origin::Relay)
+        .filter(|spec| spec.origin == Origin::Relay && spec.source == DOCUMENT_SOURCE)
         .map(|spec| spec.event_type.as_str())
         .collect();
     let covered: BTreeSet<&str> = REFUSED.iter().chain(NOT_REFUSED.iter()).copied().collect();

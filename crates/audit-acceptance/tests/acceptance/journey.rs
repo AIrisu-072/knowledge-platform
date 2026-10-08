@@ -73,9 +73,6 @@ const FOLDER_B: &str = "FOLDERMARK-b-48c0";
 const FOLDER_A_RENAMED: &str = "FOLDERMARK-a-renamed-5f72";
 const METADATA_VALUE: &str = "METAMARK-category-2b7f";
 
-/// The Document source of the catalog (relay origin).
-const DOCUMENT_SOURCE: &str = "urn:knowledge-platform:document-platform";
-
 /// How many staging rows of each relay-origin Document type the journey
 /// produces. The keys must be exactly the catalog's types.
 const EXPECTED_COUNTS: [(&str, usize); 23] = [

@@ -46,6 +46,9 @@ pub const STORE_ISSUER: &str = "synthetic-audit-idp";
 pub const DOC_DB: &str = "document_acceptance";
 pub const STORE_DB: &str = "audit_store_acceptance";
 pub const DOC_OWNER: &str = "document_app";
+/// The Document source of the catalog (relay origin): the acceptance
+/// covers this source's types only.
+pub const DOCUMENT_SOURCE: &str = "urn:knowledge-platform:document-platform";
 
 /// Store roles of the relay service login (design §10.1).
 pub const RELAY_SERVICE_ROLES: [&str; 3] = [
