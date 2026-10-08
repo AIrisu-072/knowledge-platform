@@ -1,5 +1,19 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 単位B 確認review（NO-GO、`478a66f`）の指摘反映（worktree branch、未push）
+
+- branch `worktree-agent-a07ac0dcd80b1fa0d`（`478a66f` の上）。各指摘は先に再現試験を書き、修正前に失敗することを確認してから直した（括弧内は修正前の失敗）。commit：
+  - `2a8b62f` I4：新DBへのrestoreでcheckpoint・relay seq・regressionが無いと `lost_upper_known` がNULL（previewが `missing value`、epoch_startedがcatalog違反）→ coalesceでfalse（`store_recovery.rs` の新試験、previewで `Protocol("missing value")`）。
+  - `63202ac` I3：recovery記録の行は上限不明を `"lost_upper":null`（必須key）で示し、開始は `--expect-lost-upper unknown`（SQLは期待値NULL＝不明）でだけ一致する。audit-coreは `RecoveryRecord`・`EpochAttestation` に `lost_upper_known` を加え（加法）、本文のboolean必須、不明な上限は `Lost`（記録と本文の既知・不明が食い違えば不一致）。assessの `epochs` にも出す（audit-coreの試験で `Authentic`、`cli_assess` で行が数値のまま）。
+  - `c24f2b5` I1：集約windowを過ぎた全loginの未記録の拒否件数を、すべての追記（control event、relay ingest）とprobeの前にそのlogin・code・actor（記録時に保持）の記録として書く。verify・checkpoint・開示intent・expire・purgeは記録の前に全件書く。`store_status.denials_pending`、relay healthの `stored.denials_pending` と警報 `store_denials_pending`（`store_ingest.rs`：7件のburst後に無関係な追記で1件しかchainに無い）。
+  - `74e30bb` I2・M1：relay postureは `audit_relay_owner` とsuperuser以外の全loginのrelay表への書込み（`table_access`）、接続できるloginの `pg_read_all_data`/`pg_write_all_data`/`pg_maintain`、接続に関係なく全loginのserver file・programのrole（`predefined_role_member`）を報告する（Storeも後者を追加）。relay表5つに `current_user` で書き手を確かめるSECURITY INVOKERの `guard_writer` を追加し、定義者関数以外の受領偽造を42501で拒否する（`source_schema.rs`：偽造loginでpostureが空、`store_access.rs`：非接続loginのserver file roleが未報告）。
+  - `bd20cd0` 追加修正：`read_page` の `await_durable` は、後続commitの無いWAL（heap pruning等）が残るとidleなStoreで `intent_not_durable` を返し続けた（M2の試験で再現）。遅れていれば内容の無い非transactional WAL message（flush付き）でflushしてから開示する。
+  - `fbf08da` M2：同じ以後のepochでcheckpointがexportのheadを越える場合は `tampered` ではなく `store_behind`（終了code 2、真正にしない）。checkpointはexportの最後のseq以前を使う（`cli_assess.rs`：`--seq-through` exportが `tampered`/5）。
+  - `f97a909` M3：probe・store_statusは `record_verified` がhead lockの下で更新する `verification_state` を読む（意味は同じ関数で不変。関数統計でprobe 5回に再計算5回）。
+- ローカル検証（`f97a909`＋docs）：`cargo test --locked --no-fail-fast -p audit-core -p audit-store-postgres -p audit-relay` 全PASS（core 148＋doc 2、Store 71、relay 50＋ignored 1）、`cargo clippy --locked … --all-targets -- -D warnings`・`cargo fmt --all -- --check`・`cargo run --quiet --locked -p architecture-lint -- check` PASS。
+- 設計からの差分（承認状態：依頼者の修正指示の範囲内で本trackが採用、確認review未実施）：recovery記録形式の `lost_upper: null`、assessの `store_behind`（終了code 2）、Document DBのbackupはsuperuserで行う（relay postureが `pg_read_all_data` のloginを報告するため）、`read_page` の自己flush。
+- 次のexact action：修正確認review（security・correctness）→ 指摘反映 → 最新mainから作り直したbranchへ移してDraft PR → exact-head CI。
+
 ## 2026-10-08 — 単位B 独立review（Store・relay × security・correctness）の指摘反映（worktree branch、未push）
 
 - branch `worktree-agent-a07ac0dcd80b1fa0d`（`46ed5f6` の上）。container再起動で中断した前回の未commit変更を見直して引き継ぎ、残りを実装した。各blocking指摘は、先に再現試験を書き、修正前のcodeで失敗することを確認してから直した。
