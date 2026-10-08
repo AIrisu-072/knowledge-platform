@@ -935,34 +935,41 @@ fn legacy_unmarked_pdf_does_not_gain_catalog_language_identity() {
     assert_eq!(fingerprint(&missing), fingerprint(&french));
 }
 
+fn assert_root_mcr_rejected(array_wrapped: bool) {
+    fingerprint(&TaggedPdf::baseline().bytes());
+    let mut malformed = TaggedPdf::baseline();
+    let content = malformed.content_text();
+    let (first, _) = content.split_once("EMC\n").unwrap();
+    malformed.replace_content(format!("{first}EMC\n"));
+    let page = malformed.page;
+    let root = malformed.structure_root;
+    let mcr = Object::Dictionary(dictionary! {
+        "Type" => "MCR", "Pg" => Object::Reference(page), "MCID" => 0,
+    });
+    let child = if array_wrapped {
+        Object::Array(vec![mcr])
+    } else {
+        mcr
+    };
+    malformed.dictionary(root).set("K", child);
+    malformed.dictionary(malformed.parent_tree).set(
+        "Nums",
+        vec![
+            Object::Integer(0),
+            Object::Array(vec![Object::Reference(root)]),
+        ],
+    );
+    let bytes = malformed.bytes();
+    assert_eq!(painted_text(&bytes), vec![FIRST]);
+    assert_rejected(&bytes, WorkerFailureCode::ParserDisagreement);
+}
+
 #[test]
 fn structure_root_cannot_own_a_marked_content_reference_directly() {
-    fingerprint(&TaggedPdf::baseline().bytes());
-    for array_wrapped in [false, true] {
-        let mut malformed = TaggedPdf::baseline();
-        let content = malformed.content_text();
-        let (first, _) = content.split_once("EMC\n").unwrap();
-        malformed.replace_content(format!("{first}EMC\n"));
-        let page = malformed.page;
-        let root = malformed.structure_root;
-        let mcr = Object::Dictionary(dictionary! {
-            "Type" => "MCR", "Pg" => Object::Reference(page), "MCID" => 0,
-        });
-        let child = if array_wrapped {
-            Object::Array(vec![mcr])
-        } else {
-            mcr
-        };
-        malformed.dictionary(root).set("K", child);
-        malformed.dictionary(malformed.parent_tree).set(
-            "Nums",
-            vec![
-                Object::Integer(0),
-                Object::Array(vec![Object::Reference(root)]),
-            ],
-        );
-        let bytes = malformed.bytes();
-        assert_eq!(painted_text(&bytes), vec![FIRST]);
-        assert_rejected(&bytes, WorkerFailureCode::ParserDisagreement);
-    }
+    assert_root_mcr_rejected(false);
+}
+
+#[test]
+fn structure_root_cannot_own_an_array_wrapped_marked_content_reference() {
+    assert_root_mcr_rejected(true);
 }

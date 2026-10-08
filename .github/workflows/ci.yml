@@ -235,6 +235,8 @@ jobs:
       - name: Real composition-root acceptance
         env:
           KP_POC_VISUAL_REVIEW_ENABLED: ${{ steps.visual-review-gate.outputs.enabled }}
+          KP_DOCUMENT_LOAD_RECEIPT_ALLOWED: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo != null && github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'document-load-small') }}
+          KP_DOCUMENT_LOAD_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           KP_DOCUMENT_LOAD_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'document-load-small') }}
         run: |
           unset KP_DOCUMENT_LOAD_SMALL KP_DOCUMENT_LOAD_PLAN
@@ -251,6 +253,17 @@ jobs:
       - name: Emit bounded runtime evidence
         if: ${{ always() }}
         run: node tools/document-poc-runtime/ci-summary.mjs
+      - name: Upload bounded Document small qualification receipt
+        if: ${{ success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo != null && github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'document-load-small') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # existing pin; one synthetic receipt only
+        with:
+          name: document-load-small-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: false
+          compression-level: 0
+          include-hidden-files: true
+          path: tools/document-poc-runtime/.state/document-load-export/qualification.json
       - name: Upload approved synthetic PR43 review pixels
         id: visual-review-upload
         if: ${{ success() && steps.visual-review-gate.outputs.enabled == 'true' }}

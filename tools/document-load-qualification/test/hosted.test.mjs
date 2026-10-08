@@ -13,3 +13,19 @@ test('official manifest retains unsupported original and two distinct positive n
  assert.equal(positives.length,2);assert.equal(new Set(positives.map(x=>x.sha256)).size,2);assert.equal(negatives.length,1);assert.equal(negatives[0].id,'mhlw-001472933');assert.equal(negatives[0].sha256,'e5a123087d108d066c775417049935ceb6ff9b807461e5439c36dda0987a3706');
  assert.equal(manifest.assets.reduce((n,x)=>n+x.bytes,0),404481);
 });
+test('CI exports only the fixed successful small receipt with the existing pinned artifact action',async()=>{
+ const yaml=await readFile(new URL('../../../.github/workflows/ci.yml',import.meta.url),'utf8');
+ const step=yaml.split('- name: Upload bounded Document small qualification receipt')[1]?.split('- name:')[0];
+ assert.ok(step);assert.match(step,/success\(\)/);assert.match(step,/document-load-small/);assert.match(step,/actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);assert.match(step,/retention-days: 1/);assert.match(step,/overwrite: false/);assert.match(step,/if-no-files-found: error/);assert.match(step,/path: tools\/document-poc-runtime\/\.state\/document-load-export\/qualification\.json/);assert.doesNotMatch(step,/path:.*\*|report\.json/);
+ const hostedSource=await readFile(new URL('../hosted.mjs',import.meta.url),'utf8');assert.match(hostedSource,/GITHUB_ACTIONS==='true'/);assert.match(hostedSource,/report\.status==='SUCCEEDED' && report\.stage==='small'/);assert.match(hostedSource,/writeSmallReceipt\(root,report,receiptSourceHead\(process\.env\)\)/);
+});
+test('receipt uses the explicit checked-out PR head even when GitHub event SHA is a merge commit',()=>{
+ assert.equal(typeof hosted.receiptSourceHead,'function');const head='a'.repeat(40),merge='b'.repeat(40);
+ assert.equal(hosted.receiptSourceHead({KP_DOCUMENT_LOAD_SOURCE_HEAD:head,GITHUB_SHA:merge}),head);
+ assert.throws(()=>hosted.receiptSourceHead({GITHUB_SHA:merge}));assert.throws(()=>hosted.receiptSourceHead({KP_DOCUMENT_LOAD_SOURCE_HEAD:'PRIVATE_SENTINEL'}));
+});
+test('receipt export is opt-in only for the workflow-confirmed same-repository CI event',async()=>{
+ assert.equal(typeof hosted.receiptExportEnabled,'function');assert.equal(hosted.receiptExportEnabled({GITHUB_ACTIONS:'true',KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:'true'}),true);
+ for(const env of [{GITHUB_ACTIONS:'true',KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:'false'},{GITHUB_ACTIONS:'true'},{KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:'true'},{}])assert.equal(hosted.receiptExportEnabled(env),false);
+ const yaml=await readFile(new URL('../../../.github/workflows/ci.yml',import.meta.url),'utf8');const step=yaml.split('- name: Upload bounded Document small qualification receipt')[1]?.split('- name:')[0];assert.match(step,/github\.event\.pull_request\.head\.repo != null/);assert.match(step,/github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);assert.match(yaml,/KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:.*head\.repo\.full_name == github\.repository/);
+});

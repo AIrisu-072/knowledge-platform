@@ -121,6 +121,12 @@ impl<'a> StructureInspector<'a> {
             let root_id = root_id.ok_or_else(|| malformed("structure root must be indirect"))?;
             inspector.roots = inspector.walk_children(children, root_id, None, 0)?;
         }
+        inspector.charge_work(inspector.roots.len())?;
+        if inspector.roots.iter().any(|index| {
+            !matches!(inspector.nodes[*index], Node::Element { .. })
+        }) {
+            return Err(malformed("structure root children must be structure elements"));
+        }
         inspector.validate_page_order()?;
         inspector.validate_parent_tree(root)?;
         Ok(inspector)

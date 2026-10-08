@@ -3,10 +3,13 @@ import {join,resolve}from'node:path';
 import {loadCorpus,sha256}from'./corpus.mjs';
 import {observeResources}from'./safety.mjs';
 import {runQualification}from'./controller.mjs';
+import {writeSmallReceipt}from'./receipt-export.mjs';
 import {sanitizeWorkerDiagnostic,workerProbeArguments} from './worker-probe.mjs';
 import {inspectionDiagnosticSql,publicationPrerequisiteSql,sanitizePublicationPrerequisites} from './diagnostics.mjs';
 import {postgresVersionArgs}from'../document-poc-runtime/postgres-readiness.mjs';
 const GiB=1024**3;
+export function receiptExportEnabled(env){return env.GITHUB_ACTIONS==='true' && env.KP_DOCUMENT_LOAD_RECEIPT_ALLOWED==='true';}
+export function receiptSourceHead(env){const head=env.KP_DOCUMENT_LOAD_SOURCE_HEAD;if(typeof head!=='string'||!/^[a-f0-9]{40}$/.test(head))throw Error('Receipt checkout head unavailable');return head;}
 export function normalizeWorkerResult(result,binding){return{...sanitizeWorkerDiagnostic(result),binding};}
 export function loadEnabled(env,prebuilt){
  if(env.KP_DOCUMENT_LOAD_SMALL===undefined && env.KP_DOCUMENT_LOAD_PLAN===undefined)return false;
@@ -78,8 +81,12 @@ export async function runDocumentLoad({root,directory,runId,sourceHead,artifacts
   };
   report=await runQualification({directory:target,runId,plan,previousReport,corpus,runtime:{observe,identity,restart,diagnosePublication,diagnoseWorker,evidenceClass:'owned-real-process'},probeFactory:options=>new DocumentProbe({...options,humanUrl:human,agentUrl:agent})});
  }catch{report={schemaVersion:1,status:'FAILED',failureCode:'official-small-prerequisite-failed',productionSloClaim:false};await writeFile(join(target,'report.json'),JSON.stringify(report)+'\n',{mode:0o600});}
- // Only fixed categories and numeric aggregates are emitted; private files stay local.
- console.log(JSON.stringify({documentLoadQualification:{status:report.status,stage:report.stage??'small',documentCount:report.documentCount??2,failureCode:report.failureCode??null,failureDiagnostic:report.failureDiagnostic??null,inspectionDiagnostic:report.inspectionDiagnostic??null,workerDiagnostic:report.workerDiagnostic??null,publicationPrerequisites:report.publicationPrerequisites??null,counts:report.counts??null,negativeFailureCode:report.negativeFailureCode??null,negativeCorpus:report.negativeCorpus?{status:report.negativeCorpus.status,counts:report.negativeCorpus.counts,contentQualityClaim:false}:null,metricQualification:report.metricQualification??'measurement-unavailable',metrics:report.metrics??null,timings:report.timings??{},productionSloClaim:false}}));
- if(report.status!=='SUCCEEDED')throw Error('Document load qualification did not succeed; preserve its separate report');
+ let receiptExport;
+ if(receiptExportEnabled(process.env) && report.status==='SUCCEEDED' && report.stage==='small'){
+  try{receiptExport={status:'EXPORTED',...await writeSmallReceipt(root,report,receiptSourceHead(process.env))};}catch{receiptExport={status:'FAILED'};}
+ }
+ // Only fixed categories, numeric aggregates and the receipt digest are emitted.
+ console.log(JSON.stringify({documentLoadQualification:{status:report.status,receiptExport:receiptExport??null,stage:report.stage??'small',documentCount:report.documentCount??2,failureCode:report.failureCode??null,failureDiagnostic:report.failureDiagnostic??null,inspectionDiagnostic:report.inspectionDiagnostic??null,workerDiagnostic:report.workerDiagnostic??null,publicationPrerequisites:report.publicationPrerequisites??null,counts:report.counts??null,negativeFailureCode:report.negativeFailureCode??null,negativeCorpus:report.negativeCorpus?{status:report.negativeCorpus.status,counts:report.negativeCorpus.counts,contentQualityClaim:false}:null,metricQualification:report.metricQualification??'measurement-unavailable',metrics:report.metrics??null,timings:report.timings??{},productionSloClaim:false}}));
+ if(report.status!=='SUCCEEDED'||receiptExport?.status==='FAILED')throw Error('Document load qualification did not succeed; preserve its separate report');
  return {status:report.status,stage:report.stage,documentCount:report.documentCount,fingerprint:report.fingerprint,metrics:report.metrics};
 }

@@ -150,3 +150,7 @@ actual Crop REDに基づき、新semanticsを使うページだけ、有限な�
 17:25追補：8dac8af9/tree c5018391のMac実試験は全4target compile成功。tags23成功/新規9 behavioral RED、paint29成功/子1ignore、pdf_diff12成功/跨頁段落差分1 RED（誤ってFull）、Diff lib10成功。期待した意味欠落を確認してから、structure.rsのみの限定修正に着手した。fmtは次headで機械的にまとめる。cloudの同headはharness119＋既存runtime177＋生成SDK/binary19＝315件成功、skip0。いずれもLinux API/容量資格ではない。
 
 17:31追補：既存の実RED9件に対し、structure.rsへ有限ページmembership・lazy catalog Lang・非MCID文字の既定言語・関連付けtagのidentity除外を実装し、6つの小さな実helper budget境界試験を追加。独立reviewは設計一致を確認したが、不正なStructTreeRoot直下MCRがParentTree owner=rootで通る別経路を指摘した。ISO32000-1 Table322ではroot子はStructElemに限る。次headはこの不正rootのdirect/array回帰だけを新しい期待REDとして残し、他のtag修正GREEN・旧15全field・公式2件を同時検証する。rootのguardはそのRED確認後に追加する。graphicsの100万overlap照合ちょうど/超過の小型fixtureも追加した。
+
+17:40追補：c69b26d5のMacはtag32成功/不正root直下MCR1件が実RED、paint30成功/子1ignore、Diff実13・lib10・workerPDF lib25成功。旧15全field完全一致、公式2件native成功と原本hash一致を維持、全target Clippy成功。新rootのarray形はdirectのassertで未到達だったため、2つの独立testへ分割し、bounded root scanで非StructElemをParserDisagreementとする6行guardを追加した。新しいPDF機能は増やさない。
+
+小量成功の限定証拠保存を同repo/同承認検証の必要範囲として追加。public repositoryであることをconnectorで確認し、固定JSONだけにsynthetic ID/hash/count/metrics/restart証拠をallowlist抽出、1日保持・既存pinned action/permissionsを維持する。private report/PDF/text/log/path/credentialsはuploadしない。独立reviewでPR headとGITHUB_SHAの違い、fork PRのgate不足を検出し、実RED→GREENで修正した。ハーネス135試験成功、full受入/receipt実生成は次exact head待ち。Macで4Rust filesのfmtと最終回帰を行い、そのheadのLinux API small/全CIを確認する。

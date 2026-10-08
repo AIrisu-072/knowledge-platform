@@ -100,3 +100,11 @@ DSI行が無い `BUSINESS_RULE_REJECTED` の場合は、検査APIの呼び忘れ
 ## 正例と負例の境界
 
 manifestのexpectedOutcomeは来歴hashに含めます。負例の422はnegative-* journalへ既知応答として保存し、追加診断失敗や再起動後の改変を成功にしません。正例の件数と負例の件数は別集計です。負例も同じ時間/RSS/disk budgetと実測に含まれます。現在の2正例は限定された横書き通知の資格であり、縦書き・表・任意のActualText置換を含む全PDFの対応を示しません。新しい条件を解釈できない場合の拒否を維持します。
+
+## 小量成功の限定証拠ファイル
+
+同一repositoryの専用label付きPRで小量試験に成功した場合に限り、既存のpinned artifact actionが固定JSON 1ファイルを1日保存します。repositoryはpublicなので、公開してよい検証用UUID・code/corpus/runtime hash・数値件数/資源値・再起動前後の一時PID・DB/storageの一方向identity hashだけを明示抽出します。原本PDF・本文・snapshot・環境変数・credentials・任意log/pathは含めません。privateなreport.json全体はuploadしません。
+
+JSONは小量正例2/負例1の成功条件、数値、UUID、再起動identity/PID、取得時刻を厳格に検査し、最大1MiB、固定パス、freshなdirectory/排他的file作成を使います。PRのcheckout headと一致しなければexport失敗です。fork PR、失敗run、大量stageはexport/uploadしません。公開ログにはreceiptのSHA-256だけを追加します。
+
+SHA-256は整合性確認であって署名/実行真正性ではありません。verifyQualificationReceiptは信頼された別経路のcode/corpus/runtime/runId/SHA-256を全て要求し、authenticityVerified:falseを明示します。次段の利用前に、同repoの承認workflow、run/attempt、checkout head、artifact originとログdigestを照合する必要があります。未知JSONを自己申告hashだけでadmissionへ渡しません。今回の追加は保存/整合性検査までで、任意receiptの自動restoreや大規模CI起動を追加しません。
