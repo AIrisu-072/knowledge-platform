@@ -78,9 +78,15 @@ impl StartupError {
                 side,
                 code: "pool_timeout".into(),
             },
-            sqlx::Error::Io(_) | sqlx::Error::Tls(_) => Self::Unavailable {
+            sqlx::Error::Io(_) => Self::Unavailable {
                 side,
                 code: "transport".into(),
+            },
+            // A TLS failure is a configuration or interception problem
+            // (certificates, required TLS stripped), not a Store outage.
+            sqlx::Error::Tls(_) => Self::Unavailable {
+                side,
+                code: "tls".into(),
             },
             sqlx::Error::Protocol(message) if message == SYNC_COMMIT_REFUSED => {
                 Self::SynchronousCommitOff { side }

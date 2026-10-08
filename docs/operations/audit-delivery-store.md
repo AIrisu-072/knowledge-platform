@@ -161,7 +161,7 @@ audit-relay health [--forecast] [--reconcile]   # 両URLが要る。posture違�
 
 | alarm | 意味 | 対処 |
 |---|---|---|
-| `store_unavailable` | `stored.gate` が通信断等。Storeへ接続できない場合（停止、通信断、`ALLOW_CONNECTIONS false` 等）もhealthはexit 0でこれを出す。認証失敗・存在しないdatabase等の設定の誤りは障害ではなく、healthは `audit-relay: store database refused (<SQLSTATE>)` でexit 1になる | Storeの復旧を待つ（動いている `run` が自動で排出する。§4.1） |
+| `store_unavailable` | `stored.gate` が通信断等。Storeへ接続できない場合（停止、通信断、`ALLOW_CONNECTIONS false` 等）もhealthはexit 0でこれを出す。認証失敗・TLSの失敗・未対応の認証方式・存在しないdatabase等の設定の誤りは障害ではなく、healthは `audit-relay: store database refused (<SQLSTATE>)` でexit 1になる | Storeの復旧を待つ（動いている `run` が自動で排出する。§4.1） |
 | `store_recovery_required` / `store_regressed` | fingerprint不一致・`recovery_pending` / ack済みreceiptがStoreに無い | §10 |
 | `store_posture_invalid` | Storeのposture違反 | `audit-admin posture`、§5.4 |
 | `store_catalog_skew` | relayのcatalogが期待するtypeをStoreが未登録（relay serviceのloginで見たときだけ）。`run` は全面的にclaimを止める | §7 |

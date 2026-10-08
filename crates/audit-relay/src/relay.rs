@@ -158,11 +158,14 @@ pub fn store_connect_outage(error: &StartupError) -> Option<OutageCode> {
         StartupError::Unavailable {
             side: Side::Store,
             code,
-        } => Some(match code.as_str() {
-            "transport" => OutageCode::Transport,
-            "connect_timeout" | "pool_timeout" => OutageCode::Timeout,
-            _ => OutageCode::Other,
-        }),
+        } => match code.as_str() {
+            "transport" => Some(OutageCode::Transport),
+            "connect_timeout" | "pool_timeout" => Some(OutageCode::Timeout),
+            // `tls` and `unclassified` (e.g. an unsupported authentication
+            // method) are setup errors: health fails instead of reporting
+            // a Store outage.
+            _ => None,
+        },
         StartupError::Database {
             side: Side::Store,
             sqlstate,
@@ -276,7 +279,6 @@ mod tests {
                 unavailable(Side::Store, "pool_timeout"),
                 OutageCode::Timeout,
             ),
-            (unavailable(Side::Store, "unclassified"), OutageCode::Other),
             (refused(Side::Store, "55000"), OutageCode::Other),
             (refused(Side::Store, "08006"), OutageCode::Connection),
             (refused(Side::Store, "53300"), OutageCode::Resources),
@@ -289,6 +291,16 @@ mod tests {
             refused(Side::Store, "28000"),
             refused(Side::Store, "3D000"),
             refused(Side::Store, "42501"),
+            unavailable(Side::Store, "tls"),
+            unavailable(Side::Store, "unclassified"),
+            StartupError::from_sqlx(
+                Side::Store,
+                &sqlx::Error::Tls(Box::new(std::io::Error::other("synthetic tls"))),
+            ),
+            StartupError::from_sqlx(
+                Side::Store,
+                &sqlx::Error::Protocol("unsupported authentication method".into()),
+            ),
             unavailable(Side::Source, "transport"),
             refused(Side::Source, "55000"),
             StartupError::UrlOptions { side: Side::Store },

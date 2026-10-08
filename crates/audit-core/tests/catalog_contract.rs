@@ -1196,11 +1196,38 @@ fn management_operation_kinds() -> BTreeSet<String> {
         .expect("ManagementCommand::operation_kind on main");
     let body = &text[start..];
     let end = body.find("\n    }\n").expect("end of operation_kind");
+    // Every arm must yield a string literal (also when rustfmt wraps it in
+    // a block); a constant or computed code would escape this test.
     body[..end]
-        .split("=> \"")
+        .split("=>")
         .skip(1)
-        .map(|rest| rest[..rest.find('"').expect("closing quote")].to_owned())
+        .map(|rest| {
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix('{').map_or(rest, str::trim_start);
+            let literal = rest.strip_prefix('"').unwrap_or_else(|| {
+                panic!("operation_kind has an arm without a string literal: {rest:.60}")
+            });
+            literal[..literal.find('"').expect("closing quote")].to_owned()
+        })
         .collect()
+}
+
+/// Every `.rs` file under `dir`, recursively, sorted.
+fn rust_sources(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in std::fs::read_dir(&next).expect("producer src") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
 }
 
 /// Every `action_code` the Document producer can stage for
@@ -1216,18 +1243,21 @@ fn producer_denial_codes() -> BTreeSet<String> {
                 .contains(r#"json!({"action_code": action_code, "reason_code": "forbidden"})"#),
         "record_authorization_denied no longer stages its argument as action_code; update this test"
     );
-    let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .expect("producer src")
-        .map(|entry| entry.expect("dir entry").path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
-        .collect();
-    files.sort();
+    let files = rust_sources(&dir);
     let needle = "record_authorization_denied(";
     let mut codes = BTreeSet::new();
     let mut calls = 0;
+    let mut stagers = Vec::new();
     for path in files {
         let text = std::fs::read_to_string(&path).expect("producer file");
-        let name = path.file_name().expect("file name").to_string_lossy();
+        let name = path
+            .strip_prefix(&dir)
+            .expect("under src")
+            .to_string_lossy()
+            .into_owned();
+        if text.contains("authorization.denied") {
+            stagers.push(name.clone());
+        }
         for (at, _) in text.match_indices(needle) {
             if text[..at].ends_with("fn ") {
                 continue;
@@ -1253,6 +1283,13 @@ fn producer_denial_codes() -> BTreeSet<String> {
     assert!(
         calls >= 4,
         "found only {calls} record_authorization_denied calls; was the helper renamed?"
+    );
+    // Only the helper may stage the type, so every code passes through the
+    // calls collected above.
+    assert_eq!(
+        stagers,
+        ["targeted_events.rs"],
+        "authorization.denied is staged outside record_authorization_denied; teach this test"
     );
     codes
 }

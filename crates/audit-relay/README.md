@@ -1,6 +1,4 @@
-# a
-- `health` はStoreへ接続できない場合（transport・timeout、SQLSTATE class 08・53・57、55000：`ALLOW_CONNECTIONS false` 等）も終了せず、その障害codeを `stored.gate` に入れ `stored.available: false` と警報 `store_unavailable` を出す（`relay::connect_for_health`、`store::UnreachableStore`。同一databaseの検査は比べる相手が無いので省く。healthは何も書かない）。認証失敗・存在しないdatabase・URLとsessionの検査は障害ではなく、exit 1のままである。`run`・`reconcile`・`replay` は両DBへ接続できなければ起動しない（exit 1）。起動後のStore障害は保留して復旧後に排出するが、停止中に起動・再起動した `run` は終了するので、process監視が再起動する。
-udit-relay
+# audit-relay
 
 Audit Infrastructure v1の配送（[設計](../../docs/superpowers/specs/2026-10-07-audit-infrastructure-v1-delivery-design.md) §5・§6・§12、[決定記録](../../docs/decisions/2026-10-07-audit-envelope-store-integrity.md) D4）。Documentの `public.audit_outbox_events` を、`crates/audit-store-postgres` の監査Storeへat-least-onceで届ける。
 
@@ -84,6 +82,7 @@ audit-relay: event=progress circuit=closed gate=ok outage_streak=0 delivered=32 
 
 ## 失敗の扱い
 
+- `health` はStoreへ接続できない場合（transport・timeout、SQLSTATE class 08・53・57、55000：`ALLOW_CONNECTIONS false` 等）も終了せず、その障害codeを `stored.gate` に入れ `stored.available: false` と警報 `store_unavailable` を出す（`relay::connect_for_health`、`store::UnreachableStore`。同一databaseの検査は比べる相手が無いので省く。healthは何も書かない）。認証失敗・TLSの失敗・未対応の認証方式・存在しないdatabase・URLとsessionの検査は障害ではなく、exit 1のままである。`run`・`reconcile`・`replay` は両DBへ接続できなければ起動しない（exit 1）。起動後のStore障害は保留して復旧後に排出するが、停止中に起動・再起動した `run` は終了するので、process監視が再起動する。
 - quarantine（終端）は、Storeの構造化verdict（`conflict`、`rejected_<code>`。`audit_core::IngestRow::into_result` だけが作る）とrelay側の判定（`source_digest_mismatch`、`actor_mismatch`、catalog不適合）だけ。source改変は先に `audit.integrity.source_mismatch_detected` を記録し（event・codeごとに1回）、記録できなければ保留する。
 - quarantine codeはStoreのcode形式 `[a-z0-9_]{1,64}` に従う（replayが `quarantine_code` として記録できるように）。relayの拒否codeはそのまま、Storeの拒否は `rejected_<code>` を64 byteで切る。
 - それ以外（通信断、timeout、全SQLSTATE、結果不明、recovery mode、後退、posture違反、未登録type、ingest主体の拒否）は外部障害として試行を返却して保留し、circuit breakerを開く。breakerはingestの構造化結果でだけ閉じる。
