@@ -673,9 +673,18 @@ where
 
 /// Polls `audit-relay health` until `accept` holds and returns that report.
 pub async fn health_when(env: &Env, accept: impl Fn(&Value) -> bool) -> Value {
+    health_when_against(env, &env.relay_store.url, accept).await
+}
+
+/// [`health_when`] against another Store database (a restored Store).
+pub async fn health_when_against(
+    env: &Env,
+    store_url: &str,
+    accept: impl Fn(&Value) -> bool,
+) -> Value {
     let deadline = tokio::time::Instant::now() + CONVERGE;
     loop {
-        let report = env.health(false).await;
+        let report = env.health_against(store_url, false).await;
         if accept(&report) {
             return report;
         }

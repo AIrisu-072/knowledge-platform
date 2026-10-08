@@ -1,22 +1,28 @@
 //! T5 (design §11, §14.3; operations guide §10): the Store is backed up,
 //! more real Document events are delivered, and the Store is restored from
 //! the backup into a new database, following the documented procedure:
-//! relay stopped, the restored Store refuses until a recovery epoch starts
-//! (health `store_recovery_required`), `verify --recovery`, the recovery
-//! identity-chain export compared with the out-of-band checkpoint, the
-//! `begin-recovery-epoch` preview appended to the out-of-band recovery
-//! records, the epoch started with exactly those expectations, the relay
-//! restarted against the restored Store, `reconcile --repair`, redelivery,
-//! access and retention re-applied, verify, a new checkpoint and the
-//! offline assessment. The events lost by the restore are delivered again
-//! (exactly once in the restored Store) and the declared lost range keeps
-//! the assessment honest: `lost`, never `authentic`; `unverified_recovery`
-//! without the out-of-band record or with a forged one. A further epoch
-//! started without any bound (an operator-declared incident, no checkpoint,
-//! no relay seq) records its loss as unknown and is assessed `lost` too.
+//! relay stopped for the backup, the restored Store refuses until a
+//! recovery epoch starts (health `store_recovery_required`),
+//! `verify --recovery`, the recovery identity-chain export compared with
+//! the out-of-band checkpoint, the `begin-recovery-epoch` preview appended
+//! to the out-of-band recovery records, the epoch started with exactly
+//! those expectations, `reconcile --repair`, redelivery, access and
+//! retention re-applied, verify, a new checkpoint and the offline
+//! assessment. The procedure keeps the relay stopped until the epoch; here
+//! `audit-relay run` is pointed at the restored Store before any recovery
+//! step (as an early restart would), and the gate holds: rows produced
+//! meanwhile stay at attempt 0 and are not stored until the epoch starts,
+//! then the same relay delivers them. The events lost by the restore are
+//! delivered again (exactly once in the restored Store) and the declared
+//! lost range keeps the assessment honest: `lost`, never `authentic`;
+//! `unverified_recovery` without the out-of-band record or with a forged
+//! one. A further epoch started without any bound (an operator-declared
+//! incident, no checkpoint, no relay seq) records its loss as unknown and is
+//! assessed `lost` too.
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use audit_relay::reconcile::Reconciler;
 use audit_store_postgres::admin::{AccessOperation, AuditAdmin};
@@ -28,6 +34,7 @@ use audit_store_postgres::files::{
 use audit_store_postgres::{PRIVILEGES_SQL, PostgresAuditStore};
 use document_domain::FolderId;
 use serde_json::json;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::document::{Platform, editor_ctx, small_lifecycle};
@@ -44,6 +51,24 @@ fn append_line(path: &Path, line: &str) {
         .open(path)
         .expect("recovery records file");
     writeln!(file, "{line}").expect("append record");
+}
+
+/// The rows produced during the recovery are not attempted (attempt 0) nor
+/// acknowledged, and the restored Store holds none of them.
+async fn assert_still_waiting(env: &Env, restored_admin: &PgPool, waited: &[Uuid], when: &str) {
+    let ledger = deliveries(env).await;
+    for id in waited {
+        let row = &ledger[id];
+        assert!(!row.delivered, "{when}: {row:?}");
+        assert_eq!(row.attempt_count, 0, "{when}: no attempt: {row:?}");
+    }
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM audit_store.events WHERE event_id = ANY($1)")
+            .bind(waited)
+            .fetch_one(restored_admin)
+            .await
+            .expect("restored rows");
+    assert_eq!(stored, 0, "{when}: nothing of them is stored");
 }
 
 fn assess(
@@ -150,9 +175,12 @@ async fn store_restore() {
         "the dump ends at the checkpoint"
     );
 
-    // The relay's view of the restored Store: recovery required, nothing
-    // is admitted; a Document event produced now waits.
+    // `audit-relay run` is pointed at the restored Store before any
+    // recovery step. The Store requires recovery, so the running relay
+    // admits nothing: a Document event produced now waits (no attempt,
+    // nothing stored) until the new epoch starts.
     let restored_url = env.url(&env.relay_store.role, RESTORED_DB);
+    let relay = RunningRelay::start_with(run_config(&env.worker.url, &restored_url));
     let waiting = platform
         .create_document(
             Platform::root(),
@@ -161,7 +189,21 @@ async fn store_restore() {
         )
         .await
         .expect("business continues");
-    let report = env.health_against(&restored_url, false).await;
+    let waited: Vec<Uuid> = staged_rows(&env)
+        .await
+        .iter()
+        .filter(|row| row.resource_id == waiting.0.as_uuid())
+        .map(|row| row.event_id)
+        .collect();
+    assert_eq!(waited.len(), 2, "created and version created");
+    // The running relay has probed the restored Store and reports the gate
+    // (sampled every second); health against the restored Store says the
+    // same, and produced ≠ delivered: the waiting rows are pending.
+    let report = health_when_against(&env, &restored_url, |report| {
+        report["circuit"]["running"] == json!(1)
+            && report["circuit"]["gate"] == json!("store_recovery_required")
+    })
+    .await;
     assert_eq!(
         report["stored"]["gate"],
         json!("store_recovery_required"),
@@ -173,6 +215,18 @@ async fn store_restore() {
             .expect("alarms")
             .contains(&json!("store_recovery_required"))
     );
+    let staged_now = staged_rows(&env).await.len();
+    assert_eq!(report["produced"]["staged"], json!(staged_now), "{report}");
+    assert_eq!(
+        report["delivered"]["delivered"],
+        json!(staged_now - waited.len())
+    );
+    assert_eq!(report["delivered"]["pending"], json!(waited.len()));
+    // Many poll and probe cycles later (poll 50 ms, breaker cooldown at
+    // most 400 ms) the rows still wait.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(relay.is_running());
+    assert_still_waiting(&env, &restored_admin, &waited, "while the Store is gated").await;
     // --relay-max-seq: the highest Store seq the relay references in the
     // restored epoch, as health reports it against the restored Store.
     assert_eq!(report["stored"]["relay_max_seq"], json!(relay_max));
@@ -226,6 +280,8 @@ async fn store_restore() {
         .begin_recovery_epoch(Some(&checkpoint), Some(relay_max), &wrong)
         .await;
     assert!(refused.is_err(), "a record that hides the loss is refused");
+    assert!(relay.is_running());
+    assert_still_waiting(&env, &restored_admin, &waited, "before the epoch").await;
     let started = maintainer
         .begin_recovery_epoch(Some(&checkpoint), Some(relay_max), &recorded)
         .await
@@ -238,9 +294,9 @@ async fn store_restore() {
         (record.seq + 1, relay_max)
     );
 
-    // Step 6: the relay runs against the restored Store; the operator's
-    // repair resets what the restore lost; the relay delivers it again.
-    let relay = RunningRelay::start_with(run_config(&env.worker.url, &restored_url));
+    // Step 6: the relay running against the restored Store delivers the
+    // waiting rows in the new epoch; the operator's repair resets what the
+    // restore lost; the relay delivers it again.
     let operator_store = PostgresAuditStore::new(
         env.pool_on(&env.operator_store, RESTORED_DB).await,
         STORE_TIMEOUT,
@@ -283,15 +339,9 @@ async fn store_restore() {
         assert_eq!(ledger[id].store_recovery_epoch, Some(2), "{id}");
         assert!(stored[id].seq > started.seq, "redelivered after the epoch");
     }
-    let waited: Vec<Uuid> = staged_rows(&env)
-        .await
-        .iter()
-        .filter(|row| row.resource_id == waiting.0.as_uuid())
-        .map(|row| row.event_id)
-        .collect();
-    assert_eq!(waited.len(), 2, "created and version created");
     for id in &waited {
         assert_eq!(ledger[id].store_recovery_epoch, Some(2));
+        assert!(stored[id].seq > started.seq, "stored after the epoch");
         assert_eq!(ledger[id].attempt_count, 1, "no attempt while gated");
     }
     let resets: i64 = sqlx::query_scalar(
