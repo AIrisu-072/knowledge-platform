@@ -19,7 +19,7 @@
 
 ## 単位B：Store・配送
 
-状況（2026-10-08）：手順1–4は実施済み（worktree branch、未push）。設計からの意図的な差分は設計の改訂4、経過と検証は[状況](../execution/audit-infrastructure-v1-status.md)に記す。残りは手順5。
+状況（2026-10-08）：完了。PR #113でmain `dba8168` へ統合（exact-head `8a275b1` のCI成功）。設計からの意図的な差分は設計の改訂4、経過と検証は[状況](../execution/audit-infrastructure-v1-status.md)に記す。
 
 1. `crates/audit-store-postgres`：migration（`audit_store`、ledger `audit_store_sqlx_migrations`、owner role、REVOKE PUBLIC、definer関数、guard、registered_types）、`AuditStore` portの実装、2段階開示、verify、retention/purge、権限・束縛、status/probe、roles.sql、bin `audit-admin`。
    - 実施：上記に加え、`privileges.sql`、検証の被覆、拒否の集約（`suppressed_since_last`）、`begin_recovery_epoch` の帯域外期待値とpreview、DB外の総合判定 `audit-admin assess` と帯域外recovery記録 `kp-audit-recovery-records-v1`、postureの拡張（定義済みrole、REPLICATION login、列権限）。
@@ -39,10 +39,19 @@
 4. 日本語運用手順 `docs/operations/audit-delivery-store.md`。
    - 実施：作成済み（未検証事項の一覧を含む）。
 5. branch `claude/cool-darwin-7xh893` へのpushとDraft PR → exact-head hosted CI → main統合 → main CI確認。統合後、単位Cへ進む。
+   - 実施：main統合まで済み。main `dba8168` のpush CIは状況文書で確認中。
 
 ## 単位C：Document受入・handoff
 
+状況（2026-10-08）：手順1–4は実施済み（worktree branch `audit-unit-c`、未push）。残りは手順5。
+
 1. 実Document producerからStoreまでのE2E（作成〜公開終了、scheduler attribution、拒否）、staging失敗時のrollback、Document migration追加時の互換。
+   - 実施：`crates/audit-acceptance` のT1（全23 type・40件）、T2、`document_migration`。HTTP層・worker binary・`DueScheduler` 本体は通していない（crate READMEの「含まないもの」）。
 2. 復旧の証拠：backup/restore、crash/restart、reconcile。
+   - 実施：T3（Store停止）、T4（保存後・ack前のSIGKILL）、T5（Store restoreと消失範囲の再配送・assess）。Document DB restore・組restoreは実producer行では未実施。
 3. `docs/superpowers/handoffs/audit-infrastructure-v1-organization-handoff.md`（Organization・Search・Documentへの引継ぎ）。
+   - 実施：作成済み（所有者付きの未決事項表を含む）。
 4. capability matrixの最終更新と、未検証事項の記録。
+   - 実施：設計§2.2（2026-10-08 最終状態）。§2.1は初期状態として保持。
+5. branch `claude/cool-darwin-7xh893` へのpush（mainからのfast-forward）とDraft PR → 独立review → exact-head hosted CI → main統合 → main CI確認。
+   - 未実施。

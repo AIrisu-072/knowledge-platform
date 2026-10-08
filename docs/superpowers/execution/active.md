@@ -32,7 +32,8 @@
 ## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
 - Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
-- 単位A（PR98）はmain統合済み。単位B（Store・relay）は実装・review反映・文書確定まで済み（未push）。次はbranch `claude/cool-darwin-7xh893` へのpushとDraft PR、exact-head CI。現在状態は状況文書とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+- 単位A（PR #98、main `643cc85`）と単位B（Store・relay、PR #113、main `dba8168`）はmain統合済み（`dba8168` のmain CIは状況文書で確認中）。単位C（`crates/audit-acceptance` の受入試験、[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)、設計§2.2の最終capability matrix）はworktree branch `audit-unit-c` で完了・未push。
+- 次はbranch `claude/cool-darwin-7xh893` へのpush（mainからのfast-forward）、単位CのDraft PR、独立review、exact-head CI、main統合、main CI。現在状態は状況文書の先頭とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
 
 ---
 
