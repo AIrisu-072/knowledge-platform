@@ -78,7 +78,9 @@ test.each([null, undefined])('50+1を同pair/digestで継続し監査IDと終端
 test.each(['no current', 'not working', 'disabled', 'hidden', 'missing'])('%sではWrite/Publishから比較能力を補完しない', async mode => {
   const h = setup(); if (mode === 'not working') { h.api.listDocumentVersions.mockResolvedValue({ items: [published], nextCursor: null }); }
   else h.api.getDocument.mockResolvedValue({ ...detail(), ...(mode === 'no current' ? { currentVersionId: null } : { capabilities: { ...detail().capabilities, compareVersions: mode === 'missing' ? undefined : { status: mode, reason: 'permission' } } }) });
-  await screen.findByRole('heading', { name: /選択中:/ }); expect(screen.queryByRole('button', { name: '現行公開版とこの作業版を比較' })).not.toBeInTheDocument(); expect(h.api.compareDocumentVersions).not.toHaveBeenCalled();
+  if (mode === 'not working') { await screen.findByText('指定したコンテンツ版は一覧にありません。対象を選び直してください。'); expect(screen.queryByRole('heading', { name: /選択中:/ })).not.toBeInTheDocument(); }
+  else await screen.findByRole('heading', { name: /選択中:/ });
+  expect(screen.queryByRole('button', { name: '現行公開版とこの作業版を比較' })).not.toBeInTheDocument(); expect(h.api.compareDocumentVersions).not.toHaveBeenCalled();
 });
 
 test('空のitemsでもunknown/partialと未比較範囲だけのページを同一と断定しない', async () => {
@@ -193,7 +195,7 @@ test('restart一覧refreshで明示WORKING消失なら別WORKINGを比較せず�
   await act(async () => { await h.client.invalidateQueries({ queryKey: ['document', documentId] }); });
   const otherWorking = { ...version(4), lifecycleState: 'working', isCurrent: false };
   h.api.listDocumentVersions.mockResolvedValue({ items: [otherWorking], nextCursor: null }); h.api.getDocumentVersion.mockImplementation((_id, id) => Promise.resolve(id === published.versionId ? published : id === working.versionId ? working : otherWorking));
-  fireEvent.click(restart()); await screen.findByRole('heading', { name: '選択中: WORKING · 版 4' });
+  fireEvent.click(restart()); await screen.findByText('指定したコンテンツ版は一覧にありません。対象を選び直してください。'); expect(screen.queryByRole('heading', { name: /選択中:/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('region', { name: '公開前の内容比較' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: '現行公開版とこの作業版を比較' })).not.toBeInTheDocument();
   await act(async () => pending.resolve(comparison([1], null))); expect(screen.queryByText('新本文1')).not.toBeInTheDocument(); expect(h.api.compareDocumentVersions).toHaveBeenCalledTimes(2); expect(h.router.state.location.search.versionId).toBe(working.versionId);
 });

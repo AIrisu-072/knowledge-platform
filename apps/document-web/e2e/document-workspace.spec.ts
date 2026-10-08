@@ -280,6 +280,70 @@ test('detail route code is loaded after the document list is usable', async ({ p
   expect([...scriptPaths].some((path) => !listScripts.has(path))).toBe(true);
 });
 
+test('revision detail uses the selected historical snapshot and closes on tab navigation', async ({ page }) => {
+  await installApi(page);
+  await page.route(`**/v1/documents/${documentId}/revisions/${revisionId}`, async route => {
+    await route.fulfill({ json: { ...revision(revisionId, baseVersionId, 1), metadataSnapshot: { owner: '保存時の担当' }, actor: null, reason: '保存時の改訂理由' } });
+  });
+  await page.goto(`/documents/${documentId}?view=published&tab=versions`);
+  await page.getByRole('button', { name: '改訂 1.0 の詳細', exact: true }).click();
+  const detail = page.getByRole('region', { name: '正式改訂の詳細' });
+  await expect(detail).toContainText('保存時の担当');
+  await expect(detail).toContainText('保存時の改訂理由');
+  await page.screenshot({ path: test.info().outputPath('revision-detail.png'), fullPage: true });
+  await page.getByRole('tab', { name: '概要' }).click();
+  await expect(detail).toHaveCount(0);
+});
+
+test('past publication withdrawal reads history purpose and preserves the current publication', async ({ page }) => {
+  await installApi(page);
+  const pastId = '00000000-0000-4000-8000-000000000088';
+  const current = { ...mockVersion(), versionId: baseVersionId, versionNo: 2, lifecycleState: 'published', isCurrent: true, publishedAt: '2026-09-30T03:00:00Z', capabilities: { ...mockVersion().capabilities, edit: permissionDenied, publish: permissionDenied, schedulePublication: permissionDenied, withdraw: permissionDenied } };
+  const past = { ...current, versionId: pastId, versionNo: 1, isCurrent: false, capabilities: { ...current.capabilities, withdraw: available } };
+  let withdrawn = false;
+  const writes: Array<Record<string, unknown>> = [];
+  await page.route(`**/v1/documents/${documentId}?**`, async route => {
+    await route.fulfill({ json: { ...mockDocument('published'), revision: withdrawn ? 8 : 7 } });
+  });
+  await page.route(`**/v1/documents/${documentId}/versions**`, async route => {
+    const url = new URL(route.request().url());
+    const purpose = url.searchParams.get('purpose');
+    if (url.pathname.endsWith(`/${pastId}:withdraw`)) {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      writes.push(body); withdrawn = true;
+      await route.fulfill({ json: { operationId: body.operationId, documentId, targetVersionId: pastId, formerCurrentVersionId: baseVersionId, resultingCurrentVersionId: baseVersionId, resultingRevision: 8, restorationWithheldReason: null } });
+    } else if (url.pathname.endsWith('/versions')) {
+      await route.fulfill({ json: { items: purpose === 'history' ? [current, { ...past, lifecycleState: withdrawn ? 'withdrawn' : 'published' }] : [current], nextCursor: null } });
+    } else if (url.pathname.endsWith(`/${pastId}`)) {
+      if (purpose !== 'history') {
+        await route.fulfill({ status: 404, json: { code: 'DOCUMENT_VERSION_NOT_FOUND', title: 'History purpose required' } });
+      } else {
+        await route.fulfill({ json: { ...past, lifecycleState: withdrawn ? 'withdrawn' : 'published', capabilities: { ...past.capabilities, withdraw: withdrawn ? permissionDenied : available } } });
+      }
+    } else if (url.pathname.endsWith(`/${baseVersionId}`)) {
+      await route.fulfill({ json: current });
+    } else {
+      await route.fallback();
+    }
+  });
+  await page.goto(`/documents/${documentId}?view=published&tab=versions`);
+  await expect(page.getByRole('button', { name: /版 1/, exact: false })).toHaveCount(0);
+  await page.getByRole('button', { name: '過去版を含めて表示' }).click();
+  await expect(page.getByRole('button', { name: /版 2 現行版/ })).toBeVisible();
+  await page.getByRole('button', { name: /版 1/, exact: false }).click();
+  await page.getByRole('button', { name: '選択版を取下げ' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('版 1');
+  await dialog.getByRole('textbox', { name: '理由' }).fill('過去版の試験');
+  await page.screenshot({ path: test.info().outputPath('past-withdrawal.png'), fullPage: true });
+  await dialog.getByRole('button', { name: '取下げを確定' }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0]).toMatchObject({ expectedRevision: 7, reason: '過去版の試験' });
+  await expect(page.getByRole('heading', { name: '受入手順', level: 1 })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '原本と版' })).toContainText('現行版 · Version 2');
+  await expect(page.getByRole('region', { name: '公開状態の操作' }).getByRole('status')).toContainText('現行の公開版は変わりません');
+});
+
 test('keyboard activation keeps list URL context and restores focus after returning', async ({ page }) => {
   const api = await installApi(page);
   await page.goto('/documents?view=authoring&titleContains=manual&sort=title_asc&pageSize=25');

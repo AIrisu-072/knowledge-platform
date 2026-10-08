@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import { skipToken, useInfiniteQuery, useQuery, useQueryClient, type QueryClient, type InfiniteData } from '@tanstack/react-query';
 import { documentApi, type Version, type VersionDetail, type FileList, type VersionList } from './document-workspace';
+import { denyDocumentRevisionReads } from './use-document-revisions';
+import { denyDocumentHistoryReads } from './use-document-history';
 import { problemFromUnknown } from './problem-mapping';
 
 const pagesKey = (documentId: string) => ['document-versions', documentId, 'history', 'pages'] as const;
@@ -13,7 +15,7 @@ function historyReadKey(key: readonly unknown[], documentId: string) {
   return key[1] === documentId && (key[0] === 'document-versions' && key[2] === 'history'
     || (key[0] === 'document-version' || key[0] === 'document-version-files') && key[3] === 'history');
 }
-function discardContentHistoryReads(client: QueryClient, documentId: string) {
+export function discardContentHistoryReads(client: QueryClient, documentId: string) {
   const filter = { predicate: (query: { queryKey: readonly unknown[] }) => historyReadKey(query.queryKey, documentId) };
   void client.cancelQueries(filter, { revert: false });
   client.removeQueries(filter);
@@ -21,6 +23,8 @@ function discardContentHistoryReads(client: QueryClient, documentId: string) {
 function stopContentHistoryReads(client: QueryClient, documentId: string, error: unknown) {
   // 拒否だけを別keyに保持し、通常のread resetでも明示再読取を省略させない。
   client.setQueryData<Refusal>(refusalKey(documentId), () => ({ error }));
+  denyDocumentRevisionReads(client, documentId, error);
+  denyDocumentHistoryReads(client, documentId, error);
   discardContentHistoryReads(client, documentId);
 }
 export function denyDocumentContentHistoryReads(client: QueryClient, documentId: string, error: unknown) {
@@ -138,3 +142,5 @@ export function useContentHistoryVersion(documentId: string, versionId: string) 
     },
   };
 }
+
+export type DocumentContentHistoryRead = ReturnType<typeof useDocumentContentHistory>;

@@ -180,11 +180,11 @@ test('通常T10後404はhistoryの恒久拒否にせず各既存controlからfre
 test.each(['event', 'content'])('history自身の%s拒否はview往復と一覧再読取から無言で解除しない', async kind => {
   const h = setup('/documents?view=history', 1); const method = kind === 'event' ? h.api.getDocumentHistory : h.api.listDocumentVersions;
   const original = method.getMockImplementation()!; method.mockRejectedValueOnce(problem(403)).mockImplementationOnce(original);
-  await selectDocument(); if (kind === 'content') fireEvent.click(panel().getByRole('button', { name: 'コンテンツ版の履歴を開く' })); await panel().findByRole('alert');
+  await selectDocument(); if (kind === 'content') fireEvent.click(panel().getByRole('button', { name: 'コンテンツ版の履歴を開く' })); await panel().findAllByRole('alert'); if (kind === 'content') expect(panel().queryByText('T10終了記録')).not.toBeInTheDocument();
   expect(method).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('link', { name: '文書' })); await waitFor(() => expect(h.router.state.location.search.view).toBe('published'));
   fireEvent.click(screen.getByRole('link', { name: '文書履歴' })); await selectDocument(); if (kind === 'content') fireEvent.click(panel().getByRole('button', { name: 'コンテンツ版の履歴を開く' }));
-  await panel().findByRole('alert'); expect(method).toHaveBeenCalledTimes(1);
+  await panel().findAllByRole('alert'); if (kind === 'content') expect(panel().queryByText('T10終了記録')).not.toBeInTheDocument(); expect(method).toHaveBeenCalledTimes(1);
   fireEvent.click(panel().getByRole('button', { name: kind === 'event' ? '変更履歴を最初から読み直す' : 'コンテンツ版の履歴を最初から読み直す' }));
   if (kind === 'event') await panel().findByText('T10終了記録'); else await waitFor(() => expect(chooser()).toHaveValue(''));
   expect(method).toHaveBeenCalledTimes(2);

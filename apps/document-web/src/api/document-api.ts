@@ -16,6 +16,7 @@ import {
   compareDocumentRevisions,
   compareDocumentVersions,
   getDocument,
+  getDocumentRevision,
   getDocumentAccessPolicy,
   getFolderAccessPolicy,
   setFolderAccessPolicy,
@@ -150,6 +151,9 @@ export const documentApi = {
   },
   getDocumentVersion(documentId: string, versionId: string, purpose: View): Promise<VersionDetail> {
     return payload(getDocumentVersion({ ...data, path: { documentId, versionId }, query: { purpose } }));
+  },
+  getDocumentRevision(documentId: string, revisionId: string, signal?: AbortSignal) {
+    return payload(getDocumentRevision({ ...data, path: { documentId, revisionId }, signal }));
   },
   listDocumentRevisions(documentId: string, cursor?: string): Promise<DocumentRevisionPage> {
     return payload(listDocumentRevisions({

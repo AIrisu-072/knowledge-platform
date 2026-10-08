@@ -266,3 +266,119 @@ test('操作も結果も無い概要画面へ空の公開操作パネルを追�
   await act(async () => router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'published', tab: 'overview' } }));
   expect(screen.queryByRole('region', { name: '公開状態の操作' })).not.toBeInTheDocument();
 });
+
+
+test('明示された過去版が一覧にない場合、現行版へ無言で取下げ対象を切り替えない', async () => {
+  const h = setup();
+  await screen.findByRole('button', { name: '選択版を取下げ' });
+  await act(async () => h.router.navigate({ to: '/documents/$documentId', params: { documentId }, search: { view: 'published', tab: 'versions', versionId: baseId } }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: '選択版を取下げ' })).not.toBeInTheDocument());
+  expect(h.api.withdrawVersion).not.toHaveBeenCalled();
+});
+
+test('過去の公開版を選び、その版だけを取下げ要求に固定する', async () => {
+  const h = setup(); const past = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null, isCurrent: false };
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => Promise.resolve({ items: purpose === 'history' ? [version, past] : [version], nextCursor: null }));
+  h.api.getDocumentVersion.mockImplementation((_document, id, purpose) => id === baseId && purpose !== 'history' ? Promise.reject(problem(404, 'DOCUMENT_VERSION_NOT_FOUND')) : Promise.resolve(id === baseId ? past : version));
+  await screen.findByRole('button', { name: '過去版を含めて表示' });
+  fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  await screen.findByRole('button', { name: /版 1/ });
+  fireEvent.click(screen.getByRole('button', { name: /版 1/ }));
+  await waitFor(() => expect(h.api.getDocumentVersion).toHaveBeenCalledWith(documentId, baseId, 'history'));
+  const { user } = await open();
+  expect(screen.getByText('合成文書 · 版 1')).toBeVisible();
+  await user.type(screen.getByRole('textbox', { name: '理由' }), '過去版の合成理由');
+  await user.click(screen.getByRole('button', { name: '取下げを確定' }));
+  await waitFor(() => expect(h.api.withdrawVersion).toHaveBeenCalledWith(documentId, baseId, expect.objectContaining({ expectedRevision: 7, reason: '過去版の合成理由' })));
+});
+
+
+test('過去版の次ページを取得して選択し、履歴用途で対象版を読む', async () => {
+  const h = setup(); const past = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null, isCurrent: false };
+  h.api.listDocumentVersions.mockImplementation((_id, purpose, cursor) => Promise.resolve({ items: purpose !== 'history' || !cursor ? [version] : [past], nextCursor: purpose === 'history' && !cursor ? 'synthetic-next' : null }));
+  h.api.getDocumentVersion.mockImplementation((_id, id, purpose) => id === baseId && purpose !== 'history' ? Promise.reject(problem(404, 'DOCUMENT_VERSION_NOT_FOUND')) : Promise.resolve(id === baseId ? past : version));
+  await screen.findByRole('button', { name: '過去版を含めて表示' }); fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  await screen.findByRole('button', { name: '過去版をさらに表示' }); fireEvent.click(screen.getByRole('button', { name: '過去版をさらに表示' }));
+  fireEvent.click(await screen.findByRole('button', { name: /版 1/ }));
+  await waitFor(() => expect(h.api.getDocumentVersion).toHaveBeenCalledWith(documentId, baseId, 'history'));
+  expect(h.api.listDocumentVersions).toHaveBeenCalledWith(documentId, 'history', 'synthetic-next');
+  expect(screen.queryByRole('button', { name: '過去版をさらに表示' })).not.toBeInTheDocument();
+});
+
+test('過去版取下げの結果不明要求は通常表示と履歴再読取りを往復しても同一内容で再送する', async () => {
+  const h = setup(); const past = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null, isCurrent: false };
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => Promise.resolve({ items: purpose === 'history' ? [version, past] : [version], nextCursor: null }));
+  h.api.getDocumentVersion.mockImplementation((_id, id, purpose) => id === baseId && purpose !== 'history' ? Promise.reject(problem(404, 'DOCUMENT_VERSION_NOT_FOUND')) : Promise.resolve(id === baseId ? past : version));
+  h.api.withdrawVersion.mockRejectedValue(new TypeError('synthetic offline'));
+  await screen.findByRole('button', { name: '過去版を含めて表示' }); fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  fireEvent.click(await screen.findByRole('button', { name: /版 1/ }));
+  await waitFor(() => expect(h.api.getDocumentVersion).toHaveBeenCalledWith(documentId, baseId, 'history'));
+  const { user, dialog, confirm } = await open(); await reason(dialog); await user.click(confirm);
+  await screen.findByRole('button', { name: '同じ内容で再試行' }); const fixed = h.api.withdrawVersion.mock.calls[0];
+  await user.click(screen.getByRole('button', { name: '閉じる' }));
+  fireEvent.click(screen.getByRole('button', { name: '通常の版表示に戻る' }));
+  fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  await screen.findByRole('button', { name: '過去版を最初から読み直す' }); fireEvent.click(screen.getByRole('button', { name: '過去版を最初から読み直す' }));
+  await user.click(screen.getByRole('button', { name: '未確認の操作を開く' }));
+  expect(screen.getByText('合成文書 · 版 1')).toBeVisible(); await user.click(screen.getByRole('button', { name: '同じ内容で再試行' }));
+  await waitFor(() => expect(h.api.withdrawVersion).toHaveBeenCalledTimes(2)); expect(h.api.withdrawVersion.mock.calls[1]).toEqual(fixed);
+});
+
+test('履歴用途を閉じた後の遅い拒否が通常表示の正式改訂を無効にしない', async () => {
+  const h = setup(); let reject!: (error: unknown) => void;
+  const late = new Promise<unknown>((_resolve, no) => { reject = no; });
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => purpose === 'history' ? late : Promise.resolve({ items: [version], nextCursor: null }));
+  await screen.findByRole('button', { name: '過去版を含めて表示' }); fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  await waitFor(() => expect(h.api.listDocumentVersions).toHaveBeenCalledWith(documentId, 'history', undefined));
+  fireEvent.click(screen.getByRole('button', { name: '通常の版表示に戻る' }));
+  await act(async () => reject(problem(403, 'FORBIDDEN')));
+  await screen.findByRole('heading', { name: '選択中: 版 2' });
+  expect(screen.queryByRole('heading', { name: 'アクセスできません' })).not.toBeInTheDocument();
+});
+
+test('閲覧専用履歴を開いてから取下げ用履歴へ切り替えても共有読取りが回復する', async () => {
+  const h = setup(); const past = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null, isCurrent: false };
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => Promise.resolve({ items: purpose === 'history' ? [version, past] : [version], nextCursor: null }));
+  h.api.getDocumentVersion.mockImplementation((_id, id, purpose) => id === baseId && purpose !== 'history' ? Promise.reject(problem(404, 'DOCUMENT_VERSION_NOT_FOUND')) : Promise.resolve(id === baseId ? past : version));
+  for (let round = 0; round < 2; round += 1) {
+    fireEvent.click(await screen.findByRole('button', { name: 'コンテンツ版の履歴を開く' }));
+    await screen.findByLabelText('履歴のコンテンツ版を選択');
+    fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+    fireEvent.click(await screen.findByRole('button', { name: /版 1/ }));
+    await screen.findByRole('heading', { name: '選択中: 版 1' });
+    fireEvent.click(screen.getByRole('button', { name: '通常の版表示に戻る' }));
+  }
+});
+
+test('過去版表示の読取り失敗で再読み込みすると履歴用途の先頭を再取得する', async () => {
+  const h = setup(); let historyCalls = 0;
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => purpose === 'history' && ++historyCalls === 1 ? Promise.reject(problem(503, 'DEPENDENCY_UNAVAILABLE')) : Promise.resolve({ items: [version], nextCursor: null }));
+  await screen.findByRole('button', { name: '過去版を含めて表示' }); fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  fireEvent.click(await screen.findByRole('button', { name: '再読み込み' }));
+  await waitFor(() => expect(historyCalls).toBe(2));
+  await screen.findByRole('heading', { name: '選択中: 版 2' });
+});
+
+test.each([503, 422])('選択した過去版の詳細%sは失敗案内から同じ履歴対象を読み直す', async status => {
+  const h = setup(); const past = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null, isCurrent: false }; let pastReads = 0;
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => Promise.resolve({ items: purpose === 'history' ? [version, past] : [version], nextCursor: null }));
+  h.api.getDocumentVersion.mockImplementation((_id, id, purpose) => id === baseId ? ++pastReads === 1 ? Promise.reject(problem(status, status === 503 ? 'DEPENDENCY_UNAVAILABLE' : 'BUSINESS_RULE_REJECTED')) : Promise.resolve(past) : Promise.resolve(version));
+  fireEvent.click(await screen.findByRole('button', { name: '過去版を含めて表示' })); fireEvent.click(await screen.findByRole('button', { name: /版 1/ }));
+  fireEvent.click(await screen.findByRole('button', { name: '再読み込み' }));
+  await waitFor(() => expect(pastReads).toBe(2));
+  expect(h.api.getDocumentVersion).toHaveBeenLastCalledWith(documentId, baseId, 'history');
+  expect(await screen.findByRole('button', { name: '選択版を取下げ' })).toBeEnabled();
+});
+
+test('過去版詳細の再試行案内は別の版を選ぶと残らず、元の版を自動再送しない', async () => {
+  const h = setup(); const past = { ...version, versionId: baseId, versionNo: 1, baseVersionId: null, isCurrent: false };
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => Promise.resolve({ items: purpose === 'history' ? [version, past] : [version], nextCursor: null }));
+  h.api.getDocumentVersion.mockImplementation((_id, id) => id === baseId ? Promise.reject(problem(503, 'DEPENDENCY_UNAVAILABLE')) : Promise.resolve(version));
+  fireEvent.click(await screen.findByRole('button', { name: '過去版を含めて表示' })); fireEvent.click(await screen.findByRole('button', { name: /版 1/ }));
+  const previousRetry = await screen.findByRole('button', { name: '再読み込み' });
+  fireEvent.click(screen.getByRole('button', { name: /版 2/ }));
+  await waitFor(() => expect(previousRetry).not.toBeInTheDocument());
+  fireEvent.click(previousRetry);
+  expect(h.api.getDocumentVersion.mock.calls.filter(call => call[1] === baseId)).toHaveLength(1);
+  expect(await screen.findByRole('heading', { name: '選択中: 版 2' })).toBeVisible();
+});
