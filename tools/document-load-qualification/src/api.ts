@@ -23,8 +23,17 @@ export type Asset = { bytes: Uint8Array | Blob; filename: string; mediaType: str
 export type ProbeOptions = { humanUrl: string; agentUrl: string; fetch?: typeof fetch; onTiming?: (timing: Timing) => void; maxFileBytes?: number; maxSnapshotBytes?: number; signal?: AbortSignal };
 type Endpoint = 'human' | 'agent';
 
+export type FailureDiagnostic = { operation: string; httpStatus: number | null; problemCode: string | null };
+const problemStatuses: Readonly<Record<string, number>> = Object.freeze({ VALIDATION_FAILED: 422, AUTHENTICATION_REQUIRED: 401, FORBIDDEN: 403, DOCUMENT_NOT_FOUND: 404, DOCUMENT_VERSION_NOT_FOUND: 404, REVISION_NOT_FOUND: 404, FOLDER_NOT_FOUND: 404, REVISION_CONFLICT: 409, OPERATION_CONFLICT: 409, CURSOR_STALE: 409, STALE_VERSION: 409, STALE_COMPARISON_INPUT: 409, BUSINESS_RULE_REJECTED: 422, RESERVED_DOCUMENT: 409, FOLDER_CYCLE: 409, ROOT_PROTECTED: 409, IDENTITY_UNAVAILABLE: 503, PUBLISH_QUALITY_REJECTED: 422, UNSUPPORTED_MEDIA_TYPE: 415, DEPENDENCY_UNAVAILABLE: 503, TIMEOUT: 504, COMMIT_OUTCOME_UNKNOWN: 503, INTEGRITY_VIOLATION: 500, INTERNAL: 500 });
+function diagnostic(operation: string, status: Timing['status'], error: unknown): FailureDiagnostic {
+  const candidate = error && typeof error === 'object' && 'problem' in error ? error.problem : error;
+  const problem = candidate && typeof candidate === 'object' ? candidate as Record<string, unknown> : {};
+  const code = typeof problem.code === 'string' && Object.hasOwn(problemStatuses, problem.code) && problemStatuses[problem.code] === status && problem.status === status ? problem.code : null;
+  return { operation, httpStatus: typeof status === 'number' ? status : null, problemCode: code };
+}
+
 export class ProbeSafetyError extends Error {
-  constructor(message: string, readonly status?: number | 'network_error' | 'validation_error') { super(message); this.name = 'ProbeSafetyError'; }
+  constructor(message: string, readonly status?: number | 'network_error' | 'validation_error', readonly diagnostic?: FailureDiagnostic) { super(message); this.name = 'ProbeSafetyError'; }
 }
 function origin(value: string): string {
   let url: URL;
@@ -87,7 +96,7 @@ export class DocumentProbe {
     catch (error) {
       if (error instanceof ProbeSafetyError) throw error;
       // Never surface transport causes, response bodies, credentials, or server URLs.
-      throw new ProbeSafetyError(`${operation} failed (${status})`, status);
+      throw new ProbeSafetyError(`${operation} failed (${status})`, status, diagnostic(operation, status, error));
     } finally {
       // Telemetry cannot turn a confirmed mutation into an unknown result.
       try { this.onTiming?.({ operation, elapsedMs: performance.now() - started, status }); } catch { /* diagnostic callback only */ }

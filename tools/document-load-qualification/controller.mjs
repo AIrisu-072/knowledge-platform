@@ -4,6 +4,7 @@ import {join}from'node:path';
 import {admitStage,summarizeTimings,validatePlan}from'./safety.mjs';
 import {Journal}from'./journal.mjs';
 import {exerciseStage,verifyRetained}from'./workflow.mjs';
+import {sanitizeFailureDiagnostic,sanitizeInspectionDiagnostic} from './diagnostics.mjs';
 export async function runQualification({directory,runId,plan,previousReport,corpus,runtime,probeFactory,execute=exerciseStage,verify=verifyRetained}){
  await mkdir(directory,{recursive:true,mode:0o700});
  const started=performance.now(),timings=[],observations=[];
@@ -14,10 +15,10 @@ export async function runQualification({directory,runId,plan,previousReport,corp
  const fail=code=>{const error=Error(code);error.code=code;return error;};
  let lastObservationAt=-Infinity;
  async function observe(force=false){if(busy)return busy;if(!force && performance.now()-lastObservationAt<1000)return observations.at(-1);busy=(async()=>{const value=await runtime.observe();observations.push(value);lastObservationAt=performance.now();return value;})();try{return await busy;}finally{busy=undefined;}}
- async function checkpoint(){
+ async function checkpoint(force=false){
   if(stopError)throw stopError;
   if(performance.now()-started>plan.budgets.maxWallTimeMs || Date.now()>Date.parse(plan.deadlineAt))throw fail('wall-budget-exhausted');
-  const observation=await observe();
+  const observation=await observe(force);
   if(stopError)throw stopError;
   if(performance.now()-started>plan.budgets.maxWallTimeMs || Date.now()>Date.parse(plan.deadlineAt))throw fail('wall-budget-exhausted');
   // Recheck current reserves, not a second full-stage capacity projection.
@@ -47,11 +48,28 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   try{assert.deepEqual(beforeDataset,afterDataset);assert.ok(Number.isInteger(oldHuman)&&Number.isInteger(oldAgent)&&Number.isInteger(newHuman)&&Number.isInteger(newAgent));assert.notEqual(oldHuman,newHuman);assert.notEqual(oldAgent,newAgent);}catch{throw fail('restart-proof-failed');}
   report.restart={identityRetained:true,processesReplaced:true,before:beforeDataset,after:afterDataset,processes:{before:[oldHuman,oldAgent],after:[newHuman,newAgent]}};
   monitor=setInterval(()=>{checkpoint().catch(error=>{stopError=error;abort.abort(error);});},1000);
-  await verify({probe,evidence:report.evidence,checkpoint});await checkpoint();
+  await verify({probe,evidence:report.evidence,checkpoint});await checkpoint(true);
   report.status='SUCCEEDED';
- }catch(error){error=stopError??error;report.status=error?.code==='wall-budget-exhausted'||error?.code==='resource-budget-exhausted'?'ABORTED':'FAILED';report.failureCode=error?.code??'qualification-assertion-or-prerequisite-failed';}
+ }catch(error){
+  error=stopError??error;
+  report.status=error?.code==='wall-budget-exhausted'||error?.code==='resource-budget-exhausted'?'ABORTED':'FAILED';
+  report.failureCode=['wall-budget-exhausted','resource-budget-exhausted','restart-proof-failed'].includes(error?.code)?error.code:'qualification-assertion-or-prerequisite-failed';
+  report.failureDiagnostic=sanitizeFailureDiagnostic(error?.diagnostic);
+  if(report.failureDiagnostic?.operation==='publish' && journal && runtime.diagnosePublication){
+   // Only an unacknowledged publication from this run's durable operation map.
+   const pending=[...journal.states].find(([key,state])=>/^publish:\d+$/.test(key) && !Object.hasOwn(state,'result'));
+   const fileId=pending?journal.get(pending[0].replace('publish:','create:'))?.result?.fileId
+    :journal.get('publish-next')&&!Object.hasOwn(journal.get('publish-next'),'result')?journal.get('next-version')?.request?.fileId:undefined;
+   if(fileId){try{report.inspectionDiagnostic=sanitizeInspectionDiagnostic(await runtime.diagnosePublication(fileId));}catch{report.inspectionDiagnostic={status:'unavailable'};}}
+  }
+ }
  finally{
-  clearInterval(monitor);clearTimeout(timer);await busy?.catch(()=>{});await journal?.close();
+  clearInterval(monitor);clearTimeout(timer);await busy?.catch(()=>{});
+  const entries=journal?[...journal.states]:[];
+  report.counts={targetDocuments:plan?.documentCount??0,confirmedCreatedDocuments:entries.filter(([key,state])=>/^create:\d+$/.test(key)&&Object.hasOwn(state,'result')).length,confirmedPublishedDocuments:entries.filter(([key,state])=>/^publish:\d+$/.test(key)&&Object.hasOwn(state,'result')).length};
+  report.metricQualification=report.status==='SUCCEEDED'?'complete-stage':'partial-failed-stage';
+  if(journal && report.status!=='SUCCEEDED')await observe(true).catch(()=>{report.metricQualification='measurement-unavailable';});
+  await journal?.close();
   report.finishedAt=new Date().toISOString();
   report.observations=observations;
   report.metrics=summarizeResources(observations,performance.now()-started);

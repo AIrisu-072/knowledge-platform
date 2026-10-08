@@ -86,3 +86,9 @@ mutation 前に request を journal へ append/fsync します。operationId の
 ### Search 投入器との関係
 
 PR108 の運用追補にある「並行登録器を作らない」は、Search corpus の同じ DB/manifest へ別経路で重複投入しないための境界として維持します。読取確認した Search `ingest.py` は `text/plain` 固定で、別の未統合 branch の所有物です。今回の client は公式 PDF を既存生成 SDK で測る独立した Document API 受入用であり、Search corpus の取得・変換・投入・索引を置換しません。Search に接続する場合は担当と manifest/DB/source の所有を別途合意し、いずれか一方だけで投入します。
+
+## 公開拒否の限定診断
+
+失敗時は既存 Error Registry にある code と実 HTTP status が一致する場合だけ Problem code を記録します。detail、traceId、field error、本文は保存・出力しません。目標件数とは別に、journal の成功応答を保持できた登録数・初回公開数を confirmedCreatedDocuments / confirmedPublishedDocuments として示します。応答不明の場合は実際に保存された件数がこれより多い可能性があり、未保存を断定しません。途中失敗の数値は `partial-failed-stage` とし、容量・性能の成功根拠にしません。
+
+公開拒否時に限り、自分の journal の pending publication に対応する FileId 1 件を、自分の disposable DB で read-only 集計します。DSI保存行の有無、PDF判定、原本 hash/size一致、未解決変更・embedded comments・invalid/unverifiable署名の件数だけです。これは Common API を迂回する製品読取機能ではなく、失敗解析用の検証計測です。コメント内容、作者、locator、署名主体、parser message はSQLでも選びません。未取得は unavailable / not-found のままで、拒否を成功へ変えません。

@@ -250,3 +250,15 @@ test('fake transport: caller budget AbortSignal cancels the in-flight generated 
   await rejected;
   assert.equal(h.requests.filter(({ request }) => request.method === 'POST').length, 1);
 });
+
+test('fake transport: rejected publication exposes only allowlisted matching Problem code and HTTP status', async () => {
+  for (const [code, problemStatus, expected] of [['PUBLISH_QUALITY_REJECTED',422,'PUBLISH_QUALITY_REJECTED'],['PRIVATE_SENTINEL',422,null],['PUBLISH_QUALITY_REJECTED',500,null],['INTEGRITY_VIOLATION',422,null]]) {
+    const h = await verified(() => json({code,status:problemStatus,detail:'PRIVATE_SENTINEL /secret/password',traceId:'PRIVATE_SENTINEL',errors:[{message:'PRIVATE_SENTINEL'}]},422));
+    await assert.rejects(h.probe.publish('d','v',0,'op'), error => {
+      assert.deepEqual(error.diagnostic,{operation:'publish',httpStatus:422,problemCode:expected});
+      assert.ok(!JSON.stringify(error).includes('PRIVATE_SENTINEL'));
+      assert.ok(!error.message.includes('PRIVATE_SENTINEL'));
+      return true;
+    });
+  }
+});

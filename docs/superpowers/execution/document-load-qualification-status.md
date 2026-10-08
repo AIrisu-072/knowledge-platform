@@ -43,3 +43,22 @@ Status: ACTIVE / 実 API 資格は未取得
 07:01追補：main6a34de3fをfast-forwardで保持した（初回commitは作者未設定で未作成だったため不要なmerge commitなし）。親の確認ではMac空き容量5.3GiBで、大規模local runはadmitしない。現在の実行候補はhosted smallのみ。Search用text/plain固定ingest.pyを読取確認し、今回のPDF API受入clientとの非共有境界をREADMEへ明記した。
 
 07:02追補：main6a34de3fとの組合せで生成SDK型buildと新規＋既存runtime/API契約248/248成功、skip0を新たに確認。独立レビューGOはsmall試行のsource資格のみ。Rust/実DB/公式PDF公開・large stage・exact-head CIは引き続き未実行。
+
+## 2026-10-08 07:26 UTC — PR110 の初回 hosted は Document step 失敗
+
+- Draft [PR110](https://github.com/AIrisu-072/knowledge-platform/pull/110)。公開head `7b95dbc75a2cb93cc9d8e148a5f07be7d77ba468` / tree `97274afb1c58304e7333057e9b2210c1186cd69a` はレビュー済みlocal treeと一致。GitHub connectorで公開し、remote ref/treeをreadback照合した
+- label前の通常CI37741316776はcancelled。専用`document-load-small` label後の[CI37741452488](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37741452488)のDocument [job113193385744](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37741452488/job/113193385744)はFAIL。固定依存/font/Chromiumの準備は成功、Real composition-root acceptanceとsummaryはFAIL、Organization後続はSKIP
+- jobログ取得はconnectorで3回ともTransport closed、artifactは0件。現時点では既存受入と公式PDF段階のどちらが失敗したか不明であり、PDF公開の製品不具合とは断定しない。許可された別executorでread-onlyログ取得を調整中。推測による製品変更や大規模実行はしていない
+- 次のexact action：実ログの失敗stageと固定Problem/operationを確定し、所有境界内の不具合ならRED→修正→独立review→同PR exact-head CIで再検証する。境界外なら親へ具体的な判断を返す
+
+07:38追補：CI37741452488は終端。14job中12成功、Documentと集約required-checkのみ失敗。PR110はDraft/open、head7b95dbc7を維持しmergeable=true。本文log未取得のため原因は未確定、推測fix・CI再実行・large実行はしていない。残る依存入力はjob113193385744のログ末尾とdocumentLoadQualification集計である。
+
+## 2026-10-08 07:50 UTC — 実ログ確認と限定診断の追補
+
+親が許可済みMacから取得したjob113193385744のログによると、既存browser/runtime/HTTP restartは成功し、公式smallへ到達した。最初の文書はcreate201、detail200、publish422。表示されたdocumentCount2は目標であり、2件成功ではない。失敗時elapsed692.937ms、sampled peakRSS526,835,712B、disk増分0は未完了stageの部分観測で、性能成功の証拠ではない。
+
+具体的な422 codeは初版adapterで破棄されていたため、同PRに次だけ追加する：固定Problem code/status、owned pending FileId1件のread-only DSI件数・原本binding診断、作成/初回公開/目標の別表示、未完測定label、最終観測。製品のPDF validator、公開品質規則、API error detailは変更しない。取得不能な診断は元の公開失敗を置き換えない。
+
+ローカル原本構造のread-only確認では、001472933.pdfはFreeText注釈1件、001472934.pdfは注釈0件だった。これはpypdfによる補助観測であり、実workerの拒否理由とはまだ断定しない。原本を加工・注釈削除して通さない。診断のRED→GREEN後、型build・全Node回帰254/254成功、skip0。独立レビューと新headの実再試験はこれから。
+
+07:54追補：診断追補は独立レビューGO。新規57件を含む全Node回帰254/254成功、skip0。SQLはschema/predicate静的照合済みで、実PostgreSQL実行は次hostedで確認する。登録/公開数はconfirmed*（成功応答をjournalへ保存済み）へ明記し、結果不明時に実件数が増えていないとは主張しない。まず同じ公式原本で実DSI理由を確定し、その後に正当な拒否ならnegative corpusへ分類する。注釈の除去や未説明422の期待成功化はしない。

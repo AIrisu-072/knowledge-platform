@@ -3,6 +3,7 @@ import {join}from'node:path';
 import {loadCorpus,sha256}from'./corpus.mjs';
 import {observeResources}from'./safety.mjs';
 import {runQualification}from'./controller.mjs';
+import {inspectionDiagnosticSql} from './diagnostics.mjs';
 import {postgresVersionArgs}from'../document-poc-runtime/postgres-readiness.mjs';
 const GiB=1024**3;
 export function loadEnabled(env,prebuilt){
@@ -59,10 +60,14 @@ export async function runDocumentLoad({root,directory,runId,sourceHead,artifacts
    observation.limitations.push('Database filesystem free capacity measured inside the owned PostgreSQL container; tmpfs consumes host memory.');
    return observation;
   };
-  report=await runQualification({directory:target,runId,plan,previousReport,corpus,runtime:{observe,identity,restart,evidenceClass:'owned-real-process'},probeFactory:options=>new DocumentProbe({...options,humanUrl:human,agentUrl:agent})});
+  const diagnosePublication=async fileId=>{
+   const query=postgresVersionArgs(cid);query[query.length-1]=inspectionDiagnosticSql(fileId);
+   return JSON.parse(await run('document-load-inspection-diagnostic','docker',query,{...process.env,PGPASSWORD:password},10000));
+  };
+  report=await runQualification({directory:target,runId,plan,previousReport,corpus,runtime:{observe,identity,restart,diagnosePublication,evidenceClass:'owned-real-process'},probeFactory:options=>new DocumentProbe({...options,humanUrl:human,agentUrl:agent})});
  }catch{report={schemaVersion:1,status:'FAILED',failureCode:'official-small-prerequisite-failed',productionSloClaim:false};await writeFile(join(target,'report.json'),JSON.stringify(report)+'\n',{mode:0o600});}
  // Only fixed categories and numeric aggregates are emitted; private files stay local.
- console.log(JSON.stringify({documentLoadQualification:{status:report.status,stage:report.stage??'small',documentCount:report.documentCount??2,failureCode:report.failureCode??null,metrics:report.metrics??null,timings:report.timings??{},productionSloClaim:false}}));
+ console.log(JSON.stringify({documentLoadQualification:{status:report.status,stage:report.stage??'small',documentCount:report.documentCount??2,failureCode:report.failureCode??null,failureDiagnostic:report.failureDiagnostic??null,inspectionDiagnostic:report.inspectionDiagnostic??null,counts:report.counts??null,metricQualification:report.metricQualification??'measurement-unavailable',metrics:report.metrics??null,timings:report.timings??{},productionSloClaim:false}}));
  if(report.status!=='SUCCEEDED')throw Error('Document load qualification did not succeed; preserve its separate report');
  return {status:report.status,stage:report.stage,documentCount:report.documentCount,fingerprint:report.fingerprint,metrics:report.metrics};
 }
