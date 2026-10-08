@@ -6,6 +6,10 @@
 
 PR作成直後の製品headでは通常CI `37731617010`、DSI PoC `37731617017`、Sandbox `37731617158` の開始を確認した。これは完了・合格の記録ではなく、文書追記後のheadへ成功を転用しない。hostedの最終結果はheadを変えないPR説明にも記録する。統合順とmain統合・統合後CIはクラウド親が担当する。
 
+文書head `d99d2f54e3e768b7b3219bb8993bb43ac5a79844` の通常CI `37731740750` は `document-poc-runtime` がFAIL。CI内Jest74 suites1740件とmock Chromiumは成功したが、実runtimeのmetadata-editor移動後read刷新が失敗した。完了を成功と取り違えた途中報告は訂正済み。原因は通常版queryでもAbortSignalを消費し、文書reset中のobserver一時脱落が版refetchをcancelしていたこと。遅延した文書/版の両GETでREDを再現し、signal消費をhistory用途だけへ限定する最小修正でGREENを確認した。版ID一致検査とhistory取消・認可失効保護は保持する。修正後headの独立レビューと全CIは別途資格を取る。旧headのDSI PoC `37731740780` とSandbox `37731740772` はSUCCESSであるが、新headへ成功を転用しない。
+
+CI修正は独立レビューGO、独立7境界case成功。関連6 suites318件、全体74 suites **1741件成功 / 0失敗 / 0skip**、TypeScript、production build、diff check成功。新main `e67aaccc87644896ea1a58823dafadb6bf0b12d5` はPR107のDocument検査修正2filesと状況文書だけで、GUIと担当file重複なし。これを同じPR108に取り込んで最終headの全gateを取り直し、全成功と独立レビュー後のexpected-head guard付き統合は親から承認済み。統合後CIまで確認する。
+
 ## 現在の境界
 
 元checkoutにはactive/statusの未コミット変更があり、そのまま保全した。別コピー `/Users/airisu/Documents/Codex/2026-10-08/task/knowledge-platform` で最新mainを取得した。repositoryに `.agents/skills` は存在しない。ユーザーのsession保存領域は参照していない。

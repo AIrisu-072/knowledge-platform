@@ -80,6 +80,33 @@ async function closeWithHeldFrames(dialog: HTMLElement, name = 'キャンセル'
   return async () => { await act(async () => { frames.splice(0).forEach(callback => callback(performance.now())); }); };
 }
 
+test('移動後の文書と版の遅い再取得は通常版observerの一時解除で更新失敗にしない', async () => {
+  const h = setup();
+  await waitFor(() => expect(h.client.getQueryState(['document-version', documentId, 'version', 'published'])?.status).toBe('success'));
+  const originalVersion = h.client.getQueryData<VersionDetail>(['document-version', documentId, 'version', 'published'])!;
+  const nextDocument = deferred<DocumentDetail>(); const nextVersion = deferred<VersionDetail>();
+  const dialog = await openMove(); await chooseDestination(dialog); fill(dialog);
+  h.api.getDocumentVersion.mockReturnValue(nextVersion.promise);
+  h.api.moveDocument.mockImplementation((id, body) => {
+    // Keep both post-commit GETs pending while reset removes the Document data.
+    // The normal version observer temporarily changes to an undefined version ID.
+    h.api.getDocument.mockReturnValue(nextDocument.promise);
+    return Promise.resolve({ operationId: body.operationId, resourceId: id,
+      resultingRevision: body.expectedDocumentRevision + 1, changed: true, occurredAt: '2026-10-06T10:00:00Z' });
+  });
+  submit(dialog);
+  await within(dialog).findByText('文書を移動しました。');
+  await waitFor(() => expect(h.api.getDocumentVersion).toHaveBeenCalledTimes(2));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  await act(async () => {
+    nextDocument.resolve(detail(documentId, { folderId: destinationRow.folderId, folderName: destinationRow.name, revision: 8 }));
+    nextVersion.resolve(originalVersion);
+  });
+  await waitFor(() => expect(documentMoveOperations(h.client).get()).toMatchObject({ status: 'succeeded', refresh: 'complete' }));
+  expect(within(dialog).queryByText('表示を更新できませんでした。移動結果は確定しています。読取を再試行してください。')).not.toBeInTheDocument();
+  expect(h.api.moveDocument).toHaveBeenCalledTimes(1);
+});
+
 // An unconditional close callback steals the next control's focus and makes Enter reopen move.
 test.each([false, true])('成功closeの遅いfocus復帰は次の操作へ移したfocus=%pを尊重し、旧triggerのfallbackを保つ', async movedFocus => {
   const h = setup(); const original = await screen.findByRole('button', { name: title });

@@ -6,6 +6,8 @@
 - Macの製品変更は過去公開版の履歴用途による取下げGUIと正式改訂単体詳細。設計確認待ちの原本構成・初回複数・主体検索・viewerは追補案のみ。既読契機は現行のまま。schedulerとPR85 Document修正はクラウド親が担当し、Macの製品差分へ含めない。
 - 操作文書・導入/復旧/段階測定手順を同じDraftにまとめる。対象PC・本番認証/TLS・実directory/権限・大量実測は未実施。正確なhead CI、親との統合順序確認、main統合と統合後CIはこれから。
 - 保存先は同一[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)、製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45`。独立レビューGO、固定Node24.21.0 GUI1740件/Chromium mock機能8件成功、golden比較は未資格。最新保存headとhosted結果はPR Checks/説明を読み直す。main統合はクラウド親が順序を調整する。
+- 文書head `d99d2f54` のCI `37731740750` は実runtimeの移動後read刷新でFAIL。遅い両GETによるREDを確認し、通常版queryのSignal消費を旧契約へ戻しhistory用途の保護を保持する最小修正を準備した。修正headの独立レビュー・全CIを取り直す。詳細は状況文書。
+- 修正の独立レビューGO、独立7case・関連318件・全体1741件・型/build/diff検査成功。親がPR107統合後main `e67aaccc` への追従と、正確head全gate成功後のguard付きmain統合を承認した。次はmain取り込みheadの全CI、その後統合後CI。設計待ち機能は未実装のまま。
 
 ---
 

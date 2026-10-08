@@ -115,7 +115,14 @@ export function DocumentDetailPage() {
   const detailPurpose = activeTab === 'overview' ? search.view : versionPurpose;
   const versionDetailQuery = useQuery({
     queryKey: ['document-version', documentId, detailVersionId, detailPurpose],
-    queryFn: async ({ signal }) => {
+    // Normal-purpose reads keep the existing reset contract: a Document reset
+    // may temporarily detach their observer while the same GET is still pending.
+    // Only history reads consume the signal to suppress cancelled old denials.
+    queryFn: detailPurpose !== 'history' ? async () => {
+      const version = await documentApi.getDocumentVersion(documentId, detailVersionId!, detailPurpose);
+      if (version.versionId !== detailVersionId) throw new Error('選択したコンテンツ版を確認できません。');
+      return version;
+    } : async ({ signal }) => {
       try {
         const version = await documentApi.getDocumentVersion(documentId, detailVersionId!, detailPurpose);
         if (version.versionId !== detailVersionId) throw new Error('選択したコンテンツ版を確認できません。');
