@@ -255,6 +255,7 @@ glibc のスレッドごとの割当て領域が断片化していた。`MALLOC_
 - 字句の構築は、論理 digest の計算と、基の Unit 索引からの差分の判定で、全 Unit の `unit_doc_hash` を2回計算し直し、169万件の木構造の map を2つ作っていた。
 - 実施（c453b40、digest は変えていない）：Unit の供給元（`UnitSource`）が保持する seal entry を構築に渡す（`BodyUnitManifest` は部品 digest ごとのプロセス内の entry）。差分の判定と重複の確認は hash map と hash set。
 - 結果：1件の更新は定常 23.2秒（以前 28.5秒）。ただし worker のピークが 6.0 GB に上がった（以前 4.5 GB）。entry の複製と hash map が増えた分と見ており、次に確かめる。
+- 49164fc：1回の構築で seal entry を1回だけ読み、復元した payload の要約は1つだけ保持。1件の更新は 23.7〜25.7秒、worker のピーク 5.4 GB、検索サーバー 3.9 GB（seal の高速化の前は 4.5 GB と 3.3 GB）。プロセス内に保持する seal entry（約1億バイト）と要約の分が残っている。
 
 ## 1万文書の段階の合格条件（計測前に固定）
 
