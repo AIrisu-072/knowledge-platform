@@ -5,7 +5,9 @@ use document_application::{
         manifest_fingerprint,
     },
 };
-use document_diff_core::{ContentVerdict, DiffCoverage, DiffProfileVersion, ResourceProfileVersion};
+use document_diff_core::{
+    ContentVerdict, DiffCoverage, DiffProfileVersion, ResourceProfileVersion,
+};
 use document_domain::{DocumentId, DocumentVersionId, FileId};
 use document_semantic_inspection_core::{FormatId, InspectionProfileVersion};
 use sha2::{Digest, Sha256};
@@ -80,11 +82,8 @@ fn digest_hex(bytes: [u8; 32]) -> String {
 fn derived_cache_coverage_generation_separates_legacy_keys_for_every_format() {
     for format in FormatId::REQUIRED_V0 {
         let pair = pair(format);
-        let key = DiffCacheKey::from_pair(
-            &pair,
-            DiffProfileVersion::V0,
-            ResourceProfileVersion::V0,
-        );
+        let key =
+            DiffCacheKey::from_pair(&pair, DiffProfileVersion::V0, ResourceProfileVersion::V0);
         assert_ne!(
             key.as_bytes(),
             &legacy_cache_key(&pair),
@@ -105,11 +104,7 @@ fn current_generation_pair_and_result_keys_agree_and_replay_deterministically() 
     let pair = pair(FormatId::Pdf);
     let result = result(&pair);
     assert!(result.validate().is_ok());
-    let key = DiffCacheKey::from_pair(
-        &pair,
-        DiffProfileVersion::V0,
-        ResourceProfileVersion::V0,
-    );
+    let key = DiffCacheKey::from_pair(&pair, DiffProfileVersion::V0, ResourceProfileVersion::V0);
     assert_eq!(key, DiffCacheKey::from_result(&result));
     assert_eq!(
         key,

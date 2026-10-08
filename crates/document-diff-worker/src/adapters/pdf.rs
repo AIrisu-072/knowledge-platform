@@ -452,11 +452,14 @@ mod tests {
         old_index: usize,
         new_index: usize,
     ) {
-        assert!(regions.iter().any(|region| {
-            region.base == Some(page(old_index))
-                && region.target == Some(page(new_index))
-                && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
-        }), "uncompared page semantics must retain both page locations: {regions:?}");
+        assert!(
+            regions.iter().any(|region| {
+                region.base == Some(page(old_index))
+                    && region.target == Some(page(new_index))
+                    && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+            }),
+            "uncompared page semantics must retain both page locations: {regions:?}"
+        );
     }
 
     #[test]
@@ -471,10 +474,12 @@ mod tests {
             let mut budget = ComparisonBudget::new(100, 100);
             let mut changes = vec![];
             let mut regions = vec![];
-            compare_page(base, target, 0, 3, &mut budget, &mut changes, &mut regions)
-                .unwrap();
+            compare_page(base, target, 0, 3, &mut budget, &mut changes, &mut regions).unwrap();
 
-            assert!(changes.is_empty(), "unknown semantics are not a known facet");
+            assert!(
+                changes.is_empty(),
+                "unknown semantics are not a known facet"
+            );
             assert_unverified_page(&regions, 0, 3);
         }
     }
@@ -529,15 +534,26 @@ mod tests {
         let mut changes = vec![];
         let mut regions = vec![];
 
-        compare_page(&base, &target, 0, 0, &mut budget, &mut changes, &mut regions)
-            .unwrap();
+        compare_page(
+            &base,
+            &target,
+            0,
+            0,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
 
-        assert!(changes.iter().any(|change| {
-            change.facet == "pdf_visual"
-                && change.operation == Some(ChangeOperation::Modified)
-                && change.base == Some(page(0))
-                && change.target == Some(page(0))
-        }), "vector semantics must produce a located visual change: {changes:?}");
+        assert!(
+            changes.iter().any(|change| {
+                change.facet == "pdf_visual"
+                    && change.operation == Some(ChangeOperation::Modified)
+                    && change.base == Some(page(0))
+                    && change.target == Some(page(0))
+            }),
+            "vector semantics must produce a located visual change: {changes:?}"
+        );
         assert_unverified_page(&regions, 0, 0);
     }
 
@@ -551,8 +567,7 @@ mod tests {
             let mut budget = ComparisonBudget::new(100, 100);
             let mut changes = vec![];
             let mut regions = vec![];
-            compare_page(base, target, 0, 0, &mut budget, &mut changes, &mut regions)
-                .unwrap();
+            compare_page(base, target, 0, 0, &mut budget, &mut changes, &mut regions).unwrap();
 
             assert!(changes.iter().any(|change| {
                 change.facet == "pdf_visual"
@@ -575,8 +590,16 @@ mod tests {
         let mut changes = vec![];
         let mut regions = vec![];
 
-        compare_page(&base, &target, 0, 3, &mut budget, &mut changes, &mut regions)
-            .unwrap();
+        compare_page(
+            &base,
+            &target,
+            0,
+            3,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
 
         assert!(changes.is_empty());
         assert!(regions.is_empty());

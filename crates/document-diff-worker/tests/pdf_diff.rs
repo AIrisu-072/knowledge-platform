@@ -187,15 +187,36 @@ fn bounded_vector_difference_is_partial_visual_at_the_affected_page() {
     assert!(result.changes.iter().any(|change| {
         change.facet == "pdf_visual"
             && change.operation == Some(document_diff_core::ChangeOperation::Modified)
-            && change.base == Some(SourceLocator::PdfPage { page: 1, region: None })
-            && change.target == Some(SourceLocator::PdfPage { page: 1, region: None })
+            && change.base
+                == Some(SourceLocator::PdfPage {
+                    page: 1,
+                    region: None,
+                })
+            && change.target
+                == Some(SourceLocator::PdfPage {
+                    page: 1,
+                    region: None,
+                })
     }));
     assert!(result.unverified_regions.iter().any(|region| {
-        region.base == Some(SourceLocator::PdfPage { page: 1, region: None })
-            && region.target == Some(SourceLocator::PdfPage { page: 1, region: None })
+        region.base
+            == Some(SourceLocator::PdfPage {
+                page: 1,
+                region: None,
+            })
+            && region.target
+                == Some(SourceLocator::PdfPage {
+                    page: 1,
+                    region: None,
+                })
             && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
     }));
-    assert!(!result.changes.iter().any(|change| change.facet == "pdf_text"));
+    assert!(
+        !result
+            .changes
+            .iter()
+            .any(|change| change.facet == "pdf_text")
+    );
 }
 
 #[test]
@@ -206,16 +227,28 @@ fn bounded_vector_difference_with_another_pages_text_change_never_becomes_full()
 
     assert_eq!(result.coverage, DiffCoverage::Partial);
     for (facet, page) in [("pdf_visual", 1), ("pdf_text", 3)] {
-        assert!(result.changes.iter().any(|change| {
-            change.facet == facet
-                && change.operation == Some(document_diff_core::ChangeOperation::Modified)
-                && change.base == Some(SourceLocator::PdfPage { page, region: None })
-                && change.target == Some(SourceLocator::PdfPage { page, region: None })
-        }), "missing {facet} change on page {page}: {:?}", result.changes);
+        assert!(
+            result.changes.iter().any(|change| {
+                change.facet == facet
+                    && change.operation == Some(document_diff_core::ChangeOperation::Modified)
+                    && change.base == Some(SourceLocator::PdfPage { page, region: None })
+                    && change.target == Some(SourceLocator::PdfPage { page, region: None })
+            }),
+            "missing {facet} change on page {page}: {:?}",
+            result.changes
+        );
     }
     assert!(result.unverified_regions.iter().any(|region| {
-        region.base == Some(SourceLocator::PdfPage { page: 1, region: None })
-            && region.target == Some(SourceLocator::PdfPage { page: 1, region: None })
+        region.base
+            == Some(SourceLocator::PdfPage {
+                page: 1,
+                region: None,
+            })
+            && region.target
+                == Some(SourceLocator::PdfPage {
+                    page: 1,
+                    region: None,
+                })
             && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
     }));
 }
