@@ -116,3 +116,7 @@ gs/page group4件、Diff page残余/新vector5件、native vector2件、派生ca
 15:18追補：5c59063のMacは全compile成功。paint16・gs4・structure11・Diff7・pdf_diff9・cache4成功、tags18成功/1失敗（未閉鎖EMCがnested MCIDのUnsupportedへ先に分類された）。旧15corpusは全field/拒否一致。3ac5f939のformatter-onlyを保持した。
 
 残1件は有限delimiter prepassでParserDisagreementを先に確定し、正しく閉じたnested MCIDの拒否を維持する。934のclip/overlap拒否に2つの固定診断categoryだけを追加し、条件やcodeは変えない。独立reviewは次Mac試行GO。公式933の補助native固定理由はtagged font encoding is unsupported（実4/5頁はIdentity-VおよびToUnicodeなしType0）、934はunsupported bounded PDF graphics state。原本はhash一致・未変更。どちらもまだ公開資格ではなく、933を注釈拒否とは扱わない。
+
+15:33追補：ac147fd5のMacはtags19・paint16・structure12すべて成功、旧15full baseline一致。934の固定理由はpdf_vector_text_overlap_unqualifiedと実確定。cloudのPDFium153による補助観測では、括弧curveの大きい制御点hullが文字boundsと2箇所交差するが、曲線を変更しない1回の数学的半分割による2hullでは分離できた。資格はpinned151の次試験で確認する。
+
+次はtest-only5件：曲線分割で証明可能な正例/曲線変更の意味差、白いcurved fillによる真の隠蔽拒否、ページCropBoxでnew vectorが切れる拒否、包含CropBox不変。現sourceで3RED/2control成功を期待する。独立静的review GO。条件を緩めたり原本を書き換えず、有限な包含証明だけを改善する。

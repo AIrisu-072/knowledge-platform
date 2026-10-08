@@ -378,3 +378,56 @@ fn vector_occluding_only_one_text_run_is_never_accepted_as_unchanged() {
         assert_eq!(error.message(), "pdf_vector_text_overlap_unqualified");
     }
 }
+
+const SEPARATED_CUBIC: &str = "0.75 w 1 j 21 170 m 9.954 170 1 178.954 1 190 c S";
+
+#[test]
+fn subdivided_curve_hulls_can_prove_separation_from_native_text() {
+    let plain = native_text_pdf("", UNUSED_PIXEL);
+    let curved = native_text_pdf(SEPARATED_CUBIC, UNUSED_PIXEL);
+    assert_ne!(render_rgba(&plain), render_rgba(&curved));
+    assert_ne!(fingerprint(&plain), fingerprint(&curved));
+}
+
+#[test]
+fn bounded_curve_geometry_change_remains_a_semantic_difference() {
+    let first = native_text_pdf(SEPARATED_CUBIC, UNUSED_PIXEL);
+    let second = native_text_pdf("0.75 w 1 j 21 168 m 9.954 168 1 176.954 1 188 c S", UNUSED_PIXEL);
+    assert_ne!(render_rgba(&first), render_rgba(&second));
+    assert_ne!(fingerprint(&first), fingerprint(&second));
+}
+
+#[test]
+fn curved_white_fill_that_occludes_text_still_fails_closed() {
+    let plain = native_text_pdf("", UNUSED_PIXEL);
+    let covered = native_text_pdf("1 g 21 170 m 9.954 170 1 178.954 1 190 c 21 190 l h f", UNUSED_PIXEL);
+    assert_ne!(render_rgba(&plain), render_rgba(&covered));
+    let error = PdfAdapter.inspect(&covered, &AdapterProfile::default()).expect_err("filled curve hides text");
+    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+}
+
+fn crop_vector_pdf(crop: [i64; 4]) -> Vec<u8> {
+    let bytes = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let mut document = lopdf::Document::load_mem(&bytes).unwrap();
+    let page_id = document.get_pages()[&1];
+    document.get_dictionary_mut(page_id).unwrap().set("CropBox",
+        crop.into_iter().map(lopdf::Object::Integer).collect::<Vec<_>>());
+    let mut output = Vec::new(); document.save_to(&mut output).unwrap(); output
+}
+
+#[test]
+fn page_crop_hiding_new_vector_content_is_not_silently_unchanged() {
+    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let cropped = crop_vector_pdf([0, 50, 200, 200]);
+    assert_ne!(render_rgba(&baseline), render_rgba(&cropped));
+    let error = PdfAdapter.inspect(&cropped, &AdapterProfile::default()).expect_err("implicit page crop must be proven non-cutting");
+    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+}
+
+#[test]
+fn explicit_enclosing_page_crop_preserves_vector_identity() {
+    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let cropped = crop_vector_pdf([0, 0, 200, 200]);
+    assert_eq!(render_rgba(&baseline), render_rgba(&cropped));
+    assert_eq!(fingerprint(&baseline), fingerprint(&cropped));
+}
