@@ -124,3 +124,11 @@ gs/page group4件、Diff page残余/新vector5件、native vector2件、派生ca
 15:53追補：cf5f7168のMacは曲線2件のactual REDを確認。Crop試験は隔離raster helper内で失敗しsemantic assertion未到達だったため、semantic REDに数えない。pdfium-render0.9.4のall()が原点0のpage_size範囲を抽出することを確認し、assertを弱めず原点0の右側CropBoxと右下vectorへfixtureを修正。同一viewportの線なしrasterとの一致も要求する。
 
 観測済みcurve REDに対してのみ、各cubicを固定2つのinterval-rounded制御点hullへ分割する証明を実装した。再帰・任意epsilon・canonical path変更なし、fillの全path boundsと真の隠蔽拒否は維持。全midpoint演算で外向き丸め、stroke幅のL1上界も外向きに評価する。3純粋算術試験を追加。独立reviewは次Mac試行へGO。新Crop製品guardは、修正版fixtureのactual semantic REDまで未変更。
+
+## 2026-10-08 16:16 UTC — 934 native成功、Crop保護の最終試行前
+
+69ebba44のMacはpaint20成功/Crop1失敗、graphics3成功。修正版Cropは両raster proof成功後、semantic拒否期待に対してadapter成功を返す実REDだった。旧15fixtureは全field/拒否一致。原本934はhash/bytes不変でnative helper exit0、capability7・comment/tracked-change/external/signature各0。Linux sandbox/API公開資格とは分ける。
+
+actual Crop REDに基づき、新semanticsを使うページだけ、有限な親継承でMediaBox∩CropBoxを解決し、PDFiumのpage boundingとの一致・全paint包含を確認する。無効なCropBoxをnative fallbackで受け入れず、all()抽出frame外のText/Formも拒否する。旧成功入力のbypassは維持。継承/不正type/大きいCropとの交差/非zero原点frameの4回帰を追加。独立静的reviewは次Mac試行GO。
+
+次はpaint25・tags19・graphics-state4・graphics3・structure12・Diff/cache回帰・旧15fullbaseline・原本934維持。focused Clippyと全hosted資格はまだ未実行。harnessには異なる正例原本2件が必要なため、933の負例を保持して比較可能な実際の公式通知を限定探索する。原本切出し/注釈除去/簡易PDFへのすり替えは行わない。

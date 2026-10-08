@@ -323,10 +323,20 @@ pub(super) fn validate_clip_bounds(
     page: &PdfPage<'_>,
     clips: &[[f64; 4]],
     vector_bounds: &[[f64; 4]],
+    page_clip: Option<[f64; 4]>,
 ) -> Result<(), WorkerFailure> {
-    if clips.is_empty() && vector_bounds.is_empty() {
+    if clips.is_empty() && vector_bounds.is_empty() && page_clip.is_none() {
         return Ok(());
     }
+    if let Some(expected) = page_clip {
+        // PDFium defines this as inherited MediaBox intersected with CropBox.
+        let native = page.boundaries().bounding().map_err(|_| malformed())?.bounds;
+        if rect_bounds(native) != expected {
+            return Err(failure(WorkerFailureCode::ParserDisagreement,
+                "PDF page boundary disagrees between independent parsers"));
+        }
+    }
+    let extraction_frame = rect_bounds(page.page_size());
     let mut painted_bounds = vector_bounds.to_vec();
     let mut overlap_checks = 0usize;
     for object in page.objects().iter() {
@@ -349,6 +359,13 @@ pub(super) fn validate_clip_bounds(
         // Text grouping is intentionally stable for legacy input. Until exact
         // text-to-vector associations are qualified, overlap cannot be accepted.
         if object.as_text_object().is_some() || object.as_x_object_form_object().is_some() {
+            // pdfium-render all() reads the origin-zero page_size rectangle.
+            // Reject a new input whose text can fall outside that extraction
+            // frame, even when the raw effective CropBox contains it.
+            if page_clip.is_some() && !contains(extraction_frame, b) {
+                return Err(failure(WorkerFailureCode::UnsupportedSemanticConstruct,
+                    "pdf_text_extraction_frame_unqualified"));
+            }
             for v in vector_bounds {
                 overlap_checks += 1;
                 if overlap_checks > MAX_PDF_CONTENT_OPERATIONS {
@@ -367,13 +384,13 @@ pub(super) fn validate_clip_bounds(
         }
         painted_bounds.push(b);
     }
-    if !clips.is_empty() {
-        let mut intersection = [
+    if !clips.is_empty() || page_clip.is_some() {
+        let mut intersection = page_clip.unwrap_or([
             f64::NEG_INFINITY,
             f64::NEG_INFINITY,
             f64::INFINITY,
             f64::INFINITY,
-        ];
+        ]);
         for clip in clips {
             intersection[0] = intersection[0].max(clip[0]);
             intersection[1] = intersection[1].max(clip[1]);
@@ -452,13 +469,15 @@ fn validate_extgstate(
 
 pub(super) fn validate_page_context(
     context: &PdfPaintContext<'_>,
+    page_id: lopdf::ObjectId,
     page: &lopdf::Dictionary,
     resources: Option<&lopdf::Dictionary>,
-) -> Result<(), WorkerFailure> {
+) -> Result<Option<[f64; 4]>, WorkerFailure> {
     if !context.extended_graphics_seen && !context.page_structure_checked {
-        return Ok(());
+        return Ok(None);
     }
     validate_resources(context.document, resources)?;
+    let page_clip = inherited_page_clip(context, page_id)?;
     let catalog = context
         .document
         .trailer
@@ -470,7 +489,7 @@ pub(super) fn validate_page_context(
     }
     let group = match page.get_deref(b"Group", context.document) {
         Ok(group) => group.as_dict().map_err(|_| malformed())?,
-        Err(lopdf::Error::DictKey(_)) => return Ok(()),
+        Err(lopdf::Error::DictKey(_)) => return Ok(Some(page_clip)),
         Err(_) => return Err(malformed()),
     };
     // Page transparency groups are qualified only for opaque native text and
@@ -491,7 +510,59 @@ pub(super) fn validate_page_context(
             _ => return Err(unsupported()),
         }
     }
-    Ok(())
+    Ok(Some(page_clip))
+}
+
+fn rect_bounds(rectangle: PdfRect) -> [f64; 4] {
+    [f64::from(rectangle.left().value), f64::from(rectangle.bottom().value),
+        f64::from(rectangle.right().value), f64::from(rectangle.top().value)]
+}
+
+fn contains(outer: [f64; 4], inner: [f64; 4]) -> bool {
+    outer.iter().chain(inner.iter()).all(|value| value.is_finite())
+        && inner[0] >= outer[0] && inner[1] >= outer[1]
+        && inner[2] <= outer[2] && inner[3] <= outer[3]
+}
+
+fn inherited_page_clip(context: &PdfPaintContext<'_>, page_id: lopdf::ObjectId) -> Result<[f64; 4], WorkerFailure> {
+    let mut id = page_id;
+    let mut visited = BTreeSet::new();
+    let mut media = None;
+    let mut crop = None;
+    let mut complete = false;
+    for _ in 0..MAX_PDF_OBJECT_DEPTH {
+        if !visited.insert(id) { return Err(malformed()); }
+        let node = context.document.get_dictionary(id).map_err(|_| malformed())?;
+        for (name, result) in [(b"MediaBox".as_slice(), &mut media), (b"CropBox".as_slice(), &mut crop)] {
+            if result.is_none() {
+                match node.get_deref(name, context.document) {
+                    Ok(value) => {
+                        let n = numeric_array(value, 4, context.page_number, "page boundary")?;
+                        let box_bounds = [n[0].min(n[2]), n[1].min(n[3]), n[0].max(n[2]), n[1].max(n[3])];
+                        if box_bounds[0] >= box_bounds[2] || box_bounds[1] >= box_bounds[3] { return Err(unsupported()); }
+                        *result = Some(box_bounds);
+                    }
+                    Err(lopdf::Error::DictKey(_)) => {}
+                    Err(_) => return Err(malformed()),
+                }
+            }
+        }
+        if media.is_some() && crop.is_some() { complete = true; break; }
+        match node.get(b"Parent") {
+            Ok(Object::Reference(parent)) => id = *parent,
+            Err(lopdf::Error::DictKey(_)) => { complete = true; break; }
+            _ => return Err(malformed()),
+        }
+    }
+    if !complete {
+        return Err(failure(WorkerFailureCode::InspectionResourceLimitExceeded,
+            "PDF page boundary inheritance exceeds the depth limit"));
+    }
+    let media = media.ok_or_else(malformed)?;
+    let crop = crop.unwrap_or(media);
+    let effective = [media[0].max(crop[0]), media[1].max(crop[1]), media[2].min(crop[2]), media[3].min(crop[3])];
+    if effective[0] >= effective[2] || effective[1] >= effective[3] { return Err(unsupported()); }
+    Ok(effective)
 }
 
 // [lower x, lower y, upper x, upper y]. Each de Casteljau midpoint is

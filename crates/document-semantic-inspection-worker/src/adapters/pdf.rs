@@ -51,6 +51,7 @@ struct LopdfFacts {
     vector_paints: Vec<Vec<Value>>,
     safety_clips: Vec<Vec<[f64; 4]>>,
     vector_bounds: Vec<Vec<[f64; 4]>>,
+    page_clips: Vec<Option<[f64; 4]>>,
     structures: Vec<structure::PageStructure>,
 }
 
@@ -146,6 +147,7 @@ impl PdfAdapter {
                 &page,
                 &structural.safety_clips[page_index],
                 &structural.vector_bounds[page_index],
+                structural.page_clips[page_index],
             )?;
 
             let text = page
@@ -559,6 +561,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
     let mut vector_paints = Vec::with_capacity(pages.len());
     let mut safety_clips = Vec::with_capacity(pages.len());
     let mut vector_bounds = Vec::with_capacity(pages.len());
+    let mut page_clips = Vec::with_capacity(pages.len());
     let mut structures = Vec::with_capacity(pages.len());
     let mut structure_inspector = structure::StructureInspector::new(document)?;
     let mut form_names = BTreeSet::new();
@@ -603,7 +606,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
                 format!("lopdf page {page_number}: {error}"),
             )
         })?;
-        graphics::validate_page_context(&paint_context, page, resources)?;
+        let page_clip = graphics::validate_page_context(&paint_context, page_id, page, resources)?;
         let mut annotation_count = 0usize;
         let mut link_count = 0usize;
 
@@ -685,6 +688,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         vector_paints.push(paint_context.vector_paints);
         safety_clips.push(paint_context.safety_clips);
         vector_bounds.push(paint_context.vector_bounds);
+        page_clips.push(page_clip);
         structures.push(page_structure);
     }
     structure_inspector.finish()?;
@@ -699,6 +703,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         vector_paints,
         safety_clips,
         vector_bounds,
+        page_clips,
         structures,
     })
 }

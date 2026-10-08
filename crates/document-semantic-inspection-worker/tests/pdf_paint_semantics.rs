@@ -440,3 +440,43 @@ fn explicit_enclosing_page_crop_preserves_vector_identity() {
     assert_eq!(render_rgba(&baseline), render_rgba(&cropped));
     assert_eq!(fingerprint(&baseline), fingerprint(&cropped));
 }
+
+#[test]
+fn inherited_page_crop_is_also_required_to_preserve_vector_content() {
+    let bytes = crop_vector_pdf([0, 0, 140, 200]);
+    let mut document = lopdf::Document::load_mem(&bytes).unwrap();
+    let page_id = document.get_pages()[&1];
+    let page = document.get_dictionary_mut(page_id).unwrap();
+    let parent = page.get(b"Parent").unwrap().as_reference().unwrap();
+    let crop = page.remove(b"CropBox").unwrap();
+    document.get_dictionary_mut(parent).unwrap().set("CropBox", crop);
+    let mut changed = Vec::new(); document.save_to(&mut changed).unwrap();
+    let error = PdfAdapter.inspect(&changed, &AdapterProfile::default()).expect_err("inherited crop must be checked");
+    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+}
+
+#[test]
+fn malformed_page_crop_is_not_accepted_through_native_fallback() {
+    let mut document = lopdf::Document::load_mem(&crop_vector_pdf([0, 0, 200, 200])).unwrap();
+    let page_id = document.get_pages()[&1];
+    document.get_dictionary_mut(page_id).unwrap().set("CropBox", "InvalidCrop");
+    let mut changed = Vec::new(); document.save_to(&mut changed).unwrap();
+    let error = PdfAdapter.inspect(&changed, &AdapterProfile::default()).expect_err("malformed crop must fail closed");
+    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::ParserDisagreement);
+}
+
+#[test]
+fn media_box_intersection_of_a_larger_crop_preserves_identity() {
+    let baseline = native_text_pdf(CROP_VECTOR_PAINT, UNUSED_PIXEL);
+    let cropped = crop_vector_pdf([-20, -20, 400, 400]);
+    assert_eq!(render_rgba(&baseline), render_rgba(&cropped));
+    assert_eq!(fingerprint(&baseline), fingerprint(&cropped));
+}
+
+#[test]
+fn nonzero_crop_cannot_silently_drop_text_outside_native_extraction_frame() {
+    let raw = native_text_pdf("160 70 m 180 70 l S", UNUSED_PIXEL);
+    let cropped = crop_pdf(&raw, [0, 50, 200, 200]);
+    let error = PdfAdapter.inspect(&cropped, &AdapterProfile::default()).expect_err("unqualified text extraction frame must be rejected");
+    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+}
