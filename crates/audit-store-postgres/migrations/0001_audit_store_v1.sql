@@ -2379,17 +2379,35 @@ $resolve_intent$;
 
 -- Waits until all WAL inserted so far is flushed (design §10.3): X is taken
 -- once after the committed check, so the intent's commit record (inserted
--- before its clog update) is at or below X. Bounded (~2 s); then raises the
--- retryable intent_not_durable (SQLSTATE 40001) and discloses nothing.
+-- before its clog update) is at or below X. WAL that no commit follows
+-- (heap pruning by a read, vacuum) is flushed only by a later commit, a full
+-- WAL page or a checkpoint, so an idle Store would never reach X: when the
+-- flush is behind, one content-free non-transactional WAL message with
+-- flush (fixed prefix, empty content) flushes everything up to it (without
+-- EXECUTE on pg_logical_emit_message it only waits). Bounded (~2 s); then
+-- raises the retryable intent_not_durable (SQLSTATE 40001) and discloses
+-- nothing.
 CREATE FUNCTION audit_store.await_durable()
 RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $await_durable$
 DECLARE
     v_target pg_lsn := pg_current_wal_insert_lsn();
     v_deadline TIMESTAMPTZ := clock_timestamp() + interval '2 seconds';
+    v_flushed BOOLEAN := FALSE;
 BEGIN
     LOOP
         EXIT WHEN pg_current_wal_flush_lsn() >= v_target;
+        IF NOT v_flushed THEN
+            v_flushed := TRUE;
+            BEGIN
+                PERFORM pg_catalog.pg_logical_emit_message(FALSE, 'kp-audit-store-durable', '',
+                                                           TRUE);
+            EXCEPTION WHEN insufficient_privilege THEN
+                -- EXECUTE revoked: wait for another flush instead.
+                NULL;
+            END;
+            CONTINUE;
+        END IF;
         IF clock_timestamp() >= v_deadline THEN
             RAISE EXCEPTION 'intent_not_durable' USING ERRCODE = '40001';
         END IF;

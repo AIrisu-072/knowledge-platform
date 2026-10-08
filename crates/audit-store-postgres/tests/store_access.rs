@@ -1677,6 +1677,8 @@ async fn read_page_discloses_only_after_the_intent_is_flushed() {
         "ALTER SYSTEM SET autovacuum = off",
         "SELECT pg_reload_conf()",
         "CREATE TABLE public.flush_lag (x integer)",
+        "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(boolean, text, text, \
+         boolean) FROM PUBLIC",
     ] {
         db.exec(statement).await;
     }
@@ -1723,15 +1725,22 @@ async fn read_page_discloses_only_after_the_intent_is_flushed() {
         .execute(&mut writer)
         .await
         .expect("insert");
-    let lagging: bool =
-        sqlx::query_scalar("SELECT pg_current_wal_flush_lsn() < pg_current_wal_insert_lsn()")
-            .fetch_one(&db.admin)
-            .await
-            .expect("lsn");
+    let lag = || async {
+        sqlx::query_as::<_, (bool, String)>(
+            "SELECT pg_current_wal_flush_lsn() < pg_current_wal_insert_lsn(), \
+                    pg_current_wal_insert_lsn()::text",
+        )
+        .fetch_one(&db.admin)
+        .await
+        .expect("lsn")
+    };
+    let (lagging, _) = lag().await;
     assert!(
         lagging,
         "the WAL flush position is behind the insert position"
     );
+    // Without a way to flush it (EXECUTE on pg_logical_emit_message revoked
+    // before the intent), read_page waits and discloses nothing.
     let reader = cast.reader.admin().await;
     let started = std::time::Instant::now();
     assert_eq!(
@@ -1745,19 +1754,41 @@ async fn read_page_discloses_only_after_the_intent_is_flushed() {
         "read_page waited for the flush: {:?}",
         started.elapsed()
     );
-    // A synchronous commit flushes everything inserted so far.
+    // With it, read_page flushes the trailing WAL itself (an idle Store
+    // would otherwise flush it only at a later commit, a full WAL page or a
+    // checkpoint) and discloses only after the flush.
+    db.exec(
+        "GRANT EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(boolean, text, text, \
+         boolean) TO PUBLIC",
+    )
+    .await;
+    sqlx::query("INSERT INTO public.flush_lag SELECT generate_series(1, 100)")
+        .execute(&mut writer)
+        .await
+        .expect("insert");
+    let (lagging, inserted) = lag().await;
+    assert!(lagging, "unflushed WAL again");
+    assert_eq!(
+        reader
+            .read_page_once(&token, 0)
+            .await
+            .expect("flushed, then disclosed")
+            .len(),
+        2
+    );
+    let flushed: bool = sqlx::query_scalar("SELECT pg_current_wal_flush_lsn() >= $1::pg_lsn")
+        .bind(&inserted)
+        .fetch_one(&db.admin)
+        .await
+        .expect("lsn");
+    assert!(
+        flushed,
+        "the WAL inserted before the read was flushed first"
+    );
     sqlx::query("COMMIT")
         .execute(&mut writer)
         .await
         .expect("commit");
-    assert_eq!(
-        reader
-            .read_page(&token, 0)
-            .await
-            .expect("durable now")
-            .len(),
-        2
-    );
     for statement in [
         "ALTER SYSTEM RESET wal_writer_delay",
         "ALTER SYSTEM RESET bgwriter_lru_maxpages",
