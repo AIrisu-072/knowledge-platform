@@ -9,3 +9,4 @@ mod journey;
 mod relay_crash;
 mod staging_failure;
 mod store_outage;
+mod store_restore;
