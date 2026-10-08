@@ -122,8 +122,10 @@ fn render_rgba(bytes: &[u8]) -> Vec<u8> {
         .expect("start isolated PDFium raster proof");
     assert!(
         child.status.success(),
-        "isolated PDFium raster proof failed: {}",
-        String::from_utf8_lossy(&child.stderr)
+        "isolated PDFium raster proof failed ({}): stdout={} stderr={}",
+        child.status,
+        String::from_utf8_lossy(&child.stdout[..child.stdout.len().min(4096)]),
+        String::from_utf8_lossy(&child.stderr[..child.stderr.len().min(4096)])
     );
     fs::read(output_path).expect("read isolated PDFium raster")
 }
@@ -406,9 +408,14 @@ fn curved_white_fill_that_occludes_text_still_fails_closed() {
     assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
 }
 
+const CROP_VECTOR_PAINT: &str = "160 20 m 180 20 l S";
+
 fn crop_vector_pdf(crop: [i64; 4]) -> Vec<u8> {
-    let bytes = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
-    let mut document = lopdf::Document::load_mem(&bytes).unwrap();
+    crop_pdf(&native_text_pdf(CROP_VECTOR_PAINT, UNUSED_PIXEL), crop)
+}
+
+fn crop_pdf(bytes: &[u8], crop: [i64; 4]) -> Vec<u8> {
+    let mut document = lopdf::Document::load_mem(bytes).unwrap();
     let page_id = document.get_pages()[&1];
     document.get_dictionary_mut(page_id).unwrap().set("CropBox",
         crop.into_iter().map(lopdf::Object::Integer).collect::<Vec<_>>());
@@ -417,16 +424,18 @@ fn crop_vector_pdf(crop: [i64; 4]) -> Vec<u8> {
 
 #[test]
 fn page_crop_hiding_new_vector_content_is_not_silently_unchanged() {
-    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
-    let cropped = crop_vector_pdf([0, 50, 200, 200]);
+    let baseline = native_text_pdf(CROP_VECTOR_PAINT, UNUSED_PIXEL);
+    let cropped = crop_vector_pdf([0, 0, 140, 200]);
     assert_ne!(render_rgba(&baseline), render_rgba(&cropped));
+    let without_vector = crop_pdf(&native_text_pdf("", UNUSED_PIXEL), [0, 0, 140, 200]);
+    assert_eq!(render_rgba(&without_vector), render_rgba(&cropped), "same viewport proves the vector is completely hidden");
     let error = PdfAdapter.inspect(&cropped, &AdapterProfile::default()).expect_err("implicit page crop must be proven non-cutting");
     assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
 }
 
 #[test]
 fn explicit_enclosing_page_crop_preserves_vector_identity() {
-    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let baseline = native_text_pdf(CROP_VECTOR_PAINT, UNUSED_PIXEL);
     let cropped = crop_vector_pdf([0, 0, 200, 200]);
     assert_eq!(render_rgba(&baseline), render_rgba(&cropped));
     assert_eq!(fingerprint(&baseline), fingerprint(&cropped));

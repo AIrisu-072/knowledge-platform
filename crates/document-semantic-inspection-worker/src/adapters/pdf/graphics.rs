@@ -180,7 +180,14 @@ pub(super) fn handle(
             } else {
                 let mut segment = vec![path.last.ok_or_else(malformed)?];
                 segment.extend_from_slice(&points);
-                path.stroke_bounds.push(bounds(&segment));
+                if op == "c" {
+                    let [p0, p1, p2, p3] = segment.as_slice() else {
+                        return Err(malformed());
+                    };
+                    path.stroke_bounds.extend(cubic_half_hulls([*p0, *p1, *p2, *p3])?);
+                } else {
+                    path.stroke_bounds.push(bounds(&segment));
+                }
             }
             path.last = points.last().copied();
             path.points.extend_from_slice(&points);
@@ -255,23 +262,26 @@ pub(super) fn handle(
                     context.vector_bounds.push(bounds(&path.points));
                 }
                 if stroke {
-                    // Sum of transformed basis lengths bounds the operator norm.
-                    let scale = state.ctm[0].hypot(state.ctm[1]) + state.ctm[2].hypot(state.ctm[3]);
+                    // Entrywise L1 bounds the Euclidean operator norm without
+                    // relying on a platform libm's hypot rounding guarantee.
+                    let scale = state.ctm[..4].iter().fold(0.0, |sum, value| {
+                        (sum + value.abs()).next_up()
+                    });
                     let mut join = if state.extended.join == 0 {
                         state.extended.miter
                     } else {
                         1.0
                     };
                     if state.extended.cap == 2 {
-                        join = join.max(std::f64::consts::SQRT_2);
+                        join = join.max(2.0);
                     }
-                    let margin = state.extended.width * 0.5 * join * scale;
+                    let margin = (((state.extended.width * 0.5).next_up() * join).next_up() * scale).next_up();
                     for segment in &path.stroke_bounds {
                         let b = [
-                            segment[0] - margin,
-                            segment[1] - margin,
-                            segment[2] + margin,
-                            segment[3] + margin,
+                            (segment[0] - margin).next_down(),
+                            (segment[1] - margin).next_down(),
+                            (segment[2] + margin).next_up(),
+                            (segment[3] + margin).next_up(),
                         ];
                         if !b.iter().all(|v| v.is_finite()) {
                             return Err(malformed());
@@ -482,4 +492,72 @@ pub(super) fn validate_page_context(
         }
     }
     Ok(())
+}
+
+// [lower x, lower y, upper x, upper y]. Each de Casteljau midpoint is
+// interval-rounded, so the convex hulls enclose the exact subdivided curve.
+fn interval_midpoint(left: [f64; 4], right: [f64; 4]) -> Result<[f64; 4], WorkerFailure> {
+    let mut midpoint = [0.0; 4];
+    for index in 0..4 {
+        midpoint[index] = if index < 2 {
+            ((left[index] * 0.5).next_down() + (right[index] * 0.5).next_down()).next_down()
+        } else {
+            ((left[index] * 0.5).next_up() + (right[index] * 0.5).next_up()).next_up()
+        };
+    }
+    if midpoint.iter().all(|value| value.is_finite()) { Ok(midpoint) } else { Err(unsupported()) }
+}
+
+fn interval_hull(points: &[[f64; 4]; 4]) -> [f64; 4] {
+    let mut result = points[0];
+    for point in &points[1..] {
+        result[0] = result[0].min(point[0]);
+        result[1] = result[1].min(point[1]);
+        result[2] = result[2].max(point[2]);
+        result[3] = result[3].max(point[3]);
+    }
+    result
+}
+
+fn cubic_half_hulls(points: [[f64; 2]; 4]) -> Result<[[f64; 4]; 2], WorkerFailure> {
+    let [p0, p1, p2, p3] = points.map(|point| [point[0], point[1], point[0], point[1]]);
+    let a = interval_midpoint(p0, p1)?;
+    let b = interval_midpoint(p1, p2)?;
+    let c = interval_midpoint(p2, p3)?;
+    let d = interval_midpoint(a, b)?;
+    let e = interval_midpoint(b, c)?;
+    let middle = interval_midpoint(d, e)?;
+    // Exactly two enclosures per cubic: no recursion or tolerance-based accept.
+    Ok([interval_hull(&[p0, a, d, middle]), interval_hull(&[middle, e, c, p3])])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interval_midpoint_covers_a_nonrepresentable_half_ulp() {
+        let left = [1.0; 4];
+        let right = [1.0_f64.next_up(); 4];
+        let result = interval_midpoint(left, right).unwrap();
+        assert!(result[0] <= 1.0 && result[1] <= 1.0);
+        assert!(result[2] >= right[2] && result[3] >= right[3]);
+    }
+
+    #[test]
+    fn exact_dyadic_curve_samples_stay_inside_their_half_hulls() {
+        let hulls = cubic_half_hulls([[0.0, 0.0], [0.0, 8.0], [8.0, 8.0], [8.0, 0.0]]).unwrap();
+        for index in 0..=8 {
+            let t = f64::from(index) / 8.0;
+            let x = 24.0 * (1.0 - t) * t * t + 8.0 * t * t * t;
+            let y = 24.0 * (1.0 - t) * t;
+            let h = hulls[usize::from(index > 4)];
+            assert!(x >= h[0] && x <= h[2] && y >= h[1] && y <= h[3]);
+        }
+    }
+
+    #[test]
+    fn unbounded_rounding_interval_is_rejected() {
+        assert!(interval_midpoint([f64::MAX; 4], [f64::MAX; 4]).is_err());
+    }
 }
