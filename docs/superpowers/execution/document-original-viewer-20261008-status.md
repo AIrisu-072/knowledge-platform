@@ -65,3 +65,9 @@ CI run `37742279689` の runtimeで、取下げ後・公開終了後の2試験�
 DevToolsの文字デコード後bodyをrawbytes oracleに使用する前提を修正。viewer応答のContent-Length、実表示textをUTF-8にencodeしたsize/hash、閉じた後の既存rawdownload size/hash、表示textとrawdownload decode結果・全bytesの完全一致を厳密検証する。GET/history/header/rights/readstate/ledgerの検査は保持し、製品・CI・runner・記録設定は変更しない。
 
 `e2e/response-byte-oracle.spec.ts` に所有する一時loopback server＋実Chromiumで charset-less日本語のDevTools変換とrawbytes一致を再現する回帰試験を追加。画像/trace/videoなし。焦点試験1件成功（786ms）、runtime2件collection成功、型exit0、関連GUI66件成功、diff検査成功。ログ `/tmp/viewer-byte-oracle-final.log`, `/tmp/viewer-lifecycle-second-collection.log`, `/tmp/viewer-lifecycle-second-type.log`, `/tmp/viewer-lifecycle-second-mocks.log`。実backend履歴viewerの最終GREENは次exact-head CI待ち。native proxy26件＋既存bridge6件のCI成功は親確認済みであり、今回のruntime未完了をその成功で代替しない。
+
+## 再起動後の旧button件数assert補正（2026-10-08）
+
+`953b59d3` のruntime CIではbrowser-journey passedを確認し、実backend履歴text viewerの取得・表示・閉じる・原本hash・既読不変の追加検査が通過した。一方browser-persistenceは4passed/1failedで、`lifecycle-operations-persistence.spec.ts:95` に残ったdownloadだけを想定する全button件数assertが失敗した（`/tmp/pr111-byte-oracle-runtime.log`）。ここだけをdownload名称prefixの厳密件数へ修正。再起動後の全原本filename/size/hash・human/agent既読・版/改訂/操作ledger検査は保持する。
+
+e2e/runtime/GUI試験をrgで監査し、他の全button→原本件数前提はなかった。既存document-runtimeとpersistenceのoriginalButtonsは既にdownload名称prefixであり変更不要。ローカルは対象persistence1件collection成功、型exit0、diff検査成功（`/tmp/viewer-persistence-collection.log`, `/tmp/viewer-persistence-type.log`）。修正後の実再起動phaseと全runtimeの最終GREENは次exact-head CI待ち。pushを保留し、親がPR109統合mainとの結合・独立reviewを確認する。
