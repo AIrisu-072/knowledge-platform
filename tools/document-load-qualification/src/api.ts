@@ -195,7 +195,7 @@ export class DocumentProbe {
   async updateMetadata(documentId: string, expectedDocumentRevision: number, operationId: string) {
     this.requireVerified();
     return this.request('updateMetadata', 'human', c => payload(patchDocumentMetadata({ ...c, path: { documentId },
-      body: { operationId, expectedDocumentRevision, set: { loadQualificationOperation: operationId }, unset: [], reason },
+      body: { operationId, expectedDocumentRevision, set: { extensions: { loadQualificationOperation: operationId } }, unset: [], reason },
     })));
   }
 

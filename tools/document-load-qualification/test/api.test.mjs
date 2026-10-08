@@ -88,7 +88,7 @@ test('fake transport: binary bridge creates exact initial tuple and metadata mut
   assert.deepEqual(JSON.parse(await upload.get('request').text()), { folderId: 'f', title: 'title', documentMetadata: { syntheticFixture: 'document-load-qualification-v1' }, versionMetadata: { syntheticFixture: 'document-load-qualification-v1' } });
   assert.deepEqual([...new Uint8Array(await upload.get('file').arrayBuffer())], [1, 2, 3]);
   await h.probe.updateMetadata('d', 7, 'metadata-op');
-  assert.deepEqual(metadata, { operationId: 'metadata-op', expectedDocumentRevision: 7, set: { loadQualificationOperation: 'metadata-op' }, unset: [], reason: 'Bounded Document load qualification' });
+  assert.deepEqual(metadata, { operationId: 'metadata-op', expectedDocumentRevision: 7, set: { extensions: { loadQualificationOperation: 'metadata-op' } }, unset: [], reason: 'Bounded Document load qualification' });
   assert.ok(h.timings.every(t => Number.isFinite(t.elapsedMs) && t.elapsedMs >= 0 && typeof t.status === 'number'));
   assert.ok(h.timings.some(t => t.operation === 'create' && t.status === 201));
 });
@@ -288,4 +288,16 @@ test('fake transport: negative folder accepts only the fixed human-only grant', 
   await assert.rejects(h.probe.setFolderPolicy('negative-folder',{...request,grants:[grants[1]]}),/grants/i);
   await assert.rejects(h.probe.setFolderPolicy('negative-folder',{...request,grants:[{...grants[0],subjectId:'unrelated'}]}),/grants/i);
   assert.equal(calls,1);
+});
+
+test('fake transport: metadata probe obeys the normative four-key patch boundary',async()=>{
+  const h=await verified(async request=>{
+    const body=await request.json();
+    const allowed=new Set(['document_type','owning_department','category','extensions']);
+    if(Object.keys(body.set).some(key=>!allowed.has(key)))return json({status:422,code:'VALIDATION_FAILED'},422);
+    assert.deepEqual(body.set,{extensions:{loadQualificationOperation:'metadata-op'}});
+    assert.equal(body.expectedDocumentRevision,7);
+    return json({operationId:body.operationId,resourceId:'d',resultingRevision:8});
+  });
+  assert.equal((await h.probe.updateMetadata('d',7,'metadata-op')).resultingRevision,8);
 });

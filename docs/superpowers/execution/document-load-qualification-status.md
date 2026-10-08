@@ -154,3 +154,9 @@ actual Crop REDに基づき、新semanticsを使うページだけ、有限な�
 17:40追補：c69b26d5のMacはtag32成功/不正root直下MCR1件が実RED、paint30成功/子1ignore、Diff実13・lib10・workerPDF lib25成功。旧15全field完全一致、公式2件native成功と原本hash一致を維持、全target Clippy成功。新rootのarray形はdirectのassertで未到達だったため、2つの独立testへ分割し、bounded root scanで非StructElemをParserDisagreementとする6行guardを追加した。新しいPDF機能は増やさない。
 
 小量成功の限定証拠保存を同repo/同承認検証の必要範囲として追加。public repositoryであることをconnectorで確認し、固定JSONだけにsynthetic ID/hash/count/metrics/restart証拠をallowlist抽出、1日保持・既存pinned action/permissionsを維持する。private report/PDF/text/log/path/credentialsはuploadしない。独立reviewでPR headとGITHUB_SHAの違い、fork PRのgate不足を検出し、実RED→GREENで修正した。ハーネス135試験成功、full受入/receipt実生成は次exact head待ち。Macで4Rust filesのfmtと最終回帰を行い、そのheadのLinux API small/全CIを確認する。
+
+## 2026-10-08 18:59 UTC — Linux公開2件成功、metadataハーネス不適合を修正
+
+19f6d234のCI37818914619は12job成功/Documentと集約required失敗。別DSI PoC37818914484・Sandbox37818914479は成功。Macで取得した実job113455282091の固定JSONは、正例2登録/2公開成功、負例1登録/期待422拒否/公開0を示す。停止点はupdateMetadataの422 VALIDATION_FAILEDで、PDF検査の失敗ではない。実再起動・最終資格は未完、artifact0件、1000以上へadmitしない。
+
+原因はハーネスがloadQualificationOperationをmetadata直下へ更新したこと。normative logical-data-model-v0 §2.7とtransaction-consistencyの管理v0は、document_type/owning_department/category/extensionsだけを編集可としている。製品は正しく拒否していた。同じ422を契約testで再現し、extensions object配下へ移す最小修正と、そのnested値の読戻し確認を追加。OCC409や品質guardは不変。ハーネス全136件成功、次は独立review後の同PR exact headで実small全工程を再試験する。

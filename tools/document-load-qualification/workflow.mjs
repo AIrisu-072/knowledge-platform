@@ -24,7 +24,7 @@ export async function exerciseStage({probe,journal,count,assets,checkpoint,runId
  const first=ids[0];equal((await probe.detail(first)).currentVersionId,created[0].documentVersionId,'initial published pointer');
  await mutate('metadata',async()=>({operationId:uuid7(),expectedDocumentRevision:(await probe.detail(first)).revision}),request=>probe.updateMetadata(first,request.expectedDocumentRevision,request.operationId));
  const beforeNext=await probe.detail(first);
- equal(beforeNext.metadata.loadQualificationOperation,journal.get('metadata').request.operationId,'metadata update readback');
+ equal(beforeNext.metadata.extensions?.loadQualificationOperation,journal.get('metadata').request.operationId,'metadata update readback');
  await mutate('stale-metadata',()=>({operationId:uuid7(),expectedDocumentRevision:journal.get('metadata').request.expectedDocumentRevision}),async request=>{
   try{await probe.updateMetadata(first,request.expectedDocumentRevision,request.operationId);}catch(error){if(error.status===409)return{status:409};throw error;}
   throw Error('stale metadata OCC request unexpectedly succeeded');
