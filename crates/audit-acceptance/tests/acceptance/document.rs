@@ -22,12 +22,13 @@ use document_application::{
     DocumentRevisionReadService, DocumentVersionService, DueExecutionOutcome,
     EndDocumentPublicationCommand, EnsureSemanticInspection, FolderService, IdGenerator,
     IdentityContextResolver, IdentityResolutionError, InspectionExecutionError, InvocationKind,
-    ManagementCommand, ManagementOperationId, MarkVersionRead, PublicationEndOperationId,
-    PublicationScheduleRepository, PublishDocumentCommand, PublishOperationId, ReadStateMutation,
-    ReadStateMutationKind, ReadStateOperationId, ReadStateService, RevisionComparisonService,
-    SchedulePublishCommand, SemanticInspectionExecutor, VerifiedActorContext,
-    VersionFileAccessService, VersionFileRequest, VersionOperationId, VersionPurpose,
-    VersionRequest, VersioningItemInput, VersioningPreflight, WithdrawVersionCommand,
+    ManagementCommand, ManagementOperationId, ManagementResult, MarkVersionRead,
+    PublicationEndOperationId, PublicationScheduleRepository, PublishDocumentCommand,
+    PublishOperationId, ReadStateMutation, ReadStateMutationKind, ReadStateOperationId,
+    ReadStateService, RepositoryError, RevisionComparisonService, SchedulePublishCommand,
+    SemanticInspectionExecutor, VerifiedActorContext, VersionFileAccessService, VersionFileRequest,
+    VersionOperationId, VersionPurpose, VersionRequest, VersioningItemInput, VersioningPreflight,
+    WithdrawVersionCommand,
 };
 use document_application::{
     CancelScheduleCommand, PreparedManifest, RebaseWorkingVersionCommand,
@@ -300,10 +301,14 @@ impl Platform {
     /// The one-time root policy (`document-server` bootstrap): a repository
     /// that trusts the editor as its bootstrap actor.
     pub async fn bootstrap(&self) {
+        self.try_bootstrap().await.expect("root policy bootstrap");
+    }
+
+    /// [`Platform::bootstrap`], returning the repository's answer.
+    pub async fn try_bootstrap(&self) -> Result<ManagementResult, RepositoryError> {
         PostgresDocumentRepository::new_with_bootstrap_actor(self.pool.clone(), editor())
             .initialize_root_policy(&editor_ctx(), root_grants())
             .await
-            .expect("root policy bootstrap");
     }
 
     pub async fn document_revision(&self, document: DocumentId) -> i64 {

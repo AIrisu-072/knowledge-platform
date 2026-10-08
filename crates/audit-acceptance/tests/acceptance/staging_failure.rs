@@ -4,16 +4,25 @@
 //! nothing of it remains: no Document, version, folder, ACL, read-state,
 //! schedule or domain-event row changes, no staging row and no delivery
 //! registration; a file access or a comparison whose grant cannot be
-//! staged returns nothing. Every producer site that stages inside a
-//! business transaction is refused once: every relay-origin Document type
-//! of the catalog except `authorization.denied`, which Document stages
-//! outside the business transaction (handoff §5.4). The scheduler's
-//! publication stays pending (only its retry bookkeeping moves) and the
-//! scheduler's terminal outcome is not recorded. Such a failure is
-//! invisible to the relay (health stays clean), unlike a Store outage (T3),
-//! where the business commits and only the delivery waits. Once the
-//! sabotage is removed, every refused operation is run again, commits, and
-//! the relay delivers exactly what committed.
+//! staged returns nothing. Every relay-origin Document type of the catalog
+//! is refused except `authorization.denied`, which Document stages outside
+//! the business transaction (handoff §5.4), at every staging site
+//! exercised (`document-repository-postgres`): the document creation
+//! (`repository.rs`), the versioning mutation (new version, WORKING
+//! update, rebase), the initial publication (manual and by the scheduler)
+//! and the next-version publication (manual; the two sites of
+//! `publish.rs`), the schedule writes (schedule, cancellation, terminal
+//! outcome), the withdrawal, the publication end, the first read
+//! confirmation, VIEW and RESET, the file-access, diff and
+//! revision-comparison grants, and the management events
+//! (`targeted_events.rs`: metadata, folder creation, rename and move,
+//! document move, ACL change, and the root policy bootstrap, refused before
+//! any setup). The scheduler's publication stays pending (only its retry
+//! bookkeeping moves) and the scheduler's terminal outcome is not recorded.
+//! Such a failure is invisible to the relay (health stays clean), unlike a
+//! Store outage (T3), where the business commits and only the delivery
+//! waits. Once the sabotage is removed, every refused operation is run
+//! again, commits, and the relay delivers exactly what committed.
 //!
 //! Two Document writes happen outside the business transaction by design
 //! and stay after a refusal: the versioning preflight stores the uploaded
@@ -38,6 +47,7 @@ use std::fmt::Debug;
 use audit_core::{Catalog, Origin};
 use document_application::{
     ApplicationError, DueExecutionOutcome, PublishOperationId, ReadStateMutationKind,
+    RepositoryError,
 };
 use document_domain::{DocumentId, DocumentVersionId, FolderId};
 use serde_json::{Value, json};
@@ -189,6 +199,41 @@ async fn assert_refused<T: Debug>(
     assert_unchanged_except(before, &business_snapshot(env).await, what, &[]);
 }
 
+/// The staging sabotage: a BEFORE INSERT trigger on
+/// `public.audit_outbox_events` raising SQLSTATE P0001 for `types`.
+async fn refuse_staging(env: &Env, types: &[&str]) {
+    let list = types
+        .iter()
+        .map(|t| format!("'{t}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    exec(
+        &env.doc_admin,
+        &format!(
+            "CREATE FUNCTION public.acceptance_refuse_staging() RETURNS trigger \
+             LANGUAGE plpgsql AS $$ BEGIN \
+                 IF NEW.event_type = ANY (TG_ARGV) THEN \
+                     RAISE EXCEPTION 'acceptance: staging refused' USING ERRCODE = 'P0001'; \
+                 END IF; \
+                 RETURN NEW; \
+             END $$; \
+             CREATE TRIGGER acceptance_refuse_staging \
+             BEFORE INSERT ON public.audit_outbox_events FOR EACH ROW \
+             EXECUTE FUNCTION public.acceptance_refuse_staging({list})"
+        ),
+    )
+    .await;
+}
+
+async fn allow_staging(env: &Env) {
+    exec(
+        &env.doc_admin,
+        "DROP TRIGGER acceptance_refuse_staging ON public.audit_outbox_events; \
+         DROP FUNCTION public.acceptance_refuse_staging()",
+    )
+    .await;
+}
+
 async fn create(platform: &Platform, title: &str) -> (DocumentId, DocumentVersionId) {
     platform
         .create_document(
@@ -223,6 +268,33 @@ async fn staging_failure() {
 
     let env = Env::start().await;
     let platform = Platform::new(env.document.clone());
+
+    // ------------------------------------------------------------------
+    // 0. The root policy bootstrap (`access_policy.changed`, `bootstrap:
+    //    true`) cannot stage: the repository's PostgreSQL failure, no
+    //    policy, no access revision, no audit row. Once staging works, the
+    //    same bootstrap commits (and is delivered with the rest below).
+    // ------------------------------------------------------------------
+    refuse_staging(&env, &["access_policy.changed"]).await;
+    let before = business_snapshot(&env).await;
+    let result = platform.try_bootstrap().await;
+    assert!(
+        matches!(&result, Err(RepositoryError::Internal(message)) if message == POSTGRES_FAILURE),
+        "root policy bootstrap: the repository's PostgreSQL failure, got {result:?}"
+    );
+    assert_unchanged_except(
+        &before,
+        &business_snapshot(&env).await,
+        "root policy bootstrap",
+        &[],
+    );
+    let policies: i64 = sqlx::query_scalar("SELECT count(*) FROM public.access_policy_bindings")
+        .fetch_one(&env.doc_admin)
+        .await
+        .expect("policies");
+    assert_eq!(policies, 0, "no root policy");
+    assert!(staged_rows(&env).await.is_empty(), "no audit row");
+    allow_staging(&env).await;
     platform.bootstrap().await;
 
     // ------------------------------------------------------------------
@@ -287,6 +359,12 @@ async fn staging_failure() {
             .expect("withdraw"),
         Some(rb1)
     );
+    // `next`: v1 published, v2 WORKING on it (a next-version publication).
+    let (next, _) = create_published(&platform, "Synthetic next").await;
+    let next_v2 = platform
+        .create_version(next, "Synthetic next v2", b"B next v2\n")
+        .await
+        .expect("version");
     // WORKING originals: a content update, a manual publication, a new
     // schedule, a schedule to cancel.
     let (updated, updated_v1) = create(&platform, "Synthetic updated").await;
@@ -321,27 +399,7 @@ async fn staging_failure() {
     // ------------------------------------------------------------------
     // 1. Staging failure: the staging INSERT of every refused type fails.
     // ------------------------------------------------------------------
-    let refused_list = REFUSED
-        .iter()
-        .map(|t| format!("'{t}'"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    exec(
-        &env.doc_admin,
-        &format!(
-            "CREATE FUNCTION public.acceptance_refuse_staging() RETURNS trigger \
-             LANGUAGE plpgsql AS $$ BEGIN \
-                 IF NEW.event_type = ANY (TG_ARGV) THEN \
-                     RAISE EXCEPTION 'acceptance: staging refused' USING ERRCODE = 'P0001'; \
-                 END IF; \
-                 RETURN NEW; \
-             END $$; \
-             CREATE TRIGGER acceptance_refuse_staging \
-             BEFORE INSERT ON public.audit_outbox_events FOR EACH ROW \
-             EXECUTE FUNCTION public.acceptance_refuse_staging({refused_list})"
-        ),
-    )
-    .await;
+    refuse_staging(&env, &REFUSED).await;
     let before = business_snapshot(&env).await;
 
     // Management: metadata, folders, ACL, document move.
@@ -378,8 +436,9 @@ async fn staging_failure() {
 
     // Versioning: a creation with two audit rows (document.created would
     // stage, the version row cannot: the whole creation rolls back), a new
-    // version, a WORKING update, a rebase, a manual publication, a schedule
-    // and its cancellation, a withdrawal, a publication end.
+    // version, a WORKING update, a rebase, a manual publication of a first
+    // version and of a next version, a schedule and its cancellation, a
+    // withdrawal, a publication end.
     let result = platform
         .create_document(Platform::root(), "Synthetic created", b"A created body\n")
         .await;
@@ -424,6 +483,8 @@ async fn staging_failure() {
     // inspection is cached (the only change they may leave).
     let result = platform.publish(published, published_v1).await;
     assert_refused(&env, &before, "manual publication", result).await;
+    let result = platform.publish(next, next_v2).await;
+    assert_refused(&env, &before, "next-version publication", result).await;
     let result = platform
         .schedule_publish(scheduled, scheduled_v1, far)
         .await;
@@ -513,12 +574,7 @@ async fn staging_failure() {
     assert_eq!(report["produced"]["registered"], json!(baseline));
     assert_eq!(report["delivered"]["pending"], json!(baseline));
     assert_eq!(report["alarms"], json!([]), "{report}");
-    exec(
-        &env.doc_admin,
-        "DROP TRIGGER acceptance_refuse_staging ON public.audit_outbox_events; \
-         DROP FUNCTION public.acceptance_refuse_staging()",
-    )
-    .await;
+    allow_staging(&env).await;
 
     // ------------------------------------------------------------------
     // 2. Registration failure: the relay's registration trigger (a definer
@@ -628,6 +684,10 @@ async fn staging_failure() {
         .await
         .expect("manual publication");
     platform
+        .publish(next, next_v2)
+        .await
+        .expect("next-version publication");
+    platform
         .schedule_publish(scheduled, scheduled_v1, far)
         .await
         .expect("schedule");
@@ -727,6 +787,26 @@ async fn staging_failure() {
         |row| row.event_type == "document.version.publication.terminal"
             && row.resource_id == terminal.as_uuid()
     ));
+    // The two refusals of the other publication site and of the bootstrap
+    // commit exactly once each.
+    let next_published: Vec<Uuid> = committed
+        .iter()
+        .filter(|row| {
+            row.event_type == "document.version.published"
+                && row.resource_id == next.as_uuid()
+                && row.resource_version_id == Some(next_v2.as_uuid())
+        })
+        .map(|row| row.event_id)
+        .collect();
+    assert_eq!(next_published.len(), 1, "the next-version publication");
+    let bootstrapped: Vec<Uuid> = staged
+        .iter()
+        .filter(|row| {
+            row.event_type == "access_policy.changed" && row.data["bootstrap"] == json!(true)
+        })
+        .map(|row| row.event_id)
+        .collect();
+    assert_eq!(bootstrapped.len(), 1, "the root policy bootstrap");
 
     assert_relay_posture_clean(&env).await;
     let relay = RunningRelay::start(&env);
@@ -735,6 +815,9 @@ async fn staging_failure() {
     let store = env.store_client().await;
     let stored = assert_delivered_exactly_once(&env, &env.store_admin, &store).await;
     assert_eq!(stored.len(), staged.len(), "nothing of the failed attempts");
+    for id in next_published.iter().chain(&bootstrapped) {
+        assert!(stored.contains_key(id), "{id} reaches the Store once");
+    }
     assert_eq!(assert_store_chain(&env.store_admin).await, staged.len());
     let dump = env.store_dump_text(STORE_DB).await;
     assert_absent(
