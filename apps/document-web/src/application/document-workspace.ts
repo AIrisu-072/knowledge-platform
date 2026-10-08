@@ -13,6 +13,7 @@ export type {
   CommandsPolicyInherit,
   DocumentDetail,
   DocumentList,
+  DocumentRevisionDetail,
   DocumentRevisionPage,
   DocumentRevisionSummary,
   DisplayFragment,

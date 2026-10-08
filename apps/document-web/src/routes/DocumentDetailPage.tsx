@@ -22,7 +22,8 @@ import { denyDocumentRevisionReads, useDocumentRevisions, type DocumentRevisions
 import { denyDocumentHistoryReads, useDocumentHistory } from '../application/use-document-history';
 import { DocumentEventHistory } from '../components/document/DocumentEventHistory';
 import { DocumentContentHistory } from '../components/document/DocumentContentHistory';
-import { denyDocumentContentHistoryReads } from '../application/use-document-content-history';
+import { useDocumentContentHistory, type DocumentContentHistoryRead, discardContentHistoryReads, denyDocumentContentHistoryReads } from '../application/use-document-content-history';
+import { DocumentRevisionDetailPanel } from '../components/document/DocumentRevisionDetailPanel';
 import { DocumentRevisionReadControls } from '../components/document/DocumentRevisionReadControls';
 import { useDocumentComparison, type DocumentComparisonRead } from '../application/use-document-comparison';
 import { FragmentView, operationLabel, unverifiedReason } from '../components/document/DocumentComparisonFragments';
@@ -84,11 +85,22 @@ export function DocumentDetailPage() {
   const canManageAccess = document?.capabilities.manageAccess.status === 'available';
   const visibleTabs = tabs.filter((tab) => tab.id !== 'access' || canManageAccess);
   const activeTab = visibleTabs.some((tab) => tab.id === search.tab) ? search.tab : 'overview';
+  const [versionHistory, setVersionHistory] = useState<{ documentId: string; view: string } | null>(null);
+  const historyVersions = versionHistory?.documentId === documentId && versionHistory.view === search.view;
+  const versionPurpose = historyVersions ? 'history' : search.view;
   const versionsQuery = useQuery({
     queryKey: ['document-versions', documentId, search.view],
     queryFn: () => documentApi.listDocumentVersions(documentId, search.view),
-    enabled: Boolean(document && (activeTab === 'versions' || activeTab === 'compare')),
+    retry: false,
+    enabled: Boolean(document && !historyVersions && (activeTab === 'versions' || activeTab === 'compare')),
   });
+  const contentHistoryRead = useDocumentContentHistory(documentId, () => Boolean(document && historyVersions && activeTab === 'versions'));
+  const historyReadsActive = useRef(false);
+  useEffect(() => {
+    const active = historyVersions && activeTab === 'versions';
+    if (historyReadsActive.current && !active) discardContentHistoryReads(queryClient, documentId);
+    historyReadsActive.current = active;
+  }, [queryClient, documentId, historyVersions, activeTab]);
   const revisionRead = useDocumentRevisions(documentId, Boolean(document && (activeTab === 'versions' || activeTab === 'compare')));
   const historyRead = useDocumentHistory(documentId, Boolean(document && activeTab === 'history'));
   const accessQuery = useQuery({
@@ -96,15 +108,33 @@ export function DocumentDetailPage() {
     queryFn: async () => { const policy = await documentApi.getDocumentAccessPolicy(documentId); if (!validateDocumentPolicy(policy, documentId)) throw new Error('最新の文書とアクセス設定を確認できません。'); return policy; },
     enabled: Boolean(document && canManageAccess && activeTab === 'access'),
   });
-  const versionItems = versionsQuery.data?.items ?? [];
+  const versionItems = historyVersions ? contentHistoryRead.versions : versionsQuery.error ? [] : versionsQuery.data?.items ?? [];
   const selectedVersion = chooseVersion(document, versionItems, search.versionId);
   const currentFileVersionId = search.view === 'authoring' ? document?.displayVersion.versionId : document?.currentVersionId ?? document?.displayVersion.versionId;
   const detailVersionId = activeTab === 'overview' ? currentFileVersionId : selectedVersion?.versionId;
+  const detailPurpose = activeTab === 'overview' ? search.view : versionPurpose;
   const versionDetailQuery = useQuery({
-    queryKey: ['document-version', documentId, detailVersionId, search.view],
-    queryFn: () => documentApi.getDocumentVersion(documentId, detailVersionId!, search.view),
+    queryKey: ['document-version', documentId, detailVersionId, detailPurpose],
+    queryFn: async ({ signal }) => {
+      try {
+        const version = await documentApi.getDocumentVersion(documentId, detailVersionId!, detailPurpose);
+        if (version.versionId !== detailVersionId) throw new Error('選択したコンテンツ版を確認できません。');
+        return version;
+      } catch (error) {
+        if (!signal.aborted && detailPurpose === 'history') {
+          denyDocumentContentHistoryReads(queryClient, documentId, error);
+          denyDocumentRevisionReads(queryClient, documentId, error);
+          denyDocumentHistoryReads(queryClient, documentId, error);
+        }
+        throw error;
+      }
+    },
+    retry: false,
     enabled: Boolean(detailVersionId && document && (activeTab === 'versions' || activeTab === 'overview')),
   });
+  const versionDetailContextKey = `${documentId}:${detailVersionId ?? ''}:${detailPurpose}`;
+  const versionDetailContext = useRef(versionDetailContextKey);
+  versionDetailContext.current = versionDetailContextKey;
   const filesQuery = useQuery({
     queryKey: ['document-version-files', documentId, currentFileVersionId, search.view],
     queryFn: () => documentApi.listVersionFiles(documentId, currentFileVersionId!, search.view),
@@ -179,16 +209,23 @@ export function DocumentDetailPage() {
   ) : <LoadingState label="文書情報を読み込み中" />;
   const versionsPanel = document ? (
     <VersionsTab
+      key={`${documentId}:${search.view}`}
+      requestedVersionId={search.versionId}
+      historyVersions={historyVersions}
+      historyRead={historyVersions ? contentHistoryRead : undefined}
+      onToggleHistory={() => { setVersionHistory(historyVersions ? null : { documentId, view: search.view }); updateSearch({ versionId: undefined }); }}
       document={document}
       versions={versionItems}
       revisions={revisions}
       selectedVersion={selectedVersion}
-      versionDetail={versionDetailQuery.error ? undefined : versionDetailQuery.data}
-      versionsLoading={versionsQuery.isPending}
-      versionsError={versionsQuery.error}
+      versionError={selectedVersion ? versionDetailQuery.error : null}
+      onVersionRetry={() => { if (versionDetailContext.current === versionDetailContextKey && detailVersionId) void versionDetailQuery.refetch(); }}
+      versionDetail={versionDetailQuery.error || versionDetailQuery.isFetching ? undefined : versionDetailQuery.data}
+      versionsLoading={historyVersions ? contentHistoryRead.initialLoading : versionsQuery.isPending}
+      versionsError={historyVersions ? contentHistoryRead.error : versionsQuery.error}
       revisionRead={revisionRead}
       revisionPair={revisionPair}
-      onRetry={() => { void versionsQuery.refetch(); }}
+      onRetry={() => { if (historyVersions) contentHistoryRead.restart(); else void versionsQuery.refetch(); }}
       updateSearch={updateSearch}
       workflow={search.workflow}
       publicationMethod={publicationMethod}
@@ -261,7 +298,7 @@ export function DocumentDetailPage() {
         key={documentId}
         documentId={documentId}
         document={document}
-        version={versionDetailQuery.error ? undefined : versionDetailQuery.data}
+        version={versionDetailQuery.error || versionDetailQuery.isFetching || (activeTab === 'versions' && versionDetailQuery.data?.versionId !== selectedVersion?.versionId) ? undefined : versionDetailQuery.data}
         contextKey={`${documentId}:${search.view}:${activeTab}:${search.versionId ?? ''}:${search.workflow ?? ''}`}
         showActions={activeTab === 'versions' && !search.workflow}
       />
@@ -299,7 +336,7 @@ export function DocumentDetailPage() {
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
                 {activeTab === 'overview' && <div ref={overviewRef}>{search.view === 'published' && !search.workflow && <DocumentReadState read={readState} />}<OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} /></div>}
-                {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{search.view === 'authoring' && selectedVersion && (!search.versionId || search.versionId === selectedVersion.versionId) && <DocumentWorkingComparison key={`working-comparison:${location.href}:${selectedVersion.versionId}`} documentId={documentId} versionId={selectedVersion.versionId} /> }<DocumentContentHistory key={location.href} documentId={documentId} />{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
+                {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{search.view === 'authoring' && selectedVersion && (!search.versionId || search.versionId === selectedVersion.versionId) && <DocumentWorkingComparison key={`working-comparison:${location.href}:${selectedVersion.versionId}`} documentId={documentId} versionId={selectedVersion.versionId} /> }{!historyVersions && <DocumentContentHistory key={location.href} documentId={documentId} />}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <DocumentEventHistory read={historyRead} />}
                 {activeTab === 'access' && canManageAccess && <DocumentAccessPolicy document={document} view={search.view} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} />}
               </section>
@@ -371,6 +408,12 @@ function OverviewTab({ document, filesQuery, reload }: {
 }
 
 function VersionsTab({
+  versionError,
+  onVersionRetry,
+  requestedVersionId,
+  historyVersions,
+  historyRead,
+  onToggleHistory,
   document,
   versions,
   revisions,
@@ -387,6 +430,12 @@ function VersionsTab({
   setPublicationMethod,
   invalidate,
 }: {
+  versionError: unknown;
+  onVersionRetry: () => void;
+  requestedVersionId?: string;
+  historyVersions: boolean;
+  historyRead?: DocumentContentHistoryRead;
+  onToggleHistory: () => void;
   document: DocumentDetail;
   versions: Version[];
   revisions: DocumentRevisionSummary[];
@@ -403,6 +452,7 @@ function VersionsTab({
   setPublicationMethod: (method: 'now' | 'scheduled') => void;
   invalidate: () => Promise<void>;
 }) {
+  const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
   const [publicationConfirmed, setPublicationConfirmed] = useState(false);
   const [action, setAction] = useState<'publish' | 'schedule' | null>(null);
   const [scheduledAt, setScheduledAt] = useState('');
@@ -536,6 +586,12 @@ function VersionsTab({
               <div><h2>コンテンツ版</h2><p>WORKING版と正式に公開した改訂を分けて表示します。</p></div>
               <CapabilityButton label="新しい版を作成" availability={document.capabilities.createVersion} className={workspaceStyles.primaryButton} onClick={() => updateSearch({ workflow: 'newVersion' })} />
             </div>
+            <button type="button" aria-pressed={historyVersions} onClick={onToggleHistory}>{historyVersions ? '通常の版表示に戻る' : '過去版を含めて表示'}</button>
+            {historyVersions && <p>過去版の閲覧には現在の履歴閲覧権限が必要です。取下げ対象は一覧から明示的に選択してください。</p>}
+            {historyRead && <div>
+              {historyRead.canContinue && <button type="button" disabled={historyRead.busy} onClick={historyRead.loadMore}>{historyRead.continuationError ? '過去版の続きを再試行' : '過去版をさらに表示'}</button>}
+              <button type="button" disabled={historyRead.busy} onClick={historyRead.restart}>過去版を最初から読み直す</button>
+            </div>}
             {versionsLoading && <LoadingState label="コンテンツ版を読み込み中" />}
             {Boolean(versionsError) && <ApiFeedback error={versionsError} onRetry={onRetry} />}
             {!versionsLoading && !versionsError && versions.length === 0 && <p className={styles.muted}>表示できるコンテンツ版はありません。</p>}
@@ -551,8 +607,10 @@ function VersionsTab({
                 </li>
               ))}
             </ul>
+            {requestedVersionId && !versionsLoading && !versionsError && !selectedVersion && <p>指定したコンテンツ版は一覧にありません。対象を選び直してください。</p>}
             {selectedVersion && (
               <div className={styles.selectedVersionActions}>
+                {Boolean(versionError) && <ApiFeedback error={versionError} onRetry={onVersionRetry} />}
                 <h3>選択中: {selectedVersion.lifecycleState === 'working' ? 'WORKING · ' : ''}版 {selectedVersion.versionNo}</h3>
                 {versionDetail?.capabilities.publish.status === 'available' && <button type="button" disabled={workingBlocked} onClick={() => openPublication('now')}>公開する</button>}
                 {versionDetail?.capabilities.schedulePublication.status === 'available' && <button type="button" disabled={workingBlocked} onClick={() => openPublication('scheduled')}>予約公開する</button>}
@@ -574,12 +632,14 @@ function VersionsTab({
               {revisions.map((revision) => (
                 <li key={revision.revisionId}>
                   <strong>{revision.label}</strong>
+                  <button type="button" onClick={() => setSelectedRevisionId(revision.revisionId)}>改訂 {revision.label} の詳細</button>
                   <span>{revision.sourceKind === 'metadataRevision' ? 'メタデータ改訂' : revision.sourceKind === 'withdrawFallback' ? '取下げ後の復帰' : '公開改訂'}</span>
                   <time dateTime={revision.createdAt}>{formatDate(revision.createdAt)}</time>
                   {revision.metadataSnapshotStatus === 'unavailableLegacy' && <span className={styles.statusWarning}>過去のメタデータは確認できません</span>}
                 </li>
               ))}
             </ol>
+            {selectedRevisionId && revisionRead.ready && revisions.some(revision => revision.revisionId === selectedRevisionId) && <DocumentRevisionDetailPanel key={`${documentId}:${selectedRevisionId}`} documentId={documentId} revisionId={selectedRevisionId} expectedVersionId={revisions.find(revision => revision.revisionId === selectedRevisionId)?.documentVersionId} onClose={() => setSelectedRevisionId(null)} />}
             {(revisions.length >= 2 || revisionsPair.unresolved) && (
               <div className={styles.comparisonChooser}>
                 <p>比較する正式改訂</p>
@@ -777,8 +837,7 @@ function DownloadButton({ documentId, versionId, contentItemId, representationId
 
 function chooseVersion(document: DocumentDetail | undefined, versions: Version[], selectedId?: string): Version | undefined {
   if (selectedId) {
-    const selected = versions.find((version) => version.versionId === selectedId);
-    if (selected) return selected;
+    return versions.find((version) => version.versionId === selectedId);
   }
   const working = versions.find((version) => version.lifecycleState === 'working');
   if (working) return working;

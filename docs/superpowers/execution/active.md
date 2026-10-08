@@ -1,5 +1,13 @@
 # Active Execution Pointer
 
+## 2026-10-08 — 文書管理残タスク（Mac側、クラウド親と分担）
+
+- 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。
+- Macの製品変更は過去公開版の履歴用途による取下げGUIと正式改訂単体詳細。設計確認待ちの原本構成・初回複数・主体検索・viewerは追補案のみ。既読契機は現行のまま。schedulerとPR85 Document修正はクラウド親が担当し、Macの製品差分へ含めない。
+- 操作文書・導入/復旧/段階測定手順を同じDraftにまとめる。対象PC・本番認証/TLS・実directory/権限・大量実測は未実施。正確なhead CI、親との統合順序確認、main統合と統合後CIはこれから。
+
+---
+
 ## 2026-10-07 23:11 UTC — PR106の手順head合格後に最新mainを保持して追従
 
 - 手順head e0836556 / tree0788260dの通常CI37698468205は14 jobs全成功、全19checks16成功・既存skip3。導入4手順の独立レビューもGO。CI確認中のmain643cc85d（Audit単位A/PR98）更新によりactive先頭だけが競合したため、双方の節を保持して解消する
