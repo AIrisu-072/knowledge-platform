@@ -1522,9 +1522,12 @@ WHERE has_any_column_privilege(h.oid, 'public.audit_outbox_events'::regclass, 'S
 UNION ALL
 -- Nor read or write the relay tables (grants, pg_read_all_data,
 -- pg_write_all_data: a forged receipt needs no guard bypass). No other
--- login (a Document reporting or maintenance login, for instance) may
--- write them either: only audit_relay_owner (through the definer
--- functions) and superusers do.
+-- login that can connect to this database (a Document reporting or
+-- maintenance login, for instance) may write them either: only
+-- audit_relay_owner (through the definer functions) and superusers do. A
+-- login without CONNECT here cannot use a privilege on these tables (as
+-- for predefined_role_member below); explicit grants on the tables are
+-- reported as table_privilege / column_privilege for every grantee.
 SELECT DISTINCT 'table_access', a.rolname
 FROM (
     SELECT h.oid, h.rolname, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE' AS privileges
@@ -1533,6 +1536,7 @@ FROM (
     SELECT l.oid, l.rolname::text, 'INSERT, UPDATE, DELETE, TRUNCATE'
     FROM pg_roles AS l
     WHERE l.rolcanlogin AND NOT l.rolsuper AND l.rolname <> 'audit_relay_owner'
+      AND has_database_privilege(l.oid, (SELECT d.oid FROM this_db AS d), 'CONNECT')
 ) AS a, pg_class AS c
 WHERE c.relnamespace = (SELECT s.oid FROM schema_oid AS s)
   AND c.relkind IN ('r', 'p', 'v', 'm')

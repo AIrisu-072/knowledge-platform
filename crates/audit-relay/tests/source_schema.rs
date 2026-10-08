@@ -690,8 +690,8 @@ async fn role_matrix_posture_and_session_refusal() {
 /// roles can write the relay tables directly and forge a first delivery
 /// receipt. The posture reports it, and the guards refuse a receipt that
 /// does not come through the relay's definer functions, even with the
-/// transition marker set. File and program access is reported for any
-/// login.
+/// transition marker set. The data roles are reported for a login that can
+/// connect to the Document database, file and program access for any login.
 #[tokio::test]
 async fn a_document_login_with_data_bypass_roles_cannot_forge_a_receipt() {
     let env = DocEnv::start().await;
@@ -803,6 +803,71 @@ async fn a_document_login_with_data_bypass_roles_cannot_forge_a_receipt() {
         exec(admin, &format!("REVOKE {role} FROM {}", forger.role)).await;
     }
     assert_eq!(posture_codes(worker).await, Vec::<String>::new());
+
+    // A login that cannot connect to the Document database cannot use the
+    // data bypass roles here: neither table_access nor predefined_role_member
+    // (it is reported once it can connect). File and program access is
+    // reported whether or not it can connect.
+    exec(
+        admin,
+        &format!(
+            "GRANT CONNECT ON DATABASE {DOC_DB} TO {}, {}, {}; \
+             REVOKE CONNECT ON DATABASE {DOC_DB} FROM PUBLIC; \
+             CREATE ROLE document_elsewhere LOGIN PASSWORD '{PASSWORD}' NOSUPERUSER; \
+             GRANT pg_read_all_data, pg_write_all_data TO document_elsewhere",
+            env.worker.role, env.operator.role, forger.role
+        ),
+    )
+    .await;
+    assert_eq!(posture_pairs(worker).await, vec![]);
+    exec(admin, "GRANT pg_write_server_files TO document_elsewhere").await;
+    assert_eq!(
+        posture_pairs(worker).await,
+        vec![(
+            "predefined_role_member".to_owned(),
+            "document_elsewhere:pg_write_server_files".to_owned()
+        )]
+    );
+    exec(
+        admin,
+        &format!(
+            "REVOKE pg_write_server_files FROM document_elsewhere; \
+             GRANT CONNECT ON DATABASE {DOC_DB} TO document_elsewhere"
+        ),
+    )
+    .await;
+    assert_eq!(
+        posture_pairs(worker).await,
+        vec![
+            (
+                "predefined_role_member".to_owned(),
+                "document_elsewhere:pg_read_all_data".to_owned()
+            ),
+            (
+                "predefined_role_member".to_owned(),
+                "document_elsewhere:pg_write_all_data".to_owned()
+            ),
+            ("table_access".to_owned(), "document_elsewhere".to_owned()),
+        ]
+    );
+    exec(
+        admin,
+        &format!(
+            "REVOKE CONNECT ON DATABASE {DOC_DB} FROM document_elsewhere; \
+             DROP ROLE document_elsewhere; GRANT CONNECT ON DATABASE {DOC_DB} TO PUBLIC"
+        ),
+    )
+    .await;
+    assert_eq!(posture_codes(worker).await, Vec::<String>::new());
+}
+
+async fn posture_pairs(pool: &PgPool) -> Vec<(String, String)> {
+    audit_relay::session::posture(pool)
+        .await
+        .expect("posture")
+        .into_iter()
+        .map(|v| (v.violation, v.object))
+        .collect()
 }
 
 async fn posture_codes(pool: &PgPool) -> Vec<String> {
