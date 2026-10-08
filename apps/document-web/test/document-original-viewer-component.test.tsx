@@ -14,7 +14,8 @@ function setup(value = file) {
   client.setQueryData(['document', 'doc', 'published'], document);
   client.setQueryData(['document-version-files', 'doc', 'version', 'published'], manifest);
   const api = documentApi.downloadVersionFile as jest.Mock; api.mockReset();
-  api.mockResolvedValue({ size: bytes.byteLength, type: value.mediaType, arrayBuffer: async () => bytes.buffer });
+  const responseBytes = value.mediaType === 'application/pdf' ? new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55]) : bytes;
+  api.mockResolvedValue({ size: responseBytes.byteLength, type: value.mediaType, arrayBuffer: async () => responseBytes.buffer });
   const view = render(<QueryClientProvider client={client}><DocumentOriginalViewer documentId="doc" versionId="version" purpose="published" file={value} /></QueryClientProvider>);
   return { ...view, client, api };
 }
@@ -86,4 +87,41 @@ test('fallback download does not erase a failed PDF rendering state or restore d
   expect(await screen.findByRole('alert')).toHaveTextContent('PDF描画失敗'); api.mockImplementation(() => new Promise(() => undefined));
   fireEvent.click(screen.getByRole('button', { name: '原本.txtをダウンロード' }));
   expect(screen.getByRole('alert')).toHaveTextContent('PDF描画失敗'); expect(screen.queryByRole('button', { name: '次のページ' })).toBeNull();
+});
+test('an authorized past-version target uses history purpose without requiring current version equality', async () => {
+  const { client, api } = setup(); const past = { versionId: 'past', capabilities: { download: { status: 'available' } } }; const originals = { items: [file] };
+  client.setQueryData(['document-version-files', 'doc', 'past', 'history'], originals);
+  render(<QueryClientProvider client={client}><DocumentOriginalViewer documentId="doc" versionId="past" purpose="history" file={file} historyRead={() => ({ version: past as never, files: originals })} /></QueryClientProvider>);
+  fireEvent.click(screen.getAllByRole('button', { name: '原本.txtを表示' })[1]!);
+  await screen.findByTestId('original-viewer-text'); expect(api).toHaveBeenCalledWith(expect.objectContaining({ versionId: 'past', purpose: 'history' }), expect.objectContaining({ maxBytes: 10485760 }));
+});
+test('binary fallback denial disposes plaintext even when the document metadata read remains authorized', async () => {
+  const { api, client } = setup(); fireEvent.click(screen.getByRole('button', { name: '原本.txtを表示' })); await screen.findByTestId('original-viewer-text');
+  api.mockRejectedValueOnce({ type: 'about:blank', title: 'denied', status: 403, code: 'FORBIDDEN', traceId: 'synthetic', retryable: false });
+  fireEvent.click(screen.getByRole('button', { name: '原本.txtをダウンロード' }));
+  await waitFor(() => expect(screen.queryByTestId('original-viewer-text')).toBeNull());
+  expect(client.getQueryData(['document', 'doc', 'published'])).toBeUndefined();
+  fireEvent.click(screen.getByRole('button', { name: '原本.txtを表示' })); expect(api).toHaveBeenCalledTimes(2);
+});
+test('native data-only octet-stream PDF is rendered only with the selected PDF manifest and PDF magic', async () => {
+  const renderPdf = jest.fn(async () => undefined); (openPdfViewer as jest.Mock).mockResolvedValue({ pages: 1, render: renderPdf, destroy: jest.fn() });
+  const { api } = setup({ ...file, mediaType: 'application/pdf' });
+  api.mockResolvedValueOnce({ size: 8, type: 'application/octet-stream', arrayBuffer: async () => new Uint8Array([37,80,68,70,45,49,46,55]).buffer });
+  fireEvent.click(screen.getByRole('button', { name: '原本.txtを表示' })); await waitFor(() => expect(renderPdf).toHaveBeenCalledTimes(1));
+});
+test('a data-only PDF response with HTML bytes is refused before invoking the PDF parser', async () => {
+  const { api } = setup({ ...file, mediaType: 'application/pdf' }); const parser = openPdfViewer as jest.Mock; parser.mockClear();
+  api.mockResolvedValueOnce({ size: bytes.byteLength, type: 'application/octet-stream', arrayBuffer: async () => bytes.buffer });
+  fireEvent.click(screen.getByRole('button', { name: '原本.txtを表示' })); expect(await screen.findByRole('alert')).toHaveTextContent(/形式|PDF/); expect(parser).not.toHaveBeenCalled();
+});
+test('an old binary denial cannot erase a newer document snapshot or its new display', async () => {
+  const { api, client } = setup(); let rejectOld!: (error: unknown) => void;
+  api.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+  fireEvent.click(screen.getByRole('button', { name: '原本.txtを表示' }));
+  const old = client.getQueryData(['document', 'doc', 'published']) as object;
+  act(() => client.setQueryData(['document', 'doc', 'published'], { ...old, revision: 2 }));
+  fireEvent.click(screen.getByRole('button', { name: '原本表示を閉じる' }));
+  fireEvent.click(screen.getByRole('button', { name: '原本.txtを表示' })); await screen.findByTestId('original-viewer-text');
+  await act(async () => rejectOld({ status: 403 }));
+  expect(screen.getByTestId('original-viewer-text')).toBeInTheDocument(); expect(client.getQueryData(['document', 'doc', 'published'])).toBeDefined();
 });

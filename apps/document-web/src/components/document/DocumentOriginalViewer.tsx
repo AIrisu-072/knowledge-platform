@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { documentApi, type FileList } from '../../application/document-workspace';
+import { documentApi, type FileList, type VersionDetail } from '../../application/document-workspace';
 import { decodeViewerText, viewerElementVisible, viewerFileProblem, VIEWER_MAX_BYTES } from '../../application/document-original-viewer';
 import { openPdfViewer, type PdfViewerSession } from '../../application/pdf-renderer';
+import { problemFromUnknown } from '../../application/problem-mapping';
 import styles from './DocumentOriginalViewer.module.css';
 
 // A QueryClient owns at most one decoded original and one PDF worker.
 const viewerOwners = new WeakMap<object, { token: object; close: () => void }>();
 type FileItem = FileList['items'][number];
-export function DocumentOriginalViewer({ documentId, versionId, purpose, file }: { documentId: string; versionId: string; purpose: 'published' | 'authoring'; file: FileItem }) {
+export function DocumentOriginalViewer({ documentId, versionId, purpose, file, historyRead, onDenied, showDownload = true }: { documentId: string; versionId: string; purpose: 'published' | 'authoring' | 'history'; file: FileItem; historyRead?: () => { version: VersionDetail | undefined; files: FileList | undefined } | null; onDenied?: (error: unknown) => void; showDownload?: boolean }) {
   const displayButton = useRef<HTMLButtonElement>(null); const restoreFocus = useRef(false);
   const client = useQueryClient(); const host = useRef<HTMLDivElement>(null); const canvas = useRef<HTMLCanvasElement>(null);
   const downloading = useRef<AbortController | undefined>(undefined); const [downloadPending, setDownloadPending] = useState(false); const [downloadError, setDownloadError] = useState('');
@@ -18,8 +19,10 @@ export function DocumentOriginalViewer({ documentId, versionId, purpose, file }:
   const [pending, setPending] = useState(false); const [page, setPage] = useState(1); const [pages, setPages] = useState(0);
   const identity = JSON.stringify([documentId, versionId, purpose, file.contentItemId, file.representationId]);
   const currentIdentity = useRef(identity); currentIdentity.current = identity;
+  const historyGuard = useRef(historyRead); historyGuard.current = historyRead; const deny = useRef(onDenied); deny.current = onDenied;
   const docKey = ['document', documentId, purpose] as const; const filesKey = ['document-version-files', documentId, versionId, purpose] as const;
   const readable = () => {
+    if (purpose === 'history') { const target = historyGuard.current?.(); return target?.version?.versionId === versionId && target.version.capabilities.download?.status === 'available' && target.files?.items.includes(file); }
     const doc = client.getQueryState<{ currentVersionId?: string; displayVersion: { versionId: string } }>(docKey); const files = client.getQueryState<FileList>(filesKey);
     return [doc, files].every(read => read?.status === 'success' && read.fetchStatus === 'idle' && !read.isInvalidated)
       && (purpose === 'published' ? doc?.data?.currentVersionId ?? doc?.data?.displayVersion.versionId : doc?.data?.displayVersion.versionId) === versionId && files?.data?.items.some(row => row.contentItemId === file.contentItemId && row.representationId === file.representationId && row.mediaType === file.mediaType && row.sizeBytes === file.sizeBytes);
@@ -35,21 +38,42 @@ export function DocumentOriginalViewer({ documentId, versionId, purpose, file }:
   }, [identity, client]);
   useEffect(() => { if (!open && restoreFocus.current) { restoreFocus.current = false; displayButton.current?.focus(); } }, [open]);
   const problem = viewerFileProblem(file);
+  function historySnapshot() { return purpose === 'history' ? historyGuard.current?.() : undefined; }
+  function targetUnchanged(snapshot: ReturnType<typeof historySnapshot>, doc: unknown, files: unknown) {
+    if (purpose === 'history') { const target = historyGuard.current?.(); return Boolean(target && snapshot && target.version === snapshot.version && target.files === snapshot.files); }
+    return client.getQueryData(docKey) === doc && client.getQueryData(filesKey) === files;
+  }
+  function rejected(error: unknown) {
+    const status = problemFromUnknown(error)?.status ?? (typeof error === 'object' && error !== null && 'status' in error ? error.status : undefined);
+    if (typeof status === 'number' && [401, 403, 404].includes(status)) {
+      dispose();
+      if (purpose !== 'history') {
+        for (const key of [docKey, filesKey]) {
+          void client.cancelQueries({ queryKey: key, exact: true });
+          client.getQueryCache().find({ queryKey: key, exact: true })?.setState({ data: undefined, error: error as Error, status: 'error', fetchStatus: 'idle' });
+        }
+      }
+      deny.current?.(error); return true;
+    }
+    return false;
+  }
   async function display() {
     if (controller.current || problem || !readable() || !viewerElementVisible(host.current)) return;
     viewerOwners.get(client)?.close(); viewerOwners.set(client, { token: ownerToken.current, close: dispose });
     const active = new AbortController(); controller.current = active; const token = ++epoch.current;
-    const docSnapshot = client.getQueryData(docKey); const fileSnapshot = client.getQueryData(filesKey);
+    const docSnapshot = client.getQueryData(docKey); const fileSnapshot = client.getQueryData(filesKey); const history = historySnapshot();
     const current = () => mounted.current && currentIdentity.current === identity && epoch.current === token && !active.signal.aborted && readable() && viewerElementVisible(host.current)
-      && client.getQueryData(docKey) === docSnapshot && client.getQueryData(filesKey) === fileSnapshot;
+      && targetUnchanged(history, docSnapshot, fileSnapshot);
     setOpen(true); setPending(true); setError(''); setText(undefined); setPage(1);
     try {
       const blob = await documentApi.downloadVersionFile({ documentId, versionId, purpose, contentItemId: file.contentItemId, representationId: file.representationId }, { signal: active.signal, maxBytes: VIEWER_MAX_BYTES });
       if (!current()) { if (epoch.current === token) dispose(); return; }
       if (blob.size > VIEWER_MAX_BYTES) throw new Error('表示は10 MiBまでです。原本をダウンロードしてください。');
       const type = file.mediaType.split(';')[0]!.trim().toLowerCase();
-      if (blob.type.split(';')[0] !== type) throw new Error('原本の形式を確認できません。ダウンロードして確認してください。');
+      const responseType = blob.type.split(';')[0]!.trim().toLowerCase();
+      if (responseType !== type && responseType !== 'application/octet-stream') throw new Error('原本の形式を確認できません。ダウンロードして確認してください。');
       const bytes = new Uint8Array(await blob.arrayBuffer()); if (!current()) { if (epoch.current === token) dispose(); return; }
+      if (type === 'application/pdf' && ![37, 80, 68, 70, 45].every((value, index) => bytes[index] === value)) throw new Error('PDFの形式を確認できません。ダウンロードして確認してください。');
       if (type === 'text/plain') setText(decodeViewerText(bytes));
       else {
         const session = await openPdfViewer(bytes, active.signal); if (!current()) { session.destroy(); return; }
@@ -57,21 +81,21 @@ export function DocumentOriginalViewer({ documentId, versionId, purpose, file }:
         if (!canvas.current) throw new Error('PDFの表示領域を確認できません。');
         await session.render(1, canvas.current); if (!current()) { if (epoch.current === token) dispose(); return; }
       }
-    } catch (caught) { if (current()) { pdf.current?.destroy(); pdf.current = undefined; setError(caught instanceof Error ? caught.message : '原本を表示できません。ダウンロードして確認してください。'); } }
+    } catch (caught) { if (current()) { if (rejected(caught)) return; pdf.current?.destroy(); pdf.current = undefined; setError(caught instanceof Error ? caught.message : '原本を表示できません。ダウンロードして確認してください。'); } }
     finally { if (current()) setPending(false); }
   }
   async function download() {
     if (downloading.current || !readable() || !viewerElementVisible(host.current)) return;
-    const active = new AbortController(); downloading.current = active; const docSnapshot = client.getQueryData(docKey); const fileSnapshot = client.getQueryData(filesKey);
+    const active = new AbortController(); downloading.current = active; const docSnapshot = client.getQueryData(docKey); const fileSnapshot = client.getQueryData(filesKey); const history = historySnapshot();
     const current = () => mounted.current && currentIdentity.current === identity && downloading.current === active && !active.signal.aborted && readable() && viewerElementVisible(host.current)
-      && client.getQueryData(docKey) === docSnapshot && client.getQueryData(filesKey) === fileSnapshot;
+      && targetUnchanged(history, docSnapshot, fileSnapshot);
     setDownloadPending(true); setDownloadError('');
     try {
       const blob = await documentApi.downloadVersionFile({ documentId, versionId, purpose, contentItemId: file.contentItemId, representationId: file.representationId }, { signal: active.signal });
       if (!current()) return;
       const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = file.displayName;
       try { link.click(); } finally { window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
-    } catch (caught) { if (current()) setDownloadError(caught instanceof Error ? caught.message : '原本を取得できません。'); }
+    } catch (caught) { if (current() && !rejected(caught)) setDownloadError(caught instanceof Error ? caught.message : '原本を取得できません。'); }
     finally { if (downloading.current === active) { downloading.current = undefined; if (mounted.current) setDownloadPending(false); } }
   }
   async function changePage(next: number) {
@@ -83,7 +107,7 @@ export function DocumentOriginalViewer({ documentId, versionId, purpose, file }:
   }
   return <div ref={host}>
     {problem ? <p>{problem}</p> : <button ref={displayButton} type="button" disabled={open} onClick={() => void display()}>{file.displayName}を表示</button>}
-    <button type="button" disabled={downloadPending} onClick={() => void download()}>{downloadPending ? '取得中…' : `${file.displayName}をダウンロード`}</button>
+    {showDownload && <button type="button" disabled={downloadPending} onClick={() => void download()}>{downloadPending ? '取得中…' : `${file.displayName}をダウンロード`}</button>}
     {downloadError && <p role="alert">{downloadError}</p>}
     {open && <section aria-label={`${file.displayName}の原本表示`} className={styles.viewer}>
       <div className={styles.controls}><strong>{file.displayName}</strong><button type="button" onClick={() => { restoreFocus.current = true; dispose(); }}>原本表示を閉じる</button></div>

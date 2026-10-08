@@ -282,3 +282,10 @@ test('viewer bounded response read releases a stalled stream when external autho
   const rejected = assert.rejects(result, /cancelled|aborted/); await new Promise(resolve => setImmediate(resolve)); controller.abort(); await rejected;
   assert.equal(cancelled, true);
 });
+test('bounded original requests send only a lowering shell hint and ordinary downloads do not', async () => {
+  const requests = [];
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (_url, init) => { requests.push(init); return new Response('four', { headers: { 'content-type': 'text/plain' } }); } });
+  await bridge.downloadVersionFileBlob(viewerFile, { maxBytes: 8 }); await bridge.downloadVersionFileBlob(viewerFile);
+  assert.equal(requests[0].headers?.['x-knowledge-viewer-max-bytes'], '8');
+  assert.equal(requests[1].headers?.['x-knowledge-viewer-max-bytes'], undefined);
+});

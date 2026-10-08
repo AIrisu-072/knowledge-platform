@@ -19,3 +19,7 @@ PDF.jsのoptional dependency `@napi-rs/canvas@1.0.10` と各platform packageがl
 Chromium実PDF検証は既存previewのCSPそのままで同一originworker読み込み、nonwhite canvas描画、外部request0、CSP violation0、viewer操作でreadmutation0、close/reloadで自動再取得なしを確認した。ユーザー所有8080は変更せず、一時previewコピーのPORTだけ18183に変更した。一時filesは製品へ含めない。Tauri customscheme/対象PCは未実施であり、ブラウザー合格をnative資格へ転用しない。
 
 10MiB入力/400万pixel画像・canvas/1activeviewer/1page/20秒deadlineは実用的な制限である。PDF parser全体のheapは厳密に制限しない。maxImageSizeは超過画像を省略するPDF.js仕様であり、完全な原本描画を保証しない。画面と操作手順で欠ける場合のdownload案内を出す。原本の読了・同意・署名の有効性をviewer成功から推定しない。
+
+### Native proxyとの接続補完
+
+proxyの `data_only` はPDFを `application/octet-stream` にする既存安全策であり維持する。viewerは信頼した選択manifestと `%PDF-` 署名でPDFを判別する。新しいローカルGETヘッダーは上限を下げるだけで、認証/転送先/CSPは拡大しない。単体harnessはactual proxy.rsを直接includeし、desktopと同じ直接依存版を固定する。フルTauri/UI qualificationとは区別する。

@@ -28,3 +28,9 @@ PDFデータのみを渡し、URL/font/cMap/wasm等の外部sourceを渡さな�
 ## 回復/破棄
 
 固定Doc/Version/purpose/item/representationとmanifest snapshot/read generationを保持する。abort、非表示、unmount、read失効、route/原本切替でtext/canvasを直ちに空にしworker/renderを破棄。古いPromise結果から表示を作らない。visibility復帰や再起動で自動再取得しない。既読は詳細正常表示時の現行動作を維持し、viewerは読了証明・同意・既読新triggerを追加しない。
+
+## 親レビュー後の範囲補完（2026-10-08、承認済みviewer範囲）
+
+既存履歴一覧の選択版にも同じviewerを接続する。history の downloadTarget により版・原本・capability・拒否を検査し、選択変更/閉じる/再読込/失効では旧応答を使わない。既存historydownloadと既読トリガーは保持する。
+
+Desktop proxy の従来257MiBバッファより手前でviewerの論理応答本文を制限するため、GET のローカル専用 `x-knowledge-viewer-max-bytes` を追加する。正整数1件のみ、既存global上限とのmin、backendには転送しない。Content-Length/受信chunk両方で拒否する。MIME無害化とCSPは変更せず、manifestがPDFなら octet-stream応答も `%PDF-` を検査して描画する。nativeの実ソースを小規模Rust harnessでコンパイル検証し、フルTauri未検証の境界を記録する。

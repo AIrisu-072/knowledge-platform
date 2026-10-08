@@ -120,8 +120,10 @@ export class BinaryTransportBridge {
   }
 
   async downloadVersionFileBlob(input: DownloadVersionFileInput, options: BinaryRequestOptions = {}): Promise<Blob> {
+    if (options.maxBytes !== undefined && (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0)) throw new BinaryTransportError('Invalid viewer byte limit');
+    const headers = options.maxBytes === undefined ? undefined : { 'x-knowledge-viewer-max-bytes': String(options.maxBytes) };
     return boundedBinaryRequest(async signal => {
-      const response = await this.request(downloadPath(input), 'GET', undefined, undefined, signal);
+      const response = await this.request(downloadPath(input), 'GET', undefined, headers, signal);
       return options.maxBytes === undefined ? response.blob() : readBoundedBlob(response, options.maxBytes, signal);
     }, options.signal);
   }

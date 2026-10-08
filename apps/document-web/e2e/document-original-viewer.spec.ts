@@ -4,7 +4,7 @@ const docId = '00000000-0000-4000-8000-000000000010'; const verId = '00000000-00
 const fileId = '00000000-0000-4000-8000-000000000012'; const repId = '00000000-0000-4000-8000-000000000013';
 const pdf = readFileSync(new URL('../e2e-runtime/fixtures/pdf/base.pdf', import.meta.url));
 const denied = { status: 'disabled', reason: 'permission' }; const available = { status: 'available' };
-test('self-hosted PDF worker renders a fixed original under unchanged CSP, closes and reloads without cached original bytes', async ({ page }, testInfo) => {
+for (const responseType of ['application/pdf', 'application/octet-stream']) test(`${responseType}: self-hosted PDF worker renders a fixed original under unchanged CSP, closes and reloads without cached original bytes`, async ({ page }, testInfo) => {
   const origin = new URL(testInfo.project.use.baseURL!).origin;
   let downloads = 0; let readMutations = 0; const foreign: string[] = []; const violations: string[] = [];
   page.on('request', request => { if (!request.url().startsWith(origin)) foreign.push(request.url()); });
@@ -13,7 +13,7 @@ test('self-hosted PDF worker renders a fixed original under unchanged CSP, close
     const url = new URL(route.request().url()); const path = url.pathname;
     if (route.request().method() !== 'GET') { readMutations++; await route.fulfill({ status: 403, json: {} }); return; }
     const summary = { versionId: verId, versionNo: 1, lifecycleState: 'PUBLISHED', updatedAt: '2026-10-08T00:00:00Z', fileSummary: { authoritativeItemCount: 1, totalSizeBytes: pdf.length, primary: { displayName: '原本.pdf', mediaType: 'application/pdf', sizeBytes: pdf.length } } };
-    if (path.endsWith(`/files/${fileId}/${repId}`)) { downloads++; await route.fulfill({ contentType: 'application/pdf', body: pdf }); return; }
+    if (path.endsWith(`/files/${fileId}/${repId}`)) { downloads++; await route.fulfill({ contentType: responseType, body: pdf }); return; }
     if (path.endsWith('/files')) { await route.fulfill({ json: { items: [{ contentItemId: fileId, representationId: repId, ordinal: 0, role: 'authoritative', logicalPath: '原本.pdf', displayName: '原本.pdf', mediaType: 'application/pdf', sizeBytes: pdf.length }] } }); return; }
     if (path === `/v1/documents/${docId}`) { await route.fulfill({ json: { documentId: docId, title: 'ビューア合成文書', revision: 1, currentVersionId: verId, displayVersion: summary, metadata: {}, readState: { isRead: true, firstReadAt: null }, displayRevision: null, displayTimestamp: { kind: 'revisionCreatedAt', value: '2026-10-08T00:00:00Z' }, capabilities: { manageAccess: denied, updateMetadata: denied, createVersion: denied, moveDocument: denied, endPublication: denied, compareVersions: denied } } }); return; }
     if (path === `/v1/documents/${docId}/versions/${verId}`) { await route.fulfill({ json: { ...summary, currentPublicationScheduleId: null, capabilities: { download: available, withdraw: denied } } }); return; }

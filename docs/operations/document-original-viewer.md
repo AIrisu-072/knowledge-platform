@@ -15,3 +15,11 @@
 PDF.js6.4.299と同じ版のworkerをbuildから配信します。workerは同一originのJavaScript moduleであり、外部CDNやBlob workerへ切り替えません。object/embed/iframeを使わず、現在のCSPを広げません。workerが使用できない環境では表示を中止してダウンロードで確認します。
 
 入力bytes、描画画素、同時ページ、時間を制限していますが、PDF parser全体のheapに厳密な上限を設定するOS sandboxではありません。圧縮されたPDFの展開に対する残リスクがあります。対象PCのTauri/WebViewでの実確認、実認証・TLS、必須CI、導入後の運用確認は別の資格として実施してください。MacのChromiumでの確認を対象PCの実導入成功と扱わないでください。
+
+## 過去の版と受信上限
+
+「版」からコンテンツ版の履歴を開き、選択した過去の版の原本一覧でも「表示」を選べます。履歴の選択を変える・閉じる・最初から読み直す時は表示を破棄します。既存の「履歴の原本を取得」操作も使えます。
+
+viewer用の10 MiB上限はWebの受信readerとDesktopのproxy本文bufferで検査します。Desktop専用ヘッダーはGETの正整数1件を受け付け、既存の通常ダウンロード上限257MiBを引き上げず、backendへ転送しません。Web GUIは同一origin URLを使います。別originの独自client構成はこのヘッダーに対応するCORS preflightが必要で、今回の資格に含みません。
+
+Desktopの汎用バイナリMIMEへの無害化は維持し、登録済みmanifestがPDFの場合だけPDF署名を確認して描画します。text/plainはUTF-8でdecodeし、実行しないtextとして表示します。受信chunkの一時割当やbuffer capacity、PDF parser全体のheapの厳密上限は保証しません。認可拒否では表示と該当成功cacheを捨てます。新contextに遅れて届いた旧拒否は適用しません。
