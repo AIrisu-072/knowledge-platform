@@ -3,12 +3,12 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, getDocument, getDocumentHistory, getDocumentVersion,
-  listDocumentRevisions, listDocumentVersions, listVersionFiles, moveDocument, publishVersion,
+  listDocumentRevisions, listDocumentVersions, listVersionFiles, moveDocument, publishVersion, resetDocumentVersionReadState,
   type CommandsMetadataPatch, type CommandsMoveDocument, type DocumentRevisionPage, type FolderChildren, type GuiReadState, type MutationResult,
   type PublishedDocument, type RevisionComparisonResponse,
 } from '@knowledge-platform/document-api-client';
 import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
-import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7, type PersistedState, type RuntimeContext } from './support';
+import { currentReadState, hash, observeReadStateChange, options, persistedSnapshot, resetReadStateInGui, runtime, saveSnapshot, uuidV7, type PersistedState, type RuntimeContext } from './support';
 
 // 両phaseで合成metadataを表示するため、画像・trace・videoは記録しない。
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
@@ -128,8 +128,10 @@ async function readUnreadPublishedList(page: Page, documentId: string, currentVe
   privatelyEqual(createdListRange(params), range);
   const body = await result.json() as { view: string; items: PublishedDocument[] };
   expect(body.view).toBe('published');
+  const canonical = await currentReadState(await runtime(), { documentId, versionId: currentVersionId });
+  expect(canonical.isRead).toBe(false);
   privatelyEqual(body.items.map(item => ({ documentId: item.documentId, currentVersionId: item.currentVersionId, readState: item.readState })),
-    [{ documentId, currentVersionId, readState: { isRead: false, firstReadAt: null } }]);
+    [{ documentId, currentVersionId, readState: { isRead: canonical.isRead, firstReadAt: canonical.firstReadAt } }]);
   await expect(page.getByRole('table', { name: '文書一覧', exact: true }).getByRole('row')).toHaveCount(2);
   await expect(page.locator(`[data-document-id="${documentId}"]`).getByText('未読', { exact: true })).toBeVisible();
 }
@@ -271,10 +273,9 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(published.revisions[0]).toMatchObject({ documentVersionId: created.documentVersionId, major: 1, minor: 0, sourceKind: 'initialPublication' });
     expect(published.versions).toHaveLength(1);
     expect(published.versions[0]!.files[0]!.hash).toBe(hash(original));
-    const publishedVersion = await version('published');
-    const publishedDetail = await detail('published');
-    expect(typeof publishedDetail.createdAt === 'string' && publishedDetail.createdAt.length > 0).toBe(true);
-    const createdAt = publishedDetail.createdAt!;
+    const publicationDetail = (await getDocument({ ...common, path, query: { view: 'published' } })).data;
+    expect(typeof publicationDetail.createdAt === 'string' && publicationDetail.createdAt.length > 0).toBe(true);
+    const createdAt = publicationDetail.createdAt!;
     // Dateは既知の合成createdAtを含む分幅・期待表示のfixtureだけに使う。
     const createdMilliseconds = new Date(createdAt).getTime();
     expect(Number.isFinite(createdMilliseconds)).toBe(true);
@@ -284,8 +285,15 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     const exactFrom = { createdFrom: createdAt, createdBefore: null };
     const fromReturnTo = `/documents?${new URLSearchParams({ view: 'published', titleContains: listTitle, createdFrom: createdAt })}`;
     const agentReadState = (await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState;
-    await page.goto(`/documents/${documentId}?view=published&tab=overview&returnTo=${encodeURIComponent(fromReturnTo)}`);
+    const unpublishedReadState = await currentReadState(context, versionPath);
+    expect(unpublishedReadState).toMatchObject({ firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false });
+    const firstView = await observeReadStateChange(page, context, unpublishedReadState, 'VIEW', () =>
+      page.goto(`/documents/${documentId}?view=published&tab=overview&returnTo=${encodeURIComponent(fromReturnTo)}`));
     await expect(openEditor).toBeEnabled();
+    // 表示による既読を確定後、metadata保存の不変性をactor別に比較する。
+    const publishedVersion = await version('published');
+    const publishedDetail = await detail('published');
+    privatelyEqual(publishedDetail.readState, { isRead: true, firstReadAt: firstView.state.firstReadAt });
     completed('gui-metadata-published-verified');
 
     await openEditor.press('Enter');
@@ -337,6 +345,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(patchRequests).toBe(3);
     expect(origins).toEqual(new Set([context.human]));
     completed('gui-metadata-noop-verified');
+    const firstReset = await resetReadStateInGui(page, context, firstView.state);
     // 既存detailのreturnToへ試験seedを置き、server原文と開始包含を実GETで検査する。
     const fromResponse = waitCreatedList(page, exactFrom);
     await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
@@ -348,8 +357,10 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await readUnreadPublishedList(page, documentId, created.documentVersionId, exactFrom);
     completed('gui-metadata-unread-list-verified');
     await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
-    await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
+    const listView = await observeReadStateChange(page, context, firstReset.state, 'VIEW', () =>
+      page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter'));
     await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
+    const filterReset = await resetReadStateInGui(page, context, listView.state);
     await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
     await expect.poll(() => new URL(page.url()).pathname === '/documents').toBe(true);
     await expect(page.getByRole('checkbox', { name: '未読のみ', exact: true })).toBeChecked();
@@ -382,8 +393,16 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(new URL(page.url()).searchParams.has('cursor')).toBe(false);
     await expect(page.getByRole('checkbox', { name: '未読のみ', exact: true })).not.toBeChecked();
     await expect(page.locator(`[data-document-id="${documentId}"]`)).toBeVisible();
-    privatelyEqual((await getDocument({ ...common, path, query: { view: 'published' } })).data.readState, publishedDetail.readState);
+    privatelyEqual((await getDocument({ ...common, path, query: { view: 'published' } })).data.readState,
+      { isRead: false, firstReadAt: filterReset.state.firstReadAt });
+    // 再入場より前に、日時/未読条件操作後の未読projection全体と履歴日時を比較する。
+    privatelyEqual(await currentReadState(context, versionPath), filterReset.state);
+    privatelyEqual((await getDocumentVersion({ ...common, path: versionPath, query: { purpose: 'published' } })).data.firstReadAt, filterReset.state.firstReadAt);
     privatelyEqual((await getDocument({ ...options(context.agent), path, query: { view: 'published' } })).data.readState, agentReadState);
+    await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+    await observeReadStateChange(page, context, filterReset.state, 'VIEW', () =>
+      page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter'));
+    await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
     expect(patchRequests).toBe(3);
     expect(origins).toEqual(new Set([context.human]));
     completed('gui-unread-readonly-verified');
@@ -398,10 +417,6 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     expect(sourceBefore.capabilities.moveDocument.status).toBe('available');
     privatelyEqual(sourceBefore.readState, publishedDetail.readState);
     privatelyEqual(agentBefore.readState, agentReadState);
-    await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
-    await page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter');
-    await expect.poll(() => new URL(page.url()).pathname === `/documents/${documentId}`).toBe(true);
-
     expect(typeof context.manifest.rootFolderId === 'string').toBe(true);
     const rootFolderId = context.manifest.rootFolderId!, sandboxId = context.manifest.folders.sandbox.folderId;
     const movePath = `/v1/documents/${documentId}:move`;
@@ -694,7 +709,9 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     privatelyEqual(metadataState.documents[0]!.snapshot, movedSnapshot);
     const move: MetadataState['move'] = { request: moveRequest, receipt: moveReceipt, folderId: sandbox.folderId,
       humanReadState: sourceBefore.readState, agentReadState: agentBefore.readState };
-    await writeFile(metadataContext(context).statePath, JSON.stringify({ ...metadataState, move }, null, 2), { mode: 0o600 });
+    const documentReadState = { ...filterReset, state: await currentReadState(context, versionPath), documentRevision: movedSnapshot.revision };
+    privatelyEqual(documentReadState.state, { ...firstView.state, readStateRevision: 5 });
+    await writeFile(metadataContext(context).statePath, JSON.stringify({ ...metadataState, move, documentReadState }, null, 2), { mode: 0o600 });
     completed('gui-metadata-snapshot-saved');
   });
 } else if (process.env.KP_POC_RUNTIME_PHASE === 'persistence') {
@@ -703,6 +720,15 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     const state = JSON.parse(await readFile(metadataContext(context).statePath, 'utf8')) as MetadataState;
     expect(state.documents.map(item => item.key)).toEqual(['gui-metadata']);
     const snapshot = state.documents[0]!.snapshot;
+    expect(state.documentReadState).toBeDefined();
+    const savedRead = state.documentReadState!;
+    const versionPath = { documentId: snapshot.documentId, versionId: snapshot.currentVersionId! };
+    privatelyEqual(await currentReadState(context, versionPath), savedRead.state);
+    // 古いRESETの固定receiptはHTTP再起動後も返すが、後続VIEWの現在状態へ戻さない。
+    const resetReplay = await resetDocumentVersionReadState({ ...options(context.human), path: versionPath, body: savedRead.request });
+    expect(resetReplay.response.status).toBe(200);
+    privatelyEqual(resetReplay.data, savedRead.receipt);
+    privatelyEqual(await currentReadState(context, versionPath), savedRead.state);
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
     const path = { documentId: snapshot.documentId };
@@ -725,7 +751,6 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
     completed('gui-document-move-replay-verified');
-    const humanReadState = humanDetail.readState;
     expect(typeof humanDetail.createdAt === 'string' && humanDetail.createdAt.length > 0).toBe(true);
     const createdAt = humanDetail.createdAt!;
     const createdMilliseconds = new Date(createdAt).getTime();
@@ -736,6 +761,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     const exactBefore = { createdFrom: null, createdBefore: createdAt };
     const beforeReturnTo = `/documents?${new URLSearchParams({ view: 'published', titleContains: listTitle, createdBefore: createdAt })}`;
     await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview&returnTo=${encodeURIComponent(beforeReturnTo)}`);
+    await expect(page.getByRole('region', { name: '本人の既読状態', exact: true }).getByRole('status')).toHaveText('既読');
+    privatelyEqual(await currentReadState(context, versionPath), savedRead.state);
     await page.getByRole('button', { name: 'メタデータを編集', exact: true }).press('Enter');
     const dialog = editor(page), metadata = snapshot.metadata as Record<string, unknown>;
     await inputEquals(dialog.getByLabel('文書種別', { exact: true }), metadata.document_type as string);
@@ -841,6 +868,8 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     await page.getByRole('button', { name: '← 版・改訂へ戻る', exact: true }).press('Enter');
     await page.getByRole('tab', { name: '概要', exact: true }).press('Enter');
     // 再起動後も同じDocumentのcreatedAtを終了境界へそのまま渡し、終了除外を検査する。
+    const restartReset = await resetReadStateInGui(page, context, savedRead.state);
+    const humanReadState = { isRead: false, firstReadAt: restartReset.state.firstReadAt };
     const beforeResponse = waitCreatedList(page, exactBefore);
     await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).press('Enter');
     await verifyCreatedList(page, await beforeResponse, exactBefore, []);
@@ -866,6 +895,7 @@ if (process.env.KP_POC_RUNTIME_PHASE === 'journey') {
     const removedCategoryFilters = { ...retainedFilters, category: 'synthetic-working-category' };
     await fillMetadataListFilters(page, removedCategoryFilters);
     await readFilteredList(page, removedCategoryFilters, []);
+    privatelyEqual(await currentReadState(context, versionPath), restartReset.state);
     privatelyEqual(await persistedSnapshot(context.human, snapshot.documentId), snapshot);
     privatelyEqual(await persistedSnapshot(context.agent, snapshot.documentId), snapshot);
     completed('gui-formal-revisions-restart-readonly-verified');

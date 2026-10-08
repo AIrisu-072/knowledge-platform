@@ -165,6 +165,47 @@ fn unknown_binary_and_scriptless_text_classification_are_controlled() {
 }
 
 #[test]
+fn plain_text_quoting_markup_keeps_its_declared_format() {
+    let article = "XHTML\n\n例：\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\">\n<html><body></body></html>\n";
+    for media_type in ["text/plain", "Text/Plain; charset=utf-8"] {
+        assert_eq!(
+            detect_format(article.as_bytes(), media_type).unwrap(),
+            FormatId::Txt
+        );
+    }
+    let req = request(
+        "text/plain",
+        sha256(article.as_bytes()),
+        article.len() as u64,
+    );
+    let mut reader = Cursor::new(article.as_bytes());
+    let prepared = prepare_input_bounded(&req, &mut reader, 4096).unwrap();
+    assert_eq!(prepared.detected_format(), FormatId::Txt);
+}
+
+#[test]
+fn html_document_prefix_disguised_as_plain_text_still_fails_closed() {
+    for disguised in [
+        &b"<!DOCTYPE html><html><body>x</body></html>"[..],
+        b"\xef\xbb\xbf  \n<html><body>x</body></html>",
+        b" \t\r\n<BoDy>x</BoDy>",
+    ] {
+        let error = detect_format(disguised, "text/plain").unwrap_err();
+        assert_eq!(error.code(), WorkerFailureCode::FormatMismatch);
+    }
+}
+
+#[test]
+fn declared_html_still_accepts_markup_after_a_comment() {
+    for media_type in ["text/html", "application/xhtml+xml"] {
+        assert_eq!(
+            detect_format(b"<!-- c -->\n<html><body>x</body></html>", media_type).unwrap(),
+            FormatId::Html
+        );
+    }
+}
+
+#[test]
 fn malformed_or_oversized_request_is_a_controlled_failure() {
     let malformed = decode_request_bounded(b"{not-json", 1024).unwrap_err();
     assert_eq!(malformed.code(), WorkerFailureCode::MalformedRequest);

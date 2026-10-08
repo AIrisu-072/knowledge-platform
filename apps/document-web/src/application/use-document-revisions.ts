@@ -15,6 +15,8 @@ export function denyDocumentRevisionReads(client: QueryClient, documentId: strin
   const queryKey = revisionPagesKey(documentId);
   void client.cancelQueries({ queryKey, exact: true }, { revert: false });
   client.setQueryData<RevisionPages>(queryKey, { pages: [], pageParams: [], denial: problem });
+  void client.cancelQueries({ queryKey: ['document-revisions', documentId, 'detail'] }, { revert: false });
+  client.removeQueries({ queryKey: ['document-revisions', documentId, 'detail'] });
   void client.cancelQueries({ queryKey: ['revision-comparison', documentId] }, { revert: false });
   client.removeQueries({ queryKey: ['revision-comparison', documentId] });
 }

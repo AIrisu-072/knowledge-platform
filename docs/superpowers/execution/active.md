@@ -1,9 +1,46 @@
 # Active Execution Pointer
 
+## 2026-10-08 — 文書管理残タスク（Mac側、クラウド親と分担）
+
+- 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。
+- Macの製品変更は過去公開版の履歴用途による取下げGUIと正式改訂単体詳細。設計確認待ちの原本構成・初回複数・主体検索・viewerは追補案のみ。既読契機は現行のまま。schedulerとPR85 Document修正はクラウド親が担当し、Macの製品差分へ含めない。
+- 操作文書・導入/復旧/段階測定手順を同じDraftにまとめる。対象PC・本番認証/TLS・実directory/権限・大量実測は未実施。正確なhead CI、親との統合順序確認、main統合と統合後CIはこれから。
+- 保存先は同一[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)、製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45`。独立レビューGO、固定Node24.21.0 GUI1740件/Chromium mock機能8件成功、golden比較は未資格。最新保存headとhosted結果はPR Checks/説明を読み直す。main統合はクラウド親が順序を調整する。
+- 文書head `d99d2f54` のCI `37731740750` は実runtimeの移動後read刷新でFAIL。遅い両GETによるREDを確認し、通常版queryのSignal消費を旧契約へ戻しhistory用途の保護を保持する最小修正を準備した。修正headの独立レビュー・全CIを取り直す。詳細は状況文書。
+- 修正の独立レビューGO、独立7case・関連318件・全体1741件・型/build/diff検査成功。親がPR107統合後main `e67aaccc` への追従と、正確head全gate成功後のguard付きmain統合を承認した。次はmain取り込みheadの全CI、その後統合後CI。設計待ち機能は未実装のまま。
+- `196f5e04` は同headruntime再試験後に通常14jobs・DSI・Sandbox成功（16成功/skip3）。初回Organization persistence finding503は根因未確定として保持。統合直前にmainがTauri PR103の `8d4b94a9` へ進んだため競合なく追従し、文書featureを保持して新組合せのreview/全gateを確認する。双方のactive節を保持。最新headと最終結果はPR108説明/Checksへ記録する。
+- Tauri取り込み製品head `82a25431` の独立review GO、GUI74 suites1756件・型/build/diff成功。最後の文書追記はsource不変。次は保存headの全hosted gate、成功後のhead-guard統合、統合後main CI。設計回答は親が確認中で未承認のまま。
+
+---
+
+## 2026-10-07 23:11 UTC — PR106の手順head合格後に最新mainを保持して追従
+
+- 手順head e0836556 / tree0788260dの通常CI37698468205は14 jobs全成功、全19checks16成功・既存skip3。導入4手順の独立レビューもGO。CI確認中のmain643cc85d（Audit単位A/PR98）更新によりactive先頭だけが競合したため、双方の節を保持して解消する
+- Audit側の32fileは新mainと完全同一のまま取り込み、Document製品/試験/導入4手順はe0836556から変えない。導入pinは資格済み製品cbe65d14を保持する。再開は[状況](document-view-read-state-status.md)へ。次はこの統合headの通常全CI、親のmerge判定と統合後CI。旧baseの成功を新組合せの資格にはしない
+
+---
+
 ## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
 - Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
 - branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+
+---
+
+## 2026-10-07 22:38 UTC — 自動既読・未読戻しの製品資格と導入手順
+
+- [PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の製品head cbe65d14 / tree b2cb1cbaの通常CI37692284389は14 jobs全成功、全19checksは16成功・既存skip3。新Rust/DBを実ログ確認し、Document/Organization/summaryも公式step成功。詳細な根拠と取得制限は[状況](document-view-read-state-status.md)へ記録
+- 再開先は同じ[限定要件](../specs/2026-10-07-document-view-read-state-design.md)と[計画](../plans/2026-10-07-document-view-read-state.md)。資格済み製品headへ導入4手順を更新し、source照合/日本語レビュー後に同Draftへ保存する。最終保存headの通常CIと親のmerge判定はこれから。実server反映は依頼者が手動で行う
+- 他担当のmainと履歴を保持。製品sourceや新機能の追加、別経路によるログ取得、旧資格の転用は行わない
+
+---
+
+## 2026-10-07 10:02 UTC — 文書詳細表示による既読・未読戻しの再実装
+
+- 承認済みの詳細正常表示→既読、未読へ戻す再確認目印を実装する。[状況](document-view-read-state-status.md)、[限定要件](../specs/2026-10-07-document-view-read-state-design.md)、[計画](../plans/2026-10-07-document-view-read-state.md)が再開先
+- 旧未公開sourceは実行環境の接続障害後に取得不能となったため、最新main a7cf93d53から新sourceでTDD/レビュー/hostedを取り直す。旧成功件数を転用しない
+- branch feat/document-view-read-state-20261007。同じ単一Draftへ検証単位で保存し、未完成/失敗/未実施を明記する。Node契約REDとRust test sourceが最初の境界で、ローカルRustは公式archive403により未実施
+- 他担当のmain記録を保持する。新しいviewerや読了証明は追加せず、既知の3GUI反例と未読snapshot検査を先行する。新hosted資格とmain統合はこれから
 
 ---
 
@@ -75,7 +112,12 @@
 ## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）
 
 - Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません
-- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eを実装しました。Tauri shellは、MPL-2.0・Linux advisory・Windows経路・WebView2・OSV送信の[依頼者判断](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)待ちでSTOPしています。PR52の限定例外は使っていません
+- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eは[PR95](https://github.com/AIrisu-072/knowledge-platform/pull/95)でmainに統合済み
+- 07:30追補：依頼者が[判断5項目](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)に合意。main `04076b1` から作り直した同名branchで、Tauri shell（`apps/desktop/src-tauri`、独立Cargo workspace）を実装し、実アプリのGUIをtauri-driver＋Xvfb＋xdotool＋実backendで17シナリオ確認（ローカル専用、CIにはしない）。Windows実機は未実施。次は独立review→Draft PR→exact-head CI→統合
+- 09:20追補：[PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。1回目の独立reviewを修正し、実GUI確認を24シナリオへ拡充（commit `baad3bc` で `qualifying: true`）。Linuxで未確認の項目は[手順書](../../operations/desktop-workspace-runtime.md)、詳細は[状況](desktop-workspace-runtime-status.md)。次は2回目の独立reviewの確認→exact-head CI→統合→統合後CI
+- 10:10追補：2回目の独立reviewの指摘を修正（設定の上書き防止、転送の上限試験、下書き保持、証跡の厳密化）。commit `3abfeca` と、main（PR #100〜#105）取り込み後の `c31e6d0` で、実GUI 24シナリオ・205項目がそれぞれ連続2回 `qualifying: true`。次はexact-head CI→統合→統合後CI
+- 14:40追補：3回目の独立reviewで、デスクトップ版のタスク画面の作業ファイル保存が必ず失敗する不具合（Work APIの専用headerをshellが落とす）などを発見し修正（`d18df99`）。実GUI 25シナリオ・212項目が連続2回 `qualifying: true`。次はpush→exact-head CI→4回目のreview→統合→統合後CI
+- 2026-10-08追補：4回目の独立reviewで、ウィンドウを閉じる操作でページの離脱確認が働かない不具合などを発見し修正（`6504778`）。実GUI 26シナリオ・217項目が固定版Node 24.21.0で連続2回 `qualifying: true`。デスクトップ版ではタスク・検索の画面へメニューから移れないこと（入口は依頼者の判断事項）を記録。次はpush→exact-head CI→統合→統合後CI
 
 ---
 
@@ -1598,3 +1640,4 @@ Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed ex
 ## End-of-session rule
 
 Before intentional session switch/context exhaustion, record exact branch/head, CI evidence, Plan approval state, blockers, and next exact action.
+- 2026-10-08 05:30追補：最終（5回目）の独立reviewの指摘を修正（閉じる前の確認をshellで出し答えるまで閉じない、ローカルWorkspaceの未確定の操作の離脱確認）。commit `86f187b` で実GUI 26シナリオ・220項目が固定版Node 24.21.0で連続2回 `qualifying: true`。次はpush→exact-head CI→統合→統合後CI

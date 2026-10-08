@@ -11,7 +11,7 @@ import { refreshFolderMoveReads } from '../src/application/document-folder-move'
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
   getRootFolder: jest.fn(), getDocument: jest.fn(), listDocumentVersions: jest.fn(), getDocumentVersion: jest.fn(),
-  listDocumentRevisions: jest.fn(), compareDocumentRevisions: jest.fn(), listVersionFiles: jest.fn(),
+  getDocumentRevision: jest.fn(), listDocumentRevisions: jest.fn(), compareDocumentRevisions: jest.fn(), listVersionFiles: jest.fn(),
 } }));
 const documentId = '00000000-0000-4000-8000-000000000010';
 const otherId = '00000000-0000-4000-8000-000000000020';
@@ -373,4 +373,91 @@ test('review: 取消済み旧Documentの遅延403は既存read reset後の新履
   await act(async () => { delayed.reject(problem('FORBIDDEN', 403)); await delayed.promise.catch(() => undefined); await oldRead; });
   expect(h.client.getQueryData(['document-revisions', documentId, 'pages'])).not.toHaveProperty('denial');
   expect(screen.getByText('同じコンテンツ版のため本文比較なし')).toBeVisible(); expect(screen.queryByRole('alert')).not.toBeInTheDocument(); expect(screen.getByRole('combobox', { name: '基準改訂' })).toHaveValue(tail.revisionId);
+});
+
+
+test('正式改訂詳細は選択した1件の保存時メタデータと理由を表示する', async () => {
+  const h = setup();
+  h.api.getDocumentRevision.mockResolvedValue({ ...first, metadataSnapshot: { department: '保存時部署' }, actor: { identityProvider: 'synthetic', principalId: 'editor' }, reason: '保存時理由' });
+  await ready();
+  fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` }));
+  await screen.findByText('保存時理由');
+  expect(screen.getByText(/保存時部署/)).toBeVisible();
+  expect(h.api.getDocumentRevision).toHaveBeenCalledWith(documentId, first.revisionId, expect.anything());
+  fireEvent.click(screen.getByRole('button', { name: '改訂詳細を閉じる' }));
+  expect(screen.queryByText('保存時理由')).not.toBeInTheDocument();
+});
+
+test('遅い改訂詳細応答は別の選択や非表示画面へ戻らない', async () => {
+  const h = setup(); const late = deferred<unknown>();
+  h.api.getDocumentRevision.mockImplementation((_id, id) => id === first.revisionId ? late.promise : Promise.resolve({ ...second, metadataSnapshot: null, actor: null, reason: '現在選択の理由' }));
+  await ready();
+  fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` }));
+  fireEvent.click(screen.getByRole('button', { name: `改訂 ${second.label} の詳細` }));
+  await screen.findByText('現在選択の理由');
+  await act(async () => late.resolve({ ...first, metadataSnapshot: {}, actor: null, reason: '古い選択の理由' }));
+  expect(screen.queryByText('古い選択の理由')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: '概要' }));
+  await waitFor(() => expect(screen.queryByText('現在選択の理由')).not.toBeInTheDocument());
+});
+
+test('改訂詳細の認可失効は一覧と詳細を伏せ、自動再送しない', async () => {
+  const h = setup(); h.api.getDocumentRevision.mockRejectedValue(problem('FORBIDDEN', 403));
+  await ready();
+  fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` }));
+  await waitFor(() => expect(within(timeline()).queryAllByRole('listitem')).toHaveLength(0));
+  expect(h.api.getDocumentRevision).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('region', { name: '正式改訂の詳細' })).not.toBeInTheDocument();
+});
+
+test('画面が非表示の間は詳細を伏せ、復帰時に現在の認可を読み直す', async () => {
+  const h = setup();
+  h.api.getDocumentRevision.mockResolvedValue({ ...first, metadataSnapshot: {}, actor: null, reason: '非表示前の理由' });
+  await ready(); fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` }));
+  await screen.findByText('非表示前の理由');
+  try {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    fireEvent(document, new Event('visibilitychange'));
+    expect(screen.queryByText('非表示前の理由')).not.toBeInTheDocument();
+    const pending = deferred<unknown>(); h.api.getDocumentRevision.mockReturnValue(pending.promise);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    fireEvent(document, new Event('visibilitychange'));
+    await waitFor(() => expect(h.api.getDocumentRevision).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('非表示前の理由')).not.toBeInTheDocument();
+    await act(async () => pending.reject(problem('FORBIDDEN', 403)));
+    await waitFor(() => expect(screen.queryByRole('region', { name: '正式改訂の詳細' })).not.toBeInTheDocument());
+  } finally {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    fireEvent(document, new Event('visibilitychange'));
+  }
+});
+
+
+test('別文書へ直接遷移したとき、以前選択した改訂IDで別文書の詳細を取得しない', async () => {
+  const h = setup(); h.api.getDocumentRevision.mockResolvedValue({ ...first, metadataSnapshot: {}, actor: null, reason: '遷移前の理由' });
+  await ready(); fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` }));
+  await screen.findByText('遷移前の理由');
+  h.client.setQueryData(['document', otherId, 'published'], detail(otherId));
+  h.client.setQueryData(['document-revisions', otherId, 'pages'], { pages: [page([tail])], pageParams: [undefined] });
+  await act(async () => h.router.navigate({ to: '/documents/$documentId', params: { documentId: otherId }, search: { view: 'published', tab: 'versions' } }));
+  await screen.findAllByText('別文書');
+  expect(h.api.getDocumentRevision.mock.calls.every(call => call[0] === documentId)).toBe(true);
+  expect(screen.queryByText('遷移前の理由')).not.toBeInTheDocument();
+});
+
+test('一覧と異なる内容版IDの改訂詳細を正常な履歴として表示しない', async () => {
+  const h = setup(); h.api.getDocumentRevision.mockResolvedValue({ ...first, documentVersionId: otherId, metadataSnapshot: {}, actor: null, reason: '不一致の理由' });
+  await ready(); fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` }));
+  await screen.findByRole('heading', { name: '読み込みに失敗しました' });
+  expect(screen.queryByText('不一致の理由')).not.toBeInTheDocument();
+});
+
+
+test('履歴用途の版一覧が権限拒否したら正式改訂の詳細と一覧も伏せる', async () => {
+  const h = setup(); h.api.getDocumentRevision.mockResolvedValue({ ...first, metadataSnapshot: {}, actor: null, reason: '拒否前の理由' });
+  await ready(); fireEvent.click(screen.getByRole('button', { name: `改訂 ${first.label} の詳細` })); await screen.findByText('拒否前の理由');
+  h.api.listDocumentVersions.mockImplementation((_id, purpose) => purpose === 'history' ? Promise.reject(problem('FORBIDDEN', 403)) : Promise.resolve({ items: [], nextCursor: null }));
+  fireEvent.click(screen.getByRole('button', { name: '過去版を含めて表示' }));
+  await waitFor(() => expect(screen.queryByText('拒否前の理由')).not.toBeInTheDocument());
+  expect(within(timeline()).queryAllByRole('listitem')).toHaveLength(0);
 });

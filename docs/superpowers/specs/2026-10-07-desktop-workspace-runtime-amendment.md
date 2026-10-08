@@ -50,6 +50,29 @@
   - `FILE_FLAG_OPEN_REPARSE_POINT` で開き、reparse属性とfile IDを確認する
   - 共有モードで書込みを拒否してsnapshotを取る
 
+## 差分5：desktop shell（Tauri v2）の境界と転送（2026-10-07追記）
+
+依頼者の判断（[判断事項](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)、全項目合意）を受けて追加しました。
+
+- **window**：main windowを1つだけコードで作ります。`window.open` 等の新しいウィンドウは拒否し、遷移は同梱アプリのURL（Linux/macOS：`tauri://localhost`、Windows：`http://tauri.localhost`）と、同梱アプリが作ったblob URLだけを許可します。同梱アプリのURLかどうかはoriginの完全一致（scheme・host・port）で判定し、user情報付き・別port・`https` は拒否します（WebView2は `http://tauri.*` だけをshellへ渡すため、それ以外を許すとnetworkへ出ます）。drag&dropのOS連携（絶対pathを渡すもの）は無効です。
+- **IPC**：capabilityは `main` windowのローカル（同梱）originに `allow-local-workspace-runtime` の1件だけです。Tauri core・pluginの権限は与えません。remote contentはcommandに届きません。
+- **設定の固定**：Tauriが実際に使う設定（`tauri.conf.json` に、`tauri.<platform>.conf.json` と環境変数 `TAURI_CONFIG` を重ねたもの）が変わらないよう、上書き用のファイルが無いこと・build時に `TAURI_CONFIG` が無いこと・解決後の設定（CSP、capability、window、asset protocol等）とCargoが解決したTauriのfeatureを試験で固定します（ローカルの `mise run desktop:check`）。
+- **ウィンドウを閉じる操作（Linux）**：閉じる要求をいったん止め、WebKitに `webkit_web_view_try_close` でページを閉じさせます。これでページの `beforeunload`（未保存の入力・処理中の操作）が動き、ページが確認を求めると、WebKitの `script-dialog` を受けてshellが日本語の確認ダイアログを出し、答えをWebKitへ返します。答えるまでは重ねての閉じる要求を無視します（`try_close` を呼び直すと、WebKitの50msの時間切れで答えを待たずに閉じるため）。ページが閉じてよいと応じると、WebKitの `close` → wryがWebViewを破棄し、そのWebViewの `destroy` でウィンドウを閉じます。ページが50ms以内に応じない・processが無い場合は、WebKitが確認なしで閉じます（固まったページでも閉じられるように）。WebDriverの操作中はWebKit標準の確認のままにします。このため、既に依存の木にある `webkit2gtk` 2.0.2と `gtk` 0.18.2をLinux向けの直接依存に加えます。ローカルWorkspaceの処理中・結果未確認の操作も、操作IDを失わないよう `beforeunload` で確認します。Windows（WebView2）は未実装です。
+- **開発者ツール**：release buildには入れません（Tauriの `devtools` featureを使わない）。debug buildはTauriの既定どおり開発者ツールが有効で、ページのscriptを実行できるため、開発・確認用に限ります。
+- **転送**：アプリ自身のURL schemeをshellが登録し、同梱assetの配信と `/v1` の転送を行います（Tauri既定のasset handlerは未知のpathにindex.htmlを返すため、置き換えが必要）。
+  - 転送先は `KNOWLEDGE_PLATFORM_API_ORIGIN` の1つだけで、literalのloopback（`127.0.0.0/8`・`::1`）・`http`・port必須・path無しに限ります。
+  - 正規化した後のpathが `/v1` 以下で、originが同じ場合だけ転送します（`..`・`%2e%2e`・`\`・`//host` での脱出は拒否）。method：GET/HEAD/POST/PUT/PATCH/DELETE。
+  - 要求header：`accept`・`accept-language`・`content-type`・`traceparent` と、Work APIの作業ファイル内容のPUTが使う `x-operation-id`・`x-expected-revision`・`x-acting-assignment-id`・`x-expected-artifact-revision` だけ（操作IDと楽観的排他・担当の指定。主体はserverが自分の利用者の設定から決め、これらのheaderでは変わりません。名乗り用のheaderは引き続き落とします）。API定義（`spec/api/`）のheader parameterがすべて許可リストにあることを、shellの単体試験で確かめます。応答header：`content-type`・`content-disposition`・`content-language`・`cache-control`・`etag`・`last-modified`・`retry-after` だけ（Set-Cookie・Location・CORS系は返しません）。`X-Content-Type-Options: nosniff` を付けます。
+  - redirectは追わず、cookie・system proxyは使いません。上限：要求本文1GiB＋1MiB、応答本文256MiB＋1MiB、接続5秒、全体180秒。
+  - 失敗はpath等を含まないproblemです：503（接続先が未設定。形式違い・loopback以外は別の文言で形式を案内し、起動時に標準エラーへ1行だけ理由を出す）、502（接続できない・応答が大きすぎる・応答が途中で切れた）、504（時間切れ）、400（宛先が `/v1` の外）、403（Origin/Refererが同梱アプリと違う、またはmain window以外からの要求）、405（method）、413（要求が大きすぎる）。
+  - Origin/Refererは、付いていれば同梱アプリと一致することを求めます（WebKitGTKは同一originのcustom scheme要求にOriginを付けないため、必須にはできません）。
+  - 既存serverのCORS・認証・identityの扱いは変えません（名乗りheaderは転送しません）。
+  - **応答はデータとしてだけ返す**：`/v1` の応答のContent-Typeは、`application/json`・`application/*+json`・`text/plain`・`application/octet-stream`・`image/png|jpeg|gif|webp` だけをそのまま返し、それ以外（JavaScript・HTML・SVG・CSS・XML等）と無指定は `application/octet-stream` にします。さらに `Content-Security-Policy: sandbox; default-src 'none'` を付けます。Tauriは `script-src` に必ず `'self'` を加えるため、これが無いと、JavaScriptとして登録された文書の原本を `<script src="/v1/...">` で読み込むと、IPCを使えるアプリのoriginで実行できました（実アプリで確認）。原本の取得（「ファイルを取得」）はblob経由なので影響しません。
+- **CSP**：既存previewと同等に、Tauri IPCの `ipc:` と `http://ipc.localhost` を `connect-src` に加えたものです。backendへの直接接続はできません。
+- **本文の確定（WebKitGTK回避）**：WebKitGTK 2.52はcustom schemeへのBlob/FormData本文でSIGSEGVします。shellは初期化scriptで `window.fetch` を包み、まず `new Request(input, init)` を組み立てます。同一originへのGET/HEAD以外は、その本文をページ内でArrayBufferに確定してから送ります。bytes・method・header・中断signalは変わりません。GET/HEAD・他origin・IPC（`ipc://`）は、組み立てたRequestをそのまま送ります（本文を引き継いだ元のRequestを二重に使わないため。内容は変わりません）。
+- **ダウンロード**：同梱アプリのblob URLだけを許可し、保存先は必ずDownloadsフォルダー直下にします。WebView側の提案先がDownloadsの外なら、Downloads直下の同じファイル名に置き換え、同名があれば `名前 (n).拡張子` にします。OSにダウンロード先の設定が無い場合は既存の `~/Downloads` を使い、それも無い場合と、同梱アプリのblob以外のURLは取り消します。
+- **picker**：`rfd` の単一フォルダー選択。brokerはworker threadから呼び、lockを持たずに待ちます。LinuxではGTKのmain contextでdialogが動きます。Linuxのdialogはmain windowの子にならず、modalでもありません（rfdのGTK3実装の制約）。表示中の2つ目の選択要求は `picker_busy` で拒否します。Windowsではmain windowを親にします（Windows実機では未確認）。
+
 ## 不変条件（変更なし）
 
 - 任意の絶対path、shell、実行ファイル起動、汎用FS APIは公開しません。architecture-lintで、`std::process` などをこのcrateから禁止しています。
@@ -72,4 +95,5 @@
   - headerのruntime表示（desktopのときだけ表示し、browserの見た目は変わりません）
   - `activeNavigation` 型への値の追加
 - 主ナビゲーション（タスク／文書／検索）は変えていません。ローカルWorkspace画面へは `/local-workspaces` から開きます。
+- ローカルWorkspace画面（2026-10-07、実GUI確認で見つけた3点）：表示中のフォルダーで「開く」を押すと一覧を取り直す。一覧の取得に失敗したら古い一覧を表示しない。desktopでruntimeが使えないとき、理由（別に起動中・記録を読めない・未対応OS）を表示する。
 - Organization担当がserver側Workspaceを実装する際は、`createWorkspace(context, operationId)` を追加し、server発行のworkspaceIdをローカルの記録と対応付けてください。ローカルWorkspaceを共有Workspaceとして扱わないでください。

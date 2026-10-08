@@ -25,7 +25,9 @@ export function LocalWorkspacePage() {
   const client = useQueryClient();
   const capabilities = useRuntimeCapabilities();
   const desktop = capabilities.data?.localResources === 'available' && capabilities.data.managedWorkspace === 'available';
-  const workspaces = useLocalWorkspaces(desktop);
+  // On the desktop the list also explains an unavailable runtime (another
+  // instance, unreadable records, unsupported platform) with its typed reason.
+  const workspaces = useLocalWorkspaces(desktop || (capabilities.isSuccess && runtime.kind === 'desktop'));
   const unresolved = useUnresolvedRuntimeOperations();
   const [selectedId, setSelectedId] = useState<string>();
   // An unresolved operation pins its Workspace so its confirmation stays reachable.
@@ -56,7 +58,7 @@ export function LocalWorkspacePage() {
           </p>
         )}
         {desktop && workspaces.isPending && <p className={styles.note}>ローカルWorkspaceを読み込んでいます…</p>}
-        {desktop && workspaces.isError && <Problem error={workspaces.error} />}
+        {workspaces.isError && <Problem error={workspaces.error} />}
         {desktop && unresolved.length > 0 && (
           <p className={styles.note}>結果を確認していない操作があります。「結果を確認」で確定するまで、他のWorkspaceやフォルダーへは移動できません。</p>
         )}
@@ -128,7 +130,7 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
       {unknown && !open
         ? <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} onClick={() => setOpen(true)}>Workspace作成の結果を確認</button>
         : <button ref={trigger} type="button" className={workspaceStyles.secondaryButton} disabled={blocked && !open} onClick={() => setOpen(true)}>新しいWorkspace</button>}
-      <Modal isOpen={open} onOpenChange={(value) => { if (!value) close(); }} isDismissable={!pending && !unknown} isKeyboardDismissDisabled={pending || unknown} className={dialogStyles.modal}>
+      <Modal isOpen={open} onOpenChange={(value) => { if (!value) close(); }} isDismissable={!pending && !unknown} isKeyboardDismissDisabled={pending || unknown} className={`${dialogStyles.modal} ${styles.dialogModal}`}>
         <Dialog aria-labelledby="local-workspace-create-title" className={dialogStyles.dialog}>
           <form onSubmit={submit} className={styles.form}>
             <Heading id="local-workspace-create-title" slot="title">新しいWorkspace</Heading>
@@ -154,7 +156,9 @@ function WorkspaceList({ workspaces, selected, onSelect, onCreated, blocked }: {
   );
 }
 
-type Browse = { bindingId: string; locator: string[] };
+// `nonce` changes on every 「開く」: the folder view lists its location again and
+// drops alerts, preview and pages, but keeps the file name and content typed.
+type Browse = { bindingId: string; locator: string[]; nonce?: number };
 
 function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
   workspace: LocalWorkspace; canPick: boolean; onNotice: (text: string) => void; refresh: () => Promise<void>; blocked: boolean;
@@ -264,7 +268,7 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
             <span className={styles.bindingLabel}>{binding.label}</span>
             <span className={styles.source}>{binding.source === 'managed' ? '自動で作成した管理フォルダー' : '追加したフォルダー'}{binding.available ? '' : '・利用できません'}</span>
             <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を開く`} disabled={blocked}
-              onClick={() => setBrowse({ bindingId: binding.bindingId, locator: [] })}>開く</button>
+              onClick={() => setBrowse({ bindingId: binding.bindingId, locator: [], nonce: (browse?.nonce ?? 0) + 1 })}>開く</button>
             {binding.source === 'explicit' && (
               <button type="button" className={workspaceStyles.secondaryButton} aria-label={`${binding.label}を解除`}
                 disabled={blocked && unresolvedDetach?.bindingId !== binding.bindingId}
@@ -280,7 +284,7 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
         </button>
         : <p className={styles.note}>この環境ではフォルダー選択画面を利用できません。</p>}
       <Problem error={bindingFailure} />
-      <Modal isOpen={Boolean(detaching)} onOpenChange={(value) => { if (!value) closeDetach(); }} isDismissable={detach.state.status !== 'pending'} className={dialogStyles.modal}>
+      <Modal isOpen={Boolean(detaching)} onOpenChange={(value) => { if (!value) closeDetach(); }} isDismissable={detach.state.status !== 'pending'} className={`${dialogStyles.modal} ${styles.dialogModal}`}>
         <Dialog aria-labelledby="local-detach-title" className={dialogStyles.dialog}>
           <Heading id="local-detach-title" slot="title">フォルダーの解除</Heading>
           <p>「{detaching?.label}」をこのWorkspaceから外します。フォルダーの中身は削除されません。</p>
@@ -298,13 +302,13 @@ function WorkspaceDetail({ workspace, canPick, onNotice, refresh, blocked }: {
         </Dialog>
       </Modal>
       {browse && browsed && <FolderBrowser key={`${browse.bindingId}/${browse.locator.join('/')}`} workspace={workspace} binding={browsed} locator={browse.locator}
-        onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator })} onNotice={onNotice} blocked={blocked} />}
+        refresh={browse.nonce ?? 0} onNavigate={(locator) => setBrowse({ bindingId: browse.bindingId, locator, nonce: browse.nonce })} onNotice={onNotice} blocked={blocked} />}
     </section>
   );
 }
 
-function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, blocked }: {
-  workspace: LocalWorkspace; binding: BindingSummary; locator: string[]; onNavigate: (locator: string[]) => void; onNotice: (text: string) => void; blocked: boolean;
+function FolderBrowser({ workspace, binding, locator, refresh, onNavigate, onNotice, blocked }: {
+  workspace: LocalWorkspace; binding: BindingSummary; locator: string[]; refresh: number; onNavigate: (locator: string[]) => void; onNotice: (text: string) => void; blocked: boolean;
 }) {
   const runtime = useRuntime();
   const client = useQueryClient();
@@ -315,7 +319,10 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
   const [stickyProblem, setStickyProblem] = useState<unknown>();
   const [preview, setPreview] = useState<{ name: string; size: number; truncated: boolean; text?: string; binary?: boolean }>();
   const [previewProblem, setPreviewProblem] = useState<unknown>();
-  const reading = useRef(false);
+  // A read belongs to the listing it started from: a re-list or a listing
+  // failure starts a new generation, and a read that finishes later is dropped.
+  const generation = useRef(0);
+  const reading = useRef<number | null>(null);
   const [fileName, setFileName] = useState('');
   const [content, setContent] = useState('');
   const title = [binding.label, ...locator].join(' / ');
@@ -324,10 +331,23 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
     const error = entries.error;
     if (!error) return;
     setStickyProblem(error);
+    // Content previewed from a folder that can no longer be listed is not trustworthy.
+    generation.current += 1;
+    setPreview(undefined);
+    setPreviewProblem(undefined);
     if (isRuntimeFailure(error) && (error.code === 'stale_context' || error.code === 'not_found' || error.reason === 'folder_replaced')) {
       void client.invalidateQueries({ queryKey: localRuntimeKeys.workspaces });
     }
   }, [client, entries.error]);
+
+  // A listing that succeeds again ends an earlier failure, except a changed
+  // context: its explanation stays until 「開く」 or another folder is opened,
+  // as the automatic re-fetch with the new context would hide it at once.
+  useEffect(() => {
+    if (!entries.isSuccess || entries.isFetching || stickyProblem === undefined) return;
+    if (isRuntimeFailure(stickyProblem) && stickyProblem.code === 'stale_context') return;
+    setStickyProblem(undefined);
+  }, [entries.isSuccess, entries.isFetching, stickyProblem]);
 
   const create = useRuntimeOperation(
     `ws:${workspace.workspaceId}:file:${binding.bindingId}:${locator.join('/')}`,
@@ -342,9 +362,28 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
     },
   );
 
+  // 「開く」 on the shown location lists it again from the first page, once.
+  // Earlier alerts and the preview end with it; the create-form draft is kept.
+  const shownRefresh = useRef(refresh);
+  const { reset: resetCreate } = create;
+  useEffect(() => {
+    if (shownRefresh.current === refresh) return;
+    shownRefresh.current = refresh;
+    generation.current += 1;
+    setStickyProblem(undefined);
+    setPreview(undefined);
+    setPreviewProblem(undefined);
+    resetCreate();
+    // From a later page, switching to the first page fetches it; refetching
+    // the page being left would only send a wasted request.
+    void client.invalidateQueries({ queryKey: ['local-runtime', 'entries', workspace.workspaceId], refetchType: cursors.length > 0 ? 'none' : 'active' });
+    setCursors([]);
+  }, [client, refresh, workspace.workspaceId, cursors.length, resetCreate]);
+
   async function open(entry: LocalEntry) {
-    if (reading.current) return;
-    reading.current = true;
+    const started = generation.current;
+    if (reading.current === started) return;
+    reading.current = started;
     setPreviewProblem(undefined);
     const context = contextOf(workspace);
     try {
@@ -352,21 +391,34 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
       try {
         const length = Math.min(handle.sizeBytes, MAX_READ_RANGE);
         const page = length > 0 ? await runtime.resources.readFile(context, handle, 0, length) : { bytes: new Uint8Array() };
-        setPreview({ name: entry.name, size: handle.sizeBytes, truncated: handle.sizeBytes > length, ...decodePreview(page.bytes) });
+        if (generation.current === started) {
+          setPreview({ name: entry.name, size: handle.sizeBytes, truncated: handle.sizeBytes > length, ...decodePreview(page.bytes) });
+        }
       } finally {
         await runtime.resources.closeRead(context, handle).catch(() => undefined);
       }
     } catch (error) {
-      setPreview(undefined);
-      setPreviewProblem(error);
+      if (generation.current === started) {
+        setPreview(undefined);
+        setPreviewProblem(error);
+      }
     } finally {
-      reading.current = false;
+      if (reading.current === started) reading.current = null;
     }
   }
 
   const unknown = create.state.status === 'unknown';
   const pending = create.state.status === 'pending';
   const createInput = create.state.status === 'unknown' || create.state.status === 'pending' ? create.state.input : { name: fileName, content };
+  const createProblem = create.state.status === 'failed' || create.state.status === 'unknown' ? create.state.error : undefined;
+  const createSawChange = isRuntimeFailure(createProblem) && createProblem.code === 'stale_context';
+  // A changed context is explained once: by the file form when its operation
+  // hit it. The folder's own copy is dropped, so it does not reappear on retry.
+  useEffect(() => {
+    if (createSawChange) setStickyProblem((problem: unknown) => (isRuntimeFailure(problem) && problem.code === 'stale_context' ? undefined : problem));
+  }, [createSawChange, stickyProblem]);
+  const listingProblem = entries.isError ? entries.error : stickyProblem;
+  const sameChange = createSawChange && isRuntimeFailure(listingProblem) && listingProblem.code === 'stale_context';
 
   return (
     <section className={styles.panel} aria-label={`${title} の閲覧`}>
@@ -375,8 +427,8 @@ function FolderBrowser({ workspace, binding, locator, onNavigate, onNotice, bloc
         {locator.length > 0 && <button type="button" className={workspaceStyles.secondaryButton} disabled={blocked} onClick={() => onNavigate(locator.slice(0, -1))}>上の階層へ</button>}
       </div>
       {entries.isPending && <p className={styles.note}>内容を読み込んでいます…</p>}
-      <Problem error={entries.isError ? entries.error : stickyProblem} />
-      {entries.data && (
+      <Problem error={sameChange ? undefined : listingProblem} />
+      {entries.data && !entries.isError && (
         <>
           {entries.data.entries.length === 0
             ? <p className={styles.note}>このフォルダーには表示できる項目がありません。</p>

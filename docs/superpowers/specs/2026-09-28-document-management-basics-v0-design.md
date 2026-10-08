@@ -1,5 +1,8 @@
 # 文書管理基本操作・一覧・履歴参照 v0 — 設計案
 
+2026-10-07追補：[文書詳細表示・未読戻し](2026-10-07-document-view-read-state-design.md)を参照。本凍結時の明示確認の意味と旧PUT wireは保持し、新VIEW/RESET・現在projection・専用receiptは追補が規定する。初回日時を現在badgeの根拠にせず、新操作資格hintはfresh整合GET200に従う。
+
+
 - 状態: **PROPOSED / WRITTEN SPEC REVIEW PENDING**。本書の詳細設計は未承認であり、設計凍結・本番実装開始を意味しない。
 - 日付: 2026-09-28 JST
 - Capability: `Document Management Basics v0`

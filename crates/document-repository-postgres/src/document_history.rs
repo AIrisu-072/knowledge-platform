@@ -357,7 +357,7 @@ async fn version_projection(
         "SELECT file_summary.authoritative_item_count, file_summary.total_size_bytes, \
                 primary_file.original_filename AS primary_original_filename, \
                 primary_file.media_type AS primary_media_type, \
-                primary_file.size_bytes AS primary_size_bytes, rs.first_read_at \
+                primary_file.size_bytes AS primary_size_bytes, rs.first_read_at, rs.needs_recheck, rs.read_state_revision \
          FROM LATERAL ( \
              SELECT count(*)::bigint AS authoritative_item_count, \
                     COALESCE(sum(file.size_bytes), 0)::bigint AS total_size_bytes \
@@ -389,7 +389,7 @@ async fn version_projection(
     .map_err(map_statement_error)?;
     Ok((
         decode_file_summary(&row)?,
-        row.try_get("first_read_at").map_err(map_statement_error)?,
+        crate::current_read_state::decode_projection(&row)?.first_read_at,
     ))
 }
 

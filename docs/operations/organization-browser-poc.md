@@ -2,6 +2,24 @@
 
 ## 対象ソースと確認状況
 
+固定ソースは[PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の受入済み製品head `cbe65d140852cbacd7fea4a8fed7830f0757ea4b` / tree `b2cb1cba60bfc29c4407335faec8f30a6d1c9740` で、[Linux手動導入](linux-manual-installation.md)と共通にする。PR headの資格であり、main統合や対象PCへの導入済みを意味しない。旧pin bba1d6ddまでの文書・Folder操作、PR100のDocumentアクセス設定回復、Organization U1〜U4と今回の詳細表示による既読・未読戻しを含む。
+
+[通常CI37692284389](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389)は全14jobs成功、19checksは16success・既存条件の3skip、終端後公開artifact0。Document runtimeの公式step8/9/10（Document実受入・Organization実受入・有限summary）は成功した。大きなruntime stdoutはTransport closedで未取得のため、実測GUI/browser件数や各receiptを直接読んだとはしない。同一sourceのrunner/summaryの失敗伝播と公式成功stepを対応させた資格であり、古い8工程だけのOrganization sourceの資格を流用しない。[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)に、固定source・Rustの同一tree merge ref・直接観測と対応推論の境界を記録する。
+
+手順の最小経路は従来どおりsales-01/office-01の2profile・2processである。追加4profile、追加文脈、6processによる確認は任意の拡張確認であり、常設の必須条件ではない。新規DBではDocument 0001〜0012とWork 0001〜0009を適用する。旧pinから既存Workを更新するときは、DBとstorage全体（`work-artifacts/` を含む）の停止時保存と別環境検証後、`migrate` →**従来と同じDocument IDで `seed-work`** → `serve` の順を守る。旧2名用policyを暗黙に拡張しない。
+
+本人が通常の文書詳細を意図して開き、現行公開版の概要を正常表示すると既読になる。「未読に戻す」は再確認の目印で、初回日時・過去Auditを保持する。タスク内参照・先読み・Agent・原本取得だけで自動既読にせず、同画面再取得や旧要求再送は未読戻しを解除しない。[文書GUI手順](document-gui-v0.md#文書詳細の表示による既読と未読に戻す)に従い、原本の読了・理解・同意の証明に使わない。
+
+対象は画像なしUbuntuの合成PoC。本番Identity/TLS、全画素比較、対象PCでの手順全文、backup/restore、PostgreSQLプロセス再起動は未資格。旧headの失敗・未取得と、status/headers全喪失・大量履歴等の既存未資格は保持する。HTTP再起動をDB再起動へ読み替えない。
+
+### 過去の受入記録
+
+以下は以前の固定版の記録であり、現在sourceの資格へ付け替えない。
+
+#### 2026-10-07 04:38 UTC PR97統合mainの固定版
+
+以下の「固定版」「今回」「現在開発中」「未収録」は当時の案内である。
+
 固定ソースは[PR97](https://github.com/AIrisu-072/knowledge-platform/pull/97)統合main `bba1d6dd45d93c5ad52e4a69debc9a3e77e5a8ab` / tree `84b0b0d48d3dfdc8b0a5b66ec53f9cc070aa6420` で、[Linux手動導入](linux-manual-installation.md)と共通にする。固定合成2profile・画像なしUbuntu機能受入に合格した版であり、main自身の[push CI37570945202](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37570945202)をPR公開headとは別に確認した。対象PCでの手順実行や本番認証の資格ではない。固定SHAと受入記録が未確定の版は実行しない。
 
 採用sourceは旧pin d515までの文書GUI/Folder操作/絞り込み/文書移動/正式改訂・比較の続き表示・両履歴/旧原本・履歴一覧入口/JST表示・PR94公開前WORKING内容比較を保持し、PR97の非root Folderアクセス設定GUIと、アクセス設定変更後の旧原本・比較結果の遅延保存/復活を抑止する関連guardを含む。これらは旧固定版d515には含まれない。現在開発中のDocument AccessTabのUNKNOWN固定要求・画面往復保持・関連read失効の回復補修は新pin bba1d6ddに未収録で、追加される操作説明は後続source向けである。exact run/job URL・直接観測と対応推論の区別は[Linux手動導入の対象資格](linux-manual-installation.md#この手順でできること)を正本とする。
@@ -17,8 +35,6 @@ PR97の追加範囲は、既存合成Sharedの2groupへの4GUI PUT（agent履歴
 正式改訂100件超・比較結果50件超・イベント履歴101件目・コンテンツ版101件目/実複数旧原本・複数原本の公開前比較は実GUI未資格。DOMや既存HTTPページ試験と区別する。WORKING固定再送の実通信資格は成功応答body途中喪失だけで、status/headers全喪失は未資格のままである。
 
 資格対象は画像なしUbuntu実操作PoCであり、対象PCでの手順全文・backup/restore・PostgreSQLプロセス再起動の確認は未実施。macOS golden比較は未実行・未更新で、影響候補Mock 2・3・4・7の4枚と、他3枚の画素不変も未証明。全visual資格や本番Identity/TLSの資格は主張しない。PR87の同Root継承・文書なしのフォルダー移動fixtureとPR88の同権限の文書移動fixtureでは実ACL変化・GUI移動通信断・実no-opの資格を追加しない。旧PR82 persistence失敗とPR83 Organization HTTP503、PR89の過去失敗・Home focus残件、旧PR91/93/94/97と過去mainのstdout未取得を後続成功だけで解消済みとしない。
-
-### 過去の受入記録
 
 #### 2026-10-07 02:50 UTC PR94統合mainの固定版
 
@@ -129,11 +145,11 @@ Document GUIの追加はPR69初回登録、PR70取下げ・公開終了、PR71�
 
 ## 現在の範囲
 
-起動時固定の模擬ユーザー（既存の2名、および後続sourceでは6名）を使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成、最終事務タスクの明示的な完了、担当中タスクの保留と再開を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
+起動時固定の模擬ユーザー（最小経路の2名、任意の複数担当確認では計6名）を使い、タスク一覧・詳細、privateな文案の保存、共有Document参照、提出、事務担当の引受けと提出内容の閲覧、理由付き差戻と新試行での再提出、Documentを参照する根拠・候補・人間判断の保存、選択根拠に結び付いた合成Agentの候補作成、最終事務タスクの明示的な完了、担当中タスクの保留と再開を行う。PostgreSQLを状態の正本とし、ページ再読込でも保存済み状態を取得する。未保存の入力と結果不明操作はタブ内メモリーに保持する。
 
 これは認証システムではない。各loopbackポートへ接続できる利用者はその固定profileとして扱われる。顧客情報・秘密情報・production DBを使用しない。外部公開・production deploy・Tauri実行を含まない。
 
-## 準備
+## 初回の新しいDBの準備
 
 既存Document PoCと同じLinux/Rust/Node/PostgreSQLの資格・実行権限がある環境を使う。既知のsocket/browser拒否を別ポート・別経路・別環境で迂回しない。
 
@@ -158,7 +174,25 @@ export KP_WEB_DIST='/absolute/path/to/apps/document-web/dist'
 ./target/debug/organization-server serve
 ```
 
-`migrate` は明示コマンドだけでDocument既存migrationとWork専用schema/migration ledgerを処理する。通常の `serve` はmigrationもseedも実行しない。`bootstrap-poc` はDocumentの既存bootstrap portでsales-01のfixture作成権限、office-01と固定Document provider poc/poc-agentのread/readHistoryを初期化する。Agent対応前のDBを含め、既存policyが異なる場合は停止し、暗黙にgrantを追加しない。新しい合成Agent PoCでは新しい所有された使い捨てDBを用いる。
+`migrate` は明示コマンドだけでDocument 0001〜0012とWork 0001〜0009の別schema/台帳を処理する。通常の `serve` はmigrationもseedも実行しない。初回の空Workだけは上の順で起動して共有文書を作り、その後に `seed-work` を行える。新DBの `bootstrap-poc` はsales-01のfixture作成権限、office-01・追加4名の合成Human・固定Document provider poc/poc-agentのread/readHistoryを初期化する。正確な旧2名用policyも受け入れるが追加grantは行わず、それ以外のpolicyは上書きせず停止する。追加4名を起動する必要はない。
+
+## 既存Workの更新
+
+初回手順を既存DBで最初から実行し直さない。[Linux手動導入の更新と切戻し](linux-manual-installation.md#10-更新と切戻し)で全書込processを停止し、DBと `KP_STORAGE_ROOT` 全体（Document原本と `work-artifacts/`）を一組で保存・別環境へ復元する。新sourceからserver/worker/GUIを揃えてビルドし、更新前の共有入力Document IDを確認する。
+
+新releaseのcheckoutへ移動し、復元先を指す設定を読み込んだshellで、**serveより先に**次を実行する。両コマンドの成功後だけ、従来のsales-01/office-01を起動する。
+
+```sh
+set -eu
+test "$(git rev-parse HEAD)" = 'cbe65d140852cbacd7fea4a8fed7830f0757ea4b'
+export KP_RUNTIME_MODE=organization-synthetic
+export KP_ORGANIZATION_PROFILE=sales-01
+./target/debug/organization-server migrate
+export KP_ORGANIZATION_DOCUMENT_ID='<更新前と同じ公開入力documentId>'
+./target/debug/organization-server seed-work
+```
+
+seedは不足するOrganization policyを追加し、既存policy・workflowの進捗・担当・定義を上書きしない。旧Workがありpolicyが無い状態の `serve` は起動時回復で拒否される。新しい文書の作成や別のIDへの変更、`bootstrap-poc` による既存ACL変更は更新の代替にしない。Document 0012適用後の新旧server混在や旧binaryだけへの差戻しは行わない。別環境で保存状態・作業ファイル・既読状態を確認後に所有者が実環境へ同じ順序を適用する。通常の同一release再開ではmigration/seedを繰り返さない。
 
 ## 共有文書を用意する
 
@@ -272,7 +306,7 @@ export KP_ORGANIZATION_DOCUMENT_ID='<上で公開したdocumentId>'
 
 ## 複数の担当者・役割・委任を使う
 
-この節は、組織単位・役割・正式割当・期限付き委任・担当変更を追加した後続source向けである（上の固定pinには未収録）。凍結済み設計への接続の具体化は[複数担当の実装追補](../superpowers/specs/2026-10-07-organization-multi-principal-amendment.md)、検証状況は[複数担当の状況](../superpowers/execution/organization-multi-principal-status.md)を参照する。
+この節の組織単位・役割・正式割当・期限付き委任・担当変更は現在の固定sourceに含まれる。以下の6名での確認は任意であり、最小2profileの導入には不要である。凍結済み設計への接続の具体化は[複数担当の実装追補](../superpowers/specs/2026-10-07-organization-multi-principal-amendment.md)、検証状況は[複数担当の状況](../superpowers/execution/organization-multi-principal-status.md)を参照する。
 
 ### 6名の合成profile
 
@@ -300,7 +334,7 @@ done
 
 3. 「共有文書を用意する」の手順でDocument IDを用意し、`seed-work` を実行する。`seed-work` はWorkの業務fixtureと合成Organization policy（組織単位・役割・正式割当）を作る。既存の行は上書きしない
 
-既存DBの更新：migration 0007を適用した後、同じDocument IDで `seed-work` を再実行するとpolicyだけが追加される（既存の進捗は変えない）。以前の2名用 `bootstrap-poc` で初期化したDBはそのまま受け入れるが、追加4名には共有入力文書の閲覧権限がなく、文書の参照は「利用できない」と表示される。追加4名で文書も確認する場合は新しい使い捨てDBを使う。
+既存DBの更新は上の専用節に従う。現在sourceのWork 0001〜0009までを `migrate` で適用した後、同じDocument IDで `seed-work` を再実行し、不足するpolicyを追加する（既存の進捗は変えない）。以前の2名用 `bootstrap-poc` で初期化したDBはそのまま受け入れるが、追加4名には共有入力文書の閲覧権限がなく、文書の参照は「利用できない」と表示される。追加4名で文書も確認する場合は新しい使い捨てDBを使う。
 
 ### 操作の流れ
 
@@ -344,11 +378,11 @@ PostgreSQL transaction試験は既定で明示ignoreされる。実行してい�
 
 `mise run organization:poc:runtime` は既存Document CI後段向けの単発確認である。外部DBを受け付けず、既存と同じ公式PostgreSQL一時containerを別途所有し、独立したtransaction試験用DBとbrowser用DB・storageを作る。既存固定Chromiumでsales/officeの操作を行い、2processを停止・再起動して保存状態を確認した後、所有containerを削除する。
 
-通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。現在pinのmain自身の資格は、冒頭の対象ソースと確認状況で確認し、過去の公開製品headの資格とは分ける。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
+通常CIの成功だけでなく、このOrganization専用stepのtransaction/journey/restart/persistence/shutdown成功を確認して初めて、この最小経路の実runtime検証済みとする。初回PoCの実証は[PR54](https://github.com/AIrisu-072/knowledge-platform/pull/54)のsource `44e1b412` で完了している。差戻追加経路は[PR56](https://github.com/AIrisu-072/knowledge-platform/pull/56) exact `cf28175d` で全CIと実DB/2名browser/両HTTP server再起動後復元/cleanupが成功した。根拠・候補・判断は[PR57](https://github.com/AIrisu-072/knowledge-platform/pull/57) exact `d383bacc` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。合成Agentは[PR60](https://github.com/AIrisu-072/knowledge-platform/pull/60) exact `48ae1bfd` で実DB/2名操作/両HTTP server再起動後復元/cleanupと全CIが成功した。最終事務の完了・保留/再開・Document原本取得を含むPR67時点の統合結果は、本書冒頭の過去受入記録を参照する。現在pinの資格は、冒頭の対象ソースと確認状況で確認し、過去の公開製品headの資格とは分ける。PostgreSQL processそのものの再起動は確認対象に含めていない。画像・trace・videoはoff、raw実行ログ・標準runnerの原文は一時workspace内に保持し、公開artifactは追加しない。既存の有限stage/statusと許可された操作名だけをCIへ出力する。
 
 ## 複数の文脈（案件）・注意・表示Profileを使う
 
-この節は、複数の合成WorkContext（案件・依頼）、注意（Attention）、営業型／事務型の表示Profileを追加した後続source向けである。設計の具体化は[文脈・注意・Profileの実装追補](../superpowers/specs/2026-10-07-organization-work-context-attention-amendment.md)、検証状況は[文脈・注意・Profileの状況](../superpowers/execution/organization-work-context-status.md)を参照する。
+この節の複数の合成WorkContext（案件・依頼）、注意（Attention）、営業型／事務型の表示Profileは現在の固定sourceに含まれる。追加文脈のseedは任意である。設計の具体化は[文脈・注意・Profileの実装追補](../superpowers/specs/2026-10-07-organization-work-context-attention-amendment.md)、検証状況は[文脈・注意・Profileの状況](../superpowers/execution/organization-work-context-status.md)を参照する。
 
 ### 追加の合成文脈を用意する
 
@@ -364,7 +398,7 @@ KP_ORGANIZATION_PROFILE=sales-01 KP_ORGANIZATION_DOCUMENT_ID="$document_id" \
 | 合成案件B・運転資金相談 | 案件 | 営業内容整理 → 審査内容確認 | 営業工程が担当待ち、期限はseedの6時間後（期限間近） |
 | 合成依頼C・住所変更届 | 依頼 | 営業内容整理 → 事務内容確認 | 営業工程が担当待ち、期限はseedの1時間前（期限超過） |
 
-既存DBへ追加する場合は、migration 0008を適用してから `seed-contexts` を実行する。表示名・期限は合成fixtureであり、実際の顧客・業務規則ではない。
+既存DBでは上の更新手順で現在sourceのmigrationをすべて適用し、必要な場合だけ同じDocument IDで `seed-contexts` を実行する。Work 0008はこの注意機能の初回追加番号である。表示名・期限は合成fixtureであり、実際の顧客・業務規則ではない。
 
 ### 表示Profile
 
@@ -384,12 +418,12 @@ KP_ORGANIZATION_PROFILE=sales-01 KP_ORGANIZATION_DOCUMENT_ID="$document_id" \
 
 ## 作業ファイルを添付して提出し、差戻し後にやり直す
 
-この節は、作業ファイル・共有の作業領域・提出時の固定・差戻し後の取込みを追加した後続source向けである。設計の具体化は[作業ファイル・Handoffの実装追補](../superpowers/specs/2026-10-07-organization-work-files-handoff-amendment.md)、検証状況は[作業ファイルの状況](../superpowers/execution/organization-work-files-status.md)を参照する。
+この節の作業ファイル・共有の作業領域・提出時の固定・差戻し後の取込みは現在の固定sourceに含まれる。設計の具体化は[作業ファイル・Handoffの実装追補](../superpowers/specs/2026-10-07-organization-work-files-handoff-amendment.md)、検証状況は[作業ファイルの状況](../superpowers/execution/organization-work-files-status.md)を参照する。
 
 ### 保存先と準備
 
-- 作業ファイルの内容は、Organization serverの保存root（`KP_STORAGE_ROOT`）の下の `work-artifacts/` に保存する。Documentの保存（`staging/`・`objects/`）とは別の領域で、静的には配信しない。6processは同じ保存rootを共有する
-- 既存DBへ追加する場合は、migration 0009（記録の種類の追加だけ）を適用する。新しい設定値は無い
+- 作業ファイルの内容は、Organization serverの保存root（`KP_STORAGE_ROOT`）の下の `work-artifacts/` に保存する。Documentの保存（`staging/`・`objects/`）とは別の領域で、静的には配信しない。起動する全profileは同じ保存rootを共有する。backup/restoreではこのroot全体をDBと一組で扱う
+- 既存DBでは上の更新手順に従い、Work 0009を含む現在sourceの全migrationを適用する。新しい設定値は無い
 - 保存領域を消すと提出済みのファイルも取得できなくなる（「利用できません」と表示し、空や成功として扱わない）。削除・保持期間の方針は未決定で、PoCでは削除しない
 
 ### 操作の流れ
@@ -407,7 +441,7 @@ KP_ORGANIZATION_PROFILE=sales-01 KP_ORGANIZATION_DOCUMENT_ID="$document_id" \
 
 ## Agent Chatで構造化結果を確認し、提案から通常の操作へ進む
 
-この節は、AgentExecutionの構造化結果（下書き候補・型付きの提案・根拠ごとの利用結果）とAgent Chatを追加した後続source向けである。設計の具体化は[Agent Chatの実装追補](../superpowers/specs/2026-10-07-organization-agent-chat-amendment.md)、検証状況は[Agent Chatの状況](../superpowers/execution/organization-agent-chat-status.md)を参照する。
+この節のAgentExecutionの構造化結果（下書き候補・型付きの提案・根拠ごとの利用結果）とAgent Chatは現在の固定sourceに含まれる。設計の具体化は[Agent Chatの実装追補](../superpowers/specs/2026-10-07-organization-agent-chat-amendment.md)、検証状況は[Agent Chatの状況](../superpowers/execution/organization-agent-chat-status.md)を参照する。
 
 ### 準備
 

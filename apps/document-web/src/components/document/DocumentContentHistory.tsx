@@ -89,7 +89,7 @@ function SelectedContentVersion({ documentId, versionId, isDocumentReadable }: {
         <dt>状態</dt><dd>{versionStatusLabel(version)}</dd>
         <dt>作成日時</dt><dd>{formatDateTime(version.createdAt)}</dd>
         <dt>更新日時</dt><dd>{formatDateTime(version.updatedAt)}</dd>
-        {([['承認日時', version.approvedAt], ['予約公開日時', version.scheduledPublishAt], ['公開日時', version.publishedAt], ['取下げ日時', version.withdrawnAt], ['本人の初回既読日時', version.firstReadAt]] as const).map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value ? formatDateTime(value) : '未記録'}</dd></Fragment>)}
+        {([['承認日時', version.approvedAt], ['予約公開日時', version.scheduledPublishAt], ['公開日時', version.publishedAt], ['取下げ日時', version.withdrawnAt], ['初回記録日時', version.firstReadAt]] as const).map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value ? formatDateTime(value) : '未記録'}</dd></Fragment>)}
       </dl>
       <h4>コンテンツ版の属性</h4>
       <dl className={styles.metadataGrid}>{Object.entries(version.metadata).map(([key, value]) => <Fragment key={key}><dt>{key}</dt><dd>{typeof value === 'string' ? value : JSON.stringify(value)}</dd></Fragment>)}</dl>

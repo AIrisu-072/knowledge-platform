@@ -1,5 +1,11 @@
 import {
   BinaryTransportBridge,
+  getCurrentDocumentVersionReadState,
+  recordDocumentVersionView,
+  resetDocumentVersionReadState,
+  type CurrentReadState,
+  type ReadStateMutationRequest,
+  type ReadStateMutationResult,
   cancelPublicationSchedule,
   createFolder,
   renameFolder,
@@ -10,6 +16,7 @@ import {
   compareDocumentRevisions,
   compareDocumentVersions,
   getDocument,
+  getDocumentRevision,
   getDocumentAccessPolicy,
   getFolderAccessPolicy,
   setFolderAccessPolicy,
@@ -78,6 +85,15 @@ function apiSort(sort: string | undefined): string | undefined {
 }
 
 export const documentApi = {
+  getCurrentDocumentVersionReadState(documentId: string, versionId: string, options?: { signal?: AbortSignal }): Promise<CurrentReadState> {
+    return payload(getCurrentDocumentVersionReadState({ ...data, path: { documentId, versionId }, ...(options?.signal ? { signal: options.signal } : {}) }));
+  },
+  recordDocumentVersionView(documentId: string, versionId: string, body: ReadStateMutationRequest): Promise<ReadStateMutationResult> {
+    return payload(recordDocumentVersionView({ ...data, path: { documentId, versionId }, body }));
+  },
+  resetDocumentVersionReadState(documentId: string, versionId: string, body: ReadStateMutationRequest): Promise<ReadStateMutationResult> {
+    return payload(resetDocumentVersionReadState({ ...data, path: { documentId, versionId }, body }));
+  },
   getFolderAccessPolicy(folderId: string): Promise<ModelsAccessPolicyRead> {
     return payload(getFolderAccessPolicy({ ...data, path: { folderId } }));
   },
@@ -135,6 +151,9 @@ export const documentApi = {
   },
   getDocumentVersion(documentId: string, versionId: string, purpose: View): Promise<VersionDetail> {
     return payload(getDocumentVersion({ ...data, path: { documentId, versionId }, query: { purpose } }));
+  },
+  getDocumentRevision(documentId: string, revisionId: string, signal?: AbortSignal) {
+    return payload(getDocumentRevision({ ...data, path: { documentId, revisionId }, signal }));
   },
   listDocumentRevisions(documentId: string, cursor?: string): Promise<DocumentRevisionPage> {
     return payload(listDocumentRevisions({

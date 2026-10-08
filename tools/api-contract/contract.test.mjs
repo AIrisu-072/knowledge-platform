@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -42,6 +42,9 @@ const operations = [
   ['get', '/v1/documents/{documentId}/access-policy'],
   ['put', '/v1/documents/{documentId}/access-policy'],
   ['put', '/v1/documents/{documentId}/versions/{versionId}/read-state'],
+  ['get', '/v1/documents/{documentId}/versions/{versionId}/read-state'],
+  ['post', '/v1/documents/{documentId}/versions/{versionId}/read-state/view'],
+  ['post', '/v1/documents/{documentId}/versions/{versionId}/read-state/reset'],
   ['get', '/v1/documents/{documentId}/history'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/files'],
   ['get', '/v1/documents/{documentId}/versions/{versionId}/edit-manifest'],
@@ -79,6 +82,9 @@ const acceptanceEvidence = [
   ['getDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['setDocumentAccessPolicy', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['markDocumentVersionRead', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
+  ['getCurrentDocumentVersionReadState', 'crates/document-api-http/tests/management_http.rs', 'current_read_state_routes_preserve_replay_reset_and_legacy_wire'],
+  ['recordDocumentVersionView', 'crates/document-api-http/tests/management_http.rs', 'current_read_state_routes_preserve_replay_reset_and_legacy_wire'],
+  ['resetDocumentVersionReadState', 'crates/document-api-http/tests/management_http.rs', 'current_read_state_routes_preserve_replay_reset_and_legacy_wire'],
   ['getDocumentHistory', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
   ['getVersionEditManifest', 'crates/document-api-http/tests/read_http.rs', 'edit_manifest_reads_exact_metadata_and_order_with_current_write_authorization'],
   ['listVersionFiles', 'crates/document-api-http/tests/e2e.rs', 'postgres_filesystem_and_workers_complete_the_document_http_journey'],
@@ -104,6 +110,48 @@ function resolved(value) {
   }
   return value;
 }
+
+test('本人の現在既読APIは旧PUTの形を保持し厳密な固定CAS要求を公開する', () => {
+  const path = '/v1/documents/{documentId}/versions/{versionId}/read-state';
+  const legacy = operation('put', path);
+  assert.equal(legacy.requestBody, undefined);
+  const legacyBody = resolved(resolved(legacy.responses['200']).content['application/json'].schema);
+  assert.equal(legacyBody.additionalProperties, false);
+  assert.deepEqual(Object.keys(legacyBody.properties).sort(), ['documentId', 'versionId', 'firstReadAt', 'inserted'].sort());
+
+  const get = operation('get', path);
+  assert.equal(get?.operationId, 'getCurrentDocumentVersionReadState');
+  const state = resolved(resolved(get.responses['200']).content['application/json'].schema);
+  assert.equal(state.additionalProperties, false);
+  assert.deepEqual(state.required, ['documentId', 'versionId', 'firstReadAt', 'needsRecheck', 'readStateRevision', 'isRead']);
+  assert.equal(state.properties.readStateRevision.maximum, 9007199254740991);
+  assert.equal(resolved(get.responses['200']).headers['Cache-Control'].schema.const, 'private, no-store');
+
+  for (const [suffix, id] of [['view', 'recordDocumentVersionView'], ['reset', 'resetDocumentVersionReadState']]) {
+    const endpoint = operation('post', `${path}/${suffix}`);
+    assert.equal(endpoint?.operationId, id);
+    const body = resolved(resolved(endpoint.requestBody).content['application/json'].schema);
+    assert.equal(body.additionalProperties, false);
+    assert.deepEqual(body.required, ['operationId', 'expectedReadStateRevision']);
+    assert.deepEqual(Object.keys(body.properties).sort(), ['operationId', 'expectedReadStateRevision'].sort());
+    assert.equal(body.properties.operationId.format, 'uuid');
+    assert.ok(body.properties.operationId.pattern, 'UUIDv7/RFC variantの制約が必要');
+    const uuidPattern = new RegExp(body.properties.operationId.pattern);
+    assert.equal(uuidPattern.test('0199a8ad-cf25-7f22-8fd5-5facbb735015'), true);
+    assert.equal(uuidPattern.test('0199a8ad-cf25-4f22-8fd5-5facbb735015'), false);
+    assert.equal(uuidPattern.test('0199a8ad-cf25-7f22-0fd5-5facbb735015'), false);
+    assert.equal(body.properties.expectedReadStateRevision.type, 'integer');
+    assert.equal(body.properties.expectedReadStateRevision.minimum, 0);
+    assert.equal(body.properties.expectedReadStateRevision.maximum, 9007199254740991);
+    const result = resolved(resolved(endpoint.responses['200']).content['application/json'].schema);
+    assert.equal(result.additionalProperties, false);
+    assert.deepEqual(result.required, ['operationId', 'documentId', 'versionId', 'kind', 'expectedReadStateRevision', 'changed', 'occurredAt', 'resultingReadState']);
+    assert.deepEqual(result.properties.kind.enum, ['VIEW', 'RESET']);
+    const receiptState = resolved(result.properties.resultingReadState);
+    assert.equal(receiptState.additionalProperties, false);
+    assert.equal(receiptState.properties.readStateRevision.maximum, 9007199254740991);
+  }
+});
 
 test('OpenAPI 3.2.1 exposes every approved Document operation with unique IDs', () => {
   assert.equal(contract.openapi, '3.2.1');
@@ -414,4 +462,45 @@ test('version detail exposes only its required nullable current publication sche
   assert.equal(resolved(contract.components.schemas.Version).properties.currentPublicationScheduleId, undefined);
   const example = resolved(contract.components.responses.Version).content['application/json'].example;
   assert.equal(example.currentPublicationScheduleId, null);
+});
+
+
+test('成功receiptはnonnull初回日時とr1以上だけを許しGETの仮想r0は保持する', () => {
+  const receipt = {
+    operationId: '0199a8ad-cf25-7f22-8fd5-5facbb735015',
+    documentId: '00000000-0000-4000-8000-000000000001',
+    versionId: '00000000-0000-4000-8000-000000000022',
+    kind: 'VIEW', expectedReadStateRevision: 0, changed: true,
+    occurredAt: '2026-10-07T00:00:00Z',
+    resultingReadState: { firstReadAt: '2026-10-07T00:00:00Z', needsRecheck: false, readStateRevision: 1, isRead: true },
+  };
+  function accepts(example) {
+    const directory = mkdtempSync(join(tmpdir(), 'document-receipt-contract-'));
+    try {
+      const document = structuredClone(contract);
+      document.components.responses.ReadStateMutationResult.content['application/json'].example = example;
+      document.components.responses.CurrentReadState.content['application/json'].example = {
+        documentId: receipt.documentId, versionId: receipt.versionId,
+        firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false,
+      };
+      const source = join(directory, 'contract.json');
+      const config = join(directory, 'redocly.yaml');
+      writeFileSync(source, JSON.stringify(document));
+      writeFileSync(config, 'extends: []\nrules:\n  no-invalid-media-type-examples: error\n');
+      try {
+        execFileSync(process.execPath, [join(repository, 'node_modules/@redocly/cli/bin/cli.js'), 'lint', source, '--config', config, '--format', 'json'], { cwd: repository, stdio: 'pipe' });
+        return true;
+      } catch (error) {
+        const diagnostic = String(error.stdout ?? '') + String(error.stderr ?? '');
+        assert.match(diagnostic, /no-invalid-media-type-examples/, diagnostic);
+        return false;
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+  assert.equal(accepts(receipt), true, '正常receiptと仮想r0 GETは受理する');
+  assert.equal(accepts({ ...receipt, resultingReadState: { firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false } }), false, '仮想r0を成功receiptにしない');
+  assert.equal(accepts({ ...receipt, resultingReadState: { ...receipt.resultingReadState, firstReadAt: null } }), false, '成功receiptにnull日時を許さない');
+  assert.equal(accepts({ ...receipt, resultingReadState: { ...receipt.resultingReadState, readStateRevision: 0 } }), false, '成功receiptにr0を許さない');
 });

@@ -567,6 +567,12 @@ Document Management Basics v0 では、初回の明示的な既読確認 `docume
 
 ---
 
+### 2026-10-07本人VIEW/RESET Audit追補
+
+[2026-10-07文書詳細表示・未読戻し追補](../../docs/superpowers/specs/2026-10-07-document-view-read-state-design.md)による未読→既読の実VIEW遷移はdocument.version.detail_viewed、RESETの実遷移はdocument.version.marked_unreadを既存Audit outboxへ保存する。payloadはdocument_version_id、operation_id、expected_read_state_revision、resulting_read_state_revision、trigger。VIEWはdetail_displayとfirst_record(boolean)、RESETはuser_resetでfirst_recordは付けない。初回が旧PUTなら旧read_confirmedを保持し、初回VIEWを明示確認に読み替えない。
+
+state/receipt/必須Auditは同transaction。Audit/receipt失敗と異Document同ID競合の負け側は全rollbackする。no-op/replay/metadata・履歴・原本の先読みで新Auditを増やさず、移行Audit・全閲覧ログ・Search eventを作らない。必須Auditにsamplingを適用しない。配送/保管基盤は変更しない。
+
 # 15. Audit durability
 
 Audit EventはObservability Logより強い耐久性を要求する。
