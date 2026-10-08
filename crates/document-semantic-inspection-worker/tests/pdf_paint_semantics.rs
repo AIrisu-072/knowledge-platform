@@ -313,6 +313,7 @@ fn clip_hiding_native_text_is_rejected_after_rendered_difference_proof() {
         error.code(),
         document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
     );
+    assert_eq!(error.message(), "pdf_clip_does_not_enclose_paint");
 }
 
 #[test]
@@ -374,5 +375,6 @@ fn vector_occluding_only_one_text_run_is_never_accepted_as_unchanged() {
             error.code(),
             document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
         );
+        assert_eq!(error.message(), "pdf_vector_text_overlap_unqualified");
     }
 }

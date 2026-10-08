@@ -376,6 +376,9 @@ impl<'a> StructureInspector<'a> {
         if operations.len() > MAX_PDF_CONTENT_OPERATIONS {
             return Err(limit("marked content exceeds the operation limit"));
         }
+        // Validate syntax before ownership: a missing EMC can otherwise look
+        // like a valid-but-unsupported nested MCID sequence.
+        validate_marked_delimiters(operations)?;
         let has_marks = operations.iter().any(|operation| {
             matches!(
                 operation.operator.as_str(),
@@ -774,6 +777,33 @@ impl Mark {
             artifact,
         }
     }
+}
+
+fn validate_marked_delimiters(operations: &[Operation]) -> Result<(), WorkerFailure> {
+    if operations.len() > MAX_PDF_CONTENT_OPERATIONS {
+        return Err(limit("marked content exceeds the operation limit"));
+    }
+    let mut depth = 0usize;
+    for operation in operations {
+        match operation.operator.as_str() {
+            "BMC" | "BDC" => {
+                if depth >= MAX_PDF_OBJECT_DEPTH {
+                    return Err(limit("marked content exceeds the depth limit"));
+                }
+                depth += 1;
+            }
+            "EMC" => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or_else(|| malformed("EMC has no matching marked-content start"))?;
+            }
+            _ => {}
+        }
+    }
+    if depth != 0 {
+        return Err(malformed("marked content has an unmatched start"));
+    }
+    Ok(())
 }
 
 fn push_mark(marks: &mut Vec<Mark>, mark: Mark) -> Result<(), WorkerFailure> {
@@ -1774,4 +1804,31 @@ mod tests {
             WorkerFailureCode::UnsupportedSemanticConstruct
         );
     }
+
+    #[test]
+    fn delimiter_prepass_distinguishes_malformed_from_balanced_nested_marks() {
+        let operations = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| Operation {
+                    operator: (*name).into(),
+                    operands: Vec::new(),
+                })
+                .collect::<Vec<_>>()
+        };
+        let missing_end = operations(&["BDC", "BDC", "EMC"]);
+        assert_eq!(
+            validate_marked_delimiters(&missing_end).unwrap_err().code(),
+            WorkerFailureCode::ParserDisagreement
+        );
+        let extra_end = operations(&["EMC", "BMC", "EMC"]);
+        assert_eq!(
+            validate_marked_delimiters(&extra_end).unwrap_err().code(),
+            WorkerFailureCode::ParserDisagreement
+        );
+        // Balanced nesting proceeds to the separate semantic ownership check.
+        let balanced = operations(&["BDC", "BDC", "EMC", "EMC"]);
+        assert!(validate_marked_delimiters(&balanced).is_ok());
+    }
+
 }

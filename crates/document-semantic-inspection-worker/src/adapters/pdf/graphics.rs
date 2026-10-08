@@ -348,7 +348,10 @@ pub(super) fn validate_clip_bounds(
                     ));
                 }
                 if b[0] < v[2] && b[2] > v[0] && b[1] < v[3] && b[3] > v[1] {
-                    return Err(unsupported());
+                    return Err(failure(
+                        WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "pdf_vector_text_overlap_unqualified",
+                    ));
                 }
             }
         }
@@ -373,7 +376,10 @@ pub(super) fn validate_clip_bounds(
                 || b[2] > intersection[2]
                 || b[3] > intersection[3]
             {
-                return Err(unsupported());
+                return Err(failure(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    "pdf_clip_does_not_enclose_paint",
+                ));
             }
         }
     }

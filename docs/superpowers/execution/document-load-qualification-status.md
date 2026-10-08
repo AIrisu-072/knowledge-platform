@@ -112,3 +112,7 @@ gs/page group4件、Diff page残余/新vector5件、native vector2件、派生ca
 初回独立reviewはCMap範囲の巨大展開・decode前の出力増幅・空ParentTree keyの未計数を指摘した。未防御の危険fixtureは実行せず、完全な限定CMap grammarをhelper前に検査し、128KiB source、固定1–2byte code、16,384 unique mappings、1 BMP scalar/文字、事前出力見積を課した。ParentTreeはpairも課金し未所有keyを拒否。タグだけのページも色space/page-group/outputintent検査を必須にし、Artifact propertyを明示subsetにした。
 
 修正後の独立scoped reviewは全指摘ADDRESS、first Mac試行へGO。structure.rs SHA256 dbf8bbfb7ac644a787394392ae90ff04b021a5a2ec8812a0f9b453d6cbc46fcf。11純粋resource/grammar試験とtag19試験は新source未実行。Diff/cacheも静的GO。次はexact headのMac compile/GREEN・旧corpus全比較・原本の補助native観測、その後Linux実sandbox/API small。資格済み/全PDF対応/大量合格とは扱わない。
+
+15:18追補：5c59063のMacは全compile成功。paint16・gs4・structure11・Diff7・pdf_diff9・cache4成功、tags18成功/1失敗（未閉鎖EMCがnested MCIDのUnsupportedへ先に分類された）。旧15corpusは全field/拒否一致。3ac5f939のformatter-onlyを保持した。
+
+残1件は有限delimiter prepassでParserDisagreementを先に確定し、正しく閉じたnested MCIDの拒否を維持する。934のclip/overlap拒否に2つの固定診断categoryだけを追加し、条件やcodeは変えない。独立reviewは次Mac試行GO。公式933の補助native固定理由はtagged font encoding is unsupported（実4/5頁はIdentity-VおよびToUnicodeなしType0）、934はunsupported bounded PDF graphics state。原本はhash一致・未変更。どちらもまだ公開資格ではなく、933を注釈拒否とは扱わない。
