@@ -63,8 +63,8 @@ pub enum Overall {
     Chain(ChainVerdict),
     Broken,
     /// The checkpoint lies past the last seq of an export whose manifest
-    /// shows a cut (`--seq-through`, or a first intent whose watermark
-    /// already reached the checkpoint), in the same (or a later) recovery
+    /// shows a cut (`--seq-through` on the first intent, at or below the
+    /// watermark that intent fixed), in the same (or a later) recovery
     /// epoch. The cut export can neither confirm nor refute it: assess with a
     /// checkpoint at or before the export's last seq, or export again through
     /// the checkpoint. Without a cut the export is judged as audit-core does
@@ -254,11 +254,24 @@ struct ManifestInput {
 #[derive(Deserialize)]
 struct IntentInput {
     seq_after: i64,
-    /// The Store head the intent was opened at (a missing member shows no
-    /// cut).
-    watermark: Option<i64>,
+    /// The Store head the intent was opened at.
+    watermark: i64,
     /// The requested end of the range (`--seq-through` on the first intent).
     seq_through: Option<i64>,
+}
+
+impl IntentInput {
+    /// The watermark `audit-admin export` writes for an export whose first
+    /// intent is this one: its `seq_through` (which the Store keeps at or
+    /// below the intent's watermark), else its watermark. `None` for a
+    /// `seq_through` past the watermark, which the Store refuses.
+    fn export_watermark(&self) -> Option<i64> {
+        match self.seq_through {
+            Some(through) if through > self.watermark => None,
+            Some(through) => Some(through),
+            None => Some(self.watermark),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -316,6 +329,15 @@ pub fn assess_dir(dir: &Path, inputs: &AssessInputs) -> Result<AssessReport, Ass
     let Some(watermark) = manifest.watermark else {
         return Ok(AssessReport::broken("manifest has no watermark", operation));
     };
+    // The watermark is not taken on trust: it must be the one the first
+    // intent fixes, so it cannot soften a verdict (a forged watermark below
+    // the intent's would otherwise look like a cut).
+    if first_intent.is_some_and(|intent| intent.export_watermark() != Some(watermark)) {
+        return Ok(AssessReport::broken(
+            "manifest watermark does not match its first intent",
+            operation,
+        ));
+    }
     let check = match verify_chain_export(&export_text, anchor, watermark, bodies) {
         Ok(check) => check,
         Err(FileError::Verification(error)) => {
@@ -345,19 +367,15 @@ pub fn assess_dir(dir: &Path, inputs: &AssessInputs) -> Result<AssessReport, Ass
     let assessment = assess_recovery(report, &[inputs.checkpoint], &inputs.records);
     let mut out = summarize(&assessment, report, operation);
     // A checkpoint past the head of an export the manifest shows was cut
-    // (`--seq-through`, or a first intent whose watermark already reached
-    // the checkpoint), with no recovery after it on this path, cannot be
-    // judged from this export (audit-core would call it tampering): fail
-    // closed as a usage outcome instead, never authentic, with audit-core's
-    // verdict next to it. Without a cut (an older export, or a Store that
-    // lost rows), and for a checkpoint of an earlier epoch (lost,
-    // unverified recovery or tampered), the verdict stays audit-core's.
-    let cut = first_intent.is_some_and(|intent| {
-        intent.seq_through.is_some()
-            || intent
-                .watermark
-                .is_some_and(|watermark| watermark >= inputs.checkpoint.seq)
-    });
+    // (`--seq-through` on the first intent), with no recovery after it on
+    // this path, cannot be judged from this export (audit-core would call it
+    // tampering): fail closed as a usage outcome instead, never authentic,
+    // with audit-core's verdict next to it. Without a cut the head is the
+    // first intent's watermark (checked above), so a checkpoint past it
+    // means an older export or a Store that lost rows, and, as for a
+    // checkpoint of an earlier epoch (lost, unverified recovery or
+    // tampered), the verdict stays audit-core's.
+    let cut = first_intent.is_some_and(|intent| intent.seq_through.is_some());
     if cut
         && inputs.checkpoint.seq > report.head.seq
         && inputs.checkpoint.epoch >= report.head.epoch
@@ -663,12 +681,34 @@ mod tests {
             ("store_behind", Some("tampered"), AssessClass::Usage, None)
         );
         assert_eq!(behind.findings, BTreeMap::from([("store_behind", 1)]));
-        // A first intent whose watermark reached the checkpoint shows the
-        // cut too.
-        cut["intents"][0]["seq_through"] = json!(null);
-        let prefix_dir = write_dir(&prefix, &cut);
-        let behind = assess_dir(&prefix_dir, &inputs(at(4))).expect("assess");
-        assert_eq!(behind.verdict, "store_behind");
+        // The manifest's watermark is the first intent's `seq_through` (or
+        // its watermark without one): a manifest whose first intent reached
+        // 4 without `seq_through` but that claims watermark 3 is not an
+        // export this tool writes, so it is broken input, never a cut.
+        let inconsistent = |intent_watermark: i64, seq_through: serde_json::Value| {
+            let mut forged = manifest(3, 0, true);
+            forged["intents"][0]["watermark"] = json!(intent_watermark);
+            forged["intents"][0]["seq_through"] = seq_through;
+            assess_dir(&write_dir(&prefix, &forged), &inputs(at(4))).expect("assess")
+        };
+        for (intent_watermark, seq_through) in [(4, json!(null)), (2, json!(3)), (4, json!(2))] {
+            let report = inconsistent(intent_watermark, seq_through.clone());
+            assert_eq!(
+                (
+                    report.verdict,
+                    report.underlying_verdict,
+                    report.class(),
+                    report.error.as_deref()
+                ),
+                (
+                    "broken",
+                    None,
+                    AssessClass::Rejected,
+                    Some("manifest watermark does not match its first intent")
+                ),
+                "{intent_watermark} {seq_through}"
+            );
+        }
         // Without a cut (the Store head was 3 when exported), the checkpoint
         // past the head is audit-core's: an older export or rows the Store
         // lost, rejected as tampering.

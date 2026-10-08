@@ -272,7 +272,7 @@ replayはStoreへ `audit.delivery.replay_requested`（解除する `quarantine_c
 audit-admin assess --dir <EXPORT_DIR> --checkpoint <OOB_CHECKPOINT> [--anchor <OOB_CHECKPOINT_AT_SEQ_AFTER>] [--recovery-records <OOB_RECORDS>]
 ```
 
-- DBに接続しない。export directoryをaudit-coreで検証し直し、帯域外のcheckpointとrecovery記録で `assess_recovery` の判定を出す。manifestからは作り方（operation、最初のintentの範囲、watermark）だけを使い、結果の主張は信用しない。genesisより後から始まるexportにはその位置のcheckpoint（`--anchor`）が要る（無ければexit 2）。
+- DBに接続しない。export directoryをaudit-coreで検証し直し、帯域外のcheckpointとrecovery記録で `assess_recovery` の判定を出す。manifestからは作り方（operation、最初のintentの範囲、watermark）だけを使い、結果の主張は信用しない。manifestのwatermarkは最初のintentの `seq_through`（無ければそのintentのwatermark）と一致しなければならず、食い違うmanifest（`seq_through` がintentのwatermarkを越えるものを含む）は `broken`（exit 5）になる。genesisより後から始まるexportにはその位置のcheckpoint（`--anchor`）が要る（無ければexit 2）。
 - 出力は1行のJSONで、判定code・seq・epoch・chain値・件数だけを持つ（本文・主体・resourceは出さない）。主なkey：`verdict`、`underlying_verdict`、`authenticated_through`、`chain_integrity`、`complete`、`findings`、`epochs`（最大64件）、`unverified_expiry_evidence`、`expired_after_watermark`。
 
 | exit | verdict | 意味 |
@@ -280,7 +280,7 @@ audit-admin assess --dir <EXPORT_DIR> --checkpoint <OOB_CHECKPOINT> [--anchor <O
 | 0 | `authentic` | headが帯域外checkpointと一致し、消失が無く、失効の証拠も範囲内で検証済み |
 | 4（要確認） | `authentic_through` / `unverified_expiry` / `no_checkpoint` / `lost` / `unverified_recovery` | checkpointまでだけ認証 / 失効の証拠が範囲外 / checkpointが無い / 帯域外記録の消失範囲で説明できる差異（上限不明を含む） / epochに帯域外記録が無い・食い違う |
 | 5（拒否） | `tampered` / `unanchored` / `broken` | 改変 / filter付きの部分集合 / chain・manifestの検証失敗 |
-| 2 | `store_behind` | manifestがexportを切った（`--seq-through`、または最初のintentのwatermarkがcheckpoint以上）のに、checkpointがexportの最後のseqより先。`underlying_verdict` にaudit-coreの判定（同じepochでは `tampered`）を出す。exportの最後のseq以前のcheckpointを使うか、checkpointまで改めてexportする |
+| 2 | `store_behind` | manifestがexportを切った（最初のintentの `--seq-through`）のに、checkpointがexportの最後のseqより先。`underlying_verdict` にaudit-coreの判定（同じepochでは `tampered`）を出す。exportの最後のseq以前のcheckpointを使うか、checkpointまで改めてexportする |
 | 1 | — | fileを読めない、checkpoint・recovery記録fileの形式不正 |
 
 - 切っていないexportのheadより先にあるcheckpointは `store_behind` にせず、audit-coreの判定（同じepochでは `tampered`、exit 5）になる（古いexportか、Storeが行を失った。checkpoint以後に改めてexportしてもheadが届かなければStoreが行を失っている）。
