@@ -49,3 +49,11 @@ RED: nativeoctet-streamのPDF parser呼出0、history guard未接続、native小
 ## 親による必須ゲート接続
 
 独立レビューは完成source `b16d8888a1891e9b431c11944f222af97e98b6ff` に対して Blocking/Important 0、Draft/CIへGO。親が同機能のDraft PR #111を作成した。CI workflow自体は変更せず、既存の `desktop:bridge:e2e` miseタスクの先頭へactual-source harness試験を追加し、現在の必須 `desktop-runtime-bridge` ジョブで実行する。既存のbridgeブラウザー試験・required-check依存を保持する。変更後のexact-head CI成功とレビューを待ち、未完了のCIを合格とは扱わない。
+
+## PR #111 runtime失敗の受入テスト修正（2026-10-08）
+
+CI run `37742279689` の runtimeで、取下げ後・公開終了後の2試験が `lifecycle-operations.spec.ts:135:46` のbutton総数assertで失敗した。履歴の表示操作追加後もdownloadだけを想定した旧assertであり、製品を巻き戻さず、名称 `履歴の原本を取得: ` に一致するdownloadbuttonの件数を原本数と完全一致させる。各原本downloadのfilename/size/hash、human/agent既読、公開状態、版・改訂・履歴ledgerの既存oraclesは保持する。
+
+同じowned text/plain fixtureで、履歴viewerのGET200/purpose=history/10MiBheader/本文size・hash/UTF-8表示完全一致、closeによる表示破棄、続く既存downloadの原本hash一致、両profile既読不変を追加した。記録設定・CI・runnerは変更していない。
+
+ローカル検証: runtime対象2件のcollection成功、frontend型チェックexit0、関連GUI2 suites66件成功、diff検査成功。ログ `/tmp/viewer-lifecycle-collection.log`, `/tmp/viewer-lifecycle-type.log`, `/tmp/viewer-lifecycle-mocks.log`。元CI失敗ログ `/tmp/pr111-runtime-first.log` を診断に使用した。新しい実backend text viewer assertionsの実行は次exact-head CI待ちであり、collection/mock成功をbackend合格とは扱わない。実backend PDF、native WebView/対象PCは未資格のまま。
