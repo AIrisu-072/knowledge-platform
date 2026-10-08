@@ -264,6 +264,7 @@ async fn assess_reports_each_verdict_class_offline() {
     let (code, report) = assess(&full, &cp1, &[]);
     assert_eq!(code, Some(0), "{report}");
     assert_eq!(report["verdict"], "authentic");
+    assert_eq!(report["underlying_verdict"], "authentic");
     assert_eq!(report["chain_integrity"], "intact");
     assert_eq!(report["authenticated_through"], cp1_record["seq"]);
     assert_eq!(report["head"]["seq"], cp1_record["seq"]);
@@ -284,6 +285,7 @@ async fn assess_reports_each_verdict_class_offline() {
     let (code, report) = assess(&edited, &cp1, &[]);
     assert_eq!(code, Some(5), "{report}");
     assert_eq!(report["verdict"], "broken");
+    assert_eq!(report["underlying_verdict"], Value::Null);
     assert_eq!(report["chain_integrity"], "broken");
     assert!(
         text(&report["error"]).ends_with("envelope digest mismatch"),
@@ -340,10 +342,11 @@ async fn assess_reports_each_verdict_class_offline() {
     assert_eq!(report["authenticated_through"], cp1_record["seq"]);
     assert_eq!(report["findings"], json!({"ahead": 1}));
 
-    // A prefix export (`--seq-through`) judged against a checkpoint past its
-    // last seq: the export cannot confirm or refute that checkpoint. Not
-    // tampered, never authentic: the distinct usage outcome `store_behind`
-    // (exit 2). With the checkpoint at its last seq the prefix is authentic.
+    // A prefix export (`--seq-through`, a cut the manifest shows) judged
+    // against a checkpoint past its last seq: the export cannot confirm or
+    // refute that checkpoint. Not tampered, never authentic: the distinct
+    // usage outcome `store_behind` (exit 2), with audit-core's verdict next
+    // to it. With the checkpoint at its last seq the prefix is authentic.
     let (cp_grown, _) = checkpoint(&verifier, &dir, "cp-grown.json");
     let through = text(&cp1_record["seq"]);
     let (prefix, manifest) = export(
@@ -353,9 +356,11 @@ async fn assess_reports_each_verdict_class_offline() {
         &["--operation", "verify", "--seq-through", &through],
     );
     assert_eq!(manifest["watermark"], cp1_record["seq"]);
+    assert_eq!(manifest["intents"][0]["seq_through"], cp1_record["seq"]);
     let (code, report) = assess(&prefix, &cp_grown, &[]);
     assert_eq!(code, Some(2), "{report}");
     assert_eq!(report["verdict"], "store_behind");
+    assert_eq!(report["underlying_verdict"], "tampered");
     assert_eq!(report["authenticated_through"], Value::Null);
     assert_eq!(report["findings"], json!({"store_behind": 1}));
     assert_eq!(report["head"]["seq"], cp1_record["seq"]);
@@ -436,7 +441,7 @@ async fn assess_reports_each_verdict_class_offline() {
         ],
     ));
     let (cp3, _) = checkpoint(&verifier, &dir, "cp3.json");
-    let (identity, _) = export(&verifier, &dir, "identity", &["--identity-chain"]);
+    let (identity, identity_manifest) = export(&verifier, &dir, "identity", &["--identity-chain"]);
     let (code, report) = assess(&identity, &cp3, &[]);
     assert_eq!(code, Some(4), "{report}");
     assert_eq!(report["verdict"], "unverified_expiry");
@@ -448,12 +453,21 @@ async fn assess_reports_each_verdict_class_offline() {
     let (code, report) = assess(&bodies, &cp3b, &[]);
     assert_eq!(code, Some(0), "the purge evidence is verified: {report}");
     assert_eq!(report["unverified_expiry_evidence"], 0);
-    // A checkpoint past the export's head in the same epoch: an older (or
-    // cut) export, or rows the Store lost. Never authentic; a fresh full
-    // export through that checkpoint decides it.
+    // A checkpoint past the head of an export that was not cut (its
+    // watermark is its head, before the checkpoint), in the same epoch: an
+    // older export or rows the Store lost. Offline these are the same, so
+    // the verdict stays audit-core's (tampered), never softened to
+    // `store_behind`; a fresh export through the checkpoint decides it.
+    assert_eq!(identity_manifest["intents"][0]["seq_through"], Value::Null);
+    assert_eq!(
+        identity_manifest["intents"][0]["watermark"],
+        identity_manifest["head"]["seq"]
+    );
     let (code, report) = assess(&identity, &cp3b, &[]);
-    assert_eq!(code, Some(2), "{report}");
-    assert_eq!(report["verdict"], "store_behind");
+    assert_eq!(code, Some(5), "{report}");
+    assert_eq!(report["verdict"], "tampered");
+    assert_eq!(report["underlying_verdict"], "tampered");
+    assert_eq!(report["authenticated_through"], Value::Null);
     assert_eq!(report["findings"], json!({"store_behind": 1}));
 
     // A planned move: an epoch without loss. With its record it is

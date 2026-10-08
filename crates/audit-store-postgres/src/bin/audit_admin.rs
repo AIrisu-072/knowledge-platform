@@ -64,7 +64,8 @@ commands:
   assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]
          (offline, no database)
 exit status: 0 ok (assess: authentic), 1 failed,
-  2 usage (assess: store_behind, the checkpoint is past the export's last seq),
+  2 usage (assess: store_behind, the checkpoint is past the last seq of a cut
+    export; underlying_verdict is audit-core's),
   3 posture or verification violations,
   4 assess: not authenticated, review (authentic_through, unverified_expiry,
     no_checkpoint, lost, unverified_recovery),
@@ -112,7 +113,8 @@ enum CliError {
     NotAuthentic(&'static str),
     /// `assess`: tampered, unanchored or broken (exit 5).
     Rejected(&'static str),
-    /// `assess`: the checkpoint is past the export's last seq (exit 2).
+    /// `assess`: the checkpoint is past the last seq of a cut export (exit
+    /// 2).
     StoreBehind,
 }
 
@@ -312,8 +314,9 @@ fn print_record_line(expectation: Option<RecoveryExpectation>) -> Result<(), Cli
 
 /// `assess`: offline, no connection. Prints the bounded report, then exits
 /// 0 for `authentic`, 4 for verdicts a human reviews, 5 for tampered,
-/// unanchored or broken exports and 2 for `store_behind` (the checkpoint
-/// must be at or before the export's last seq).
+/// unanchored or broken exports and 2 for `store_behind` (the checkpoint is
+/// past the last seq of an export the manifest shows was cut: use one at or
+/// before that seq).
 fn assess(args: &Args) -> Result<(), CliError> {
     let dir = PathBuf::from(args.get("dir")?);
     let checkpoint = checkpoint_flag(args, "checkpoint")?
@@ -651,9 +654,9 @@ async fn main() -> ExitCode {
         }
         Err(CliError::StoreBehind) => {
             eprintln!(
-                "store_behind: the checkpoint is past the export's last seq; assess with a \
-                 checkpoint at or before it, or export again through the checkpoint (a fresh \
-                 full export that still ends before it means the Store lost rows)"
+                "store_behind: the checkpoint is past the last seq of a cut export; assess with a \
+                 checkpoint at or before it, or export again through the checkpoint (a full \
+                 export that ends before it is judged tampered or lost: underlying_verdict)"
             );
             ExitCode::from(2)
         }

@@ -62,12 +62,14 @@ pub enum AssessError {
 pub enum Overall {
     Chain(ChainVerdict),
     Broken,
-    /// The checkpoint lies past the export's last seq in the same (or a
-    /// later) recovery epoch: the export is older or cut short
-    /// (`--seq-through`), or the Store lost rows. The export can neither
-    /// confirm nor refute it: assess with a checkpoint at or before the
-    /// export's last seq, or export again through the checkpoint (a fresh
-    /// full export that still ends before it means the Store lost rows).
+    /// The checkpoint lies past the last seq of an export whose manifest
+    /// shows a cut (`--seq-through`, or a first intent whose watermark
+    /// already reached the checkpoint), in the same (or a later) recovery
+    /// epoch. The cut export can neither confirm nor refute it: assess with a
+    /// checkpoint at or before the export's last seq, or export again through
+    /// the checkpoint. Without a cut the export is judged as audit-core does
+    /// (an older export or rows the Store lost: `tampered` in the same
+    /// epoch). audit-core's verdict is reported next to it either way.
     StoreBehind,
 }
 
@@ -149,6 +151,10 @@ pub struct AssessReport {
     #[serde(skip)]
     pub overall: Overall,
     pub verdict: &'static str,
+    /// audit-core's verdict (`assess_recovery`, or `unanchored` for a
+    /// filtered subset): `verdict` differs from it only as `store_behind`.
+    /// Null for a broken input (nothing was assessed).
+    pub underlying_verdict: Option<&'static str>,
     /// The highest seq an out-of-band checkpoint confirms (`Match` or
     /// `Ahead`).
     pub authenticated_through: Option<i64>,
@@ -189,6 +195,10 @@ impl AssessReport {
         Self {
             overall,
             verdict: overall.as_str(),
+            underlying_verdict: match overall {
+                Overall::Chain(_) => Some(overall.as_str()),
+                Overall::Broken | Overall::StoreBehind => None,
+            },
             authenticated_through: None,
             chain_integrity: integrity,
             error: None,
@@ -244,6 +254,11 @@ struct ManifestInput {
 #[derive(Deserialize)]
 struct IntentInput {
     seq_after: i64,
+    /// The Store head the intent was opened at (a missing member shows no
+    /// cut).
+    watermark: Option<i64>,
+    /// The requested end of the range (`--seq-through` on the first intent).
+    seq_through: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -284,10 +299,8 @@ pub fn assess_dir(dir: &Path, inputs: &AssessInputs) -> Result<AssessReport, Ass
             Err(error) => AssessReport::broken(error.to_string(), operation),
         });
     }
-    let start = manifest
-        .intents
-        .first()
-        .map_or(0, |intent| intent.seq_after);
+    let first_intent = manifest.intents.first();
+    let start = first_intent.map_or(0, |intent| intent.seq_after);
     let anchor = if start == 0 {
         Anchor::Genesis
     } else {
@@ -331,12 +344,24 @@ pub fn assess_dir(dir: &Path, inputs: &AssessInputs) -> Result<AssessReport, Ass
     }
     let assessment = assess_recovery(report, &[inputs.checkpoint], &inputs.records);
     let mut out = summarize(&assessment, report, operation);
-    // A checkpoint past the head with no recovery after it on this path
-    // cannot be judged from this export (audit-core would call it
-    // tampering): fail closed as a usage outcome instead. A checkpoint of an
-    // earlier epoch stays audit-core's (lost, unverified recovery or
-    // tampered).
-    if inputs.checkpoint.seq > report.head.seq && inputs.checkpoint.epoch >= report.head.epoch {
+    // A checkpoint past the head of an export the manifest shows was cut
+    // (`--seq-through`, or a first intent whose watermark already reached
+    // the checkpoint), with no recovery after it on this path, cannot be
+    // judged from this export (audit-core would call it tampering): fail
+    // closed as a usage outcome instead, never authentic, with audit-core's
+    // verdict next to it. Without a cut (an older export, or a Store that
+    // lost rows), and for a checkpoint of an earlier epoch (lost,
+    // unverified recovery or tampered), the verdict stays audit-core's.
+    let cut = first_intent.is_some_and(|intent| {
+        intent.seq_through.is_some()
+            || intent
+                .watermark
+                .is_some_and(|watermark| watermark >= inputs.checkpoint.seq)
+    });
+    if cut
+        && inputs.checkpoint.seq > report.head.seq
+        && inputs.checkpoint.epoch >= report.head.epoch
+    {
         out.overall = Overall::StoreBehind;
         out.verdict = Overall::StoreBehind.as_str();
         out.authenticated_through = None;
@@ -608,6 +633,7 @@ mod tests {
         };
         let report = assess_dir(&dir, &inputs(at(4))).expect("assess");
         assert_eq!(report.verdict, "authentic");
+        assert_eq!(report.underlying_verdict, Some("authentic"));
         assert_eq!(report.authenticated_through, Some(4));
         assert_eq!(report.findings, BTreeMap::from([("match", 1)]));
         assert_eq!(report.head.as_ref().map(|h| h.seq), Some(4));
@@ -617,16 +643,42 @@ mod tests {
             (through.verdict, through.authenticated_through),
             ("authentic_through", Some(2))
         );
-        // A checkpoint past the export's last seq (same epoch) cannot be
-        // judged from it: never authentic, never called tampering.
+        // A checkpoint past the last seq (same epoch) of an export cut short
+        // (`--seq-through` while the Store head was at 4) cannot be judged
+        // from it: never authentic, never called tampering, with
+        // audit-core's verdict next to it.
         let (prefix, _) = identity_chain(3);
-        let prefix_dir = write_dir(&prefix, &manifest(3, 0, true));
+        let mut cut = manifest(3, 0, true);
+        cut["intents"][0]["watermark"] = json!(4);
+        cut["intents"][0]["seq_through"] = json!(3);
+        let prefix_dir = write_dir(&prefix, &cut);
         let behind = assess_dir(&prefix_dir, &inputs(at(4))).expect("assess");
         assert_eq!(
-            (behind.verdict, behind.class(), behind.authenticated_through),
-            ("store_behind", AssessClass::Usage, None)
+            (
+                behind.verdict,
+                behind.underlying_verdict,
+                behind.class(),
+                behind.authenticated_through
+            ),
+            ("store_behind", Some("tampered"), AssessClass::Usage, None)
         );
         assert_eq!(behind.findings, BTreeMap::from([("store_behind", 1)]));
+        // A first intent whose watermark reached the checkpoint shows the
+        // cut too.
+        cut["intents"][0]["seq_through"] = json!(null);
+        let prefix_dir = write_dir(&prefix, &cut);
+        let behind = assess_dir(&prefix_dir, &inputs(at(4))).expect("assess");
+        assert_eq!(behind.verdict, "store_behind");
+        // Without a cut (the Store head was 3 when exported), the checkpoint
+        // past the head is audit-core's: an older export or rows the Store
+        // lost, rejected as tampering.
+        let prefix_dir = write_dir(&prefix, &manifest(3, 0, true));
+        let uncut = assess_dir(&prefix_dir, &inputs(at(4))).expect("assess");
+        assert_eq!(
+            (uncut.verdict, uncut.underlying_verdict, uncut.class()),
+            ("tampered", Some("tampered"), AssessClass::Rejected)
+        );
+        assert_eq!(uncut.findings, BTreeMap::from([("store_behind", 1)]));
         let mut forged = at(4);
         forged.chain = [0; 32];
         let tampered = assess_dir(&dir, &inputs(forged)).expect("assess");
@@ -639,8 +691,12 @@ mod tests {
         let dir = write_dir(&edited, &manifest(4, 0, true));
         let broken = assess_dir(&dir, &inputs(at(4))).expect("assess");
         assert_eq!(
-            (broken.verdict, broken.chain_integrity),
-            ("broken", "broken")
+            (
+                broken.verdict,
+                broken.chain_integrity,
+                broken.underlying_verdict
+            ),
+            ("broken", "broken", None)
         );
         assert!(broken.error.is_some_and(|e| e.starts_with("export line 2")));
 
