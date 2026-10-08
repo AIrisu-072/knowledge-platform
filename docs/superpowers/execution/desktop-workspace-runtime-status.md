@@ -4,7 +4,7 @@
 
 - [PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103) はexact-head CIの全job成功の後、main `8d4b94a` へ統合した（squash）。統合直後のmain CIは、Document runtimeの既存の試験（`metadata-editor.spec.ts`、PR #106由来）の一時的な失敗で1回失敗した。再実行の権限が無かったため、依頼者へ再実行を依頼。その後のmain（PR #108統合後の `6a34de3`）のCIは全job成功し、#103の変更を含むmainが通ることを確認した。
 - Windows実機の確認（手順書の確認項目）は、依頼者の指示で後回し（実機が必要なため）。未実施のまま。
-- 「デスクトップ版ではタスク・検索の画面へメニューから移れない」（依頼者の判断事項として記録していたもの）は、共通画面が承認済みの設計（最初の画面はタスク、主ナビゲーションはタスク・文書・検索）と食い違っていたことが原因と判明。依頼者の指示（案A）で、Work APIのあるserverでは設計どおりにする変更を別の作業として実施（[状況](work-landing-navigation-status.md)、[計画](../plans/2026-10-08-work-landing-navigation.md)、[PR #112](https://github.com/AIrisu-072/knowledge-platform/pull/112)）。手順書の既知の制約から外し、実GUIの確認を起動直後のタスク画面とメニューからの移動に合わせて更新した（`ced8ed6` で26シナリオ・226項目が連続2回 `qualifying: true`）。
+- 「デスクトップ版ではタスク・検索の画面へメニューから移れない」（依頼者の判断事項として記録していたもの）は、共通画面が承認済みの設計（最初の画面はタスク、主ナビゲーションはタスク・文書・検索）と食い違っていたことが原因と判明。依頼者の指示（案A）で、Work APIのあるserverでは設計どおりにする変更を別の作業として実施（[状況](work-landing-navigation-status.md)、[計画](../plans/2026-10-08-work-landing-navigation.md)、[PR #112](https://github.com/AIrisu-072/knowledge-platform/pull/112)）。手順書の既知の制約から外し、実GUIの確認を起動直後のタスク画面とメニューからの移動に合わせて更新した（`b0aae6e` で26シナリオ・227項目が連続3回 `qualifying: true`）。
 
 ## 2026-10-08 05:30 UTC — 最終（5回目）の独立reviewの修正（`86f187b`）
 
