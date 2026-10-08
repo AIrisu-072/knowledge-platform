@@ -1,6 +1,33 @@
 # Audit Infrastructure v1：実行状況
 
-## 2026-10-08 — 単位C（Document受入・handoff・capability matrix最終版）（Draft PR #115、branch `claude/cool-darwin-7xh893`）
+## 2026-10-08 — 単位A〜Cのmain統合を完了（track完了）
+
+- 現在のGitHubの状態：
+  - 単位A（event契約）：PR #98 → main `643cc85`。main CI run 37699545947 SUCCESS。
+  - 単位B（Store・relay・運用手順）：PR #113 → main `dba8168`。exact-head `8a275b1` のCI run 37753371438 は全job SUCCESS。main CI run 37756243501 は、Organization受入の既知の断続的な503だけでFAILURE（単位Bの起因ではない。下の単位Cの節を参照）。
+  - 単位C（受入試験・引継ぎ・最終capability matrix）：PR #115 → main `712af6d`。exact-head `252e1a9` のCI run 37764414985 は全job SUCCESS（`rust-test`・`document-poc-runtime`・`required-check` を含む）。main CI run 37767198886 SUCCESS。
+- 依頼者の受入条件「Document業務transactionからAudit Storeまでの実試験と復旧証拠」は、`crates/audit-acceptance` のT1〜T5と `document_migration` で満たした。これらはmainのCI（`cargo nextest run --workspace`）で毎回実行される。各項目の分類・根拠・残りのgapは[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)§2.2の最終capability matrixを正とする。
+- 未実施・未検証（本trackの範囲外、または依頼者の手動作業）：
+  - 本番credential・実データ・本番migration・serverへの反映。導入手順・backup/restore契約・未検証事項は[運用手順](../../operations/audit-delivery-store.md)にある。
+  - PostgreSQL 18.6以外の版、process監視、複数relayの同時稼働。
+- 依頼者の判断待ち（承認状態：未決）：
+  - legal hold中のbody purgeとholdの優先
+  - `register_source_service` の記録に含めるsourceのcatalog kind
+  - ackに記録するepoch（probe時かcommit時か）
+  - reconcileの `repaired_*` を計画件数で記録すること
+- 他担当への引継ぎ：[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)の担当表を正とする。主な項目：
+  - Document：管理系の `authorization.denied` は記録に失敗しても握りつぶされる（D6）。実行時loginをstaging表のownerにしない（D5）。新しい監査typeは、catalogへの追加とStoreへの登録を済ませてからdeployする（D4）。
+  - Organization：Role・Delegation等のeventは、版付き拡張hookで追加する（O1〜O12）。
+  - Search：監査outboxの配送接続。
+  - Work/Organization：再起動後のfinding読取りが断続的に503を返す件の診断（main `dba8168` のCIで観測。Audit trackでは変更しない）。
+- 次のexact action：Audit trackとして進める実装は無い。次の場合に再開する。
+  - 依頼者が上の判断待ちを決めたとき
+  - 他担当が引継ぎの項目に応えたとき
+  - Documentが新しい監査typeやenum値を追加するとき（引継ぎD4の手順で、catalog・Store登録・golden・試験を加法的に追加する）
+
+再開時は、この節とGitHubの現在状態を先に確認する。
+
+## 2026-10-08 — 単位C（Document受入・handoff・capability matrix最終版）（PR #115、main `712af6d` に統合済み）
 
 - 前提（GitHubの状態）：単位AはPR #98でmain `643cc85`（main CI run 37699545947 SUCCESS）。単位BはPR #113でmain `dba8168`（exact-head `8a275b1` のCI run 37753371438で全job SUCCESS）。**main `dba8168` のpush CI（run 37756243501）：FAILURE**。失敗はjob `document-poc-runtime` の手順「Real Organization two-principal acceptance」だけで、rust-test（Audit 3 crateを含む）ほか全jobはSUCCESS。失敗内容は、再起動後のpersistence確認でWorkのfinding読取りが503を返したこと（`apps/document-web/e2e-organization/support.ts:71`）。同じ症状は、Work/Organizationに触れない別branchでも過去に3回出ている（run 37610285070、37564973501、37412067206）。この経路のfileは `b1c5c36..dba8168` で変わっておらず、PR #113・#111の各exact-headでは同じ手順がSUCCESSだった。よって単位Bの起因ではなく、既知の断続的な503と判断した。failed jobの再実行はAPIが403を返したため行えなかったが、`dba8168` をすべて含む単位CのPR #115のhead `660670d`（run 37761824323）で、rust-test以外の全job（job `document-poc-runtime` の手順「Real Organization two-principal acceptance」を含む）がSUCCESSだった。よって `dba8168` の503は既知の断続的な失敗であり、PR #111と#113の組合せは通ると確認した。原因の診断（503の内部code・stderrの公開）はWork/Organization担当への引継ぎ事項とする。
 - branch `claude/cool-darwin-7xh893`（PR #115）＝`dba8168`＋単位Cのcommit（作業はlocal worktree branch `audit-unit-c`）。code：`c9ca0a2`（crate `audit-acceptance`とT1）、`f7e626d`（T2）、`7c252f7`（T3）、`d9cd323`（T4）、`9929e14`（T5）、`ac16157`（Document migration互換、待ちの安定化）、`bf2afb1`（T1を全23 typeへ）、`02797ff`（README）、`65fa9f3`（未使用定数の削除）。docs：`3751c1c`（[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)）、`02de8a3`（[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)§2.2 最終capability matrix）、`e0a2e95`（本節）、後続のcommit（計画・active pointer）。PR #115のhead `660670d` の後：`b233652`（image取得の途中切断の再試行）、確認reviewのMinor 4件の反映 `facb755`・`591006a`・`df1bd19` と本更新。
@@ -22,7 +49,7 @@
   - ingest時のStore障害の直後、healthは次のprobeまで `circuit` open・gate okを示し得る（運用上の注意）。
 - 設計からの差分：なし（§2を初期状態と最終状態に分けただけ）。
 - 見送り（承認状態：依頼者判断待ち。単位Bから継続）：purgeとlegal holdの優先、`register_source_service` の記録のsource kind、ackのepoch（probe時かcommit時か）、reconcileの `repaired_*` を計画件数で記録すること。
-- 次のexact action：`audit-unit-c` のHEAD（`660670d` の後の5 commit）を `claude/cool-darwin-7xh893` へpush（PR #115のhead `660670d` からのfast-forward）→ PR #115のexact-head hosted CI → main統合 → main CI確認 → 本節とactive pointerを更新。
+- 結果：`252e1a9` までをpushした。exact-head CI run 37764414985 は全job SUCCESS。main `712af6d` へ統合し、main CI run 37767198886 もSUCCESSだった（上の節を参照）。
 
 ## 2026-10-08 — 単位B 差分の独立review（delta-security-correctness・docs-accuracy）の指摘反映（worktree branch、未push）
 
