@@ -102,3 +102,13 @@ CIは終端14job中12成功（Rust test/static・両macOS parity等を含む）�
 14:26追補：Mac整形/タグ試験compile修正head9494e68c3c313825a9e4d719e07eb24fa28fa191/tree59775dac38672156f648630b667314226d4832ebをfetch/fast-forwardで保持。変更は4file rustfmtとVecに対する誤った.expect除去のみ。タグは実compile後15件すべてBDC未対応のRED、paint16成功・既存child1 ignore、旧15baselineは全field/拒否完全一致。初回タグcompile失敗はbehavioral REDとして数えない。
 
 gs/page group4件、Diff page残余/新vector5件、native vector2件、派生cache4件をtest-onlyで追加準備。top-level残余は次のprivate seam試験で補う。Nodeは現在main114組合せでbuild成功、実行したload/runtime/API契約glob257件成功・skip0。旧259とはglobが異なるので増減比較しない。
+
+## 2026-10-08 15:00 UTC — gs/タグ/Diffの初回GREEN試行前
+
+184676efのMac実試験は全compile成功、gs4件RED、Diff単体4RED/1control成功、cache2RED/2control成功、native vector2RED（期待Partialに対しNone/Full）。00fa83b/tree d8eac7bbのMac formatter-only4file保存をfetch/fast-forwardし、製品挙動不変を保持した。
+
+その実REDに基づき、opaque ExtGState/default page-group、独立font decodeとParentTree/MCID/ActualTextを検証する内部structure module、Diffのvectors/structureと未知残余fieldの未検証表示、派生cache世代を実装した。旧Version/snapshot/manifest/DSI profileは変更しない。
+
+初回独立reviewはCMap範囲の巨大展開・decode前の出力増幅・空ParentTree keyの未計数を指摘した。未防御の危険fixtureは実行せず、完全な限定CMap grammarをhelper前に検査し、128KiB source、固定1–2byte code、16,384 unique mappings、1 BMP scalar/文字、事前出力見積を課した。ParentTreeはpairも課金し未所有keyを拒否。タグだけのページも色space/page-group/outputintent検査を必須にし、Artifact propertyを明示subsetにした。
+
+修正後の独立scoped reviewは全指摘ADDRESS、first Mac試行へGO。structure.rs SHA256 dbf8bbfb7ac644a787394392ae90ff04b021a5a2ec8812a0f9b453d6cbc46fcf。11純粋resource/grammar試験とtag19試験は新source未実行。Diff/cacheも静的GO。次はexact headのMac compile/GREEN・旧corpus全比較・原本の補助native観測、その後Linux実sandbox/API small。資格済み/全PDF対応/大量合格とは扱わない。

@@ -89,3 +89,9 @@ DSI cacheはfile＋profile、Diff cacheもsnapshot＋profile等がkeyで、worke
 934のclip左端はMediaBoxより約0.000008871pt内側なので、任意epsilonで広げない。変換済み軸平行矩形が実際のnative text/object/path boundsを包含する場合だけ、意味へ影響しないclipと証明する。stroke boundsは保守的に広げ、証明不能・文字/image/pathを切るclipは拒否する。既存Form imageのBBox/CTM projectionは変更しない。
 
 初段は黒textとopaque vector色を対象にする。非黒textの文字範囲対応やTable構造は検証できるまでは拒否し、935全体の成功を約束しない。色spaceのdefault override、未知state、未解釈構造を単にallowlistへ追加しない。
+
+### 限定font/Artifactの検証境界
+
+新tagged fontのToUnicodeは、helperが範囲を列挙する前に完全な限定CMap grammarを検査する。CMapは128KiB、固定1–2byte code、最大16,384 unique mappings、1文字につき1つの非surrogate BMP scalarに限定し、mapping割当とdecode出力を事前評価する。未知grammar・複合置換・範囲超過は拒否する。実通知934のCMapは補助観測で3,745bytes/227mappingsだが、Rustでの合格証拠は別途必要。
+
+Artifactの描画/文字は残す。初段propertyは型を検証したPagination Header+Top / Footer+Bottom等に限定し、未知値や未資格の明示BBoxを拒否する。ActualTextは独立native文字列と完全一致する冗長置換だけを受け、異なる置換の意味は未対応として拒否する。文字列identityから空白を削除しない。独立extractor間のlayout-whitespace-insensitive照合は補助checkのみ。

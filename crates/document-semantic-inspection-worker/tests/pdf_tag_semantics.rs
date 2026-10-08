@@ -458,3 +458,50 @@ fn optional_content_marked_sequence_fails_closed() {
         WorkerFailureCode::UnsupportedSemanticConstruct,
     );
 }
+
+#[test]
+fn tag_only_page_rejects_unqualified_colour_and_compositing_context() {
+    fingerprint(&TaggedPdf::baseline().bytes());
+    let mut colors = TaggedPdf::baseline();
+    colors.dictionary(colors.page).get_mut(b"Resources").unwrap().as_dict_mut().unwrap()
+        .set("ColorSpace", dictionary! {"DefaultGray" => "DeviceGray"});
+    assert_rejected(&colors.bytes(), WorkerFailureCode::UnsupportedSemanticConstruct);
+    let mut grouped = TaggedPdf::baseline();
+    grouped.dictionary(grouped.page).set("Group", dictionary! {
+        "Type" => "Group", "S" => "Transparency", "CS" => "DeviceRGB", "K" => true,
+    });
+    assert_rejected(&grouped.bytes(), WorkerFailureCode::UnsupportedSemanticConstruct);
+    let mut output = TaggedPdf::baseline();
+    output.dictionary(output.catalog).set("OutputIntents", Object::Array(vec![]));
+    assert_rejected(&output.bytes(), WorkerFailureCode::UnsupportedSemanticConstruct);
+}
+
+#[test]
+fn unowned_empty_parent_tree_key_is_rejected() {
+    fingerprint(&TaggedPdf::baseline().bytes());
+    let mut broken = TaggedPdf::baseline();
+    let nums = broken.dictionary(broken.parent_tree).get_mut(b"Nums").unwrap().as_array_mut().unwrap();
+    nums.extend([Object::Integer(99), Object::Array(vec![])]);
+    assert_rejected(&broken.bytes(), WorkerFailureCode::ParserDisagreement);
+}
+
+#[test]
+fn redundant_unicode_actual_text_preserves_tagged_identity() {
+    let baseline = TaggedPdf::baseline().bytes();
+    let mut tagged = TaggedPdf::baseline();
+    let mut encoded = vec![0xfe, 0xff];
+    for unit in FIRST.encode_utf16() { encoded.extend(unit.to_be_bytes()); }
+    tagged.dictionary(tagged.paragraphs[0]).set("ActualText", Object::string_literal(encoded));
+    assert_eq!(fingerprint(&baseline), fingerprint(&tagged.bytes()));
+}
+
+#[test]
+fn tables_and_ambiguous_nested_mcid_ownership_are_rejected() {
+    fingerprint(&TaggedPdf::baseline().bytes());
+    let mut table = TaggedPdf::baseline();
+    table.dictionary(table.document_element).set("S", "Table");
+    assert_rejected(&table.bytes(), WorkerFailureCode::UnsupportedSemanticConstruct);
+    let mut nested = TaggedPdf::baseline();
+    nested.replace_content(format!("/P << /MCID 0 >> BDC\n{}EMC\n", nested.content_text()));
+    assert_rejected(&nested.bytes(), WorkerFailureCode::UnsupportedSemanticConstruct);
+}

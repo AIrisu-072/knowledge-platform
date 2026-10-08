@@ -33,7 +33,7 @@ Files: worker `src/adapters/pdf.rs`, `pdf/graphics.rs`, tests `pdf_paint_semanti
 - [x] 既存成功15fixture baseline（成功10・拒否5）を旧main114で保持する。
 - [x] paint5件のactual REDをMacで確認する（a7f759fe）。
 - [x] 有限path/default state、segment bounds・clip包含proofを実装し、16件GREEN/旧baseline完全一致を確認する（fc42b894）。
-- [ ] ExtGState/page-group4件を実REDにし、既定Normal/完全不透明だけの参照解決を追加する。
+- [x] ExtGState/page-group4件を実REDにし、既定Normal/完全不透明だけの参照解決を追加する。
 - [ ] 曲線・状態復元・色space・切れたclip・Form交差・各予算境界を追加し、pinned rasterとnative evidenceで検証する。
 - [ ] Mac rustfmt・focused test・全旧corpus比較・独立reviewを通し同PRへ保存する。
 
@@ -43,7 +43,7 @@ Files: worker `pdf/structure.rs`, parent `pdf.rs`, tests `pdf_tag_semantics.rs`�
 
 Interface: `StructureInspector::new(&Document)`、`inspect_page(&mut self, page_id, &[Operation], Option<&Dictionary>, &mut PdfDecodeBudget) -> Result<PageStructure, WorkerFailure>`、`finish()`。`PageStructure`はoptional canonical projectionと独立native textを返す。
 
-- [ ] test-only15件のコンパイル問題を直し、BD未対応によるactual REDを確認する。compile失敗をREDと扱わない。
+- [x] test-only15件のコンパイル問題を直し、BD未対応によるactual REDを確認する。compile失敗をREDと扱わない。
 - [ ] bounded treeを一度だけwalkし、page-scoped MCID/ParentTree/Pg/K/RoleMapとmarked contentの一対一対応を検証する。
 - [ ] native textをbounded font decodeで照合し、ActualText・読順・Figureの関係を保持する。未対応Table/OC/曖昧構造は拒否する。
 - [ ] 既存textはrawのまま保持。MCID/object/resource renumber、Unicode ActualText、Artifact描画、循環/欠落/未知key、深さ/node限界を実証する。
@@ -53,7 +53,7 @@ Interface: `StructureInspector::new(&Document)`、`inspect_page(&mut self, page_
 
 Files: diff-worker `src/adapters/pdf.rs`とtests、application `document_diff/snapshot.rs`とtests。
 
-- [ ] compare_pageのnew/residual fieldだけ、他頁textとの混合差をJSON単体でREDにする。native vector差でもPartialを確認する。
+- [x] compare_pageのnew/residual fieldだけ、他頁textとの混合差とnative vector差のactual REDを確認する（Partialに対しNone/Full）。
 - [ ] vectors/structureの意味変更をpage単位で表示し、範囲不確定はPartialにする。page/top-level残余field差は未検証へ落とす。
 - [ ] CACHE_DOMAINだけ新世代にし、from_pair/from_resultの一致と旧key分離を検証する。snapshot/semantic/source/manifestのv0 goldenは不変。
 - [ ] mixed-pages、重複page、未知top-level field、再比較/cache hit時の認可・監査と全Diff回帰を確認する。

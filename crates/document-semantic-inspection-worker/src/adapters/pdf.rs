@@ -20,6 +20,7 @@ use crate::{WorkerFailure, WorkerFailureCode};
 use super::{AdapterProfile, SemanticAdapter, SemanticAdapterOutput, canonical_json_bytes};
 
 mod graphics;
+mod structure;
 
 const PDFIUM_RELEASE: &str = "151.0.7881.0";
 const MAX_DECOMPRESSED_STREAM: usize = 64 * 1024 * 1024;
@@ -50,6 +51,7 @@ struct LopdfFacts {
     vector_paints: Vec<Vec<Value>>,
     safety_clips: Vec<Vec<[f64; 4]>>,
     vector_bounds: Vec<Vec<[f64; 4]>>,
+    structures: Vec<structure::PageStructure>,
 }
 
 impl PdfAdapter {
@@ -155,6 +157,16 @@ impl PdfAdapter {
                     )
                 })?
                 .all();
+            if let Some(independent) = &structural.structures[page_index].native_text {
+                // Layout whitespace differs between native extractors. This is
+                // only a cross-check: neither identity-bearing text is stripped.
+                if !text.chars().filter(|ch| !ch.is_whitespace()).eq(
+                    independent.chars().filter(|ch| !ch.is_whitespace()),
+                ) {
+                    return Err(failure(WorkerFailureCode::ParserDisagreement,
+                        "tagged PDF native text differs between independent extractors"));
+                }
+            }
             if !text.trim().is_empty() {
                 any_text = true;
             }
@@ -282,6 +294,9 @@ impl PdfAdapter {
             total_vectors = total_vectors.saturating_add(vectors.len());
             if !vectors.is_empty() {
                 semantic_page["vectors"] = json!(vectors);
+            }
+            if let Some(structure) = &structural.structures[page_index].projection {
+                semantic_page["structure"] = structure.clone();
             }
             semantic_pages.push(semantic_page);
         }
@@ -540,6 +555,8 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
     let mut vector_paints = Vec::with_capacity(pages.len());
     let mut safety_clips = Vec::with_capacity(pages.len());
     let mut vector_bounds = Vec::with_capacity(pages.len());
+    let mut structures = Vec::with_capacity(pages.len());
+    let mut structure_inspector = structure::StructureInspector::new(document)?;
     let mut form_names = BTreeSet::new();
 
     for (page_number, page_id) in pages {
@@ -547,6 +564,9 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         let page_content = decode_page_content(document, page_id, page_number, &mut decode_budget)?;
         let operations = decode_content_operations(&page_content, page_number, "page")?;
         let resources = inherited_page_resources(document, page_id, page_number)?;
+        let page_structure = structure_inspector.inspect_page(
+            page_id, &operations, resources, &mut decode_budget,
+        )?;
         let mut paint_context = PdfPaintContext {
             document,
             page_number,
@@ -559,6 +579,9 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
             safety_clips: Vec::new(),
             vector_bounds: Vec::new(),
             path_segments: 0,
+            extended_graphics_seen: false,
+            form_seen: false,
+            page_structure_checked: page_structure.native_text.is_some(),
         };
         collect_content_paints(
             &mut paint_context,
@@ -573,6 +596,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
                 format!("lopdf page {page_number}: {error}"),
             )
         })?;
+        graphics::validate_page_context(&paint_context, page, resources)?;
         let mut annotation_count = 0usize;
         let mut link_count = 0usize;
 
@@ -654,7 +678,9 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         vector_paints.push(paint_context.vector_paints);
         safety_clips.push(paint_context.safety_clips);
         vector_bounds.push(paint_context.vector_bounds);
+        structures.push(page_structure);
     }
+    structure_inspector.finish()?;
 
     Ok(LopdfFacts {
         page_count: annotation_counts.len(),
@@ -666,6 +692,7 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         vector_paints,
         safety_clips,
         vector_bounds,
+        structures,
     })
 }
 
@@ -728,6 +755,9 @@ struct PdfPaintContext<'a> {
     safety_clips: Vec<[f64; 4]>,
     vector_bounds: Vec<[f64; 4]>,
     path_segments: usize,
+    extended_graphics_seen: bool,
+    form_seen: bool,
+    page_structure_checked: bool,
 }
 
 fn decode_page_content(
@@ -935,6 +965,10 @@ fn collect_content_paints(
         enforce_operation_limit(context.operations_seen, page_number, "operation traversal")?;
 
         match operation.operator.as_str() {
+            "BMC" | "BDC" | "EMC" if depth == 0 && context.page_structure_checked => {
+                // Validated against the full structure/ParentTree by the
+                // independent bounded structure pass, never a generic no-op.
+            }
             "q" if operation.operands.is_empty() => {
                 if saved_states.len() >= MAX_PDF_OBJECT_DEPTH {
                     return Err(failure(
@@ -997,6 +1031,7 @@ fn collect_content_paints(
             "BT" | "ET" | "Tc" | "Tw" | "Tz" | "TL" | "Ts" | "Td" | "TD" | "Tm" | "T*" => {}
             operator => {
                 if graphics::handle(context, operation, state, &mut path, resources)? {
+                    context.extended_graphics_seen = true;
                     continue;
                 }
                 return Err(failure(
@@ -1252,6 +1287,7 @@ fn collect_xobject_paint(
             Ok(())
         }
         b"Form" => {
+            context.form_seen = true;
             if stream.dict.has(b"Group") || stream.dict.has(b"OC") {
                 return Err(failure(
                     WorkerFailureCode::UnsupportedSemanticConstruct,

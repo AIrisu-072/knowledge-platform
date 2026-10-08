@@ -114,20 +114,10 @@ pub(super) fn handle(
     let op = operation.operator.as_str();
     let args = &operation.operands;
     let n = context.page_number;
+    validate_resources(context.document, resources)?;
     match op {
+        "gs" => validate_extgstate(context, operation, resources)?,
         "g" | "G" | "rg" | "RG" => {
-            if let Some(resources) = resources {
-                match resources.get_deref(b"ColorSpace", context.document) {
-                    Ok(value) => {
-                        let spaces = value.as_dict().map_err(|_| malformed())?;
-                        if spaces.has(b"DefaultGray") || spaces.has(b"DefaultRGB") {
-                            return Err(unsupported());
-                        }
-                    }
-                    Err(lopdf::Error::DictKey(_)) => {}
-                    Err(_) => return Err(malformed()),
-                }
-            }
             let values = numeric_values(args, if op.len() == 1 { 1 } else { 3 }, n, "color")?;
             if values.iter().any(|v| !(0.0..=1.0).contains(v)) {
                 return Err(unsupported());
@@ -385,6 +375,70 @@ pub(super) fn validate_clip_bounds(
             {
                 return Err(unsupported());
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_resources(document: &Document, resources: Option<&lopdf::Dictionary>) -> Result<(), WorkerFailure> {
+    if let Some(resources) = resources {
+        match resources.get_deref(b"ColorSpace", document) {
+            Ok(value) => {
+                let spaces = value.as_dict().map_err(|_| malformed())?;
+                if spaces.has(b"DefaultGray") || spaces.has(b"DefaultRGB") { return Err(unsupported()); }
+            }
+            Err(lopdf::Error::DictKey(_)) => {}
+            Err(_) => return Err(malformed()),
+        }
+    }
+    Ok(())
+}
+
+fn validate_extgstate(context: &PdfPaintContext<'_>, operation: &lopdf::content::Operation,
+    resources: Option<&lopdf::Dictionary>) -> Result<(), WorkerFailure> {
+    let [Object::Name(name)] = operation.operands.as_slice() else { return Err(malformed()); };
+    let states = resources.ok_or_else(malformed)?.get_deref(b"ExtGState", context.document)
+        .and_then(Object::as_dict).map_err(|_| malformed())?;
+    let state = states.get_deref(name, context.document).and_then(Object::as_dict).map_err(|_| malformed())?;
+    for (key, value) in state.iter() {
+        match key.as_slice() {
+            b"Type" if value.as_name().ok() == Some(b"ExtGState") => {}
+            b"BM" if value.as_name().ok() == Some(b"Normal") => {}
+            b"ca" | b"CA" => {
+                if numeric_values(std::slice::from_ref(value), 1, context.page_number, "alpha")?[0] != 1.0 {
+                    return Err(unsupported());
+                }
+            }
+            b"SMask" if value.as_name().ok() == Some(b"None") => {}
+            _ => return Err(unsupported()),
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_page_context(context: &PdfPaintContext<'_>, page: &lopdf::Dictionary,
+    resources: Option<&lopdf::Dictionary>) -> Result<(), WorkerFailure> {
+    if !context.extended_graphics_seen && !context.page_structure_checked { return Ok(()); }
+    validate_resources(context.document, resources)?;
+    let catalog = context.document.trailer.get_deref(b"Root", context.document)
+        .and_then(Object::as_dict).map_err(|_| malformed())?;
+    if catalog.has(b"OutputIntents") { return Err(unsupported()); }
+    let group = match page.get_deref(b"Group", context.document) {
+        Ok(group) => group.as_dict().map_err(|_| malformed())?,
+        Err(lopdf::Error::DictKey(_)) => return Ok(()),
+        Err(_) => return Err(malformed()),
+    };
+    // Page transparency groups are qualified only for opaque native text and
+    // paths. Images/Form groups need a separate compositing proof.
+    if !context.paint_events.is_empty() || context.form_seen { return Err(unsupported()); }
+    if group.get(b"S").and_then(Object::as_name).ok() != Some(b"Transparency")
+        || group.get(b"CS").and_then(Object::as_name).ok() != Some(b"DeviceRGB") { return Err(unsupported()); }
+    for (key, value) in group.iter() {
+        match key.as_slice() {
+            b"Type" if value.as_name().ok() == Some(b"Group") => {}
+            b"S" | b"CS" => {}
+            b"I" | b"K" if value.as_bool().ok() == Some(false) => {}
+            _ => return Err(unsupported()),
         }
     }
     Ok(())
