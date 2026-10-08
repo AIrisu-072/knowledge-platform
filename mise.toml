@@ -398,6 +398,35 @@ run = [
   "pnpm --filter @knowledge-platform/document-web exec playwright test -c playwright.desktop-bridge.config.ts",
 ]
 
+[tasks."desktop:web"]
+description = "Production web UI build that the desktop shell embeds (frontendDist); required before any desktop compile"
+run = ["pnpm --filter @knowledge-platform/document-web build"]
+
+[tasks."desktop:check"]
+description = "Desktop shell (separate Cargo workspace): format, lint, unit and config tests, its own dependency policy and the transport-shim test. Local only; Linux needs WebKitGTK 4.1 dev packages"
+depends = ["desktop:web"]
+dir = "apps/desktop/src-tauri"
+run = [
+  "cargo fmt --check",
+  "cargo clippy --locked --all-targets -- -D warnings",
+  "cargo test --locked",
+  "cargo deny check",
+  "node --test ../e2e/transport-shim.test.mjs",
+]
+
+[tasks."desktop:build"]
+description = "Build the production web UI, then the desktop shell that embeds it (debug build; add --release for a release binary)"
+depends = ["desktop:web"]
+run = ["cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml"]
+
+[tasks."desktop:gui:e2e"]
+description = "Drive the REAL desktop app GUI (tauri-driver + WebKitWebDriver + Xvfb + xdotool + xclip) against a real synthetic backend. Local Linux verification only, not a CI job and not Windows/WebView2 evidence"
+depends = ["desktop:build"]
+run = [
+  "cargo build --locked -p organization-server -p document-semantic-inspection-worker -p document-diff-worker",
+  "node apps/desktop/e2e/run.mjs",
+]
+
 [tasks."document:poc:runtime"]
 description = "Qualify the real two-process Document PoC runtime and same-origin GUI"
 run = '''
