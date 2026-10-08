@@ -4,7 +4,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { workApi, WorkApiError } from '../src/api/work-api';
 import { OrganizationProvider } from '../src/application/organization-context';
-import { landingScreen, workAvailabilityQuery } from '../src/application/work-availability';
+import { AVAILABILITY_RECHECK_MS, landingScreen, workAvailabilityQuery } from '../src/application/work-availability';
 import { AppShell } from '../src/components/app-shell/AppShell';
 
 // The approved design: when the server offers the Work API, the primary navigation
@@ -88,6 +88,39 @@ test.each([
   await screen.findByRole('heading', { name: 'ローカルWorkspace' });
   await waitFor(() => expect(links()).toEqual(ORGANIZATION_LINKS));
   expect(probe).toHaveBeenCalledTimes(2);
+});
+
+test('分からないまま同じ画面に留まっても、一定の間隔で確かめ直し、Work APIが使えるようになればメニューに出す', async () => {
+  jest.useFakeTimers();
+  try {
+    const probe = jest.spyOn(workApi, 'getSession').mockRejectedValueOnce(new WorkApiError(502, 'request_failed')).mockResolvedValue(session);
+    const { client } = setup('/documents');
+    await waitFor(() => expect(client.getQueryState(workAvailabilityQuery.queryKey)?.status).toBe('error'));
+    expect(links()).toEqual(DOCUMENT_LINKS);
+    await act(async () => { jest.advanceTimersByTime(AVAILABILITY_RECHECK_MS); });
+    await waitFor(() => expect(links()).toEqual(ORGANIZATION_LINKS));
+    expect(screen.getByRole('heading', { name: '文書一覧' })).toBeInTheDocument();
+    expect(probe).toHaveBeenCalledTimes(2);
+    // Once known, it is not asked again.
+    await act(async () => { jest.advanceTimersByTime(AVAILABILITY_RECHECK_MS * 3); });
+    expect(probe).toHaveBeenCalledTimes(2);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('文書だけのserverと分かれば、確かめ直さない', async () => {
+  jest.useFakeTimers();
+  try {
+    const probe = jest.spyOn(workApi, 'getSession').mockRejectedValue(new WorkApiError(404, 'request_failed'));
+    const { client } = setup('/documents');
+    await waitFor(() => expect(client.getQueryData(workAvailabilityQuery.queryKey)).toBe('unavailable'));
+    await act(async () => { jest.advanceTimersByTime(AVAILABILITY_RECHECK_MS * 3); });
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(links()).toEqual(DOCUMENT_LINKS);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test.each([['/tasks', 'タスク'], ['/search', '検索']])('%s では画面自身がWork APIを読むので、shellは判定の要求を出さない', async (entry, heading) => {
