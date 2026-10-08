@@ -13,8 +13,7 @@ use crate::WorkerError;
 
 const MAX_COMBINED_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PAGES: usize = 4_096;
-const PARSER_PROVENANCE: &str =
-    "document-diff-pdf-v0;bounded-graphics-structure=1;dsi-pdf-v0;pdfium-render=0.9.4;pdfium=151.0.7881.0;lopdf=0.45.0";
+const PARSER_PROVENANCE: &str = "document-diff-pdf-v0;bounded-graphics-structure=1;dsi-pdf-v0;pdfium-render=0.9.4;pdfium=151.0.7881.0;lopdf=0.45.0";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PdfComparator;
@@ -168,7 +167,9 @@ impl PdfComparator {
             }
         }
         if residual_semantics_differ(&old_projection, &new_projection, &["pages", "form_values"]) {
-            regions.push(unverified_region(UnverifiedReason::UnsupportedSemanticConstruct));
+            regions.push(unverified_region(
+                UnverifiedReason::UnsupportedSemanticConstruct,
+            ));
         }
         if changes.is_empty() && regions.is_empty() {
             regions.push(unverified_region(
@@ -320,15 +321,31 @@ fn compare_page(
             )?;
         }
     }
-    if base["images"] != target["images"] || base["paint_order"] != target["paint_order"]
-        || base["vectors"] != target["vectors"] || base["structure"] != target["structure"]
-        || residual_semantics_differ(base, target, &["index", "text", "links", "images", "paint_order", "vectors", "structure"]) {
+    if base["images"] != target["images"]
+        || base["paint_order"] != target["paint_order"]
+        || base["vectors"] != target["vectors"]
+        || base["structure"] != target["structure"]
+        || residual_semantics_differ(
+            base,
+            target,
+            &[
+                "index",
+                "text",
+                "links",
+                "images",
+                "paint_order",
+                "vectors",
+                "structure",
+            ],
+        )
+    {
         regions.push(WorkerUnverifiedRegion {
             base: Some(page(old_index)),
             target: Some(page(new_index)),
             reason: UnverifiedReason::UnsupportedSemanticConstruct,
             navigation_hint: Some(
-                "描画・構造の差または未対応情報があります。両原本の該当ページを確認してください".to_owned(),
+                "描画・構造の差または未対応情報があります。両原本の該当ページを確認してください"
+                    .to_owned(),
             ),
         });
     }
@@ -339,9 +356,9 @@ fn residual_semantics_differ(base: &Value, target: &Value, known_fields: &[&str]
     let (Some(base), Some(target)) = (base.as_object(), target.as_object()) else {
         return true;
     };
-    base.keys().chain(target.keys()).any(|key| {
-        !known_fields.contains(&key.as_str()) && base.get(key) != target.get(key)
-    })
+    base.keys()
+        .chain(target.keys())
+        .any(|key| !known_fields.contains(&key.as_str()) && base.get(key) != target.get(key))
 }
 
 fn page(index: usize) -> SourceLocator {
@@ -456,12 +473,28 @@ mod tests {
     #[test]
     fn top_level_residual_semantics_are_not_hidden_by_known_page_changes() {
         let base = json!({"pages": [{"text": "old"}], "form_values": {}, "future": {"order": 1}});
-        let changed = json!({"pages": [{"text": "new"}], "form_values": {}, "future": {"order": 2}});
-        assert!(residual_semantics_differ(&base, &changed, &["pages", "form_values"]));
-        assert!(residual_semantics_differ(&changed, &json!({"pages": [], "form_values": {}}), &["pages", "form_values"]));
-        assert!(!residual_semantics_differ(&base, &base, &["pages", "form_values"]));
-        assert!(!residual_semantics_differ(&json!({"pages": [1], "form_values": {}}),
-            &json!({"pages": [2], "form_values": {}}), &["pages", "form_values"]));
+        let changed =
+            json!({"pages": [{"text": "new"}], "form_values": {}, "future": {"order": 2}});
+        assert!(residual_semantics_differ(
+            &base,
+            &changed,
+            &["pages", "form_values"]
+        ));
+        assert!(residual_semantics_differ(
+            &changed,
+            &json!({"pages": [], "form_values": {}}),
+            &["pages", "form_values"]
+        ));
+        assert!(!residual_semantics_differ(
+            &base,
+            &base,
+            &["pages", "form_values"]
+        ));
+        assert!(!residual_semantics_differ(
+            &json!({"pages": [1], "form_values": {}}),
+            &json!({"pages": [2], "form_values": {}}),
+            &["pages", "form_values"]
+        ));
     }
 
     #[test]
@@ -473,7 +506,16 @@ mod tests {
         let mut budget = ComparisonBudget::new(100, 100);
         let mut changes = vec![];
         let mut regions = vec![];
-        compare_page(&base, &target, 0, 0, &mut budget, &mut changes, &mut regions).unwrap();
+        compare_page(
+            &base,
+            &target,
+            0,
+            0,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
         assert!(changes.iter().any(|change| change.facet == "pdf_structure"));
         assert_unverified_page(&regions, 0, 0);
     }

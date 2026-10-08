@@ -160,11 +160,15 @@ impl PdfAdapter {
             if let Some(independent) = &structural.structures[page_index].native_text {
                 // Layout whitespace differs between native extractors. This is
                 // only a cross-check: neither identity-bearing text is stripped.
-                if !text.chars().filter(|ch| !ch.is_whitespace()).eq(
-                    independent.chars().filter(|ch| !ch.is_whitespace()),
-                ) {
-                    return Err(failure(WorkerFailureCode::ParserDisagreement,
-                        "tagged PDF native text differs between independent extractors"));
+                if !text
+                    .chars()
+                    .filter(|ch| !ch.is_whitespace())
+                    .eq(independent.chars().filter(|ch| !ch.is_whitespace()))
+                {
+                    return Err(failure(
+                        WorkerFailureCode::ParserDisagreement,
+                        "tagged PDF native text differs between independent extractors",
+                    ));
                 }
             }
             if !text.trim().is_empty() {
@@ -565,7 +569,10 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         let operations = decode_content_operations(&page_content, page_number, "page")?;
         let resources = inherited_page_resources(document, page_id, page_number)?;
         let page_structure = structure_inspector.inspect_page(
-            page_id, &operations, resources, &mut decode_budget,
+            page_id,
+            &operations,
+            resources,
+            &mut decode_budget,
         )?;
         let mut paint_context = PdfPaintContext {
             document,
