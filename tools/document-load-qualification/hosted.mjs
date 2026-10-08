@@ -3,10 +3,11 @@ import {join,resolve}from'node:path';
 import {loadCorpus,sha256}from'./corpus.mjs';
 import {observeResources}from'./safety.mjs';
 import {runQualification}from'./controller.mjs';
-import {workerProbeArguments} from './worker-probe.mjs';
+import {sanitizeWorkerDiagnostic,workerProbeArguments} from './worker-probe.mjs';
 import {inspectionDiagnosticSql,publicationPrerequisiteSql,sanitizePublicationPrerequisites} from './diagnostics.mjs';
 import {postgresVersionArgs}from'../document-poc-runtime/postgres-readiness.mjs';
 const GiB=1024**3;
+export function normalizeWorkerResult(result,binding){return{...sanitizeWorkerDiagnostic(result),binding};}
 export function loadEnabled(env,prebuilt){
  if(env.KP_DOCUMENT_LOAD_SMALL===undefined && env.KP_DOCUMENT_LOAD_PLAN===undefined)return false;
  if(env.KP_DOCUMENT_LOAD_PLAN!==undefined && (typeof env.KP_DOCUMENT_LOAD_PLAN!=='string' || !env.KP_DOCUMENT_LOAD_PLAN || env.KP_DOCUMENT_LOAD_SMALL!==undefined))throw Error('Use one explicit load mode');
@@ -66,19 +67,19 @@ export async function runDocumentLoad({root,directory,runId,sourceHead,artifacts
    return JSON.parse(await run('document-load-inspection-diagnostic','docker',query,{...process.env,PGPASSWORD:password},10000));
   };
   const diagnoseWorker=async(fileId,binding)=>{
-   const asset=corpus.assets.find(item=>item.id===binding?.assetId && item.sha256===binding?.sha256);
+   const asset=[...corpus.assets,...corpus.negativeAssets].find(item=>item.id===binding?.assetId && item.sha256===binding?.sha256);
    if(!asset)throw Error('No bound diagnostic original');
    const query=postgresVersionArgs(cid);query[query.length-1]=publicationPrerequisiteSql(fileId,asset.sha256,asset.bytes.length);
    const prerequisites=sanitizePublicationPrerequisites(JSON.parse(await run('document-load-publication-prerequisites','docker',query,{...process.env,PGPASSWORD:password},10000)));
    if(prerequisites.status!=='observed' || !prerequisites.isWorking || prerequisites.requiresContentClassification || !prerequisites.mediaTypeMatches || !prerequisites.rawHashMatches || !prerequisites.sizeMatches)return{status:'unavailable',binding:prerequisites};
    const executable=join(resolve(root,process.env.CARGO_TARGET_DIR??'target'),'debug','examples','document-load-inspection');
    const result=JSON.parse(await run('document-load-worker-diagnostic',executable,workerProbeArguments({asset,assetDirectory:join(target,'assets'),worker,pdfium}),process.env,15000));
-   return{...result,binding:prerequisites};
+   return normalizeWorkerResult(result,prerequisites);
   };
   report=await runQualification({directory:target,runId,plan,previousReport,corpus,runtime:{observe,identity,restart,diagnosePublication,diagnoseWorker,evidenceClass:'owned-real-process'},probeFactory:options=>new DocumentProbe({...options,humanUrl:human,agentUrl:agent})});
  }catch{report={schemaVersion:1,status:'FAILED',failureCode:'official-small-prerequisite-failed',productionSloClaim:false};await writeFile(join(target,'report.json'),JSON.stringify(report)+'\n',{mode:0o600});}
  // Only fixed categories and numeric aggregates are emitted; private files stay local.
- console.log(JSON.stringify({documentLoadQualification:{status:report.status,stage:report.stage??'small',documentCount:report.documentCount??2,failureCode:report.failureCode??null,failureDiagnostic:report.failureDiagnostic??null,inspectionDiagnostic:report.inspectionDiagnostic??null,workerDiagnostic:report.workerDiagnostic??null,publicationPrerequisites:report.publicationPrerequisites??null,counts:report.counts??null,metricQualification:report.metricQualification??'measurement-unavailable',metrics:report.metrics??null,timings:report.timings??{},productionSloClaim:false}}));
+ console.log(JSON.stringify({documentLoadQualification:{status:report.status,stage:report.stage??'small',documentCount:report.documentCount??2,failureCode:report.failureCode??null,failureDiagnostic:report.failureDiagnostic??null,inspectionDiagnostic:report.inspectionDiagnostic??null,workerDiagnostic:report.workerDiagnostic??null,publicationPrerequisites:report.publicationPrerequisites??null,counts:report.counts??null,negativeFailureCode:report.negativeFailureCode??null,negativeCorpus:report.negativeCorpus?{status:report.negativeCorpus.status,counts:report.negativeCorpus.counts,contentQualityClaim:false}:null,metricQualification:report.metricQualification??'measurement-unavailable',metrics:report.metrics??null,timings:report.timings??{},productionSloClaim:false}}));
  if(report.status!=='SUCCEEDED')throw Error('Document load qualification did not succeed; preserve its separate report');
  return {status:report.status,stage:report.stage,documentCount:report.documentCount,fingerprint:report.fingerprint,metrics:report.metrics};
 }

@@ -529,3 +529,83 @@ fn nonzero_crop_cannot_silently_drop_text_outside_native_extraction_frame() {
         document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
     );
 }
+
+#[test]
+fn nested_graphics_state_restoration_matches_explicit_dash_colour_width_and_ctm() {
+    let scoped = native_text_pdf(
+        "1 j\n\
+         q 0.25 G 2 w [8 3] 1 d 1 0 0 1 10 0 cm\n\
+         q 0.8 G 4 w [2 5] 2 d 2 0 0 1 5 0 cm 20 40 m 60 40 l S Q\n\
+         20 80 m 100 80 l S Q\n\
+         20 120 m 100 120 l S",
+        UNUSED_PIXEL,
+    );
+    // Inverse matrices restore the same nondefault outer state, followed by
+    // the original state. All three painted lines remain clear of the text.
+    let explicit = native_text_pdf(
+        "1 j\n\
+         0.25 G 2 w [8 3] 1 d 1 0 0 1 10 0 cm\n\
+         0.8 G 4 w [2 5] 2 d 2 0 0 1 5 0 cm 20 40 m 60 40 l S\n\
+         0.25 G 2 w [8 3] 1 d 0.5 0 0 1 -2.5 0 cm 20 80 m 100 80 l S\n\
+         0 G 1 w [] 0 d 1 0 0 1 -10 0 cm 20 120 m 100 120 l S",
+        UNUSED_PIXEL,
+    );
+    assert_eq!(
+        render_rgba(&scoped),
+        render_rgba(&explicit),
+        "q/Q restores every state component used by the subsequent strokes"
+    );
+    assert_eq!(fingerprint(&scoped), fingerprint(&explicit));
+}
+
+#[test]
+fn evenodd_and_nonzero_fill_rules_preserve_their_visible_semantic_difference() {
+    // Both rectangles have the same orientation. The inner rectangle is a
+    // hole only under even-odd fill, with every filled point below the text.
+    let nonzero = native_text_pdf("20 20 120 120 re 50 50 60 60 re f", UNUSED_PIXEL);
+    let evenodd = native_text_pdf("20 20 120 120 re 50 50 60 60 re f*", UNUSED_PIXEL);
+    assert_ne!(
+        render_rgba(&nonzero),
+        render_rgba(&evenodd),
+        "the even-odd hole must change reader-visible pixels"
+    );
+    assert_ne!(fingerprint(&nonzero), fingerprint(&evenodd));
+}
+
+#[test]
+fn overlapping_vector_paint_order_changes_pixels_and_semantic_identity() {
+    let red = "q 1 0 0 rg 20 20 70 70 re f Q";
+    let blue = "q 0 0 1 rg 50 50 70 70 re f Q";
+    let red_then_blue = native_text_pdf(&format!("{red}\n{blue}"), UNUSED_PIXEL);
+    let blue_then_red = native_text_pdf(&format!("{blue}\n{red}"), UNUSED_PIXEL);
+    assert_ne!(
+        render_rgba(&red_then_blue),
+        render_rgba(&blue_then_red),
+        "opaque vector order determines the colour of the overlapping region"
+    );
+    assert_ne!(fingerprint(&red_then_blue), fingerprint(&blue_then_red));
+}
+
+#[test]
+fn discarded_paths_still_consume_the_bounded_page_segment_budget() {
+    // The approved page limit is 100,000 segments. Each rectangle charges
+    // four; n discards it immediately, keeping live path state small and
+    // producing no paint events. These 50,000 operations fit the separate
+    // 1,000,000-operation limit and the input stays below 400 KiB.
+    const RECTANGLE: &str = "20 20 1 1 re n\n";
+    let at_limit = RECTANGLE.repeat(25_000);
+    let baseline = native_text_pdf("", UNUSED_PIXEL);
+    let accepted = native_text_pdf(&at_limit, UNUSED_PIXEL);
+    assert!(accepted.len() < 400 * 1024);
+    assert_eq!(fingerprint(&baseline), fingerprint(&accepted));
+
+    let over_limit = native_text_pdf(&format!("{at_limit}{RECTANGLE}"), UNUSED_PIXEL);
+    let error = PdfAdapter
+        .inspect(&over_limit, &AdapterProfile::default())
+        .expect_err("discarded paths must not reset the cumulative segment budget");
+    assert_eq!(
+        error.code(),
+        document_semantic_inspection_worker::WorkerFailureCode::InspectionResourceLimitExceeded
+    );
+    assert_eq!(error.message(), "PDF path segment budget exceeded");
+}

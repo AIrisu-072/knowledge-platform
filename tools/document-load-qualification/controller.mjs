@@ -4,9 +4,10 @@ import {join}from'node:path';
 import {admitStage,summarizeTimings,validatePlan}from'./safety.mjs';
 import {Journal}from'./journal.mjs';
 import {exerciseStage,verifyRetained}from'./workflow.mjs';
+import {exerciseNegative,verifyNegativeRetained,sanitizeNegativeFailureCode}from'./negative.mjs';
 import {sanitizeWorkerDiagnostic} from './worker-probe.mjs';
 import {sanitizeFailureDiagnostic,sanitizeInspectionDiagnostic,sanitizePublicationPrerequisites} from './diagnostics.mjs';
-export async function runQualification({directory,runId,plan,previousReport,corpus,runtime,probeFactory,execute=exerciseStage,verify=verifyRetained}){
+export async function runQualification({directory,runId,plan,previousReport,corpus,runtime,probeFactory,execute=exerciseStage,verify=verifyRetained,executeNegative=exerciseNegative,verifyNegative=verifyNegativeRetained}){
  await mkdir(directory,{recursive:true,mode:0o700});
  const started=performance.now(),timings=[],observations=[];
  const report={schemaVersion:1,runId,evidenceClass:runtime.evidenceClass==='owned-real-process'?'owned-real-process':'test-double',status:'NOT_RUN',stage:plan?.stage,documentCount:plan?.documentCount,fingerprint:plan?.fingerprint,plan,previousReport,productionSloClaim:false,qualityClaim:false,startedAt:new Date().toISOString(),sampleIntervalMs:1000};
@@ -38,6 +39,10 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   journal=await Journal.open(join(directory,'operations.jsonl'),{runId,fingerprint:plan.fingerprint,stage:plan.stage,documentCount:plan.documentCount});
   const probe=await probeFactory({signal:abort.signal,onTiming:value=>timings.push(value)});
   const identityBefore=await runtime.identity();
+  if(corpus.negativeAssets?.length){
+   report.negativeCorpus=await executeNegative({probe,journal,assets:corpus.negativeAssets,checkpoint,runId,diagnosePublication:runtime.diagnosePublication,diagnoseWorker:runtime.diagnoseWorker});
+   await save();
+  }
   report.evidence=await execute({probe,journal,count:plan.documentCount,assets:corpus.assets,checkpoint,runId});
   report.status='AWAITING_RESTART';await save();
   // Avoid observing expected process absence while the owned restart is in progress.
@@ -49,13 +54,17 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   try{assert.deepEqual(beforeDataset,afterDataset);assert.ok(Number.isInteger(oldHuman)&&Number.isInteger(oldAgent)&&Number.isInteger(newHuman)&&Number.isInteger(newAgent));assert.notEqual(oldHuman,newHuman);assert.notEqual(oldAgent,newAgent);}catch{throw fail('restart-proof-failed');}
   report.restart={identityRetained:true,processesReplaced:true,before:beforeDataset,after:afterDataset,processes:{before:[oldHuman,oldAgent],after:[newHuman,newAgent]}};
   monitor=setInterval(()=>{checkpoint().catch(error=>{stopError=error;abort.abort(error);});},1000);
-  await verify({probe,evidence:report.evidence,checkpoint});await checkpoint(true);
+  await verify({probe,evidence:report.evidence,checkpoint});
+  if(report.negativeCorpus){await verifyNegative({probe,evidence:report.negativeCorpus,checkpoint,diagnosePublication:runtime.diagnosePublication});report.negativeCorpus.status='SUCCEEDED';}
+  await checkpoint(true);
   report.status='SUCCEEDED';
  }catch(error){
   error=stopError??error;
   report.status=error?.code==='wall-budget-exhausted'||error?.code==='resource-budget-exhausted'?'ABORTED':'FAILED';
   report.failureCode=['wall-budget-exhausted','resource-budget-exhausted','restart-proof-failed'].includes(error?.code)?error.code:'qualification-assertion-or-prerequisite-failed';
   report.failureDiagnostic=sanitizeFailureDiagnostic(error?.diagnostic);
+  const negativeFailureCode=sanitizeNegativeFailureCode(error);
+  if(negativeFailureCode)report.negativeFailureCode=negativeFailureCode;
   if(report.failureDiagnostic?.operation==='publish' && journal && runtime.diagnosePublication){
    // Only an unacknowledged publication from this run's durable operation map.
    const pending=[...journal.states].find(([key,state])=>/^publish:\d+$/.test(key) && !Object.hasOwn(state,'result'));
@@ -73,6 +82,14 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   clearInterval(monitor);clearTimeout(timer);await busy?.catch(()=>{});
   const entries=journal?[...journal.states]:[];
   report.counts={targetDocuments:plan?.documentCount??0,confirmedCreatedDocuments:entries.filter(([key,state])=>/^create:\d+$/.test(key)&&Object.hasOwn(state,'result')).length,confirmedPublishedDocuments:entries.filter(([key,state])=>/^publish:\d+$/.test(key)&&Object.hasOwn(state,'result')).length};
+  if(corpus.negativeAssets?.length){
+   const previous=report.negativeCorpus;
+   report.negativeCorpus={...previous,status:report.status==='SUCCEEDED'?'SUCCEEDED':report.status,contentQualityClaim:false,
+    counts:{targetDocuments:corpus.negativeAssets.length,
+     confirmedCreatedDocuments:entries.filter(([key,state])=>/^negative-create:\d+$/.test(key)&&Object.hasOwn(state,'result')).length,
+     confirmedHttp422Responses:entries.filter(([key,state])=>/^negative-publish:\d+$/.test(key)&&state.result?.outcome==='rejected-unsupported'&&state.result?.failureDiagnostic?.httpStatus===422).length,
+     confirmedRejectedDocuments:previous?.documents?.length??0,confirmedPublishedDocuments:entries.filter(([key,state])=>/^negative-publish:\d+$/.test(key)&&state.result?.outcome==='unexpected-published').length}};
+  }
   report.metricQualification=report.status==='SUCCEEDED'?'complete-stage':'partial-failed-stage';
   if(journal && report.status!=='SUCCEEDED')await observe(true).catch(()=>{report.metricQualification='measurement-unavailable';});
   await journal?.close();

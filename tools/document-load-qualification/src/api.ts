@@ -133,8 +133,8 @@ export class DocumentProbe {
 
   async setFolderPolicy(folderId: string, request: CommandsPolicyExplicit) {
     this.requireVerified();
-    if (request.mode !== 'explicit' || canonicalGrants(request.grants) !== canonicalGrants([HUMAN_GRANT, AGENT_GRANT])) {
-      throw new ProbeSafetyError('Qualification folders require the exact fixed human and agent grants');
+    if (request.mode !== 'explicit' || ![canonicalGrants([HUMAN_GRANT, AGENT_GRANT]), canonicalGrants([HUMAN_GRANT])].includes(canonicalGrants(request.grants))) {
+      throw new ProbeSafetyError('Qualification folders require exact fixed grants');
     }
     // Same narrow generated-discriminator workaround as the qualified PoC seed.
     return this.request('setFolderPolicy', 'human', c => payload(setFolderAccessPolicy({ ...c, path: { folderId }, body: request as unknown as CommandsSetAccessPolicy })));
@@ -226,7 +226,8 @@ export class DocumentProbe {
     });
   }
 
-  async snapshot(documentId: string) {
+  async snapshot(documentId: string, { purpose = 'history' }: { purpose?: 'history' | 'authoring' } = {}) {
+    if (purpose !== 'history' && purpose !== 'authoring') throw new ProbeSafetyError('Invalid snapshot purpose');
     const detail = await this.detail(documentId);
     const path = { documentId };
     const policy = await this.request('documentPolicy', 'human', c => payload(getDocumentAccessPolicy({ ...c, path })));
@@ -235,13 +236,13 @@ export class DocumentProbe {
     for (const revision of revisionSummaries) {
       revisions.push(await this.request('revisionDetail', 'human', c => payload(getDocumentRevision({ ...c, path: { documentId, revisionId: revision.revisionId } }))));
     }
-    const summaries = await this.pages(cursor => this.request('versions', 'human', c => payload(listDocumentVersions({ ...c, path, query: { purpose: 'history', pageSize: 100, ...(cursor ? { cursor } : {}) } }))), item => item.versionId);
+    const summaries = await this.pages(cursor => this.request('versions', 'human', c => payload(listDocumentVersions({ ...c, path, query: { purpose, pageSize: 100, ...(cursor ? { cursor } : {}) } }))), item => item.versionId);
     const versions = [];
     let totalBytes = 0;
     for (const summary of summaries) {
       const versionId = summary.versionId;
-      const versionDetail = await this.request('versionDetail', 'human', c => payload(getDocumentVersion({ ...c, path: { documentId, versionId }, query: { purpose: 'history' } })));
-      const listing = await this.request('versionFiles', 'human', c => payload(listVersionFiles({ ...c, path: { documentId, versionId }, query: { purpose: 'history' } })));
+      const versionDetail = await this.request('versionDetail', 'human', c => payload(getDocumentVersion({ ...c, path: { documentId, versionId }, query: { purpose } })));
+      const listing = await this.request('versionFiles', 'human', c => payload(listVersionFiles({ ...c, path: { documentId, versionId }, query: { purpose } })));
       const files: (ModelsFileList['items'][number] & { sha256: string; downloadedBytes: number })[] = [];
       const identities = new Set<string>();
       for (const file of listing.items) {
@@ -250,7 +251,7 @@ export class DocumentProbe {
         identities.add(key);
         if (!Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 || file.sizeBytes > this.maxFileBytes || totalBytes + file.sizeBytes > this.maxSnapshotBytes) throw new ProbeSafetyError('Snapshot file byte limit exceeded');
         const fingerprint = await this.request('downloadHash', 'human', async (_c, bridge) => {
-          const stream = await bridge.downloadVersionFileStream({ documentId, versionId, contentItemId: file.contentItemId, representationId: file.representationId, purpose: 'history' });
+          const stream = await bridge.downloadVersionFileStream({ documentId, versionId, contentItemId: file.contentItemId, representationId: file.representationId, purpose });
           const reader = stream.getReader(), hash = createHash('sha256');
           let downloadedBytes = 0;
           try {

@@ -687,4 +687,74 @@ mod tests {
         assert!(changes.is_empty());
         assert!(regions.is_empty());
     }
+
+    #[test]
+    fn duplicate_pages_with_a_new_semantic_field_do_not_invent_alignment() {
+        let repeated = native_page("Repeated paragraph");
+        let mut changed = repeated.clone();
+        changed["future_semantics"] = json!({"reading_order": ["second", "first"]});
+        let base = vec![repeated.clone(), repeated.clone()];
+        let target = vec![changed, repeated];
+
+        for (base, target) in [(&base, &target), (&target, &base)] {
+            let mut budget = ComparisonBudget::new(100, 100);
+            let alignment = align_pages(base, target, &mut budget).unwrap();
+            assert!(alignment.ambiguous);
+            assert!(alignment.pairs.is_empty());
+            assert!(alignment.additions.is_empty());
+            assert!(alignment.removals.is_empty());
+        }
+    }
+
+    #[test]
+    fn zero_change_budget_does_not_emit_an_unbudgeted_vector_change() {
+        let base = native_page("Stable text");
+        let mut target = base.clone();
+        target["vectors"] = json!([{"path": [[40, 80], [100, 80]], "width": 1}]);
+        let mut budget = ComparisonBudget::new(100, 0);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        assert_eq!(
+            compare_page(
+                &base,
+                &target,
+                0,
+                0,
+                &mut budget,
+                &mut changes,
+                &mut regions,
+            ),
+            Err(UnverifiedReason::ResourceLimit)
+        );
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn exhausted_page_budget_preserves_the_preceding_text_change() {
+        let base = native_page("Old text");
+        let mut target = native_page("New text");
+        target["vectors"] = json!([{"path": [[40, 80], [100, 80]], "width": 1}]);
+        let mut budget = ComparisonBudget::new(100, 1);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        assert_eq!(
+            compare_page(
+                &base,
+                &target,
+                0,
+                0,
+                &mut budget,
+                &mut changes,
+                &mut regions,
+            ),
+            Err(UnverifiedReason::ResourceLimit)
+        );
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].facet, "pdf_text");
+        assert_eq!(changes[0].operation, Some(ChangeOperation::Modified));
+        assert_eq!(changes[0].base, Some(page(0)));
+        assert_eq!(changes[0].target, Some(page(0)));
+    }
 }

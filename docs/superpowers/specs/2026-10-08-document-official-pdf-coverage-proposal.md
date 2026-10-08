@@ -95,3 +95,10 @@ DSI cacheはfile＋profile、Diff cacheもsnapshot＋profile等がkeyで、worke
 新tagged fontのToUnicodeは、helperが範囲を列挙する前に完全な限定CMap grammarを検査する。CMapは128KiB、固定1–2byte code、最大16,384 unique mappings、1文字につき1つの非surrogate BMP scalarに限定し、mapping割当とdecode出力を事前評価する。未知grammar・複合置換・範囲超過は拒否する。実通知934のCMapは補助観測で3,745bytes/227mappingsだが、Rustでの合格証拠は別途必要。
 
 Artifactの描画/文字は残す。初段propertyは型を検証したPagination Header+Top / Footer+Bottom等に限定し、未知値や未資格の明示BBoxを拒否する。ActualTextは独立native文字列と完全一致する冗長置換だけを受け、異なる置換の意味は未対応として拒否する。文字列identityから空白を削除しない。独立extractor間のlayout-whitespace-insensitive照合は補助checkのみ。
+
+### 全体reviewの意味保持補強（2026-10-08）
+
+- per-pageの構造投影でページ外childを除いても、同じStructElemが所有する物理ページordinalの集合を有限に保持する。複数ページの要素だけcanonicalなpage_indicesを付け、object ID/MCIDには依存しない。集合構築と出力copyを既存work budgetへ事前課金する。
+- catalog Langは新しい構造/marked-content経路を初めて使うときだけ検査する。既定言語をrootへ継承し、root自身のLangがあればそちらを優先する。MCIDに属さない非空文字があるページには、補集合であるunowned/Artifact文字のcatalog既定言語を独立に表す。Artifactだけのページも含む。明示的Artifact Langと未所有BDC Langは、scopeを一般化せず拒否する。
+- BDCの関連付けtag名は構造ownerのSとは別物なので、既知tagであることの検査は残し、重複する意味roleとしてidentityへ加えない。owner/ParentTree/MCID検証と構造roleの意味は保持する。
+- これらは新しく対応する入力の正確性補強。既存成功入力のfingerprint/evidence・保存Version/DSI・旧履歴を変更/再分類/移行しない。新旧15fixtureの全field比較と実原本2件の再試験を必須とする。

@@ -25,3 +25,24 @@ test('missing DSI on BUSINESS_RULE_REJECTED invokes only a bound worker diagnosi
  }});
  assert.equal(calls,1);assert.equal(report.status,'FAILED');assert.equal(report.workerDiagnostic.failureCode,'unsupported_semantic_construct');assert.equal(report.workerDiagnostic.qualification,false);assert.ok(!JSON.stringify(report).includes('PRIVATE_SENTINEL'));
 });
+
+test('negative corpus must be verified before positive workload and after the same real restart',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'controller-negative-'));t.after(()=>rm(dir,{recursive:true,force:true}));let restarted=false;const calls=[];const negative={status:'AWAITING_RESTART',counts:{confirmedRejectedDocuments:1}};
+ const report=await runQualification({directory:dir,runId:'test',plan:plan(),corpus:{hash:'corpus',assets:[],negativeAssets:[{id:'negative'}]},runtime:{observe:async()=>observation(),identity:async()=>({dataset:'same',humanPid:restarted?101:100,agentPid:restarted?201:200}),restart:async()=>{calls.push('restart');restarted=true;},diagnosePublication:async()=>{},diagnoseWorker:async()=>{}},probeFactory:()=>({}),executeNegative:async options=>{assert.equal(options.assets[0].id,'negative');assert.equal(typeof options.diagnoseWorker,'function');calls.push('negative');return negative;},execute:async()=>{calls.push('positive');return{};},verify:async()=>{calls.push('positive-retained');},verifyNegative:async options=>{assert.equal(options.evidence,negative);calls.push('negative-retained');return{status:'SUCCEEDED'};}});
+ assert.equal(report.status,'SUCCEEDED');assert.deepEqual(calls,['negative','positive','restart','positive-retained','negative-retained']);assert.equal(report.negativeCorpus.status,'SUCCEEDED');
+});
+test('failed negative restart retention cannot qualify the positive stage',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'controller-negative-fail-'));t.after(()=>rm(dir,{recursive:true,force:true}));let restarted=false;
+ const report=await runQualification({directory:dir,runId:'test',plan:plan(),corpus:{hash:'corpus',assets:[],negativeAssets:[{}]},runtime:{observe:async()=>observation(),identity:async()=>({dataset:'same',humanPid:restarted?101:100,agentPid:restarted?201:200}),restart:async()=>{restarted=true;}},probeFactory:()=>({}),executeNegative:async()=>({status:'AWAITING_RESTART'}),execute:async()=>({}),verify:async()=>{},verifyNegative:async()=>{throw Error('PRIVATE_SENTINEL');}});
+ assert.equal(report.status,'FAILED');assert.ok(!JSON.stringify(report).includes('PRIVATE_SENTINEL'));
+});
+test('negative diagnostic failure preserves confirmed create and known HTTP422 counts',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'controller-negative-count-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const report=await runQualification({directory:dir,runId:'test',plan:plan(),corpus:{hash:'corpus',assets:[],negativeAssets:[{}]},runtime:{observe:async()=>observation(),identity:async()=>({dataset:'same',humanPid:100,agentPid:200})},probeFactory:()=>({}),executeNegative:async({journal})=>{await journal.perform('negative-create:0',{},async()=>({documentId:'owned'}),{recoverable:false});await journal.perform('negative-publish:0',{},async()=>({outcome:'rejected-unsupported',failureDiagnostic:{operation:'publish',httpStatus:422,problemCode:'BUSINESS_RULE_REJECTED'}}));throw Error('PRIVATE_SENTINEL');}});
+ assert.equal(report.status,'FAILED');assert.deepEqual(report.negativeCorpus.counts,{targetDocuments:1,confirmedCreatedDocuments:1,confirmedHttp422Responses:1,confirmedRejectedDocuments:0,confirmedPublishedDocuments:0});assert.equal(report.negativeCorpus.status,'FAILED');assert.ok(!JSON.stringify(report).includes('PRIVATE_SENTINEL'));
+});
+test('known unexpected negative publication remains counted as a failed qualification',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'controller-negative-success-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const report=await runQualification({directory:dir,runId:'test',plan:plan(),corpus:{hash:'corpus',assets:[],negativeAssets:[{}]},runtime:{observe:async()=>observation(),identity:async()=>({dataset:'same',humanPid:100,agentPid:200})},probeFactory:()=>({}),executeNegative:async({journal})=>{await journal.perform('negative-create:0',{},async()=>({documentId:'owned'}),{recoverable:false});await journal.perform('negative-publish:0',{},async()=>({outcome:'unexpected-published'}));throw Error('PRIVATE_SENTINEL');}});
+ assert.equal(report.status,'FAILED');assert.equal(report.negativeCorpus.counts.confirmedPublishedDocuments,1);assert.equal(report.negativeCorpus.counts.confirmedRejectedDocuments,0);
+});

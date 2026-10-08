@@ -1,6 +1,6 @@
 # Document 段階的負荷検証
 
-既存 Common Document API の実プロセスへ、公式 PDF を少量から投入する検証用ツールです。製品の機能、Search、GUI、scheduler、権限の意味は変更しません。本番運用資格や性能 SLO を宣言するものではありません。
+既存 Common Document API の実プロセスへ、公式 PDF を少量から投入する検証用ツールです。このツール自体はSearch、GUI、scheduler、権限の意味を変更しません。同PRの承認済みPDF意味検査拡張は、専用設計と回帰試験で管理します。本番運用資格や性能 SLO を宣言するものではありません。
 
 ## 実行したものと、これから実行するもの
 
@@ -11,9 +11,9 @@
 - `tools/document-load-qualification/`：生成 SDK と BinaryTransportBridge を使う client、operation journal、容量 admission、計測、来歴、試験
 - `tools/document-poc-runtime/run.mjs`：既存の実プロセス受入が完了した後だけ動く optional hook
 - `.github/workflows/ci.yml`：既存 PR label イベントの `document-load-small` に限る small opt-in。権限・runner・job 数・timeout は不変
-- 既存 seed、API、Rust、Search corpus branch/PR85、active pointer、導入手順は変更しない
+- このハーネスは既存 seed/API/権限を迂回せず、Search corpus branch/PR85、active pointer、導入手順は変更しない
 
-小量入力は厚生労働省の公式通知 PDF 2 件です。URL、発出日、取得日時、PDL1.0 利用条件、バイト数、SHA-256 は `official-sources.json` に固定しています。元ページは https://www.mhlw.go.jp/stf/newpage_56768.html 、利用条件は https://www.mhlw.go.jp/chosakuken/ です。出典：厚生労働省。本文に第三者素材がある資料を追加する場合は、別の権利確認が必要です。
+小量入力は厚生労働省の公式通知PDFの正例2件（001472934、000616197）と負例1件（001472933）です。正例は横書きの実通知で、負例の縦書き・文字対応表のないfont構造は現在の限定対応外です。URL、発出日、取得日時、PDL1.0 利用条件、バイト数、SHA-256 は `official-sources.json` に固定しています。元ページは https://www.mhlw.go.jp/stf/newpage_56768.html 、利用条件は https://www.mhlw.go.jp/chosakuken/ です。出典：厚生労働省。本文に第三者素材がある資料を追加する場合は、別の権利確認が必要です。
 
 原本 bytes は repository に保存しません。実行時に同じ公式 URL から再取得し、サイズ・SHA-256 が異なれば停止します。出典・URL・発出日・license は検証来歴に残し、文書の索引用 metadata には入れません。多数件は同じ 2 原本を繰り返す **合成の容量負荷** であり、ユニーク 1,000/1万/10万文書の検索精度試験ではありません。2 件の異なる通知を同一テスト文書の第 1・第 2 版に使いますが、実際の法令・通知の改正関係を意味しません。
 
@@ -37,18 +37,18 @@ KP_DOCUMENT_LOAD_SMALL=true mise run document:poc:agent
 
 CI では専用検証 PR に `document-load-small` label を付けると、既存の `pull_request: labeled` から通常 CI を実行します。該当 Document job だけ small mode が有効になります。branch/ref/head と run URL を記録してください。label のない PR と main は従来通りです。label は全通常 CI を開始するため、既存の通常 CI 消費はあります。新たな外部資源、有料 API、credentials、permission、artifact の包括 upload は追加していません。
 
-small mode は 2 件、逐次要求、測定対象 5 分以内、空き disk 1 GiB、空き RAM 512 MiB、測定対象 process-tree RSS 2 GiB を試験の停止線にしています。これはハーネスが選んだ小量実行の保護値であり、利用者の容量上限や製品 SLO ではありません。`--prebuilt` や外部 DB 指定との併用は拒否します。
+small mode は公開対象2件と独立した拒否対象1件、逐次要求、測定対象 5 分以内、空き disk 1 GiB、空き RAM 512 MiB、測定対象 process-tree RSS 2 GiB を試験の停止線にしています。これはハーネスが選んだ小量実行の保護値であり、利用者の容量上限や製品 SLO ではありません。`--prebuilt` や外部 DB 指定との併用は拒否します。
 
 ## 何を確かめるか
 
-1. process-fixed `poc-human` / `poc-agent` と既存 root policy を確認
+1. process-fixed `poc-human` / `poc-agent` と既存 root policy を確認。別のhuman-only folderへ負例を登録し、公開422/BUSINESS_RULE_REJECTED・DSI不在・同じ必須sandboxでunsupported_semantic_construct・保存原本の完全一致を確認
 2. 自分のテスト Folder にだけ登録・公開。全ページ一覧を比較し、欠落・重複・cursor loop を拒否
 3. 第 1 文書の metadata を更新して再読取し、古い revision での更新が 409 になることを確認
 4. 異なる原本で WORKING 版を作成。公開までは current pointer が変わらず、公開後は新版へ切り替わることを確認
 5. 既に Agent が読めた末尾文書を human-only に変更。既知 ID の 403 と一覧からの除外を確認
 6. 原本 SHA-256、detail、全 revision detail、version metadata、policy を保存
 7. 既存 runner が human/agent 実プロセスを停止・再起動。異なる PID と、同じ DB/container/storage/run/head の来歴を確認
-8. 同じ全一覧・拒否結果・snapshot を再照合
+8. 同じ全一覧・拒否結果・snapshotを再照合。負例も作業版のまま、公開版なし、元hash・policy・DSI不在が保持されることを確認
 
 small は全文書を詳細照合します。大量段階は登録・公開・一覧件数を全件、詳細・原本・履歴・再起動 snapshot は先頭・中間・末尾 3 件です。このサンプリングを「全件の原本検証」と呼びません。GUI/Agent MCP/その他の既存否定系は元 runtime が別に検証します。今回の新しい試験で Search 精度・検索反映・backup/restore・DB プロセス自体の再起動は検証しません。
 
@@ -96,3 +96,7 @@ PR108 の運用追補にある「並行登録器を作らない」は、Search c
 DSI行が無い `BUSINESS_RULE_REJECTED` の場合は、検査APIの呼び忘れと断定しません。現在のHTTP契約では、workerの未対応構造・文字抽出失敗等も同じ422へまとめられます。専用Cargo example `document-load-inspection` は、同runでbuild/test/hashを確認した既存LinuxSandboxRunnerへ、変更していない公式原本を渡す診断driverです。既存worker/PDFium、mandatory sandbox、既定10秒上限は維持します。直接worker起動、portable parserへのfallback、失敗時の許可はありません。
 
 実行前に、自分のpending publicationのFileIdについて、保存済みhash・size・mediaTypeと公式原本が一致し、WORKING・未分類でない・単一authoritative参照であることをread-only確認します。一致しなければdriverも実行しません。診断は固定worker failure codeまたは件数/原本bindingのみを出し、常に `qualification:false` です。元のAPI公開FAILは保持します。この補助検査成功だけでは、API公開・再起動・容量試験の成功になりません。
+
+## 正例と負例の境界
+
+manifestのexpectedOutcomeは来歴hashに含めます。負例の422はnegative-* journalへ既知応答として保存し、追加診断失敗や再起動後の改変を成功にしません。正例の件数と負例の件数は別集計です。負例も同じ時間/RSS/disk budgetと実測に含まれます。現在の2正例は限定された横書き通知の資格であり、縦書き・表・任意のActualText置換を含む全PDFの対応を示しません。新しい条件を解釈できない場合の拒否を維持します。

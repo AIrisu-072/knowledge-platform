@@ -136,3 +136,13 @@ actual Crop REDに基づき、新semanticsを使うページだけ、有限な�
 16:39追補：fbdd867eのMacはpaint25/tags19/gs4/workerPDF lib19/Diff lib7/cache4成功。pdf_diffの2正例だけNoneで失敗した。幅2・線開始x12・miter既定10に対する保守的boundsが左−8へ広がり、MediaBox0で拒否されるため、Diffへ到達していない。旧15full baseline一致、934native成功を維持。
 
 9bc3aceのformatter-only3filesを保持。期待Partialは維持し、正例fixtureをx40へ移して両原本の実PdfAdapter成功を比較前にassertする。元のx12は固定clip拒否＋Diff None/変更なし/未検証regionの負例として残す。製品条件の変更ではない。独立reviewはこのtest-only試行へGO。新しい正例候補はMHLW2020-03-30医政発0330第2号（000616197、2頁125872B、sha256 57cfad9114727870f4e58e37f7fa07d572b86d53f0f5ce652c001912fc5ba3b7）で、未加工のnative資格は次試行待ち。
+
+## 2026-10-08 17:00 UTC — native回帰成功、正例/負例API統合
+
+42cacb06のMacはfocused88成功・0失敗（raster子1既存ignore）、旧15corpusの成功fingerprint/evidence・拒否全fieldが完全一致。公式934と000616197は未加工hash/bytes一致でnative成功、capability7とcomment/tracked-change/external/signature各0。d0faafe6は機械的Clippy9件とfmtのみで、全target Clippy/fmt・focused88・baseline15・公式2件を再確認して成功。Linux sandbox/API資格はまだ未実行。
+
+933を明示的reject-unsupported負例として保持し、934と000616197をpublish正例へ区分するハーネスをTDD中。negative module45件は実RED→GREEN。API authoring snapshot/human-only policy、corpus役割hash、同bytesの偽content切替拒否、同一再起動での負例保持を追加し、cloud Node24.19.0の全119契約試験成功（pin24.21.0実資格とは別）。負例は作業版保持・公開なし・422固定code・DSI不在・資格済みrunnerの固定unsupported理由と原本bindingを必須とする。負例を公開成功件数へ算入しない。
+
+次は全体独立review、保存exact headのLinux既存runtimeで正例2/負例1のAPI・再起動・資源実測、全CIを確認する。1000以上は未admissionで、native/契約試験を容量根拠に使わない。
+
+17:10追補：全体独立reviewで、新規tag投影のページ横断段落ownershipとcatalog既定言語の省略、BDC関連付けtag名の過剰なidentity寄与、Artifact言語scopeの未表現を検出した。旧15互換性は維持し、まず現sourceの差分/不変/拒否テストを追加してMacのactual REDを確認する。製品修正前。これらが解決するまでnative88成功だけで最終資格にしない。

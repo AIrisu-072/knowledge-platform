@@ -262,3 +262,30 @@ test('fake transport: rejected publication exposes only allowlisted matching Pro
     });
   }
 });
+
+test('fake transport: negative authoring snapshot never requests unpublished bytes through history', async () => {
+  const h = await verified((_request, url) => {
+    const p = url.pathname;
+    if (p.endsWith('/d')) return json({ documentId: 'd', currentVersionId: null });
+    if (p.endsWith('/access-policy')) return json(policy);
+    if (p.endsWith('/revisions')) return json({ items: [], nextCursor: null });
+    assert.equal(url.searchParams.get('purpose'), 'authoring');
+    if (p.endsWith('/versions')) return json({ items: [{ versionId: 'v' }], nextCursor: null });
+    if (p.endsWith('/versions/v')) return json({ versionId: 'v', lifecycleState: 'WORKING' });
+    if (p.endsWith('/files')) return json({ items: [{ contentItemId: 'i', representationId: 'p', fileId: 'f', sizeBytes: 3 }] });
+    return new Response('abc');
+  });
+  const snapshot = await h.probe.snapshot('d', { purpose: 'authoring' });
+  assert.equal(snapshot.versions[0].files[0].downloadedBytes, 3);
+  await assert.rejects(h.probe.snapshot('d', { purpose: 'invalid' }), /purpose/i);
+});
+
+test('fake transport: negative folder accepts only the fixed human-only grant', async () => {
+  let calls = 0;
+  const h = await verified(async request => { calls++; const body=await request.json();assert.deepEqual(body.grants,[grants[0]]);return json({resultingRevision:1}); });
+  const request={mode:'explicit',operationId:'op',expectedPolicyRevision:0,reason:'negative corpus',grants:[grants[0]]};
+  await h.probe.setFolderPolicy('negative-folder',request);
+  await assert.rejects(h.probe.setFolderPolicy('negative-folder',{...request,grants:[grants[1]]}),/grants/i);
+  await assert.rejects(h.probe.setFolderPolicy('negative-folder',{...request,grants:[{...grants[0],subjectId:'unrelated'}]}),/grants/i);
+  assert.equal(calls,1);
+});

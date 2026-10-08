@@ -6,7 +6,7 @@ const AGENT={subjectKind:'group',identityProvider:'poc',subjectId:'poc-agents',a
 function equal(actual,expected,label){assert.deepEqual(actual,expected,label);}
 async function listCheck(probe,folderId,expected,who='human'){equal((await probe.list(folderId,who)).sort(),[...expected].sort(),`${who} list membership mismatch`);}
 export async function exerciseStage({probe,journal,count,assets,checkpoint,runId}){
- if(!Number.isSafeInteger(count)||count<2||count>100000||assets.length<2)throw Error('Stage requires at least two documents and two distinct PDFs');
+ if(!Number.isSafeInteger(count)||count<2||count>100000||assets.length<2||new Set(assets.map(asset=>asset.sha256)).size!==assets.length)throw Error('Stage requires at least two documents and two distinct PDFs');
  const session=await probe.verifySessions();await checkpoint();
  const mutate=async(key,makeRequest,action,options)=>{await checkpoint();const request=journal.get(key)?.request??await makeRequest();return journal.perform(key,request,action,options);};
  const folderRequest=()=>({operationId:uuid7(),folderId:uuid7(),parentFolderId:session.rootFolderId,expectedParentRevision:session.root.revision,name:`Document load ${runId}`,reason:'Isolated synthetic-repetition qualification'});

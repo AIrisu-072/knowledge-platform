@@ -39,6 +39,14 @@ const BROKEN: &[u8] = include_bytes!(
 );
 
 fn compare(base: &[u8], target: &[u8]) -> document_diff_core::WorkerDiffResponse {
+    compare_with_budget(base, target, &mut ComparisonBudget::new(8_000_000, 100_000))
+}
+
+fn compare_with_budget(
+    base: &[u8],
+    target: &[u8],
+    budget: &mut ComparisonBudget,
+) -> document_diff_core::WorkerDiffResponse {
     let request = WorkerDiffRequest {
         protocol_version: WorkerProtocolVersion::V0,
         diff_profile_version: DiffProfileVersion::V0,
@@ -49,8 +57,7 @@ fn compare(base: &[u8], target: &[u8]) -> document_diff_core::WorkerDiffResponse
         target_raw_sha256: Sha256::digest(target).into(),
         target_size_bytes: target.len() as u64,
     };
-    let mut budget = ComparisonBudget::new(8_000_000, 100_000);
-    let result = PdfComparator::compare(&request, base, target, &mut budget).unwrap();
+    let result = PdfComparator::compare(&request, base, target, budget).unwrap();
     result.validate_against(&request).unwrap();
     result
 }
@@ -259,6 +266,130 @@ fn bounded_vector_difference_with_another_pages_text_change_never_becomes_full()
 
 fn bounded_vector_pdf(line_width: u8, final_text: &str) -> Vec<u8> {
     bounded_vector_pdf_with_start(line_width, final_text, 40)
+}
+
+#[test]
+fn bounded_vector_zero_candidate_or_change_budget_remains_unverified() {
+    let base = bounded_vector_pdf(1, "Stable final page");
+    let target = bounded_vector_pdf(2, "Stable final page");
+    assert_supported_vector_fixture(&base);
+    assert_supported_vector_fixture(&target);
+
+    for (candidates, changes) in [(0, 100), (100, 0)] {
+        let result = compare_with_budget(
+            &base,
+            &target,
+            &mut ComparisonBudget::new(candidates, changes),
+        );
+        assert_eq!(result.coverage, DiffCoverage::None);
+        assert!(result.changes.is_empty());
+        assert!(result.unverified_regions.iter().any(|region| {
+            region.reason == UnverifiedReason::ResourceLimit
+                && region.base == Some(SourceLocator::ContentItem)
+                && region.target == Some(SourceLocator::ContentItem)
+        }));
+    }
+}
+
+#[test]
+fn bounded_vector_exhausted_change_budget_preserves_prior_changes_and_partial_coverage() {
+    let base = bounded_vector_pdf(1, "Old final page");
+    let target = bounded_vector_pdf(2, "New final page");
+    assert_supported_vector_fixture(&base);
+    assert_supported_vector_fixture(&target);
+    let result = compare_with_budget(&base, &target, &mut ComparisonBudget::new(100, 1));
+
+    assert_eq!(result.coverage, DiffCoverage::Partial);
+    assert_eq!(result.changes.len(), 1);
+    assert_eq!(result.changes[0].facet, "pdf_visual");
+    assert_eq!(
+        result.changes[0].operation,
+        Some(document_diff_core::ChangeOperation::Modified)
+    );
+    assert_eq!(
+        result.changes[0].base,
+        Some(SourceLocator::PdfPage {
+            page: 1,
+            region: None,
+        })
+    );
+    assert_eq!(result.changes[0].target, result.changes[0].base);
+    assert!(result.unverified_regions.iter().any(|region| {
+        region.reason == UnverifiedReason::ResourceLimit
+            && region.base == Some(SourceLocator::ContentItem)
+            && region.target == Some(SourceLocator::ContentItem)
+    }));
+    assert!(result.unverified_regions.iter().any(|region| {
+        region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+            && region.base == result.changes[0].base
+            && region.target == result.changes[0].target
+    }));
+}
+
+#[test]
+fn cross_page_paragraph_ownership_difference_cannot_report_full_or_unchanged() {
+    let base = two_page_paragraph_pdf(true);
+    let target = two_page_paragraph_pdf(false);
+    let inspect = |bytes: &[u8]| {
+        document_semantic_inspection_worker::PdfAdapter
+            .inspect_with_projection(
+                bytes,
+                &document_semantic_inspection_worker::AdapterProfile::default(),
+            )
+            .expect("both paragraph fixtures must pass real PDF inspection")
+            .1
+    };
+    let base_projection = inspect(&base);
+    let target_projection = inspect(&target);
+    assert_eq!(base_projection["pages"].as_array().unwrap().len(), 2);
+    assert_eq!(target_projection["pages"].as_array().unwrap().len(), 2);
+    for page in 0..2 {
+        for field in ["text", "images", "paint_order", "links", "vectors"] {
+            assert_eq!(
+                base_projection["pages"][page][field],
+                target_projection["pages"][page][field],
+                "fixture must change structure only: page {page}, {field}"
+            );
+        }
+    }
+
+    let result = compare(&base, &target);
+    // With both page structure keys changed, no unique anchor may remain.
+    // Either a located Partial result or conservative alignment uncertainty is
+    // valid; Full with no changes is the semantic-loss regression.
+    assert_ne!(result.coverage, DiffCoverage::Full);
+    assert!(!result.unverified_regions.is_empty());
+    assert!(result.changes.iter().all(|change| {
+        change.facet != "pdf_text" && change.facet != "pdf_visual"
+    }));
+}
+
+// Same ownership model as TaggedPdf::two_page in the semantic worker tests,
+// using this suite's serializer rather than adding a lopdf test dependency.
+fn two_page_paragraph_pdf(shared_paragraph: bool) -> Vec<u8> {
+    let first = b"/P << /MCID 0 >> BDC BT /F1 12 Tf 12 180 Td (FIRST PARAGRAPH) Tj ET EMC";
+    let second = b"/P << /MCID 1 >> BDC BT /F1 12 Tf 12 140 Td (SECOND PARAGRAPH) Tj ET EMC";
+    let document_children = if shared_paragraph { "[10 0 R]" } else { "[10 0 R 11 0 R]" };
+    let first_children = if shared_paragraph {
+        "[<< /Type /MCR /Pg 4 0 R /MCID 0 >> << /Type /MCR /Pg 6 0 R /MCID 1 >>]"
+    } else {
+        "[<< /Type /MCR /Pg 4 0 R /MCID 0 >>]"
+    };
+    let second_owner = if shared_paragraph { 10 } else { 11 };
+    serialize_pdf(vec![
+        (1, b"<< /Type /Catalog /Pages 2 0 R /MarkInfo << /Marked true >> /StructTreeRoot 8 0 R >>".to_vec()),
+        (2, b"<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>".to_vec()),
+        (3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec()),
+        (4, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R /StructParents 0 >>".to_vec()),
+        (5, pdf_stream(b"", first)),
+        (6, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R /StructParents 1 >>".to_vec()),
+        (7, pdf_stream(b"", second)),
+        (8, b"<< /Type /StructTreeRoot /K [9 0 R] /ParentTree 12 0 R /ParentTreeNextKey 2 >>".to_vec()),
+        (9, format!("<< /Type /StructElem /S /Document /P 8 0 R /K {document_children} >>").into_bytes()),
+        (10, format!("<< /Type /StructElem /S /P /P 9 0 R /K {first_children} >>").into_bytes()),
+        (11, b"<< /Type /StructElem /S /P /P 9 0 R /K [<< /Type /MCR /Pg 6 0 R /MCID 1 >>] >>".to_vec()),
+        (12, format!("<< /Nums [0 [10 0 R] 1 [null {second_owner} 0 R]] >>").into_bytes()),
+    ])
 }
 
 fn assert_supported_vector_fixture(bytes: &[u8]) {
