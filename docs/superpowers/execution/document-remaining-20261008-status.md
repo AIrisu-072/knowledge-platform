@@ -2,6 +2,10 @@
 
 状態: IN PROGRESS / 未統合 / 未配備。main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`、branch `feat/document-remaining-20261008`。
 
+保存先は同一の **[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)**。製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45` で独立レビューGOを再確認した。本節のPR記録追記は文書のみで、製品source/試験/画像は変えない。最新保存headとhosted資格はPRのChecksと説明を参照し、読み直した正確なheadで判定する。
+
+PR作成直後の製品headでは通常CI `37731617010`、DSI PoC `37731617017`、Sandbox `37731617158` の開始を確認した。これは完了・合格の記録ではなく、文書追記後のheadへ成功を転用しない。hostedの最終結果はheadを変えないPR説明にも記録する。統合順とmain統合・統合後CIはクラウド親が担当する。
+
 ## 現在の境界
 
 元checkoutにはactive/statusの未コミット変更があり、そのまま保全した。別コピー `/Users/airisu/Documents/Codex/2026-10-08/task/knowledge-platform` で最新mainを取得した。repositoryに `.agents/skills` は存在しない。ユーザーのsession保存領域は参照していない。
@@ -24,4 +28,4 @@ schema生成照合、TypeScript、Webpack production build、diff checkが成功
 
 Rust 1.98.1、固定Node24.21.0、pnpm12.4.1/lockfileで依存準備。通常pnpm shimはENOEXECのためJest/tscは固定Nodeから直接実行する。観測した空きは約8 GiB→試験準備後約6 GiB、Docker socket権限拒否。新機能の実Linux DB/server結合、DSI/scheduler、対象PC、実復元、公式PDF大量投入の合格は記録しない。
 
-次のexact action: 同一Draft PRへ保存して正確なhead CIを確認。統合直前に親のscheduler/DSI変更との順序・最新mainを再確認する。main統合と統合後CIはまだ実施していない。原本構成/初回複数/主体検索/viewerは設計確認後に続行する。
+次のexact action: PR108の現在headとChecksを読み直し、通常CI・DSI/Sandboxの結果をPR説明へ記録する。親が統合直前にscheduler/DSI変更との順序・最新mainを再確認する。main統合と統合後CIはまだ実施していない。原本構成/初回複数/主体検索/viewerは設計確認後に続行する。

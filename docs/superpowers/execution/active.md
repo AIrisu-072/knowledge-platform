@@ -5,6 +5,7 @@
 - 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。
 - Macの製品変更は過去公開版の履歴用途による取下げGUIと正式改訂単体詳細。設計確認待ちの原本構成・初回複数・主体検索・viewerは追補案のみ。既読契機は現行のまま。schedulerとPR85 Document修正はクラウド親が担当し、Macの製品差分へ含めない。
 - 操作文書・導入/復旧/段階測定手順を同じDraftにまとめる。対象PC・本番認証/TLS・実directory/権限・大量実測は未実施。正確なhead CI、親との統合順序確認、main統合と統合後CIはこれから。
+- 保存先は同一[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)、製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45`。独立レビューGO、固定Node24.21.0 GUI1740件/Chromium mock機能8件成功、golden比較は未資格。最新保存headとhosted結果はPR Checks/説明を読み直す。main統合はクラウド親が順序を調整する。
 
 ---
 
