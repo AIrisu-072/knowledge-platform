@@ -28,6 +28,8 @@ DBは所有する使い捨てcontainerだけを使用。最終container `18c4393
 
 ## 次のexact actionと未実施
 
-共有Cargo cacheが増えディスクが4 GiB reserveを下回ったため、新しいheavy buildとbrowser harnessを止め、全Cargo終了を親へ通知した。親が所有する `target/debug/incremental` だけを整理する予定。容量確認後、最新mainとの合流・独立Rustレビュー・実Document browser journeyと再起動persistenceを実行する。tools/document-poc-runtime/run.mjsとCIは別担当所有なのでこのbranchでは変更しない。
+共有Cargo cacheが増えディスクが4 GiB reserveを下回ったため、新しいheavy buildとbrowser harnessを止め、全Cargo終了を親へ通知した。親が所有する `target/debug/incremental` だけを整理し、5.2 GiBへ回復した。PR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82` を通常mergeし、組合せhead `664847658c2b3d3413aa342ee3ec214e70257f7e` / tree `6254deb2fe3aee894c8e27125e0b9affd137154f` を保持した。製品treeは統合前と変わらない。
+
+実browser harnessは `run.mjs` がqualified Linux sandboxとPDFium `libpdfium.so`を必須とするため、このMacではproduction実受入を資格化できない。無駄なbuildや確認の無効化をせず親へ通知した。次は独立Rustレビューと、Linux hosted exact-headで実Document browser journey・再起動persistenceを実行する。tools/document-poc-runtime/run.mjsとCIは別担当所有なのでこのbranchでは変更しない。
 
 全workspace Rust、実browser、DBプロセス再起動、exact-head hosted CI、main統合後CI、対象PC導入、本番認証/TLSは未実施。実機や本番の成功を記録していない。既読の意味は変更しない。
