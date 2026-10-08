@@ -1303,3 +1303,12 @@ The validation corpus run (`docs/superpowers/programs/search-validation-corpus/p
 | Japanese lexical analyzer | **SELECTED**: analyzer version `tantivy-0.26.2-cjk-bigram-v1` (`search-tantivy::analyzer`): CJK runs become overlapping character bigrams, other alphanumeric runs one lowercased word; Tantivy built-ins only, no new dependency | Unit and generation tests in `search-tantivy`. The literal-phrase query becomes a substring match inside CJK runs. Accuracy on the validation corpus is measured separately; the E report's character-bigram BM25 sensitivity baseline is the earlier evidence. |
 | Analyzer selection per generation | The manifest `analyzer_version` (worker `analyzer_version`) selects the analyzer when a generation is built and when it is reopened; `tantivy-default-0.26.2` stays supported, so generations built before the change remain readable | A deployment switches by setting `analyzer_version` to the bigram version; the next generation is built with it. |
 | Lindera 6.2.0 IPADIC / lindera-tantivy | **POC REQUIRED unchanged** | Dictionary rights and Tantivy 0.26 compatibility are still unresolved. |
+
+## 13.6 Search worker allocator (2026-10-08)
+
+At 10,000 documents the outbox worker's resident memory was set by what glibc keeps after a build frees it (about 1.8 GB in use, 1.6–2.6 GB freed but held). The owner approved the allocator dependency after an A/B on the validation corpus (`docs/superpowers/plans/2026-10-07-search-generation-segments.md`, worker memory).
+
+| Item | Decision | Evidence boundary |
+|---|---|---|
+| Worker global allocator | **SELECTED**: `tikv-jemallocator` 0.7.0 (jemalloc 5.3, MIT/Apache-2.0 crate, BSD-2-Clause jemalloc) with `tikv-jemalloc-ctl` 0.7.0 enabling background threads at startup; default features off except `background_threads_runtime_support`; Unix only | Four single-document updates at 10,000 documents: worker peak 5.4–5.6 GB with glibc (`MALLOC_ARENA_MAX=2`), 4.0–4.3 GB with jemalloc; 30 s after the last update 4.9 GB → 2.3 GB; update 29–41 s → 20–21 s. mimalloc (preloaded) measured 4.3–4.4 GB peak and 3.5 GB after 30 s and is not selected. |
+| `malloc_trim` after each build | Not selected | Measured 4.0 GB peak and 2.5 GB between updates, but needs a glibc-only FFI call per process. |

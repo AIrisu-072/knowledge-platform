@@ -53,6 +53,9 @@ candle-nn = { version = "=0.11.0", default-features = false }
 candle-transformers = { version = "=0.11.0", default-features = false }
 tokenizers = { version = "=0.22.0", default-features = false, features = ["onig"] }
 thiserror = "=2.0.21"
+# The Search worker's allocator, see spec/selection 13.6.
+tikv-jemallocator = { version = "=0.7.0", default-features = false, features = ["background_threads_runtime_support"] }
+tikv-jemalloc-ctl = { version = "=0.7.0", default-features = false }
 libc = "=0.2.189"
 landlock = "=0.4.7"
 seccompiler = "=0.5.0"
