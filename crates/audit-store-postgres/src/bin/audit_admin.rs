@@ -63,7 +63,8 @@ commands:
           Store cannot bound the lost range)
   assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]
          (offline, no database)
-exit status: 0 ok (assess: authentic), 1 failed, 2 usage,
+exit status: 0 ok (assess: authentic), 1 failed,
+  2 usage (assess: store_behind, the checkpoint is past the export's last seq),
   3 posture or verification violations,
   4 assess: not authenticated, review (authentic_through, unverified_expiry,
     no_checkpoint, lost, unverified_recovery),
@@ -111,6 +112,8 @@ enum CliError {
     NotAuthentic(&'static str),
     /// `assess`: tampered, unanchored or broken (exit 5).
     Rejected(&'static str),
+    /// `assess`: the checkpoint is past the export's last seq (exit 2).
+    StoreBehind,
 }
 
 impl<E: fmt::Display> From<E> for CliError {
@@ -309,7 +312,8 @@ fn print_record_line(expectation: Option<RecoveryExpectation>) -> Result<(), Cli
 
 /// `assess`: offline, no connection. Prints the bounded report, then exits
 /// 0 for `authentic`, 4 for verdicts a human reviews, 5 for tampered,
-/// unanchored or broken exports.
+/// unanchored or broken exports and 2 for `store_behind` (the checkpoint
+/// must be at or before the export's last seq).
 fn assess(args: &Args) -> Result<(), CliError> {
     let dir = PathBuf::from(args.get("dir")?);
     let checkpoint = checkpoint_flag(args, "checkpoint")?
@@ -332,6 +336,7 @@ fn assess(args: &Args) -> Result<(), CliError> {
         AssessClass::Authentic => Ok(()),
         AssessClass::Review => Err(CliError::NotAuthentic(report.verdict)),
         AssessClass::Rejected => Err(CliError::Rejected(report.verdict)),
+        AssessClass::Usage => Err(CliError::StoreBehind),
     }
 }
 
@@ -643,6 +648,14 @@ async fn main() -> ExitCode {
         Err(CliError::Rejected(verdict)) => {
             eprintln!("rejected: {verdict}");
             ExitCode::from(5)
+        }
+        Err(CliError::StoreBehind) => {
+            eprintln!(
+                "store_behind: the checkpoint is past the export's last seq; assess with a \
+                 checkpoint at or before it, or export again through the checkpoint (a fresh \
+                 full export that still ends before it means the Store lost rows)"
+            );
+            ExitCode::from(2)
         }
         Err(CliError::Failed(message)) => {
             eprintln!("audit-admin: {message}");

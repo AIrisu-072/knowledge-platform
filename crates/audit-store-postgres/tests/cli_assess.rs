@@ -340,6 +340,29 @@ async fn assess_reports_each_verdict_class_offline() {
     assert_eq!(report["authenticated_through"], cp1_record["seq"]);
     assert_eq!(report["findings"], json!({"ahead": 1}));
 
+    // A prefix export (`--seq-through`) judged against a checkpoint past its
+    // last seq: the export cannot confirm or refute that checkpoint. Not
+    // tampered, never authentic: the distinct usage outcome `store_behind`
+    // (exit 2). With the checkpoint at its last seq the prefix is authentic.
+    let (cp_grown, _) = checkpoint(&verifier, &dir, "cp-grown.json");
+    let through = text(&cp1_record["seq"]);
+    let (prefix, manifest) = export(
+        &verifier,
+        &dir,
+        "prefix",
+        &["--operation", "verify", "--seq-through", &through],
+    );
+    assert_eq!(manifest["watermark"], cp1_record["seq"]);
+    let (code, report) = assess(&prefix, &cp_grown, &[]);
+    assert_eq!(code, Some(2), "{report}");
+    assert_eq!(report["verdict"], "store_behind");
+    assert_eq!(report["authenticated_through"], Value::Null);
+    assert_eq!(report["findings"], json!({"store_behind": 1}));
+    assert_eq!(report["head"]["seq"], cp1_record["seq"]);
+    let (code, report) = assess(&prefix, &cp1, &[]);
+    assert_eq!(code, Some(0), "{report}");
+    assert_eq!(report["verdict"], "authentic");
+
     // NoCheckpoint: an export anchored at the checkpoint itself confirms
     // nothing new. An export after genesis needs that anchor; with it, a
     // later checkpoint at the head authenticates the tail.
@@ -425,10 +448,12 @@ async fn assess_reports_each_verdict_class_offline() {
     let (code, report) = assess(&bodies, &cp3b, &[]);
     assert_eq!(code, Some(0), "the purge evidence is verified: {report}");
     assert_eq!(report["unverified_expiry_evidence"], 0);
-    // A checkpoint past the export's head: rows the export lacks.
+    // A checkpoint past the export's head in the same epoch: an older (or
+    // cut) export, or rows the Store lost. Never authentic; a fresh full
+    // export through that checkpoint decides it.
     let (code, report) = assess(&identity, &cp3b, &[]);
-    assert_eq!(code, Some(5), "{report}");
-    assert_eq!(report["verdict"], "tampered");
+    assert_eq!(code, Some(2), "{report}");
+    assert_eq!(report["verdict"], "store_behind");
     assert_eq!(report["findings"], json!({"store_behind": 1}));
 
     // A planned move: an epoch without loss. With its record it is

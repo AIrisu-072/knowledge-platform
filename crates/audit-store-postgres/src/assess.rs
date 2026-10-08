@@ -56,11 +56,19 @@ pub enum AssessError {
     AnchorRequired { seq: i64 },
 }
 
-/// The overall verdict: audit-core's, or a chain that failed verification.
+/// The overall verdict: audit-core's, a chain that failed verification, or
+/// a checkpoint the export cannot be judged against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Overall {
     Chain(ChainVerdict),
     Broken,
+    /// The checkpoint lies past the export's last seq in the same (or a
+    /// later) recovery epoch: the export is older or cut short
+    /// (`--seq-through`), or the Store lost rows. The export can neither
+    /// confirm nor refute it: assess with a checkpoint at or before the
+    /// export's last seq, or export again through the checkpoint (a fresh
+    /// full export that still ends before it means the Store lost rows).
+    StoreBehind,
 }
 
 /// How a verdict is acted on (the `audit-admin assess` exit status).
@@ -75,6 +83,9 @@ pub enum AssessClass {
     Review,
     /// `Tampered`, `Unanchored` or a broken chain: exit 5.
     Rejected,
+    /// The inputs do not fit together (`store_behind`): exit 2, like a usage
+    /// error. Never authentic.
+    Usage,
 }
 
 impl Overall {
@@ -89,6 +100,7 @@ impl Overall {
             Self::Chain(ChainVerdict::Tampered) => "tampered",
             Self::Chain(ChainVerdict::Unanchored) => "unanchored",
             Self::Broken => "broken",
+            Self::StoreBehind => "store_behind",
         }
     }
 
@@ -105,6 +117,7 @@ impl Overall {
             Self::Chain(ChainVerdict::Tampered | ChainVerdict::Unanchored) | Self::Broken => {
                 AssessClass::Rejected
             }
+            Self::StoreBehind => AssessClass::Usage,
         }
     }
 }
@@ -318,6 +331,16 @@ pub fn assess_dir(dir: &Path, inputs: &AssessInputs) -> Result<AssessReport, Ass
     }
     let assessment = assess_recovery(report, &[inputs.checkpoint], &inputs.records);
     let mut out = summarize(&assessment, report, operation);
+    // A checkpoint past the head with no recovery after it on this path
+    // cannot be judged from this export (audit-core would call it
+    // tampering): fail closed as a usage outcome instead. A checkpoint of an
+    // earlier epoch stays audit-core's (lost, unverified recovery or
+    // tampered).
+    if inputs.checkpoint.seq > report.head.seq && inputs.checkpoint.epoch >= report.head.epoch {
+        out.overall = Overall::StoreBehind;
+        out.verdict = Overall::StoreBehind.as_str();
+        out.authenticated_through = None;
+    }
     out.anchor_seq = report.anchor.map(|anchor| anchor.seq);
     out.head = Some(head);
     out.complete = check.complete;
@@ -434,6 +457,8 @@ mod tests {
         }
         assert_eq!(Overall::Broken.as_str(), "broken");
         assert_eq!(Overall::Broken.class(), AssessClass::Rejected);
+        assert_eq!(Overall::StoreBehind.as_str(), "store_behind");
+        assert_eq!(Overall::StoreBehind.class(), AssessClass::Usage);
     }
 
     #[test]
@@ -592,6 +617,16 @@ mod tests {
             (through.verdict, through.authenticated_through),
             ("authentic_through", Some(2))
         );
+        // A checkpoint past the export's last seq (same epoch) cannot be
+        // judged from it: never authentic, never called tampering.
+        let (prefix, _) = identity_chain(3);
+        let prefix_dir = write_dir(&prefix, &manifest(3, 0, true));
+        let behind = assess_dir(&prefix_dir, &inputs(at(4))).expect("assess");
+        assert_eq!(
+            (behind.verdict, behind.class(), behind.authenticated_through),
+            ("store_behind", AssessClass::Usage, None)
+        );
+        assert_eq!(behind.findings, BTreeMap::from([("store_behind", 1)]));
         let mut forged = at(4);
         forged.chain = [0; 32];
         let tampered = assess_dir(&dir, &inputs(forged)).expect("assess");
