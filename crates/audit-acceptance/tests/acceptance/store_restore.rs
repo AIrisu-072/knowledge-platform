@@ -11,8 +11,10 @@
 //! assessment. The procedure keeps the relay stopped until the epoch; here
 //! `audit-relay run` is pointed at the restored Store before any recovery
 //! step (as an early restart would), and the gate holds: rows produced
-//! meanwhile stay at attempt 0 and are not stored until the epoch starts,
-//! then the same relay delivers them. The events lost by the restore are
+//! meanwhile stay at attempt 0, unleased and without an outage code, and
+//! are not stored until the epoch starts, then the same relay delivers
+//! them with one attempt and no outage (a late `store_timeout` answer
+//! aside). The events lost by the restore are
 //! delivered again (exactly once in the restored Store) and the declared
 //! lost range keeps the assessment honest: `lost`, never `authentic`;
 //! `unverified_recovery` without the out-of-band record or with a forged
@@ -53,14 +55,23 @@ fn append_line(path: &Path, line: &str) {
     writeln!(file, "{line}").expect("append record");
 }
 
-/// The rows produced during the recovery are not attempted (attempt 0) nor
-/// acknowledged, and the restored Store holds none of them.
+/// The rows produced during the recovery are not attempted nor
+/// acknowledged, and the restored Store holds none of them. Attempt 0 alone
+/// would not show it: a relay that ignored its gate would claim the row,
+/// the Store would refuse the ingest as `store_recovery_required`, and that
+/// outage returns the attempt. So no row is leased (no attempt in flight)
+/// and none carries an outage code (no attempt was ever settled as one).
 async fn assert_still_waiting(env: &Env, restored_admin: &PgPool, waited: &[Uuid], when: &str) {
     let ledger = deliveries(env).await;
     for id in waited {
         let row = &ledger[id];
         assert!(!row.delivered, "{when}: {row:?}");
         assert_eq!(row.attempt_count, 0, "{when}: no attempt: {row:?}");
+        assert!(!row.leased, "{when}: no lease: {row:?}");
+        assert_eq!(
+            row.last_outage_code, None,
+            "{when}: no attempt refused by the Store: {row:?}"
+        );
     }
     let stored: i64 =
         sqlx::query_scalar("SELECT count(*) FROM audit_store.events WHERE event_id = ANY($1)")
@@ -340,9 +351,21 @@ async fn store_restore() {
         assert!(stored[id].seq > started.seq, "redelivered after the epoch");
     }
     for id in &waited {
-        assert_eq!(ledger[id].store_recovery_epoch, Some(2));
+        let row = &ledger[id];
+        assert_eq!(row.store_recovery_epoch, Some(2));
         assert!(stored[id].seq > started.seq, "stored after the epoch");
-        assert_eq!(ledger[id].attempt_count, 1, "no attempt while gated");
+        assert_eq!(row.attempt_count, 1, "no attempt while gated");
+        // Delivered without a Store refusal: never `store_recovery_required`.
+        // The only code allowed is the suite-wide late ingest answer after
+        // the epoch (`store_timeout`, then `stored` or `duplicate`).
+        assert_stored_or_late_duplicate(row);
+        assert!(
+            matches!(
+                row.last_outage_code.as_deref(),
+                None | Some("store_timeout")
+            ),
+            "delivered without an outage: {row:?}"
+        );
     }
     let resets: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM audit_relay.delivery_history \

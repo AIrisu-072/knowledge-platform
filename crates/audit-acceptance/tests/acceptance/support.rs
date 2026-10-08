@@ -783,6 +783,8 @@ pub struct DeliveryRow {
     pub store_outcome: Option<String>,
     pub store_recovery_epoch: Option<i64>,
     pub attempt_count: i32,
+    /// A relay holds the row's lease (claimed and not settled).
+    pub leased: bool,
     pub quarantine_code: Option<String>,
     pub last_outage_code: Option<String>,
     pub registration_kind: String,
@@ -793,7 +795,8 @@ pub async fn deliveries(env: &Env) -> BTreeMap<Uuid, DeliveryRow> {
     sqlx::query(
         "SELECT event_id, delivered_at IS NOT NULL AS delivered, store_seq, \
                 store_envelope_digest, store_outcome, store_recovery_epoch, attempt_count, \
-                quarantine_code, last_outage_code, registration_kind, \
+                lease_token IS NOT NULL AS leased, quarantine_code, last_outage_code, \
+                registration_kind, \
                 audit_relay.commitment(commitment_salt, source_digest) AS commitment \
          FROM audit_relay.deliveries",
     )
@@ -813,6 +816,7 @@ pub async fn deliveries(env: &Env) -> BTreeMap<Uuid, DeliveryRow> {
                 store_outcome: row.get("store_outcome"),
                 store_recovery_epoch: row.get("store_recovery_epoch"),
                 attempt_count: row.get("attempt_count"),
+                leased: row.get("leased"),
                 quarantine_code: row.get("quarantine_code"),
                 last_outage_code: row.get("last_outage_code"),
                 registration_kind: row.get("registration_kind"),
