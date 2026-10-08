@@ -57,6 +57,10 @@ pub const READERS_GROUP: &str = "synthetic-readers";
 /// A group that only ever appears in an access-control list. Its name must
 /// never reach the Store (no ACL list in the audit envelopes).
 pub const ACL_ONLY_GROUP: &str = "acl-only-group-5e7d0c";
+/// Original filenames of a created document and of a new version: kept by
+/// Document (`content_representations`), never in the Store.
+pub const ORIGINAL_FILENAME: &str = "FILEMARK-original-5c2e.txt";
+pub const VERSION_FILENAME: &str = "FILEMARK-version-8d41.txt";
 
 pub fn editor() -> PrincipalRef {
     PrincipalRef::new(IDP, EDITOR).expect("principal")
@@ -335,7 +339,7 @@ impl Platform {
                     document_metadata: Metadata::default(),
                     version_metadata: Metadata::default(),
                     principal: editor(),
-                    original_filename: "synthetic-v1.txt".into(),
+                    original_filename: ORIGINAL_FILENAME.into(),
                     media_type: MediaType::new("text/plain").expect("media type"),
                     content: Box::pin(Cursor::new(content.to_vec())),
                 },
@@ -623,7 +627,7 @@ impl Platform {
                 0,
                 FileId::from_uuid(Uuid::now_v7()),
                 MediaType::new("text/plain")?,
-                "synthetic-version.txt",
+                VERSION_FILENAME,
                 Box::pin(Cursor::new(content.to_vec())),
             )],
         )

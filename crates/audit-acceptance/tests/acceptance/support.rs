@@ -422,6 +422,13 @@ impl Env {
     /// Every byte the Store database holds, as `pg_dump --data-only` text
     /// (all schemas, all tables): what a scan for leaked content reads.
     pub async fn store_dump_text(&self, database: &str) -> String {
+        let dump = self.dump_text(database).await;
+        assert!(dump.contains("audit_store.events"), "dump has the events");
+        dump
+    }
+
+    /// `pg_dump --data-only` text of one database (all schemas, all tables).
+    pub async fn dump_text(&self, database: &str) -> String {
         let (code, stdout, stderr) = self
             .docker_exec(&[
                 "pg_dump",
@@ -434,8 +441,19 @@ impl Env {
             ])
             .await;
         assert_eq!(code, 0, "pg_dump: {stderr}");
-        assert!(stdout.contains("audit_store.events"), "dump has the events");
         stdout
+    }
+
+    /// Every Document staging row (`public.audit_outbox_events`) as JSON
+    /// text: what the relay reads.
+    pub async fn staging_text(&self) -> String {
+        sqlx::query_scalar(
+            "SELECT coalesce(string_agg(to_jsonb(e)::text, E'\\n'), '') \
+             FROM public.audit_outbox_events AS e",
+        )
+        .fetch_one(&self.doc_admin)
+        .await
+        .expect("staging text")
     }
 
     /// The highest Store seq the relay references in one Store recovery

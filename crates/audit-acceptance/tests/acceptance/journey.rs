@@ -1,16 +1,21 @@
-//! T1 (design §14.4): every Document producer of the audit catalog (all 23
-//! relay-origin types), called through the production application
-//! services, reaches the Audit Store through the running relay
-//! (`audit-relay run`) exactly once, with the source identity, the
-//! scheduler's attribution (`service/scheduler` beside the requester) and
-//! only a summary of every free-text reason. Nothing the Store holds
-//! contains a reason text, file content, a storage locator or an ACL list.
-//! produced / delivered / stored / verified are reported apart; the Store
-//! chain verifies, a checkpoint is taken, and the offline assessment of an
-//! export against it is `authentic`.
+//! T1 (design §14.4): every Document producer of the audit catalog (every
+//! relay-origin Document type of the embedded catalog, 23 today), called
+//! through the production application services, reaches the Audit Store
+//! through the running relay (`audit-relay run`) exactly once, with the
+//! source identity, the scheduler's attribution (`service/scheduler`
+//! beside the requester) and only a summary of every free-text reason.
+//! Nothing the Store holds or exports contains a reason text, a title, a
+//! folder name, an original filename, a metadata value, file content, a
+//! storage locator, an ACL subject, the database password or a connection
+//! URL; each of them is first shown to exist upstream. The health report
+//! keeps produced, delivered, stored and verified apart (here produced =
+//! delivered; T3 and T5 show produced ≠ delivered); the Store chain
+//! verifies, a checkpoint is taken, and the offline assessment of an export
+//! against it is `authentic`.
 
 use std::collections::BTreeSet;
 
+use audit_core::{Catalog, Origin};
 use audit_store_postgres::admin::AccessOperation;
 use audit_store_postgres::assess::{AssessClass, AssessInputs, assess_dir};
 use audit_store_postgres::files::{ExportRequest, export_to_dir};
@@ -20,7 +25,10 @@ use serde_json::{Value, json};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::document::{ACL_ONLY_GROUP, Platform, READER, READERS_GROUP, editor_ctx, reader_ctx};
+use crate::document::{
+    ACL_ONLY_GROUP, ORIGINAL_FILENAME, Platform, READER, READERS_GROUP, VERSION_FILENAME,
+    editor_ctx, reader_ctx,
+};
 use crate::support::*;
 
 const V1: &[u8] = b"A synthetic acceptance original CONTENTMARK-7a1f\n";
@@ -29,7 +37,8 @@ const V2_UPDATED: &[u8] = b"C synthetic acceptance update CONTENTMARK-c3d0\n";
 const V3: &[u8] = b"D synthetic acceptance draft CONTENTMARK-d4f1\n";
 const V_REVOKED: &[u8] = b"E synthetic revoked schedule CONTENTMARK-e5a2\n";
 
-/// Free-text reasons: unique tokens that must never reach the Store.
+/// Free-text reasons (unique tokens). Document stages the ones in
+/// [`STAGED_REASONS`]; it records no reason for an ACL change.
 const METADATA_REASON: &str = "SYNTHREASON-metadata-41c7 監査用の理由";
 const FOLDER_CREATE_REASON: &str = "SYNTHREASON-folder-create-0d3a";
 const FOLDER_RENAME_REASON: &str = "SYNTHREASON-folder-rename-5b19";
@@ -40,16 +49,59 @@ const WITHDRAW_REASON: &str = "SYNTHREASON-withdraw-c2d8";
 const END_REASON: &str = "SYNTHREASON-end-e5b4";
 const REVOKE_REASON: &str = "SYNTHREASON-revoke-publish-8a3c";
 
-const REASONS: [&str; 9] = [
+/// The reasons Document stages (`data.reason` of the staging row; the
+/// relay must send only their summary).
+const STAGED_REASONS: [&str; 7] = [
     METADATA_REASON,
     FOLDER_CREATE_REASON,
     FOLDER_RENAME_REASON,
     FOLDER_MOVE_REASON,
     DOCUMENT_MOVE_REASON,
-    POLICY_REASON,
     WITHDRAW_REASON,
     END_REASON,
-    REVOKE_REASON,
+];
+
+/// Document titles, folder names and a metadata value: kept by Document
+/// in its business tables, never in an audit envelope.
+const DOCUMENT_TITLE: &str = "TITLEMARK-document-6e1b";
+const V2_TITLE: &str = "TITLEMARK-v2-71c4";
+const V2_UPDATED_TITLE: &str = "TITLEMARK-v2-updated-9a05";
+const V3_TITLE: &str = "TITLEMARK-v3-d2e8";
+const REVOKED_TITLE: &str = "TITLEMARK-revoked-3b6f";
+const FOLDER_A: &str = "FOLDERMARK-a-31d9";
+const FOLDER_B: &str = "FOLDERMARK-b-48c0";
+const FOLDER_A_RENAMED: &str = "FOLDERMARK-a-renamed-5f72";
+const METADATA_VALUE: &str = "METAMARK-category-2b7f";
+
+/// The Document source of the catalog (relay origin).
+const DOCUMENT_SOURCE: &str = "urn:knowledge-platform:document-platform";
+
+/// How many staging rows of each relay-origin Document type the journey
+/// produces. The keys must be exactly the catalog's types.
+const EXPECTED_COUNTS: [(&str, usize); 23] = [
+    ("access_policy.changed", 3),
+    ("document.created", 2),
+    ("document.version.created", 4),
+    ("document.version.updated", 1),
+    ("document.version.rebased", 1),
+    ("document.version.published", 2),
+    ("document.version.publication.scheduled", 3),
+    ("document.version.publication.cancelled", 1),
+    ("document.version.publication.terminal", 1),
+    ("document.version.read_confirmed", 1),
+    ("document.version.detail_viewed", 2),
+    ("document.version.marked_unread", 1),
+    ("document.file.access_granted", 3),
+    ("document.metadata.changed", 1),
+    ("document.revision_comparison.result_access_granted", 2),
+    ("folder.created", 2),
+    ("folder.renamed", 1),
+    ("folder.moved", 1),
+    ("document.moved", 1),
+    ("authorization.denied", 3),
+    ("document.diff.result_access_granted", 2),
+    ("document.version.withdrawn", 1),
+    ("document.publication.ended", 1),
 ];
 
 #[test]
@@ -69,7 +121,7 @@ async fn journey() {
 
     // Create (document.created + document.version.created), publish.
     let (document, v1) = platform
-        .create_document(Platform::root(), "Synthetic acceptance document", V1)
+        .create_document(Platform::root(), DOCUMENT_TITLE, V1)
         .await
         .expect("create");
     platform.publish(document, v1).await.expect("publish v1");
@@ -102,7 +154,7 @@ async fn journey() {
     // Metadata change with a reason; revision 1.0 → 1.1; a revision
     // comparison of the same version (no diff executed).
     platform
-        .update_metadata(document, "synthetic-category", METADATA_REASON)
+        .update_metadata(document, METADATA_VALUE, METADATA_REASON)
         .await
         .expect("metadata");
     let r10 = platform.revision_id(document, 1, 0).await;
@@ -116,7 +168,7 @@ async fn journey() {
     // into A; an explicit policy on B (normal ACL change).
     let folder_a = FolderId::from_uuid(Uuid::now_v7());
     let folder_b = FolderId::from_uuid(Uuid::now_v7());
-    for (folder, name) in [(folder_a, "Synthetic A"), (folder_b, "Synthetic B")] {
+    for (folder, name) in [(folder_a, FOLDER_A), (folder_b, FOLDER_B)] {
         platform
             .create_folder(
                 &editor_ctx(),
@@ -129,7 +181,7 @@ async fn journey() {
             .expect("create folder");
     }
     platform
-        .rename_folder(folder_a, "Synthetic A renamed", FOLDER_RENAME_REASON)
+        .rename_folder(folder_a, FOLDER_A_RENAMED, FOLDER_RENAME_REASON)
         .await
         .expect("rename");
     platform
@@ -163,7 +215,7 @@ async fn journey() {
     // A new WORKING version v2; read-state refusals on it (the reader holds
     // Read but not ReadHistory, which a non-current version needs).
     let v2 = platform
-        .create_version(document, "Synthetic acceptance v2", V2)
+        .create_version(document, V2_TITLE, V2)
         .await
         .expect("create version");
     let refused = platform.mark_read(&reader_ctx(), document, v2).await;
@@ -182,7 +234,7 @@ async fn journey() {
     // The WORKING v2 is replaced (document.version.updated); a schedule is
     // reserved and cancelled (publication.scheduled, .cancelled).
     platform
-        .update_working(document, v2, "Synthetic acceptance v2 updated", V2_UPDATED)
+        .update_working(document, v2, V2_UPDATED_TITLE, V2_UPDATED)
         .await
         .expect("update working");
     let far = OffsetDateTime::now_utc() + time::Duration::hours(1);
@@ -204,7 +256,7 @@ async fn journey() {
         .await
         .expect("schedule");
     let (revoked_document, revoked_version) = platform
-        .create_document(Platform::root(), "Synthetic revoked schedule", V_REVOKED)
+        .create_document(Platform::root(), REVOKED_TITLE, V_REVOKED)
         .await
         .expect("create the second document");
     let revoked = platform
@@ -244,7 +296,7 @@ async fn journey() {
     // A WORKING v3 on top of v2; withdraw v2 (v1 is restored), rebase v3
     // onto v1 (document.version.rebased), then end the publication.
     let v3 = platform
-        .create_version(document, "Synthetic acceptance v3", V3)
+        .create_version(document, V3_TITLE, V3)
         .await
         .expect("create v3");
     let restored = platform
@@ -279,36 +331,29 @@ async fn journey() {
     let staged = staged_rows(&env).await;
     let types: Vec<&str> = staged.iter().map(|row| row.event_type.as_str()).collect();
     let count = |event_type: &str| types.iter().filter(|t| **t == event_type).count();
-    for (event_type, expected) in [
-        ("access_policy.changed", 3),
-        ("document.created", 2),
-        ("document.version.created", 4),
-        ("document.version.updated", 1),
-        ("document.version.rebased", 1),
-        ("document.version.published", 2),
-        ("document.version.publication.scheduled", 3),
-        ("document.version.publication.cancelled", 1),
-        ("document.version.publication.terminal", 1),
-        ("document.version.read_confirmed", 1),
-        ("document.version.detail_viewed", 2),
-        ("document.version.marked_unread", 1),
-        ("document.file.access_granted", 3),
-        ("document.metadata.changed", 1),
-        ("document.revision_comparison.result_access_granted", 2),
-        ("folder.created", 2),
-        ("folder.renamed", 1),
-        ("folder.moved", 1),
-        ("document.moved", 1),
-        ("authorization.denied", 3),
-        ("document.diff.result_access_granted", 2),
-        ("document.version.withdrawn", 1),
-        ("document.publication.ended", 1),
-    ] {
+    // Every relay-origin Document type of the embedded audit catalog is
+    // produced: a type added to the catalog fails here until the journey
+    // exercises it.
+    let catalog: BTreeSet<&str> = Catalog::embedded()
+        .events()
+        .iter()
+        .filter(|spec| spec.origin == Origin::Relay && spec.source == DOCUMENT_SOURCE)
+        .map(|spec| spec.event_type.as_str())
+        .collect();
+    let expected: BTreeSet<&str> = EXPECTED_COUNTS.iter().map(|(t, _)| *t).collect();
+    assert_eq!(
+        expected, catalog,
+        "the expected counts name every catalog type"
+    );
+    let distinct: BTreeSet<&str> = types.iter().copied().collect();
+    assert_eq!(distinct, catalog, "the journey produces every catalog type");
+    for (event_type, expected) in EXPECTED_COUNTS {
         assert_eq!(count(event_type), expected, "{event_type}: {types:?}");
     }
-    // Every Document type of the audit catalog (relay origin).
-    let distinct: BTreeSet<&str> = types.iter().copied().collect();
-    assert_eq!(distinct.len(), 23, "{distinct:?}");
+    assert_eq!(
+        staged.len(),
+        EXPECTED_COUNTS.iter().map(|(_, n)| n).sum::<usize>()
+    );
     let denials: BTreeSet<String> = staged
         .iter()
         .filter(|row| row.event_type == "authorization.denied")
@@ -414,35 +459,115 @@ async fn journey() {
         "the chain verifies with audit-core and every body fits the catalog"
     );
 
-    // Nothing the Store holds (any table) contains a reason text, file
-    // content, a storage locator, the storage root or an ACL-only subject.
+    // ------------------------------------------------------------------
+    // Nothing the Store holds (any table, `pg_dump`) or exports contains
+    // what Document keeps to itself. Every needle except the process
+    // configuration is first shown to exist upstream, so its absence in
+    // the Store is a finding and not a typo.
+    // ------------------------------------------------------------------
+    let staging = env.staging_text().await;
+    let document_dump = env.dump_text(DOC_DB).await;
+    let storage = storage_text(platform.storage_root.path());
+    // (1) Staged: the free-text reasons are in the staging rows the relay
+    //     reads; only their summary may travel.
+    let mut staged_needles: Vec<String> = Vec::new();
+    for reason in STAGED_REASONS {
+        staged_needles.push(reason.to_owned());
+        if let Some((token, _)) = reason.split_once(' ') {
+            staged_needles.push(token.to_owned());
+        }
+    }
+    staged_needles.push("SYNTHREASON".to_owned());
+    for needle in &staged_needles {
+        assert!(staging.contains(needle.as_str()), "staged: {needle:?}");
+    }
+    // The ACL changes' reasons never reach staging (Document records no
+    // reason for an ACL change): they are no needle.
+    for reason in [POLICY_REASON, REVOKE_REASON] {
+        assert!(!staging.contains(reason), "{reason:?}");
+    }
+    // (2) In the Document database (business tables): titles, folder names,
+    //     original filenames, a metadata value, the ACL subjects and the
+    //     storage locators. The replaced v2 title and folder name are no
+    //     longer upstream at the end (their replacements are checked).
+    let mut document_needles: Vec<String> = [
+        DOCUMENT_TITLE,
+        V2_UPDATED_TITLE,
+        V3_TITLE,
+        REVOKED_TITLE,
+        FOLDER_B,
+        FOLDER_A_RENAMED,
+        ORIGINAL_FILENAME,
+        VERSION_FILENAME,
+        METADATA_VALUE,
+        ACL_ONLY_GROUP,
+        READERS_GROUP,
+        "TITLEMARK",
+        "FOLDERMARK",
+        "FILEMARK",
+        "METAMARK",
+    ]
+    .iter()
+    .map(|needle| (*needle).to_owned())
+    .collect();
     let locators: Vec<String> = sqlx::query_scalar("SELECT storage_locator FROM file_objects")
         .fetch_all(&env.doc_admin)
         .await
         .expect("locators");
     assert!(locators.len() >= 2);
-    let mut needles: Vec<String> = REASONS.iter().map(|r| (*r).to_owned()).collect();
-    needles.extend(
-        REASONS
-            .iter()
-            .map(|r| r[..r.find(' ').unwrap_or(r.len())].to_owned()),
+    document_needles.extend(locators);
+    let missing: Vec<&String> = document_needles
+        .iter()
+        .filter(|needle| !document_dump.contains(needle.as_str()))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "not in the Document database: {missing:?}"
     );
-    needles.push("SYNTHREASON".to_owned());
-    needles.push("CONTENTMARK".to_owned());
-    for body in [V1, V2, V2_UPDATED, V3, V_REVOKED] {
-        needles.push(String::from_utf8_lossy(body).trim().to_owned());
+    // (3) File content, in the storage files.
+    let mut content_needles: Vec<String> = [V1, V2, V2_UPDATED, V3, V_REVOKED]
+        .iter()
+        .map(|body| String::from_utf8_lossy(body).trim().to_owned())
+        .collect();
+    content_needles.push("CONTENTMARK".to_owned());
+    for needle in &content_needles {
+        assert!(storage.contains(needle.as_str()), "stored file: {needle:?}");
     }
-    needles.push(ACL_ONLY_GROUP.to_owned());
-    needles.push(READERS_GROUP.to_owned());
-    needles.push(
+    // (4) Process configuration, never Document data: the synthetic
+    //     password and every connection URL of Document, the relay and the
+    //     Store clients, and the storage root.
+    let mut config_needles = vec![
+        PASSWORD.to_owned(),
+        "postgres://".to_owned(),
+        env.url(DOC_OWNER, DOC_DB),
+        env.superuser_url(DOC_DB),
+        env.superuser_url(STORE_DB),
         platform
             .storage_root
             .path()
             .to_str()
             .expect("utf8 path")
             .to_owned(),
-    );
-    needles.extend(locators);
+    ];
+    for login in [
+        &env.worker,
+        &env.operator,
+        &env.relay_store,
+        &env.operator_store,
+        &env.verifier,
+        &env.maintainer,
+        &env.admin,
+        &env.dba,
+    ] {
+        config_needles.push(login.url.clone());
+    }
+    let needles: Vec<String> = [
+        staged_needles,
+        document_needles,
+        content_needles,
+        config_needles,
+    ]
+    .concat();
     let dump = env.store_dump_text(STORE_DB).await;
     assert!(
         dump.contains(&document.as_uuid().to_string()),
@@ -451,7 +576,10 @@ async fn journey() {
     assert_absent(&dump, "the Store database", &needles);
 
     // ------------------------------------------------------------------
-    // produced / delivered / stored / verified stay distinct.
+    // produced / delivered / stored / verified are reported apart. Here
+    // everything produced is delivered (T3 and T5 show produced ≠
+    // delivered); stored counts the Store's control events too, and
+    // verified moves only with a verification.
     // ------------------------------------------------------------------
     let produced = json!(staged.len());
     let report = env.health(true).await;
@@ -533,4 +661,23 @@ async fn journey() {
         assessed.verdict
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The bytes of every file under `root` (the Document storage), as text.
+fn storage_text(root: &std::path::Path) -> String {
+    let mut text = String::new();
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).expect("storage directory") {
+            let path = entry.expect("storage entry").path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else {
+                let bytes = std::fs::read(&path).expect("storage file");
+                text.push_str(&String::from_utf8_lossy(&bytes));
+                text.push('\n');
+            }
+        }
+    }
+    text
 }
