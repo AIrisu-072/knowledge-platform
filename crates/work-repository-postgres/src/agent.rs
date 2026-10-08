@@ -35,7 +35,11 @@ impl PostgresWorkRepository {
             }
             let remaining = PREFLIGHT_LIFETIME
                 .checked_sub(started.elapsed())
-                .ok_or(WorkError::DependencyUnavailable)?;
+                .ok_or_else(|| {
+                    diagnostic_phase(Phase::Freshness, Dependency::None);
+                    WorkError::DependencyUnavailable
+                })?;
+            diagnostic_phase(Phase::Agent, Dependency::Agent);
             self.agent_source
                 .as_ref()
                 .ok_or(WorkError::DependencyUnavailable)?
@@ -354,6 +358,7 @@ impl PostgresWorkRepository {
 }
 fn fresh(started: Instant) -> Result<(), WorkError> {
     if started.elapsed() > PREFLIGHT_LIFETIME {
+        diagnostic_phase(Phase::Freshness, Dependency::None);
         Err(WorkError::DependencyUnavailable)
     } else {
         Ok(())
