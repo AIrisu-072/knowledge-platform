@@ -2,7 +2,7 @@
 
 Status: 単位B（`crates/audit-relay`、`crates/audit-store-postgres`）のsourceに合わせた手順（2026-10-08）。**本番credential・本番migration・server deploy・本番運用は本trackで実施も検証もしていない。** 確認できたのは、合成データとPostgreSQL 18.6（testcontainers `postgres:18.6-bookworm`）での試験だけである。sourceで確認できない事項は「未確認」、sourceからの推論は「推論」と記す。設計は[配送・保存・検証設計](../superpowers/specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、決定は[決定記録](../decisions/2026-10-07-audit-envelope-store-integrity.md)。
 
-表記：`<...>` はplaceholderである。接続URL・password・hostnameはsecret管理から環境変数へ注入し、shell履歴・repository・log・ticketに残さない。両CLIは結果をJSONでstdoutに出し、errorはcodeだけをstderrに出す（URL・credentialは出さない）。
+表記：`<...>` はplaceholderである。接続URL・password・hostnameはsecret管理から環境変数へ注入し、shell履歴・repository・log・ticketに残さない。両CLIは結果をJSONでstdoutに出し、errorをstderrに出す。`audit-relay` のerrorは固定の文とcode・SQLSTATEだけで、`audit-admin` のerrorはcode・SQLSTATEに加えてPostgreSQLのmessage（例：`database error 3F000: schema "audit_store" does not exist`）と不正な引数（`unexpected argument <引数>`）をそのまま出す。どちらも環境変数のURL・credentialは出さない。**秘密を引数に渡さない**（誤って渡すとstderrに出る）。
 
 ## 1. 責任範囲と4つの証拠
 
@@ -41,7 +41,7 @@ Status: 単位B（`crates/audit-relay`、`crates/audit-store-postgres`）のsour
 2. superuserで `AUDIT_RELAY_MIGRATE_DATABASE_URL=<DOCUMENT_MIGRATOR_URL> audit-relay migrate` を実行する（出力 `{"migrated": true, "ledger": "audit_relay_sqlx_migrations"}`）。
    - 事前検査：`public.audit_outbox_events` と `public._sqlx_migrations` の存在、15列の名前と型（`audit_relay::STAGING_COLUMNS`）。失敗すれば何も作らない。
    - 全体が1 transactionで、stagingを `SHARE ROW EXCLUSIVE` でlockする（`lock_timeout` 10秒）。業務のINSERTがcommitまで待つので、**業務の停止時間帯に行う**。
-   - 既存行は `registration_kind='backfill'` で登録し、旧 `attempt_count` / `delivered_at` は `legacy_*` に残してpendingにする。適用後 `audit-relay health --forecast` でquarantineの見込みをcode別に見る。
+   - 既存行は `registration_kind='backfill'` で登録し、旧 `attempt_count` / `delivered_at` は `legacy_*` に残してpendingにする。quarantineの見込みは、§3.2まで終えた後（workerのloginとStoreのloginが揃った後）にworkerのloginで `audit-relay health --forecast` を実行し、code別に見る（migratorのsuperuser sessionは拒否される。`run` の前に行う）。
    - superuserでなくstagingのownerで実行した場合は、そのroleの `audit_relay_owner` membershipを実行後にREVOKEする（残るとposture `owner_member` で `run` が起動しない）。
 3. DB owner（superuser）が `crates/audit-relay/sql/roles.sql` を適用する。LOGIN roleを作り、capability role（`audit_relay_worker` か `audit_relay_operator`）をちょうど1つGRANTし、roles.sqlを再適用してtimeoutを設定する（30s/5s/60s）。
    ```sql
@@ -54,11 +54,13 @@ Status: 単位B（`crates/audit-relay`、`crates/audit-store-postgres`）のsour
 1. 空のdatabaseを作る（作成時のownerやencodingは未確認）。
 2. superuserで `AUDIT_STORE_MIGRATE_DATABASE_URL=<STORE_MIGRATOR_URL> audit-admin migrate`（出力 `{"status":"migrated"}`）。`audit_store_owner`（NOLOGIN・非superuser）を作り、Document用のsource service `service/audit-relay` を登録する。
 3. DB ownerが `crates/audit-store-postgres/sql/roles.sql` を適用し、LOGIN roleを作ってcapability roleをGRANTし（role名は `[a-z_][a-z0-9_$]{0,62}`）、`sql/privileges.sql` を適用する。**privileges.sqlはLOGIN role追加後とrestore後に毎回再適用する。**
-4. ownerのmemberであるDBA login（capability roleを持たず、束縛しない）で：
+4. ownerのmemberであるDBA login（capability roleを持たず、束縛しない）で。URLはsecret管理から1回だけ環境変数へ入れ、同じshellの後続commandで使う（URLをcommand行に書かない）：
    ```sh
-   AUDIT_STORE_DATABASE_URL=<DBA_LOGIN_URL> audit-admin bootstrap-admin --db-role <admin_login> --issuer <ISSUER> --principal <PRINCIPAL_ID>
+   export AUDIT_STORE_DATABASE_URL="$(<SECRET_COMMAND_FOR_DBA_LOGIN_URL>)"
+   audit-admin bootstrap-admin --db-role <admin_login> --issuer <ISSUER> --principal <PRINCIPAL_ID>
    audit-admin bind --db-role <relay_service_login> --issuer service --principal audit-relay
    audit-admin bind --db-role <operator_login> --issuer <ISSUER> --principal <PRINCIPAL_ID>
+   unset AUDIT_STORE_DATABASE_URL
    ```
    bootstrapは1回だけ（2回目は `administrator_exists`）。再束縛には先に `unbind --db-role R` が要る。issuer `db_role` は拒否される。Document以外のsourceを足すときだけ `register-source-service --issuer I --principal P --source S`。
 5. 管理者が自分のloginで `audit-admin grant --issuer I --principal P --capability <investigate|export|verify|administer|maintain>`。自分自身への付与は拒否され、記録される。
@@ -92,7 +94,8 @@ Status: 単位B（`crates/audit-relay`、`crates/audit-store-postgres`）のsour
 AUDIT_SOURCE_DATABASE_URL=<AUDIT_SOURCE_DATABASE_URL> AUDIT_STORE_DATABASE_URL=<AUDIT_STORE_DATABASE_URL> audit-relay run
 ```
 
-- 起動拒否：特権session、同一database、URLの `options`・`PGOPTIONS`、`synchronous_commit` が `on` でない、`audit_relay.posture_check()` の違反、設定値の範囲外。
+- 起動拒否：特権session、同一database、URLの `options`・`PGOPTIONS`、`synchronous_commit` が `on` でない、`audit_relay.posture_check()` の違反、設定値の範囲外、**Document DBかStoreへ接続できない**（`audit-relay: store database unavailable (transport)`、`audit-relay: store database refused (55000)` 等、exit 1）。
+- 起動後のStore障害は保留して自動で排出する（§4.4、§5.3）が、Store停止中に起動・再起動した `run` は接続できずexit 1で終わる。process監視が間隔を置いて再起動し、Storeの復旧後に起動した `run` が排出する（stagingと配送登録は残るので行は失われない）。
 - 停止：SIGTERMまたはCtrl-Cで新しいclaimを止め、`AUDIT_RELAY_DRAIN_MS` の範囲でdrainする。正常終了（exit 0）ではstdoutに `{cycles, claimed, settled, lost, reaped, outages}` を出す。
 - **停止要求がrunnerの処理中に届くと、exit 1と `audit-relay: delivery stopped: outbox store result is unknown` になる。これは想定内である**：結果を確認できない行はleaseの失効後に再claimされ、Storeのidempotencyでackへ収束する。monitorは最後の進捗行を出し、circuitの報告を削除してから終わる。
 - restartは試行の履歴を戻さない。process監視（systemd等）と複数instanceの同時運転は未確認。
@@ -142,14 +145,14 @@ breakerはStore障害で開き、指数cooldown（INITIAL→MAX）の後にhalf-
 根拠：`crates/audit-relay/src/health.rs`、`crates/audit-relay/README.md`、migrationの `status()` / `report_runtime` / `posture_check()`、`crates/audit-store-postgres/README.md`
 
 ```sh
-audit-relay health [--forecast] [--reconcile]   # 両URLが要る。posture違反は拒否せず警報にする
+audit-relay health [--forecast] [--reconcile]   # 両URLが要る。posture違反は拒否せず警報にする。Storeへ接続できなくても報告する
 ```
 
 ### 5.1 出力
 
 - `produced`：`staged`、`registered`、`unregistered`、`registration`（trigger/backfill/repair別）、`legacy_marked`。
 - `delivered`：`delivered`、`pending`、`leased`、`retry_waiting`、`outage_held`、`relay_held`、`catalog_skew_held`、`quarantined`（code別）、`oldest_pending_age_seconds`、`max_acked_store_seq`、`max_referenced_store_seq`（epochごと）、`replayed`。
-- `stored`：`gate`、`available`、`head_seq`、`recovery_epoch`、`recovery_mode`、`recovery_pending`、`access_reapply_pending`、`posture_ok`、`missing_types`、`denials_pending`、`relay_max_seq`（Storeの現在epochでrelayが参照する最大seq。§10.2の `--relay-max-seq`）。Storeのloginがoperatorだとprobeできないので `missing_types` は `null`。
+- `stored`：`gate`、`available`、`head_seq`、`recovery_epoch`、`recovery_mode`、`recovery_pending`、`access_reapply_pending`、`posture_ok`、`missing_types`、`denials_pending`、`relay_max_seq`（Storeの現在epochでrelayが参照する最大seq。§10.2の `--relay-max-seq`）。Storeのloginがoperatorだとprobeできないので `missing_types` は `null`。Storeへ接続できない、またはStoreの呼出しが失敗した場合は `available: false`、`gate` に障害code（`store_transport`・`store_timeout`・`store_connection`・`store_resources`・`store_shutdown`・`store_other` 等）を出し、他の値はnullになる（`verified` もnull）。
 - `circuit`：各 `run` processが1秒ごとに標本化し、変化時と10秒ごとに `audit_relay.report_runtime` で報告した状態。`running`（60秒以内に報告）、`stale`（それより古い行＝強制終了したprocess）、`state`（runningのうち最悪の `open` → `half_open` → `closed`、runningが無ければ `null`）、`gate`、`outage_streak`、`outages`、`last_report_age_seconds`。
 - `verified`：`last_verified_seq`（最後の違反以後の `ok` の検証がgenesisから連続して覆う最大seq）、`outcome`（違反の後、genesisから走査headまでの検証が `ok` になるまで `violations` のまま）、`unverified_events`。
 - `installation`：`installed`（trigger・guard・digest関数）、`policy_revision`、`posture_violations`（code）。
@@ -158,7 +161,7 @@ audit-relay health [--forecast] [--reconcile]   # 両URLが要る。posture違�
 
 | alarm | 意味 | 対処 |
 |---|---|---|
-| `store_unavailable` | `stored.gate` が通信断等 | Storeの復旧を待つ（自動で排出される） |
+| `store_unavailable` | `stored.gate` が通信断等。Storeへ接続できない場合（停止、通信断、`ALLOW_CONNECTIONS false` 等）もhealthはexit 0でこれを出す。認証失敗・存在しないdatabase等の設定の誤りは障害ではなく、healthは `audit-relay: store database refused (<SQLSTATE>)` でexit 1になる | Storeの復旧を待つ（動いている `run` が自動で排出する。§4.1） |
 | `store_recovery_required` / `store_regressed` | fingerprint不一致・`recovery_pending` / ack済みreceiptがStoreに無い | §10 |
 | `store_posture_invalid` | Storeのposture違反 | `audit-admin posture`、§5.4 |
 | `store_catalog_skew` | relayのcatalogが期待するtypeをStoreが未登録（relay serviceのloginで見たときだけ）。`run` は全面的にclaimを止める | §7 |
@@ -177,7 +180,8 @@ audit-relay health [--forecast] [--reconcile]   # 両URLが要る。posture違�
 
 ### 5.3 Store停止（配送遅延）とstaging失敗（業務rollback）の区別
 
-- **Store停止**：業務は成功する。`delivered.pending`・`outage_held`・`oldest_pending_age_seconds` が増え、`stored.available=false`、Store系の警報と `circuit_open` が出る。試行回数は消費されない。復旧後に自動で排出される。
+- **Store停止**：業務は成功する。`delivered.pending`・`outage_held`・`oldest_pending_age_seconds` が増え、`stored.available=false`（`stored.gate` に障害code）と `store_unavailable` が出る。`circuit_open` は動いている `run` があるときだけ出る（`circuit.running`）。試行回数は消費されない。動いている `run` が復旧後に自動で排出する。停止中に起動・再起動した `run` はexit 1で終わるので、process監視が再起動する（§4.1）。
+  - healthはDocument DBへ接続できれば、Storeへ接続できなくても報告する。Document DBも読めないときは、動いている `run` のstderrの `event=circuit circuit=open gate=store_*`（§4.3）を見る。
 - **staging失敗**：Documentの業務operation自体がerrorで終わり、業務の変更もstagingも配送登録もrollbackされる（登録triggerの失敗も同じ）。行が残らないので **relayとhealthからは見えない**。検知はDocument側のerror応答・log・試験による（Document側で何をどう監視するかは本trackでは未確認）。
 - `unregistered_rows` は「業務とstagingはcommitしたが配送登録が無い」状態で、staging失敗とは別の事象である。
 
@@ -188,7 +192,7 @@ audit-relay health [--forecast] [--reconcile]   # 両URLが要る。posture違�
 | violation | 内容 | 対処 |
 |---|---|---|
 | `predefined_role_member` | DBへ接続できる非superuser loginが `pg_read_all_data`・`pg_write_all_data`・`pg_maintain` を持つ。`pg_read_server_files`・`pg_write_server_files`・`pg_execute_server_program` は接続に関係なく全非superuser login | REVOKEする。backupは§10.1のloginで行う |
-| `replication_login` | REPLICATION属性の非superuser login（接続に関係なく） | 属性を外す。replicationはsuperuserで専用基盤（`pg_hba.conf` の `replication` 行をreplica・backup hostに限る）に限る |
+| `replication_login` | REPLICATION属性の非superuser login（接続に関係なく） | 属性を外す。replication（standby・HA・`pg_basebackup`）は専用のsuperuserで行い、**そのsuperuserは `pg_hba.conf` の `replication` 行（replica・backup hostだけ）にしか一致させない**。同じuserに一致する `all`・database名・`sameuser` 等の行を置かない（replica hostからのSQL接続を許すと、その資格情報で配送前のstagingや配送台帳を書き換えられる。設計 §5.3の限界と同じ）。database指定のreplication接続（logical replication）はdatabaseの行で照合されるので、これで拒否される。物理replication接続はreplication commandだけを受け付け、SQLを実行できない |
 | `owner_member`（relay） / `owner_member_has_capability`・`owner_member_bound`（Store） | ownerのmember（relay：superuser以外の全role） / Store ownerのmemberがcapability roleか束縛を持つ | membershipをREVOKE、束縛をunbind |
 | `staging_read`（relay） | capability role・そのloginがstagingを直接読める（表・列の権限、`pg_read_all_data`） | 権限をREVOKE |
 | `table_access`（relay） | capability role・loginが `audit_relay` の表を読み書きできる。または接続できる他のloginが書ける | 権限をREVOKE |
@@ -230,6 +234,8 @@ replayはStoreへ `audit.delivery.replay_requested`（解除する `quarantine_c
 根拠：`spec/telemetry/README.md`（adapter_versionの規律）、決定記録 D4、`crates/audit-relay/README.md`、`src/breaker.rs`
 
 - 新しいtypeは、catalog（`spec/telemetry/audit-event-catalog.json`）・audit-core・golden fixture・Storeの `registered_types`（後続migrationで `SET LOCAL audit_store.write_context = 'migration'`）を同時に用意する。既存の出力が変わる場合だけ `LEGACY_ADAPTER_VERSION` を上げる。
+- **最小化と追加だけの進化は必須である**（設計 §1の不変条件5・6）。payloadは許可したfieldの集合だけで、自由記述のfieldを持たない。文書本文、検索queryの全文、credential・token、物理保存先、ACLの全体、顧客データ、chat transcript、Personal Memory、内部推論、未完成の下書き本文を入れない。既存typeを改名せず、既存fieldの意味を変えない。catalogの変更は配備前にAuditのreviewを受ける。保存後に見つかった混入は `purge-body --reason-code prohibited_content`（§11）でだけ対処する。
+- 既存typeのenumへ値を足す（例：producerの新しい `authorization.denied` の `action_code`）場合、`adapter_version` は上げず、Storeの変更も要らない。ただしcatalogが知らない値の行は保留されず `invalid_field` でquarantineされるので、**relay（新catalog）→ Document producer** の順に配備し、先に書かれた行はrelayの更新後に `audit-relay replay` で戻す（§6）。`crates/audit-core/tests/catalog_contract.rs` がproducerのsourceの拒否codeとcatalogの一致を試験する（`spec/telemetry/README.md`）。
 - **配備順：Store（`audit-admin migrate` で `registered_types` を追加）→ relay（新catalog）→ Document producer**。
   - relayがStoreより先：relayのcatalogが期待するtypeをStoreが知らず、gateが `store_unregistered_type` で閉じ、**全配送が止まる**（`circuit_open`、relay serviceのloginなら `store_catalog_skew`）。
   - producerがrelayより先：そのtypeの行だけが `relay_catalog_skew` で保留され（`catalog_skew_held`・`relay_held`）、他の行は配送される。
@@ -252,7 +258,7 @@ replayはStoreへ `audit.delivery.replay_requested`（解除する `quarantine_c
 | DB内verify | `audit-admin verify [--from N] [--to N]`（違反ならexit 3） | verifier / verify |
 | checkpoint | `audit-admin checkpoint --out FILE` | verifier / verify |
 
-- filterのkey：`actor`、`event_ids`（100件まで）、`event_types`（1–16件、登録済みtypeかcontrol type）、`occurred_from`、`occurred_to`、`resource`、`seq_after`、`seq_through`、`source`。verify・identity chainは `seq_after` と `seq_through` だけ。control event（`audit.*`）はadminister権限の主体にだけ見える。
+- filterのkey：`actor`、`event_ids`（100件まで）、`event_types`（1–16件、登録済みtypeかcontrol type）、`occurred_from`、`occurred_to`、`resource`、`seq_after`、`seq_through`、`source`。verify・identity chainは `seq_after` と `seq_through` だけ。investigate・exportではcontrol event（`audit.*`）はadminister権限の主体にだけ見える。verify（本文付きのchain export）とidentity chainはchain全体を読むので、verify権限の主体にはcontrol eventも含まれ、verifyでは**その本文も開示される**（閲覧intentの型付きfilterに入った調査対象のactor・resource、拒否、retention・権限の変更を含む）。verify権限はこの開示を前提に付与する。
 - `investigate` は本文をstdoutへ出す。terminalのlog・scroll bufferに注意する。
 - exportは既存directoryへ `export.jsonl` と `manifest.json` を新規作成する。chainが壊れていればfileを書かず `{"chain_integrity":"broken","error":…}` を出してexit 1。manifestの `complete`・`expired_after_watermark`：intentがWを固定した後に `expire` / `purge-body` がcommitすると、W以下の行の本文が読取り前に消え、その証拠はWより後にある。そのexportは `complete: false` で、真正とは判定されない。**改めてexportする。**
 - `verify` のDB内結果とchain列は真正性の証拠にならない（§9）。
@@ -300,7 +306,7 @@ audit-admin assess --dir <EXPORT_DIR> --checkpoint <OOB_CHECKPOINT> [--anchor <O
 1. 復元先clusterにglobals（`roles.sql`、LOGIN role。cluster移行では `pg_dumpall --globals-only`）を先に作る。新しいDBへ `pg_restore --exit-on-error --single-transaction -d <NEW_STORE_DB> <STORE_DUMP_FILE>`。`--no-owner`・`--no-privileges`・`--no-acl`・`--role` は使わない。
 2. `privileges.sql` を再適用し、`audit-admin posture` がcleanになることを確かめる。`audit-admin status` で `recovery_mode: true` を確かめる。fingerprintで検知できない復元（同じtimelineの物理・snapshot restore）は、接続を止めてから `audit-admin declare-recovery-pending --incident-code <CODE>`（maintain）を実行する。relayが後退を検知した場合は、relayの `report_regression` で既に `recovery_pending` になっている（同じDBで手順3から）。
 3. `audit-admin verify --recovery`、`audit-admin export --identity-chain --recovery --dir <DIR> --checkpoint <LATEST_OOB_CHECKPOINT>` でDB外照合する（manifestの `checkpoint.comparison`）。
-4. 期待値を見る（maintainerのlogin。`<N>` は `audit-relay health` の `stored.relay_max_seq`。`max_acked_store_seq` ではない）：
+4. 期待値を見る（maintainerのlogin。`<N>` は、`AUDIT_STORE_DATABASE_URL` を復元先DBへ向けた `audit-relay health` の `stored.relay_max_seq`。Storeへ接続できないときは同じreportの `delivered.max_referenced_store_seq["<old_epoch>"]`（Document DBから読む同じ値）。`max_acked_store_seq` ではない）：
    ```sh
    audit-admin begin-recovery-epoch --checkpoint <LATEST_OOB_CHECKPOINT> --relay-max-seq <N> --preview
    ```

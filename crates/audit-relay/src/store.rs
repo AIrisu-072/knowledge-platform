@@ -38,6 +38,95 @@ impl RelayStore for PostgresAuditStore {
     }
 }
 
+/// A Store that `audit-relay health` could not connect to: every call is the
+/// outage the connection failed with, so the report still shows the
+/// Document side (produced, delivered, circuit) and reports `stored` as
+/// unavailable instead of exiting (design §12). Only health uses it; `run`,
+/// `reconcile` and `replay` refuse to start without a Store connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnreachableStore(OutageCode);
+
+impl UnreachableStore {
+    pub const fn new(code: OutageCode) -> Self {
+        Self(code)
+    }
+
+    pub const fn code(&self) -> OutageCode {
+        self.0
+    }
+
+    fn fail<'a, T: Send + 'a>(&self) -> BoxFuture<'a, Result<T, StoreError>> {
+        let code = self.0;
+        Box::pin(async move { Err(StoreError::outage(code)) })
+    }
+}
+
+impl AuditStore for UnreachableStore {
+    fn ingest<'a>(
+        &'a self,
+        envelope: &'a audit_core::AuditEnvelope,
+    ) -> BoxFuture<'a, Result<audit_core::IngestReceipt, StoreError>> {
+        if let Err(error) = audit_core::port::precheck_ingest(envelope) {
+            return Box::pin(async move { Err(error) });
+        }
+        self.fail()
+    }
+
+    fn probe<'a>(
+        &'a self,
+        _expected: &'a audit_core::ProbeExpectation,
+    ) -> BoxFuture<'a, Result<audit_core::StoreStatus, StoreError>> {
+        self.fail()
+    }
+
+    fn lookup_receipts<'a>(
+        &'a self,
+        _event_ids: &'a [uuid::Uuid],
+    ) -> BoxFuture<'a, Result<Vec<audit_core::ReceiptRow>, StoreError>> {
+        self.fail()
+    }
+
+    fn list_source_receipts<'a>(
+        &'a self,
+        _source: &'a str,
+        _after_seq: i64,
+        _limit: u32,
+    ) -> BoxFuture<'a, Result<Vec<audit_core::ReceiptRow>, StoreError>> {
+        self.fail()
+    }
+
+    fn lookup_control_receipts<'a>(
+        &'a self,
+        _seqs: &'a [i64],
+    ) -> BoxFuture<'a, Result<Vec<audit_core::ControlReceiptRow>, StoreError>> {
+        self.fail()
+    }
+
+    fn record_relay_control<'a>(
+        &'a self,
+        _control: &'a audit_core::RelayControl,
+    ) -> BoxFuture<'a, Result<audit_core::ControlReceipt, StoreError>> {
+        self.fail()
+    }
+
+    fn report_regression<'a>(
+        &'a self,
+        _identity: &'a audit_core::ReceiptIdentity,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        self.fail()
+    }
+}
+
+impl RelayStore for UnreachableStore {
+    fn store_status(&self) -> BoxFuture<'_, Result<StoreStatusRow, StoreError>> {
+        self.fail()
+    }
+
+    fn lookup_lost_ranges(&self) -> BoxFuture<'_, Result<Vec<LostRange>, StoreError>> {
+        self.fail()
+    }
+}
+
 /// The outage class of a failed Store call. Verdicts (`conflict`,
 /// `rejected`) only come from `ingest`; anywhere else they would be a
 /// protocol surprise and count as `store_other`.

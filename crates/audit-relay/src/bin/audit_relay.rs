@@ -14,7 +14,9 @@
 //! are meant for the operator's Store login (relay_control + reconciler):
 //! `replay` and `reconcile --repair` refuse a Store login holding
 //! `audit_store_ingest`. `health --forecast` needs the worker's source login
-//! (the forecast projects staged content).
+//! (the forecast projects staged content). `health` reports a Store it
+//! cannot reach as `stored.available = false` (exit 0); every other command
+//! exits 1 when either database is unreachable.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -23,7 +25,7 @@ use std::time::Duration;
 use audit_relay::config::{MIGRATE_URL, RunConfig, SOURCE_URL, STORE_URL};
 use audit_relay::health::{HealthOptions, health};
 use audit_relay::reconcile::Reconciler;
-use audit_relay::relay::{connect_checked, run};
+use audit_relay::relay::{connect_checked, connect_for_health, run};
 use audit_relay::replay::replay;
 use audit_relay::session::{Side, connect, refuse_service_store_login};
 use serde_json::json;
@@ -112,11 +114,11 @@ async fn command(args: &[String]) -> Result<(), String> {
                 forecast: flags.contains(&"--forecast"),
                 reconcile: flags.contains(&"--reconcile"),
             };
-            let connections =
-                connect_checked(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT, false)
+            let (source, store) =
+                connect_for_health(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT)
                     .await
                     .map_err(|e| e.to_string())?;
-            let report = health(&connections.source, Arc::new(connections.store), options)
+            let report = health(&source, store, options)
                 .await
                 .map_err(|e| e.to_string())?;
             print(&report);

@@ -1365,6 +1365,90 @@ async fn startup_refuses_privileged_same_database_options_and_bad_posture() {
     assert!(summary.settled >= 3, "{summary:?}");
 }
 
+/// `audit-relay health` with the given Store URL and the worker's source
+/// login.
+fn cli_health(env: &Env, store_url: &str, flags: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_audit-relay"))
+        .arg("health")
+        .args(flags)
+        .env("AUDIT_SOURCE_DATABASE_URL", &env.worker.url)
+        .env("AUDIT_STORE_DATABASE_URL", store_url)
+        .output()
+        .expect("run audit-relay health")
+}
+
+/// A Store that refuses connections (ALLOW_CONNECTIONS false, SQLSTATE
+/// 55000) or does not listen (transport) is reported as unavailable: the
+/// Document side of the report (produced, delivered, circuit) stays
+/// readable, and only a configuration refusal still exits non-zero.
+#[tokio::test]
+async fn cli_health_reports_an_unreachable_store() {
+    let env = Env::start().await;
+    env.insert(&Staged::created()).await;
+    let check = |output: std::process::Output, gate: &str| {
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{stderr}");
+        let report: Value = serde_json::from_slice(&output.stdout).expect("health JSON");
+        assert_eq!(report["stored"]["available"], json!(false), "{report}");
+        assert_eq!(report["stored"]["gate"], json!(gate), "{report}");
+        assert_eq!(report["stored"]["head_seq"], Value::Null);
+        assert_eq!(report["produced"]["staged"], json!(1));
+        assert_eq!(report["delivered"]["pending"], json!(1));
+        assert_eq!(report["verified"]["last_verified_seq"], Value::Null);
+        let alarms = report["alarms"].as_array().expect("alarms").clone();
+        assert!(alarms.contains(&json!("store_unavailable")), "{report}");
+        let text = String::from_utf8_lossy(&output.stdout).into_owned();
+        assert!(!text.contains(PASSWORD) && !stderr.contains(PASSWORD));
+        report
+    };
+
+    store_down(&env).await;
+    let report = check(
+        cli_health(&env, &env.relay_store.url, &["--reconcile"]),
+        OutageCode::Other.as_str(),
+    );
+    assert!(
+        report["alarms"]
+            .as_array()
+            .expect("alarms")
+            .contains(&json!("reconcile_unavailable")),
+        "{report}"
+    );
+    assert_eq!(report["reconcile"], Value::Null);
+    store_up(&env).await;
+
+    let closed = env
+        .relay_store
+        .url
+        .replace(&format!(":{}/", env.cluster.port), ":1/");
+    assert_ne!(closed, env.relay_store.url);
+    check(
+        cli_health(&env, &closed, &[]),
+        OutageCode::Transport.as_str(),
+    );
+
+    // A configuration refusal (unknown database) is not an outage.
+    let missing = env
+        .relay_store
+        .url
+        .replace(&format!("/{STORE_DB}"), "/no_such_store");
+    assert_ne!(missing, env.relay_store.url);
+    let output = cli_health(&env, &missing, &[]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("store database refused (3D000)"),
+        "{stderr}"
+    );
+    assert!(output.stdout.is_empty());
+
+    // With the Store back, the same command reports it available.
+    let output = cli_health(&env, &env.relay_store.url, &[]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).expect("health JSON");
+    assert_eq!(report["stored"]["available"], json!(true), "{report}");
+}
+
 #[tokio::test]
 async fn cli_health_and_usage() {
     let env = Env::start().await;
