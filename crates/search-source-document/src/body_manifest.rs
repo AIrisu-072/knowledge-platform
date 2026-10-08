@@ -104,6 +104,13 @@ impl search_tantivy::UnitSource for BodyUnitManifest {
     fn units(&self) -> Vec<&search_core::knowledge_unit::KnowledgeUnit> {
         self.entries.iter().flat_map(|entry| &entry.units).collect()
     }
+
+    /// From the per-process entries of item segments sealed before.
+    fn seal_entries(&self) -> Option<Vec<search_tantivy::UnitSealEntry>> {
+        crate::body_bundle::unit_seal_entries(self)
+            .ok()
+            .map(|(_, entries)| entries)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
