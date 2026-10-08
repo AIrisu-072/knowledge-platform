@@ -14,7 +14,10 @@ use audit_core::{Catalog, EventClass, LEGACY_ADAPTER_VERSION, Origin, Requiremen
 use common::accepted_fixtures;
 use serde_json::{Value, json};
 
-const DOCUMENT_TYPES: [&str; 21] = [
+/// The relay types the Document producer stages (main after PR #106: the
+/// 2026-10-07 VIEW/RESET addendum added `detail_viewed` and `marked_unread`).
+/// The catalog is the SSOT; this list pins it against accidental removal.
+const DOCUMENT_TYPES: [&str; 23] = [
     "document.created",
     "document.version.created",
     "document.version.updated",
@@ -32,6 +35,8 @@ const DOCUMENT_TYPES: [&str; 21] = [
     "folder.moved",
     "access_policy.changed",
     "document.version.read_confirmed",
+    "document.version.detail_viewed",
+    "document.version.marked_unread",
     "document.file.access_granted",
     "document.diff.result_access_granted",
     "document.revision_comparison.result_access_granted",
@@ -423,6 +428,8 @@ fn client_chosen_ids_match_the_document_command_api() {
         ("folder.moved", "to_parent_id"),
         ("access_policy.changed", "target_id"),
         ("document.version.read_confirmed", "document_version_id"),
+        ("document.version.detail_viewed", "document_version_id"),
+        ("document.version.marked_unread", "document_version_id"),
         ("document.diff.result_access_granted", "base_version_id"),
         ("document.diff.result_access_granted", "target_version_id"),
     ]
@@ -473,6 +480,8 @@ fn event_classes_follow_the_design_assignment() {
             | "audit.integrity.conflict_detected"
             | "audit.integrity.source_mismatch_detected" => EventClass::Security,
             "document.version.read_confirmed"
+            | "document.version.detail_viewed"
+            | "document.version.marked_unread"
             | "document.file.access_granted"
             | "document.diff.result_access_granted"
             | "document.revision_comparison.result_access_granted"
@@ -545,6 +554,8 @@ fn correlation_mapping_follows_design_4_2() {
         "folder.renamed",
         "folder.moved",
         "access_policy.changed",
+        "document.version.detail_viewed",
+        "document.version.marked_unread",
     ] {
         assert_eq!(op(t).as_deref(), Some("operation_id"), "{t}");
         assert_eq!(publish(t), None, "{t}");
@@ -567,6 +578,87 @@ fn correlation_mapping_follows_design_4_2() {
             .version_required,
         VersionRequirement::Required
     );
+}
+
+/// `document.version.detail_viewed` / `marked_unread` follow the producer
+/// (`current_read_state.rs`, migration 0012) exactly: the five common keys,
+/// `first_record` only on VIEW, the trigger as a one-value enum per type, the
+/// revisions bounded like the 0012 CHECKs (0 / 1 to 2^53 - 1), the
+/// operation id as correlation and the version id bound to the resource.
+#[test]
+fn read_state_entries_mirror_the_producer_payload() {
+    let catalog = Catalog::embedded();
+    for (event_type, trigger, first_record) in [
+        ("document.version.detail_viewed", "detail_display", true),
+        ("document.version.marked_unread", "user_reset", false),
+    ] {
+        let spec = catalog.get(event_type).expect(event_type);
+        assert_eq!(spec.origin, Origin::Relay);
+        assert_eq!(spec.source, DOCUMENT_SOURCE);
+        assert_eq!(spec.event_class, EventClass::DataAccess);
+        assert_eq!(spec.resources, vec![ResourceType::Document]);
+        assert_eq!(spec.version_required, VersionRequirement::Required);
+        assert_eq!(spec.results, vec!["success".to_owned()]);
+        assert_eq!(spec.subjects.len(), 1);
+        assert_eq!(spec.subjects[0].template, "document/{resource.id}");
+        assert_eq!(spec.reason, ReasonPolicy::Absent);
+        assert_eq!(spec.operation_id_field.as_deref(), Some("operation_id"));
+        assert_eq!(spec.publish_operation_id_field, None);
+        assert_eq!(spec.reason_code_field, None);
+        assert_eq!(spec.service_executor_field, None);
+        assert_eq!(spec.duplicated_actor_field, None);
+        assert!(!spec.nil_resource_allowed);
+        assert_eq!(spec.bindings.len(), 1);
+        assert_eq!(spec.bindings[0].field, "document_version_id");
+        assert_eq!(
+            spec.bindings[0].equals,
+            audit_core::catalog::BindingTarget::ResourceVersionId
+        );
+        let mut expected = vec![
+            ("document_version_id", Kind::Uuid),
+            ("operation_id", Kind::Uuid),
+            ("expected_read_state_revision", Kind::SafeCounter),
+            ("resulting_read_state_revision", Kind::PositiveSafeCounter),
+            ("trigger", Kind::Enum),
+        ];
+        if first_record {
+            expected.push(("first_record", Kind::Boolean));
+        }
+        let fields: std::collections::BTreeMap<&str, Kind> = spec
+            .fields
+            .iter()
+            .map(|(name, field)| (name.as_str(), field.kind))
+            .collect();
+        assert_eq!(fields, expected.iter().copied().collect(), "{event_type}");
+        let required: BTreeSet<&str> = spec.required.iter().map(String::as_str).collect();
+        assert_eq!(
+            required,
+            expected.iter().map(|(name, _)| *name).collect(),
+            "{event_type}: every producer key is always written"
+        );
+        assert_eq!(spec.fields["trigger"].values, vec![trigger.to_owned()]);
+        assert!(spec.fields["document_version_id"].client_chosen);
+        assert!(!spec.fields["operation_id"].client_chosen, "UUIDv7-checked");
+    }
+}
+
+#[test]
+fn safe_counter_kinds_load_on_relay_and_control_entries() {
+    for kind in ["safe_counter", "positive_safe_counter"] {
+        edited(|e| e["fields"]["n"] = json!({"kind": kind}))
+            .unwrap_or_else(|e| panic!("{kind} on a relay entry: {e}"));
+        let mut entry = store_entry();
+        entry["fields"]["n"] = json!({"kind": kind});
+        load(vec![minimal_entry(), entry]).unwrap_or_else(|e| panic!("{kind}: {e}"));
+        assert!(
+            edited(|e| e["fields"]["n"] = json!({"kind": kind, "values": ["1"]})).is_err(),
+            "{kind} takes no values"
+        );
+        assert!(
+            edited(|e| e["fields"]["n"] = json!({"kind": kind, "client_chosen": true})).is_err(),
+            "{kind} is not a client-chosen id"
+        );
+    }
 }
 
 #[test]
@@ -1061,4 +1153,195 @@ fn embedded_text_is_the_spec_file() {
     ))
     .expect("catalog file");
     assert_eq!(Catalog::embedded_text(), on_disk);
+}
+
+/// `action_code` values the catalog keeps although no producer on main
+/// stages them any more. The catalog is additive (values are never removed),
+/// so a code the producer drops moves here instead of out of the catalog.
+const RETIRED_DENIAL_CODES: [&str; 0] = [];
+
+/// The workspace directory of a sibling crate (read as text only; the audit
+/// crates never depend on the Document crates).
+fn workspace_path(relative: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
+
+/// The text between the `(` at `open` and its matching `)`.
+fn balanced_args(text: &str, open: usize) -> &str {
+    let mut depth = 0_usize;
+    for (offset, ch) in text[open..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &text[open + 1..open + offset];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("unbalanced call at byte {open}");
+}
+
+/// The `"…"` literals of the `match` in `ManagementCommand::operation_kind`
+/// (the code `access_policy.rs` passes for a refused management command).
+fn management_operation_kinds() -> BTreeSet<String> {
+    let path = workspace_path("crates/document-application/src/management_command.rs");
+    let text = std::fs::read_to_string(&path).expect("management_command.rs");
+    let start = text
+        .find("pub const fn operation_kind(&self) -> &'static str {")
+        .expect("ManagementCommand::operation_kind on main");
+    let body = &text[start..];
+    let end = body.find("\n    }\n").expect("end of operation_kind");
+    // Every arm must yield a string literal (also when rustfmt wraps it in
+    // a block); a constant or computed code would escape this test.
+    body[..end]
+        .split("=>")
+        .skip(1)
+        .map(|rest| {
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix('{').map_or(rest, str::trim_start);
+            let literal = rest.strip_prefix('"').unwrap_or_else(|| {
+                panic!("operation_kind has an arm without a string literal: {rest:.60}")
+            });
+            literal[..literal.find('"').expect("closing quote")].to_owned()
+        })
+        .collect()
+}
+
+/// Every `.rs` file under `dir`, recursively, sorted.
+fn rust_sources(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in std::fs::read_dir(&next).expect("producer src") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// Every `action_code` the Document producer can stage for
+/// `authorization.denied`: the third argument of each
+/// `record_authorization_denied(...)` call in `document-repository-postgres`,
+/// with `operation_kind` expanded to `ManagementCommand::operation_kind`.
+fn producer_denial_codes() -> BTreeSet<String> {
+    let dir = workspace_path("crates/document-repository-postgres/src");
+    let helper = std::fs::read_to_string(dir.join("targeted_events.rs")).expect("targeted_events");
+    assert!(
+        helper.contains("VALUES ($1,'authorization.denied',")
+            && helper
+                .contains(r#"json!({"action_code": action_code, "reason_code": "forbidden"})"#),
+        "record_authorization_denied no longer stages its argument as action_code; update this test"
+    );
+    let files = rust_sources(&dir);
+    let needle = "record_authorization_denied(";
+    let mut codes = BTreeSet::new();
+    let mut calls = 0;
+    let mut stagers = Vec::new();
+    for path in files {
+        let text = std::fs::read_to_string(&path).expect("producer file");
+        let name = path
+            .strip_prefix(&dir)
+            .expect("under src")
+            .to_string_lossy()
+            .into_owned();
+        if text.contains("authorization.denied") {
+            stagers.push(name.clone());
+        }
+        for (at, _) in text.match_indices(needle) {
+            if text[..at].ends_with("fn ") {
+                continue;
+            }
+            calls += 1;
+            let args = balanced_args(&text, at + needle.len() - 1);
+            let parts: Vec<&str> = args.split(',').map(str::trim).collect();
+            let code = parts.get(2).copied().unwrap_or_default();
+            if let Some(literal) = code.strip_prefix('"').and_then(|c| c.strip_suffix('"')) {
+                codes.insert(literal.to_owned());
+            } else if code == "operation_kind"
+                && text.contains("let operation_kind = command.operation_kind();")
+            {
+                codes.extend(management_operation_kinds());
+            } else {
+                panic!(
+                    "{name}: record_authorization_denied passes an action_code this test \
+                     cannot resolve ({code:?}); teach the test and add the codes to the catalog"
+                );
+            }
+        }
+    }
+    assert!(
+        calls >= 4,
+        "found only {calls} record_authorization_denied calls; was the helper renamed?"
+    );
+    // Only the helper may stage the type, so every code passes through the
+    // calls collected above.
+    assert_eq!(
+        stagers,
+        ["targeted_events.rs"],
+        "authorization.denied is staged outside record_authorization_denied; teach this test"
+    );
+    codes
+}
+
+#[test]
+fn authorization_denied_action_codes_cover_every_producer_code() {
+    let catalog = Catalog::embedded();
+    let field = &catalog
+        .get("authorization.denied")
+        .expect("authorization.denied")
+        .fields["action_code"];
+    assert_eq!(field.kind, Kind::Enum);
+    let catalog_codes: BTreeSet<String> = field.values.iter().cloned().collect();
+    let producer = producer_denial_codes();
+    let missing: Vec<_> = producer.difference(&catalog_codes).collect();
+    assert!(
+        missing.is_empty(),
+        "the producer stages authorization.denied action_code values the catalog refuses \
+         (the relay would quarantine them as invalid_field): {missing:?}"
+    );
+    let retired: BTreeSet<String> = RETIRED_DENIAL_CODES
+        .iter()
+        .map(|c| (*c).to_owned())
+        .collect();
+    let unexplained: Vec<_> = catalog_codes
+        .difference(&producer)
+        .filter(|code| !retired.contains(*code))
+        .collect();
+    assert!(
+        unexplained.is_empty(),
+        "catalog action_code values no producer stages; list them in RETIRED_DENIAL_CODES: \
+         {unexplained:?}"
+    );
+}
+
+#[test]
+fn read_state_denial_codes_have_accepted_fixtures() {
+    let fixtures: BTreeSet<String> = accepted_fixtures()
+        .into_iter()
+        .filter(|f| f.row.event_type == "authorization.denied")
+        .map(|f| {
+            f.row.data.as_ref().expect("data")["action_code"]
+                .as_str()
+                .expect("action_code")
+                .to_owned()
+        })
+        .collect();
+    for code in [
+        "get_current_read_state",
+        "mutate_read_state",
+        "mark_version_read",
+    ] {
+        assert!(fixtures.contains(code), "{code} has no accepted fixture");
+    }
 }

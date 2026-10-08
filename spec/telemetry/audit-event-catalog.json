@@ -551,6 +551,68 @@
       ]
     },
     {
+      "type": "document.version.detail_viewed",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "document_version_id": {"kind": "uuid", "client_chosen": true},
+        "operation_id": {"kind": "uuid"},
+        "expected_read_state_revision": {"kind": "safe_counter"},
+        "resulting_read_state_revision": {"kind": "positive_safe_counter"},
+        "trigger": {"kind": "enum", "values": ["detail_display"]},
+        "first_record": {"kind": "boolean"}
+      },
+      "required": [
+        "document_version_id",
+        "operation_id",
+        "expected_read_state_revision",
+        "resulting_read_state_revision",
+        "trigger",
+        "first_record"
+      ],
+      "reason": "absent",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "document_version_id", "equals": "resource.version_id"}
+      ]
+    },
+    {
+      "type": "document.version.marked_unread",
+      "source": "urn:knowledge-platform:document-platform",
+      "origin": "relay",
+      "event_class": "DATA_ACCESS",
+      "resources": ["Document"],
+      "version_required": true,
+      "client_chosen_version_id": true,
+      "results": ["success"],
+      "subjects": ["document/{resource.id}"],
+      "fields": {
+        "document_version_id": {"kind": "uuid", "client_chosen": true},
+        "operation_id": {"kind": "uuid"},
+        "expected_read_state_revision": {"kind": "safe_counter"},
+        "resulting_read_state_revision": {"kind": "positive_safe_counter"},
+        "trigger": {"kind": "enum", "values": ["user_reset"]}
+      },
+      "required": [
+        "document_version_id",
+        "operation_id",
+        "expected_read_state_revision",
+        "resulting_read_state_revision",
+        "trigger"
+      ],
+      "reason": "absent",
+      "operation_id_field": "operation_id",
+      "bindings": [
+        {"field": "document_version_id", "equals": "resource.version_id"}
+      ]
+    },
+    {
       "type": "document.file.access_granted",
       "source": "urn:knowledge-platform:document-platform",
       "origin": "relay",
@@ -667,7 +729,9 @@
             "move_folder",
             "rename_folder",
             "set_access_policy",
-            "update_document_metadata"
+            "update_document_metadata",
+            "get_current_read_state",
+            "mutate_read_state"
           ]
         },
         "reason_code": {"kind": "enum", "values": ["forbidden"]}
@@ -757,7 +821,8 @@
           "kind": "enum",
           "values": ["unbound", "insufficient_capability", "invalid_input", "self_grant", "not_source_service"]
         },
-        "required_capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]}
+        "required_capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]},
+        "suppressed_since_last": {"kind": "positive_counter"}
       },
       "required": ["session_role", "operation", "denial_code"],
       "reason": "absent"

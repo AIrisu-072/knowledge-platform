@@ -502,6 +502,191 @@ fn typed_fields_reject_wrong_types_floats_and_bounds() {
     );
 }
 
+/// `document.version.detail_viewed` / `marked_unread` (current_read_state.rs,
+/// migration 0012): the producer's shapes project with the operation id as
+/// correlation; drift from them is quarantined with the field named.
+#[test]
+fn read_state_rows_project_the_producer_shape_and_quarantine_drift() {
+    const VIEWED: &str = "document.version.detail_viewed/first_record";
+    const RECHECK: &str = "document.version.detail_viewed/after_reset";
+    const UNREAD: &str = "document.version.marked_unread";
+    for name in [VIEWED, RECHECK, UNREAD] {
+        let envelope = project(&fixture_named(name).row).expect(name);
+        let data = &envelope.as_value()["data"];
+        assert_eq!(data["event_class"], "DATA_ACCESS", "{name}");
+        assert_eq!(data["correlation"], json!({"operation_id": OP}), "{name}");
+        assert_eq!(
+            data["resource"],
+            json!({"type": "Document", "id": DOC, "version_id": VER}),
+            "{name}"
+        );
+        assert!(data.get("reason").is_none(), "{name}");
+    }
+    // The largest revisions the producer can stage (r = 2^53 - 1).
+    let max = audit_core::kinds::MAX_SAFE_INTEGER;
+    for name in [VIEWED, UNREAD] {
+        let row = with_data(name, |data| {
+            data.insert("expected_read_state_revision".to_owned(), json!(max - 1));
+            data.insert("resulting_read_state_revision".to_owned(), json!(max));
+        });
+        let envelope = project(&row).unwrap_or_else(|r| panic!("{name}: {r}"));
+        assert_eq!(
+            envelope.as_value()["data"]["details"]["resulting_read_state_revision"],
+            json!(max)
+        );
+    }
+
+    let invalid = |field: &'static str| at(C::InvalidField, field);
+    let expected = "expected_read_state_revision";
+    let resulting = "resulting_read_state_revision";
+    let mut cases: Vec<(&str, DocumentStagingProjection, Rejection)> = Vec::new();
+    for name in [VIEWED, UNREAD] {
+        // Keys the producer never writes (read state internals, principal
+        // data, free text) are not admitted.
+        for key in [
+            "needs_recheck",
+            "first_read_at",
+            "read_state_revision",
+            "principal_id",
+            "document_id",
+            "note",
+        ] {
+            let row = with_data(name, |data| {
+                data.insert(key.to_owned(), json!("synthetic"));
+            });
+            cases.push((key, row, at(C::UnknownField, "data")));
+        }
+        for (field, value) in [
+            (expected, json!("0")),
+            (expected, json!(1.0)),
+            (expected, json!(-1)),
+            (expected, json!(max + 1)),
+            (expected, json!(i64::MAX)),
+            (expected, Value::Null),
+            (resulting, json!(0)),
+            (resulting, json!(max + 1)),
+            (resulting, json!(u64::MAX)),
+            (resulting, json!(true)),
+            ("trigger", json!("detail display")),
+            ("trigger", json!("DETAIL_DISPLAY")),
+            ("trigger", Value::Null),
+            ("operation_id", json!(OP.to_uppercase())),
+            ("operation_id", json!(NIL)),
+            ("operation_id", json!(42)),
+            ("document_version_id", json!("not-a-uuid")),
+        ] {
+            let row = with_data(name, |data| {
+                data.insert(field.to_owned(), value.clone());
+            });
+            cases.push((field, row, invalid(field)));
+        }
+        for field in [
+            "document_version_id",
+            "operation_id",
+            expected,
+            resulting,
+            "trigger",
+        ] {
+            let row = with_data(name, |data| {
+                data.remove(field);
+            });
+            cases.push((field, row, at(C::MissingField, field)));
+        }
+        // The version is client-chosen (VersionWrite.targetVersionId).
+        let row = with_data(name, |data| {
+            data.insert("document_version_id".to_owned(), json!(NIL));
+        });
+        cases.push((
+            "nil version detail",
+            row,
+            at(C::NilClientId, "document_version_id"),
+        ));
+        let mut row = fixture_named(name).row;
+        row.resource_version_id = Some(NIL.to_owned());
+        cases.push((
+            "nil resource version",
+            row,
+            at(C::NilClientId, "data.resource.version_id"),
+        ));
+        // The payload version must be the row's version.
+        let row = with_data(name, |data| {
+            data.insert("document_version_id".to_owned(), json!(BASE_VER));
+        });
+        cases.push(("version binding", row, invalid("document_version_id")));
+        let mut row = fixture_named(name).row;
+        row.resource_version_id = None;
+        cases.push((
+            "no resource version",
+            row,
+            at(C::InvalidResource, "data.resource"),
+        ));
+        let mut row = fixture_named(name).row;
+        row.subject = format!("document/{DOC}/version/{VER}");
+        cases.push(("subject", row, at(C::InvalidSubject, "subject")));
+        let mut row = fixture_named(name).row;
+        row.result = "failure".to_owned();
+        cases.push(("result", row, at(C::InvalidResult, "data.result")));
+        let mut row = fixture_named(name).row;
+        row.resource_type = "Folder".to_owned();
+        cases.push((
+            "resource type",
+            row,
+            at(C::InvalidResource, "data.resource"),
+        ));
+        let mut row = fixture_named(name).row;
+        row.reason_kind = Some("string".to_owned());
+        row.reason_bytes = Some(4);
+        cases.push(("reason", row, at(C::UnknownField, "reason")));
+    }
+    // Each type admits only its own trigger; first_record is VIEW-only and
+    // always written there.
+    let row = with_data(VIEWED, |data| {
+        data.insert("trigger".to_owned(), json!("user_reset"));
+    });
+    cases.push(("view with reset trigger", row, invalid("trigger")));
+    let row = with_data(UNREAD, |data| {
+        data.insert("trigger".to_owned(), json!("detail_display"));
+    });
+    cases.push(("reset with view trigger", row, invalid("trigger")));
+    for value in [json!(false), json!(true)] {
+        let row = with_data(UNREAD, |data| {
+            data.insert("first_record".to_owned(), value.clone());
+        });
+        cases.push(("first_record on reset", row, at(C::UnknownField, "data")));
+    }
+    let row = with_data(VIEWED, |data| {
+        data.remove("first_record");
+    });
+    cases.push((
+        "view without first_record",
+        row,
+        at(C::MissingField, "first_record"),
+    ));
+    for value in [json!("true"), json!(1), Value::Null] {
+        let row = with_data(VIEWED, |data| {
+            data.insert("first_record".to_owned(), value.clone());
+        });
+        cases.push(("first_record type", row, invalid("first_record")));
+    }
+    // A RESET row restaged as a VIEW type (or the reverse) does not fit.
+    let mut row = fixture_named(UNREAD).row;
+    row.event_type = "document.version.detail_viewed".to_owned();
+    cases.push((
+        "reset payload as view",
+        row,
+        at(C::MissingField, "first_record"),
+    ));
+    let mut row = fixture_named(VIEWED).row;
+    row.event_type = "document.version.marked_unread".to_owned();
+    cases.push(("view payload as reset", row, at(C::UnknownField, "data")));
+
+    for (label, row, want) in cases {
+        let rejection = reject(&row);
+        assert_eq!(rejection, want, "{} / {label}", row.event_type);
+        assert!(!rejection.to_string().contains("synthetic"));
+    }
+}
+
 #[test]
 fn row_columns_are_validated() {
     let base = || fixture_named("document.version.created/later").row;
