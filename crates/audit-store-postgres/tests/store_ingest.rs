@@ -1307,6 +1307,152 @@ async fn non_service_ingest_is_denied_coalesced_and_breaks_the_posture() {
     db.assert_store_conforms().await;
 }
 
+/// Denials of `role` accounted for in the chain: each audit.access.denied
+/// stands for itself plus its `suppressed_since_last`.
+async fn chained_denials(db: &TestDb, role: &str) -> i64 {
+    control_events(&db.admin, "audit.access.denied")
+        .await
+        .iter()
+        .filter(|(_, d)| d["session_role"] == json!(role))
+        .map(|(_, d)| 1 + d["suppressed_since_last"].as_i64().unwrap_or(0))
+        .sum()
+}
+
+/// A burst of `count` identity denials of a fresh unbound ingest login,
+/// which then stops (its ingest role is revoked, so the posture is clean).
+async fn denial_burst(db: &TestDb, base: &str, count: i64) -> String {
+    let login = db.login(base, &["audit_store_ingest"]).await;
+    let store = login.store().await;
+    let envelope = document_created(Uuid::now_v7(), Uuid::now_v7(), OCCURRED, 1);
+    for _ in 0..count {
+        assert_eq!(
+            store.ingest(&envelope).await,
+            Err(outage(OutageCode::Denied))
+        );
+    }
+    db.exec(&format!("REVOKE audit_store_ingest FROM {}", login.role))
+        .await;
+    assert_eq!(chained_denials(db, &login.role).await, 1, "coalesced");
+    login.role
+}
+
+/// Makes every coalesced streak older than the coalescing window.
+async fn a_minute_passes(db: &TestDb) {
+    db.exec(
+        "SET session_replication_role = replica; \
+         UPDATE audit_store.denial_streaks \
+            SET last_recorded_at = last_recorded_at - interval '2 minutes'; \
+         RESET session_replication_role;",
+    )
+    .await;
+}
+
+/// No sampling: a coalesced denial streak that simply stops is chained in
+/// full by any later append once the streak is older than the coalescing
+/// window, and at once (stale or not) before verify, checkpoint, a
+/// disclosure intent and expire record their evidence.
+#[tokio::test]
+async fn a_stopped_denial_streak_is_chained_before_evidence_and_by_later_appends() {
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    let relay = cast.relay.store().await;
+    let doc = |n| document_created(Uuid::now_v7(), Uuid::now_v7(), OCCURRED, n);
+
+    let verifier = cast.verifier.admin().await;
+    let pending = || async {
+        verifier
+            .store_status()
+            .await
+            .expect("status")
+            .denials_pending
+    };
+
+    // An unrelated append: chained once the streak is stale.
+    let quiet = denial_burst(&db, "burst_append", 7).await;
+    relay.ingest(&doc(1)).await.expect("stored");
+    assert_eq!(
+        chained_denials(&db, &quiet).await,
+        1,
+        "within the coalescing window the count is still pending"
+    );
+    assert_eq!(pending().await, 6, "store_status reports what is pending");
+    a_minute_passes(&db).await;
+    let stored = relay.ingest(&doc(2)).await.expect("stored");
+    assert_eq!(
+        chained_denials(&db, &quiet).await,
+        7,
+        "every denial chained"
+    );
+    assert_eq!(pending().await, 0);
+    let flush = control_events(&db.admin, "audit.access.denied").await;
+    let flush = flush.last().expect("flush record");
+    assert!(flush.0 < stored.seq, "the flush precedes the append");
+    assert_eq!(
+        (
+            &flush.1["session_role"],
+            &flush.1["denial_code"],
+            &flush.1["suppressed_since_last"]
+        ),
+        (&json!(quiet), &json!("unbound"), &json!(5))
+    );
+    relay.ingest(&doc(3)).await.expect("stored");
+    assert_eq!(chained_denials(&db, &quiet).await, 7, "flushed once");
+
+    // The relay's probe chains a stale streak even when nothing else is
+    // appended.
+    let probed = denial_burst(&db, "burst_probe", 3).await;
+    a_minute_passes(&db).await;
+    relay.probe(&expectation(None)).await.expect("probe");
+    assert_eq!(
+        chained_denials(&db, &probed).await,
+        3,
+        "chained by the probe"
+    );
+
+    // Evidence: every pending count is chained first, stale or not.
+    let maintainer = cast.maintainer.admin().await;
+    let reader = cast.reader.admin().await;
+    let role = denial_burst(&db, "burst_checkpoint", 4).await;
+    assert_eq!(pending().await, 3);
+    let checkpoint = verifier.checkpoint().await.expect("checkpoint");
+    assert_eq!(pending().await, 0);
+    assert_eq!(
+        chained_denials(&db, &role).await,
+        4,
+        "before the checkpoint"
+    );
+    let last_denial = control_events(&db.admin, "audit.access.denied").await;
+    assert!(last_denial.last().expect("flush").0 < checkpoint.seq);
+    let role = denial_burst(&db, "burst_verify", 3).await;
+    let verified = verifier.verify(None, None).await.expect("verify");
+    assert_eq!(chained_denials(&db, &role).await, 3, "before verify");
+    assert_eq!(verified.outcome, "ok");
+    let role = denial_burst(&db, "burst_intent", 5).await;
+    reader
+        .open_access(
+            audit_store_postgres::admin::AccessOperation::Export,
+            &json!({}),
+            10,
+            1,
+        )
+        .await
+        .expect("export intent");
+    assert_eq!(chained_denials(&db, &role).await, 5, "before the intent");
+    let role = denial_burst(&db, "burst_expire", 2).await;
+    let refused = maintainer
+        .expire(
+            "no_such_policy",
+            1,
+            audit_store_postgres::admin::parse_utc_text(OCCURRED).expect("cutoff"),
+            10,
+        )
+        .await
+        .expect("refusal recorded");
+    assert_eq!(refused.status, "stale_revision");
+    assert_eq!(chained_denials(&db, &role).await, 2, "before expire");
+    db.assert_store_conforms().await;
+}
+
 #[tokio::test]
 async fn probe_reports_missing_types_and_identity_regression() {
     let db = TestDb::start().await;

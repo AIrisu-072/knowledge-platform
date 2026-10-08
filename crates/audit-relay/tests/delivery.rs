@@ -235,6 +235,31 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         json!(6),
         "delivered != stored"
     );
+    assert_eq!(report["stored"]["denials_pending"], json!(0));
+    assert_eq!(report["alarms"], json!([]), "{report}");
+    // Coalesced Store denials that are not chained yet (a login being
+    // denied repeatedly) are reported and raise an alarm.
+    force(
+        &env.store_admin,
+        "INSERT INTO audit_store.denial_streaks (session_role, denial_code, last_operation, \
+             last_recorded_seq, last_recorded_at, suppressed, actor_issuer, actor_principal_id) \
+         VALUES ('synthetic_denied', 'unbound', 'ingest', 1, now(), 3, 'db_role', \
+                 'synthetic_denied')",
+    )
+    .await;
+    let report = health(
+        &env.worker.pool,
+        Arc::new(env.operator_client().await),
+        HealthOptions::default(),
+    )
+    .await
+    .expect("health");
+    assert_eq!(report["stored"]["denials_pending"], json!(3));
+    assert_eq!(
+        report["alarms"],
+        json!(["store_denials_pending"]),
+        "{report}"
+    );
 }
 
 #[tokio::test]

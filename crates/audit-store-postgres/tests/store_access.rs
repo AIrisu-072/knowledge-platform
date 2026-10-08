@@ -182,6 +182,16 @@ const CALLS: &[(&str, &[&str])] = &[
         &[],
     ),
     ("SELECT audit_store.clear_denial_streak()", &[]),
+    ("SELECT audit_store.flush_denial_streaks(TRUE)", &[]),
+    (
+        "SELECT audit_store.append_denial('x', 'db_role', 'x', 'ingest', 'unbound', NULL, 0)",
+        &[],
+    ),
+    (
+        "SELECT audit_store.append_control_as('store', 'audit.access.denied', 'SECURITY', \
+         'denied', '{}', 'x', 'db_role', 'x')",
+        &[],
+    ),
     ("SELECT audit_store.settle_reapply()", &[]),
     ("SELECT audit_store.await_durable()", &[]),
     ("SELECT audit_store.relay_control_details('x', '{}')", &[]),

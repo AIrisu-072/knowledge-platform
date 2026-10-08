@@ -65,6 +65,11 @@ pub struct StoreStatusRow {
     pub last_verified_seq: Option<i64>,
     pub last_verified_at: Option<String>,
     pub last_verified_outcome: Option<String>,
+    /// Coalesced denials not chained yet (`denial_streaks`): every one is
+    /// chained by its streak's next record, within the coalescing window
+    /// plus the next append, and before any verify, checkpoint, intent,
+    /// expire or purge.
+    pub denials_pending: i64,
 }
 
 /// One declared lost range (`audit_store.lookup_lost_ranges()`): the rows
@@ -446,6 +451,7 @@ pub(crate) fn decode_store_status(row: &PgRow) -> Result<StoreStatusRow, sqlx::E
         last_verified_seq: row.try_get("last_verified_seq")?,
         last_verified_at: verified_at.map(utc_text),
         last_verified_outcome: row.try_get("last_verified_outcome")?,
+        denials_pending: row.try_get("denials_pending")?,
     })
 }
 

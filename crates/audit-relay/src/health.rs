@@ -13,6 +13,9 @@
 //!   that the Store has not registered, `store_catalog_skew`), and
 //!   `relay_max_seq`: the relay's highest referenced seq in the Store's
 //!   current epoch, the `--relay-max-seq` input of `begin-recovery-epoch`,
+//!   and `denials_pending`: coalesced Store access denials not chained yet
+//!   (`store_denials_pending` while some login is being denied repeatedly;
+//!   the Store chains every one of them within the coalescing window),
 //! - verified: the Store's verification coverage (`store_status`): the
 //!   highest seq verified contiguously from genesis and the outcome, which
 //!   stays `violations` until a verification from genesis to its head is
@@ -187,6 +190,7 @@ pub async fn health(
                 "access_reapply_pending": row.access_reapply_pending,
                 "posture_ok": row.posture_ok,
                 "missing_types": skew,
+                "denials_pending": row.denials_pending,
             })
         }
         Err(error) => json!({
@@ -200,6 +204,7 @@ pub async fn health(
             "access_reapply_pending": null,
             "posture_ok": null,
             "missing_types": skew,
+            "denials_pending": null,
         }),
     };
     let gate = stored["gate"].as_str().unwrap_or("unknown").to_owned();
@@ -221,6 +226,11 @@ pub async fn health(
             "unverified_events": null,
         }),
     };
+    if let Ok(store) = &store_status
+        && store.denials_pending > 0
+    {
+        alarms.push("store_denials_pending".into());
+    }
     if let Ok(store) = &store_status
         && store
             .last_verified_outcome

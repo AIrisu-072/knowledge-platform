@@ -357,11 +357,16 @@ FROM unnest(ARRAY[
 -- most one audit.access.denied per streak and minute. Nothing is sampled:
 -- the denials coalesced since the last record are counted here and chained
 -- as `suppressed_since_last` by the next record of the streak, by a flush
--- record when the denial code changes, or by a flush record when the streak
--- ends with a success (record_denied_coalesced, clear_denial_streak). Each
--- record stands for itself plus its suppressed_since_last denials of the
--- same login and code. Operational state, not evidence; written only by
--- definer functions.
+-- record when the denial code or actor changes, by a flush record when the
+-- streak ends with a success (record_denied_coalesced, clear_denial_streak),
+-- by a flush record once the streak is older than the coalescing window
+-- (flush_denial_streaks, run before every append) and by a flush record of
+-- every pending count before verify, checkpoint, a disclosure intent,
+-- expire and purge record their evidence. Each record stands for itself
+-- plus its suppressed_since_last denials of the same login, code and actor
+-- (the actor resolved when the streak's record was written). store_status
+-- reports the pending total (denials_pending). Operational state, not
+-- evidence; written only by definer functions.
 CREATE TABLE audit_store.denial_streaks (
     session_role TEXT PRIMARY KEY,
     denial_code TEXT NOT NULL,
@@ -369,6 +374,8 @@ CREATE TABLE audit_store.denial_streaks (
     last_recorded_seq BIGINT NOT NULL,
     last_recorded_at TIMESTAMPTZ NOT NULL,
     suppressed BIGINT NOT NULL DEFAULT 0,
+    actor_issuer TEXT NOT NULL,
+    actor_principal_id TEXT NOT NULL,
     CONSTRAINT ck_streak_role CHECK (octet_length(session_role) BETWEEN 1 AND 63),
     CONSTRAINT ck_streak_code CHECK (denial_code ~ '^[a-z0-9_]{1,64}$'),
     CONSTRAINT ck_streak_operation CHECK (last_operation ~ '^[a-z0-9_]{1,64}$'),
@@ -1056,13 +1063,15 @@ BEGIN
 END
 $append_event$;
 
--- Builds a control envelope (design §4.1, §4.5) and appends it.
-CREATE FUNCTION audit_store.append_control(
-    p_origin TEXT, p_type TEXT, p_class TEXT, p_result TEXT, p_details JSONB)
+-- Builds a control envelope (design §4.1, §4.5) for the given session role
+-- and actor and appends it. No denial flush: append_control (the session's
+-- own control events) and flush_denial_streaks (a streak's login) call it.
+CREATE FUNCTION audit_store.append_control_as(
+    p_origin TEXT, p_type TEXT, p_class TEXT, p_result TEXT, p_details JSONB,
+    p_session_role TEXT, p_actor_issuer TEXT, p_actor_principal_id TEXT)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
-SET search_path = pg_catalog, pg_temp AS $append_control$
+SET search_path = pg_catalog, pg_temp AS $append_control_as$
 DECLARE
-    v_actor record;
     v_envelope JSONB;
 BEGIN
     IF p_origin NOT IN ('store', 'relay_control') THEN
@@ -1070,10 +1079,9 @@ BEGIN
     END IF;
     -- session_role is a closed db_role value: a login whose name does not fit
     -- cannot produce control events (posture_check reports it).
-    IF NOT audit_store.is_db_role(session_user::text) THEN
+    IF NOT audit_store.is_db_role(p_session_role) THEN
         RAISE EXCEPTION 'login_name_invalid' USING ERRCODE = '42501';
     END IF;
-    SELECT * INTO v_actor FROM audit_store.session_actor();
     v_envelope := jsonb_build_object(
         'specversion', '1.0',
         'id', uuidv7()::text,
@@ -1088,18 +1096,94 @@ BEGIN
             'schema_version', 1,
             'event_class', p_class,
             'action', p_type,
-            'actor', jsonb_build_object('issuer', v_actor.issuer,
-                                        'principal_id', v_actor.principal_id),
+            'actor', jsonb_build_object('issuer', p_actor_issuer,
+                                        'principal_id', p_actor_principal_id),
             'resource', jsonb_build_object('type', 'AuditStore', 'id', 'audit-store'),
             'result', p_result,
             'correlation', '{}'::jsonb,
-            'details', jsonb_build_object('session_role', session_user::text) || p_details,
+            'details', jsonb_build_object('session_role', p_session_role) || p_details,
             'extensions', '{}'::jsonb,
             'provenance', jsonb_build_object(
                 'source_format', CASE p_origin WHEN 'store' THEN 'audit-store-control-v1'
                                                ELSE 'audit-relay-control-v1' END,
                 'adapter_version', 1)));
     RETURN audit_store.append_event(p_origin, v_envelope, NULL, 1);
+END
+$append_control_as$;
+
+-- Appends one audit.access.denied for a login (design §10.3, bounded shape
+-- only): itself plus p_suppressed coalesced denials of the same streak.
+CREATE FUNCTION audit_store.append_denial(
+    p_session_role TEXT, p_actor_issuer TEXT, p_actor_principal_id TEXT, p_operation TEXT,
+    p_denial_code TEXT, p_capability TEXT, p_suppressed BIGINT)
+RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $append_denial$
+BEGIN
+    RETURN audit_store.append_control_as('store', 'audit.access.denied', 'SECURITY', 'denied',
+        jsonb_build_object('operation', p_operation, 'denial_code', p_denial_code)
+        || audit_store.opt('required_capability', to_jsonb(p_capability))
+        || audit_store.opt('suppressed_since_last',
+                           CASE WHEN p_suppressed > 0 THEN to_jsonb(p_suppressed) END),
+        p_session_role, p_actor_issuer, p_actor_principal_id);
+END
+$append_denial$;
+
+-- Chains the pending count of coalesced denial streaks of every login (no
+-- sampling): the streaks older than the coalescing window (no later denial
+-- of theirs would carry the count), or every streak with a pending count
+-- when p_all (before integrity and disclosure evidence: verify,
+-- checkpoint, intents, expire, purge). Each flush is one audit.access.denied
+-- of the streak's login, code and actor, standing for one of the coalesced
+-- denials (so it carries count - 1); the streak then continues from that
+-- record. The caller holds the head lock and is outside recovery mode.
+-- Returns the number of flush records.
+CREATE FUNCTION audit_store.flush_denial_streaks(p_all BOOLEAN)
+RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET audit_store.write_context = 'definer' AS $flush_denial_streaks$
+DECLARE
+    s audit_store.denial_streaks;
+    v_seq BIGINT;
+    v_count BIGINT := 0;
+BEGIN
+    FOR s IN
+        SELECT * FROM audit_store.denial_streaks AS d
+        WHERE d.suppressed > 0
+          AND (p_all OR d.last_recorded_at <= clock_timestamp() - interval '1 minute')
+        ORDER BY d.session_role
+        FOR UPDATE
+    LOOP
+        v_seq := audit_store.append_denial(s.session_role, s.actor_issuer, s.actor_principal_id,
+                                           s.last_operation, s.denial_code, NULL,
+                                           s.suppressed - 1);
+        UPDATE audit_store.denial_streaks AS d
+        SET suppressed = 0, last_recorded_seq = v_seq, last_recorded_at = clock_timestamp()
+        WHERE d.session_role = s.session_role;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END
+$flush_denial_streaks$;
+
+-- Builds a control envelope (design §4.1, §4.5) under the session's own role
+-- and principal and appends it, after chaining the stale denial streaks of
+-- every login (flush_denial_streaks). The recovery epoch record is the
+-- exception: the head was just reset to the restored head, and the epoch's
+-- first record must be audit.recovery.epoch_started itself.
+CREATE FUNCTION audit_store.append_control(
+    p_origin TEXT, p_type TEXT, p_class TEXT, p_result TEXT, p_details JSONB)
+RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $append_control$
+DECLARE
+    v_actor record;
+BEGIN
+    IF p_type <> 'audit.recovery.epoch_started' THEN
+        PERFORM audit_store.flush_denial_streaks(FALSE);
+    END IF;
+    SELECT * INTO v_actor FROM audit_store.session_actor();
+    RETURN audit_store.append_control_as(p_origin, p_type, p_class, p_result, p_details,
+                                         session_user::text, v_actor.issuer,
+                                         v_actor.principal_id);
 END
 $append_control$;
 
@@ -1112,90 +1196,107 @@ RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $record_denied$
 DECLARE
     h audit_store.publication_head := audit_store.lock_head();
+    v_actor record;
 BEGIN
     IF audit_store.in_recovery(h) THEN
         RETURN NULL;
     END IF;
-    RETURN audit_store.append_control('store', 'audit.access.denied', 'SECURITY', 'denied',
-        jsonb_build_object('operation', p_operation, 'denial_code', p_denial_code)
-        || audit_store.opt('required_capability', to_jsonb(p_capability))
-        || audit_store.opt('suppressed_since_last',
-                           CASE WHEN p_suppressed > 0 THEN to_jsonb(p_suppressed) END));
+    PERFORM audit_store.flush_denial_streaks(FALSE);
+    SELECT * INTO v_actor FROM audit_store.session_actor();
+    RETURN audit_store.append_denial(session_user::text, v_actor.issuer, v_actor.principal_id,
+                                     p_operation, p_denial_code, p_capability, p_suppressed);
 END
 $record_denied$;
 
 -- Identity denials of the service paths (ingest, probe, report_regression)
 -- repeat on every relay cycle: record at most one per streak and minute per
 -- login, and chain how many were coalesced (no sampling): the next record
--- of the same code carries `suppressed_since_last`; a change of code first
--- flushes the pending count as a record of the old code (standing for one
--- of the coalesced denials, so it carries count - 1). A success of that
--- login ends the streak (clear_denial_streak flushes the same way). In
--- recovery mode nothing is recorded and the streak is left as it is.
+-- of the same code and actor carries `suppressed_since_last`; a change of
+-- code or actor first flushes the pending count as a record of the old
+-- streak (standing for one of the coalesced denials, so it carries count -
+-- 1). A success of that login ends the streak (clear_denial_streak flushes
+-- the same way); a streak that simply stops is flushed by
+-- flush_denial_streaks. The login's own streak is settled here and removed
+-- before anything is appended, so no flush counts it twice. In recovery
+-- mode nothing is recorded and the streak is left as it is.
 CREATE FUNCTION audit_store.record_denied_coalesced(p_operation TEXT, p_denial_code TEXT)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET audit_store.write_context = 'definer' AS $record_denied_coalesced$
 DECLARE
+    h audit_store.publication_head;
     s audit_store.denial_streaks;
+    v_found BOOLEAN;
+    v_actor record;
+    v_same BOOLEAN;
     v_carried BIGINT := 0;
     v_seq BIGINT;
 BEGIN
-    PERFORM audit_store.lock_head();
+    h := audit_store.lock_head();
+    SELECT * INTO v_actor FROM audit_store.session_actor();
     SELECT * INTO s FROM audit_store.denial_streaks AS d
     WHERE d.session_role = session_user::text FOR UPDATE;
-    IF FOUND AND s.denial_code = p_denial_code
-       AND s.last_recorded_at > clock_timestamp() - interval '1 minute' THEN
+    v_found := FOUND;
+    v_same := v_found AND s.denial_code = p_denial_code
+              AND s.actor_issuer = v_actor.issuer
+              AND s.actor_principal_id = v_actor.principal_id;
+    IF v_same AND s.last_recorded_at > clock_timestamp() - interval '1 minute' THEN
         UPDATE audit_store.denial_streaks AS d
         SET suppressed = d.suppressed + 1, last_operation = p_operation
         WHERE d.session_role = s.session_role;
         RETURN NULL;
     END IF;
-    IF FOUND AND s.suppressed > 0 THEN
-        IF s.denial_code = p_denial_code THEN
-            v_carried := s.suppressed;
-        ELSIF audit_store.record_denied(s.last_operation, s.denial_code, NULL,
-                                        s.suppressed - 1) IS NULL THEN
-            RETURN NULL;
+    IF audit_store.in_recovery(h) THEN
+        RETURN NULL;
+    END IF;
+    IF v_found THEN
+        DELETE FROM audit_store.denial_streaks AS d WHERE d.session_role = s.session_role;
+        IF s.suppressed > 0 THEN
+            IF v_same THEN
+                v_carried := s.suppressed;
+            ELSE
+                PERFORM audit_store.append_denial(s.session_role, s.actor_issuer,
+                                                  s.actor_principal_id, s.last_operation,
+                                                  s.denial_code, NULL, s.suppressed - 1);
+            END IF;
         END IF;
     END IF;
     v_seq := audit_store.record_denied(p_operation, p_denial_code, NULL, v_carried);
-    IF v_seq IS NULL THEN
-        RETURN NULL;
-    END IF;
-    INSERT INTO audit_store.denial_streaks AS d (
+    INSERT INTO audit_store.denial_streaks (
         session_role, denial_code, last_operation, last_recorded_seq, last_recorded_at,
-        suppressed)
-    VALUES (session_user::text, p_denial_code, p_operation, v_seq, clock_timestamp(), 0)
-    ON CONFLICT (session_role) DO UPDATE
-    SET denial_code = excluded.denial_code, last_operation = excluded.last_operation,
-        last_recorded_seq = excluded.last_recorded_seq,
-        last_recorded_at = excluded.last_recorded_at, suppressed = 0;
+        suppressed, actor_issuer, actor_principal_id)
+    VALUES (session_user::text, p_denial_code, p_operation, v_seq, clock_timestamp(), 0,
+            v_actor.issuer, v_actor.principal_id);
     RETURN v_seq;
 END
 $record_denied_coalesced$;
 
 -- A success of the login ends its streak. A pending count is flushed first
--- as one record of the streak's code (carrying count - 1); the operational
--- row is deleted only once its count is chained.
+-- as one record of the streak's code and actor (carrying count - 1); the
+-- operational row is removed in the same transaction. Called under the head
+-- lock outside recovery mode (ingest, probe).
 CREATE FUNCTION audit_store.clear_denial_streak()
 RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET audit_store.write_context = 'definer' AS $clear_denial_streak$
 DECLARE
+    h audit_store.publication_head := audit_store.lock_head();
     s audit_store.denial_streaks;
 BEGIN
+    IF audit_store.in_recovery(h) THEN
+        RETURN;
+    END IF;
     SELECT * INTO s FROM audit_store.denial_streaks AS d
     WHERE d.session_role = session_user::text FOR UPDATE;
     IF NOT FOUND THEN
         RETURN;
     END IF;
-    IF s.suppressed > 0
-       AND audit_store.record_denied(s.last_operation, s.denial_code, NULL,
-                                     s.suppressed - 1) IS NULL THEN
-        RETURN;
-    END IF;
     DELETE FROM audit_store.denial_streaks AS d WHERE d.session_role = s.session_role;
+    IF s.suppressed > 0 THEN
+        PERFORM audit_store.append_denial(s.session_role, s.actor_issuer, s.actor_principal_id,
+                                          s.last_operation, s.denial_code, NULL,
+                                          s.suppressed - 1);
+    END IF;
 END
 $clear_denial_streak$;
 
@@ -1429,6 +1530,8 @@ BEGIN
         RETURN;
     END IF;
 
+    -- Stale denial streaks of every login are chained before the event.
+    PERFORM audit_store.flush_denial_streaks(FALSE);
     v_new := audit_store.append_event('relay', p_envelope, v_commitment, v_adapter);
     RETURN QUERY SELECT 'stored'::text, v_new, v_digest, v_adapter, NULL::text;
 END
@@ -1560,6 +1663,10 @@ BEGIN
             RETURN;
         END IF;
         PERFORM audit_store.clear_denial_streak();
+        -- The relay probes on every cycle: a denial streak of any login that
+        -- simply stopped is chained within the coalescing window plus one
+        -- cycle, even when nothing else is appended.
+        PERFORM audit_store.flush_denial_streaks(FALSE);
         v_state := CASE WHEN EXISTS (SELECT 1 FROM audit_store.posture_check())
                         THEN 'posture_invalid' ELSE 'operational' END;
     END IF;
@@ -1635,12 +1742,17 @@ $report_regression$;
 -- audited; works in recovery mode. last_verified_seq / _at / _outcome are
 -- the verification coverage (verification_coverage), so that head_seq -
 -- last_verified_seq is the verification lag and a violation stays reported
--- until a later verification from genesis covers it.
+-- until a later verification from genesis covers it. denials_pending is the
+-- number of coalesced denials not chained yet (every one is chained by the
+-- next record of its streak, by flush_denial_streaks within the coalescing
+-- window plus the next append, and before any verify, checkpoint, intent,
+-- expire or purge).
 CREATE FUNCTION audit_store.store_status()
 RETURNS TABLE (head_seq BIGINT, recovery_epoch BIGINT, recovery_mode BOOLEAN,
                posture_ok BOOLEAN, recovery_pending BOOLEAN, recovery_pending_reason TEXT,
                access_reapply_pending BOOLEAN, last_verified_seq BIGINT,
-               last_verified_at TIMESTAMPTZ, last_verified_outcome TEXT)
+               last_verified_at TIMESTAMPTZ, last_verified_outcome TEXT,
+               denials_pending BIGINT)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $store_status$
 #variable_conflict use_column
@@ -1651,7 +1763,8 @@ BEGIN
     SELECT h.last_seq, h.recovery_epoch, audit_store.in_recovery(h),
            NOT EXISTS (SELECT 1 FROM audit_store.posture_check()),
            h.recovery_pending, h.pending_reason, h.access_reapply_pending,
-           c.verified_through, c.verified_at, c.outcome
+           c.verified_through, c.verified_at, c.outcome,
+           (SELECT coalesce(sum(d.suppressed), 0)::bigint FROM audit_store.denial_streaks AS d)
     FROM audit_store.verification_coverage() AS c;
 END
 $store_status$;
@@ -2127,6 +2240,8 @@ BEGIN
     v_filter_digest := audit_store.jsonb_digest(v_filter);
     v_include_control := p_operation IN ('verify', 'identity_chain')
         OR audit_store.has_grant(v_auth.issuer, v_auth.principal_id, 'administer');
+    -- Every denied attempt is in the chain before a disclosure intent.
+    PERFORM audit_store.flush_denial_streaks(TRUE);
     v_raw := uuid_send(gen_random_uuid()) || uuid_send(gen_random_uuid());
     v_token_digest := sha256(v_raw);
     v_expires := date_trunc('milliseconds', transaction_timestamp()) + interval '10 minutes';
@@ -2652,6 +2767,8 @@ DECLARE
 BEGIN
     h := audit_store.lock_head();
     PERFORM audit_store.require_gate(h);
+    -- Every denied attempt is in the chain before integrity evidence.
+    PERFORM audit_store.flush_denial_streaks(TRUE);
     -- The head (head_seq, head_epoch, head_chain) is the last scanned row
     -- that exists (integrity_scan).
     v_details := jsonb_build_object(
@@ -3363,6 +3480,8 @@ BEGIN
                             'invalid_input'::text;
         RETURN;
     END IF;
+    -- Every denied attempt is in the chain before retention evidence.
+    PERFORM audit_store.flush_denial_streaks(TRUE);
     SELECT * INTO p FROM audit_store.retention_policies AS x
     WHERE x.policy_id = p_policy_id ORDER BY x.revision DESC LIMIT 1;
     IF p.revision IS NULL OR p.revision <> p_expected_revision THEN
@@ -3479,6 +3598,7 @@ BEGIN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, 'invalid_input'::text;
         RETURN;
     END IF;
+    PERFORM audit_store.flush_denial_streaks(TRUE);
     v_seq := audit_store.append_control('store', 'audit.body.purged', 'PRIVILEGED_OPERATION',
         'success', jsonb_build_object('target_seq', e.seq, 'target_event_id', e.event_id::text,
                                       'purge_reason_code', p_reason_code));
