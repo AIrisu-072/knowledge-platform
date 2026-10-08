@@ -235,7 +235,12 @@ jobs:
       - name: Real composition-root acceptance
         env:
           KP_POC_VISUAL_REVIEW_ENABLED: ${{ steps.visual-review-gate.outputs.enabled }}
+          KP_DOCUMENT_LOAD_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'document-load-small') }}
         run: |
+          unset KP_DOCUMENT_LOAD_SMALL KP_DOCUMENT_LOAD_PLAN
+          if [[ "$KP_DOCUMENT_LOAD_REQUESTED" == "true" ]]; then
+            export KP_DOCUMENT_LOAD_SMALL=true
+          fi
           unset KP_POC_CAPTURE_VISUAL
           if [[ "$KP_POC_VISUAL_REVIEW_ENABLED" == "true" ]]; then
             export KP_POC_CAPTURE_VISUAL=true

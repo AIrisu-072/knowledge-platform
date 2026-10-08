@@ -16,9 +16,12 @@ import { DatabaseDiagnostics } from './database-diagnostics.mjs';
 import { assertSameRuntime, observeOwnedRuntime, privateProvenanceProbe } from './runtime-provenance.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
+import { loadEnabled, runDocumentLoad } from '../document-load-qualification/hosted.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/document-poc-runtime/run.mjs [--prebuilt]');
+const documentLoadEnabled = loadEnabled(process.env, args.includes('--prebuilt'));
 const visualEnabled = process.env.KP_POC_CAPTURE_VISUAL === 'true';
 if (process.env.KP_POC_CAPTURE_VISUAL !== undefined && !visualEnabled) throw Error('KP_POC_CAPTURE_VISUAL must be absent or true');
 if (visualEnabled && args.includes('--prebuilt')) throw Error('Visual evidence requires built-in-this-run source provenance');
@@ -27,7 +30,7 @@ const base = resolve(process.env.KP_POC_EVIDENCE_DIR ?? join(root, 'tools/docume
 await mkdir(base, { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join(base, 'run-'));
 const runId = randomUUID();
-const stages = RUNTIME_STAGES;
+const stages = documentLoadEnabled ? [...RUNTIME_STAGES.slice(0, -1), 'document-load-qualification', RUNTIME_STAGES.at(-1)] : RUNTIME_STAGES;
 const report = new EvidenceReport(directory, stages);
 const databaseDiagnostics = new DatabaseDiagnostics(report, Boolean(process.env.TEST_DATABASE_URL));
 report.data.runId = runId;
@@ -316,6 +319,20 @@ try {
     humanProcess = await start('poc-human', 3); agentProcess = await start('poc-agent', 2);
   });
   await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
+  if (documentLoadEnabled) await report.stage('document-load-qualification', async () => {
+    report.data.documentLoadQualification = await runDocumentLoad({ root, directory, runId,
+      sourceHead: report.data.gitHead, artifacts: report.data.artifacts, storage, cid, password, human, agent, run,
+      getPids: () => [humanProcess.child.pid, agentProcess.child.pid],
+      identity: async () => { await recordRuntime('documentLoadCheckpoint'); return {
+        ...report.data.runtimeProvenance.documentLoadCheckpoint,
+        humanPid: humanProcess.child.pid, agentPid: agentProcess.child.pid,
+      }; },
+      restart: async () => {
+        await stopProcess(humanProcess); await stopProcess(agentProcess);
+        humanProcess = await start('poc-human', 4); agentProcess = await start('poc-agent', 3);
+      },
+    });
+  });
   await report.stage('final-shutdown', async () => { await stopProcess(humanProcess); await stopProcess(agentProcess); });
 } catch (error) {
   failed = true;
