@@ -16,7 +16,8 @@ use search_application::ports::{AccessDecision, BoxFuture, CurrentAccessEvaluato
 use search_application::scoped::AuthorizedSourceScope;
 use search_application::search_core::id::{ProjectionGenerationId, SourceId};
 use search_application::search_core::knowledge_unit::{
-    EmbeddingCacheKey, KnowledgeUnit, UnitId, VectorAuthorityInput, VectorHitRef,
+    ContentPartRef, EmbeddingCacheKey, KnowledgeUnit, ResourceVersionRef, VectorAuthorityInput,
+    VectorHitRef,
 };
 use search_application::search_core::projection::ProjectionGenerationKey;
 use search_application::search_core::source::{DiscoverableSource, RetentionMode};
@@ -65,47 +66,63 @@ fn failed(what: &str, error: impl std::fmt::Debug) -> SearchError {
 fn indexed_items(
     units: &BodyUnitManifest,
 ) -> impl Iterator<Item = (&BodyItemEntry, VectorUnitCoverage)> {
-    units
-        .entries
-        .iter()
-        .filter(|entry| entry.operation == ItemOperationState::Completed)
-        .filter_map(|entry| {
-            let coverage = match entry.coverage.as_ref()? {
-                BodyCoverage::Supported => VectorUnitCoverage::Complete,
-                BodyCoverage::Partial { .. } => VectorUnitCoverage::PartialValidated,
-                BodyCoverage::Unsupported { .. } => return None,
-            };
-            Some((entry, coverage))
-        })
+    units.entries.iter().filter_map(|entry| {
+        Some((
+            entry,
+            indexed_coverage(entry.operation, entry.coverage.as_ref())?,
+        ))
+    })
 }
 
-/// The indexed Units of one stored bundle with their pinned authority.
+/// The pinned authority of one indexed Unit of `key`'s bundle.
+fn unit_authority(key: ProjectionGenerationKey, unit: &KnowledgeUnit) -> VectorAuthorityInput {
+    VectorAuthorityInput {
+        generation: key,
+        version: (*unit.version).clone(),
+        part: (*unit.part).clone(),
+        authoritative_representation_ref: unit.provenance.authoritative_representation_ref.clone(),
+        raw: unit.provenance.raw.clone(),
+        profile: unit.provenance.profile.clone(),
+        authority_scope_key: document_scope_key(key.source_id),
+        retention_lease_id: DOCUMENT_RETENTION_LEASE.into(),
+        lifetime_scope_id: String::new(),
+        retention_mode: RetentionMode::PersistentResource,
+        lease_expires_at: None,
+    }
+}
+
+/// Whether an item's Units are indexed, and with which coverage.
+fn indexed_coverage(
+    operation: ItemOperationState,
+    coverage: Option<&BodyCoverage>,
+) -> Option<VectorUnitCoverage> {
+    if operation != ItemOperationState::Completed {
+        return None;
+    }
+    match coverage? {
+        BodyCoverage::Supported => Some(VectorUnitCoverage::Complete),
+        BodyCoverage::Partial { .. } => Some(VectorUnitCoverage::PartialValidated),
+        BodyCoverage::Unsupported { .. } => None,
+    }
+}
+
+/// The indexed Units of one stored bundle with their pinned authority. The
+/// Units are moved, so a large bundle is never held twice.
 pub fn manifest_units(
     key: ProjectionGenerationKey,
-    units: &BodyUnitManifest,
+    units: BodyUnitManifest,
 ) -> Vec<VectorManifestUnit> {
-    let scope = document_scope_key(key.source_id);
-    indexed_items(units)
-        .flat_map(|(entry, coverage)| {
-            let scope = scope.clone();
-            entry.units.iter().map(move |unit| VectorManifestUnit {
-                unit: unit.clone(),
-                authority: VectorAuthorityInput {
-                    generation: key,
-                    version: (*unit.version).clone(),
-                    part: (*unit.part).clone(),
-                    authoritative_representation_ref: unit
-                        .provenance
-                        .authoritative_representation_ref
-                        .clone(),
-                    raw: unit.provenance.raw.clone(),
-                    profile: unit.provenance.profile.clone(),
-                    authority_scope_key: scope.clone(),
-                    retention_lease_id: DOCUMENT_RETENTION_LEASE.into(),
-                    lifetime_scope_id: String::new(),
-                    retention_mode: RetentionMode::PersistentResource,
-                    lease_expires_at: None,
-                },
+    units
+        .entries
+        .into_iter()
+        .filter_map(|entry| {
+            let coverage = indexed_coverage(entry.operation, entry.coverage.as_ref())?;
+            Some((entry.units, coverage))
+        })
+        .flat_map(|(units, coverage)| {
+            units.into_iter().map(move |unit| VectorManifestUnit {
+                authority: unit_authority(key, &unit),
+                unit,
                 coverage,
             })
         })
@@ -115,7 +132,7 @@ pub fn manifest_units(
 pub fn manifest_input(
     key: ProjectionGenerationKey,
     source_snapshot: &str,
-    units: &BodyUnitManifest,
+    units: BodyUnitManifest,
     receipt: &GenerationBundleReceipt,
 ) -> VectorManifestInput {
     VectorManifestInput {
@@ -287,7 +304,7 @@ impl VectorMaintainer {
         let input = manifest_input(
             key,
             &manifest.source_snapshot,
-            &restored.unit_manifest,
+            restored.unit_manifest,
             &receipt,
         );
         if input.units.len() != at {
@@ -494,20 +511,136 @@ impl VectorMaintainer {
     }
 }
 
-/// A loaded generation's Units, keyed for hit resolution.
-pub type VectorUnits = BTreeMap<UnitId, (KnowledgeUnit, VectorAuthorityInput)>;
+/// Unit segments kept resolved per generation before they are dropped.
+const RESOLVED_SEGMENTS: usize = 256;
 
-pub fn vector_units(key: ProjectionGenerationKey, units: &BodyUnitManifest) -> VectorUnits {
-    manifest_units(key, units)
-        .into_iter()
-        .map(|item| (item.unit.unit_id, (item.unit, item.authority)))
-        .collect()
+/// A loaded generation's indexed items and their Unit segments, for hit
+/// resolution without holding every Unit (stage 3): a hit's Unit is read
+/// from its item's segment, verified, when a query first needs it.
+pub struct VectorUnitSegments {
+    key: ProjectionGenerationKey,
+    source_snapshot: String,
+    pool: Option<PgPool>,
+    /// Indexed items in manifest order: Version, Part, Unit segment digest.
+    items: Vec<(ResourceVersionRef, ContentPartRef, String)>,
+    resolved: std::sync::Mutex<std::collections::HashMap<String, Arc<BodyItemEntry>>>,
+}
+
+/// The manifest order of an item (Resource, part ordinal, path, native ID).
+fn item_order<'a>(
+    version: &ResourceVersionRef,
+    part: &'a ContentPartRef,
+) -> (
+    search_application::search_core::id::ResourceId,
+    u32,
+    &'a str,
+    &'a str,
+) {
+    (
+        version.resource_id,
+        part.ordinal,
+        part.logical_path.as_str(),
+        part.source_native_part_id.as_str(),
+    )
+}
+
+impl VectorUnitSegments {
+    /// No Unit resolves: for a host without Vector retrieval.
+    pub fn none(key: ProjectionGenerationKey) -> Self {
+        Self {
+            key,
+            source_snapshot: String::new(),
+            pool: None,
+            items: vec![],
+            resolved: Default::default(),
+        }
+    }
+
+    /// The indexed items of a restored summary, whose coverage items and
+    /// segment digests are in the same manifest order.
+    pub fn of_summary(
+        pool: PgPool,
+        summary: &crate::payload::RestoredSummaryV1,
+    ) -> Result<Self, SearchError> {
+        if summary.coverage.items.len() != summary.units.segments.len() {
+            return Err(failed("segment list", summary.units.segments.len()));
+        }
+        let items = summary
+            .coverage
+            .items
+            .iter()
+            .zip(&summary.units.segments)
+            .filter(|(item, _)| indexed_coverage(item.operation, item.coverage.as_ref()).is_some())
+            .map(|(item, digest)| (item.version.clone(), item.part.clone(), digest.clone()))
+            .collect();
+        Ok(Self {
+            key: summary.units.key,
+            source_snapshot: summary.units.source_snapshot.clone(),
+            pool: Some(pool),
+            items,
+            resolved: Default::default(),
+        })
+    }
+
+    /// The Unit `hit` names, with its pinned authority, if it is one of the
+    /// generation's indexed Units.
+    async fn unit(
+        &self,
+        hit: &VectorHitRef,
+    ) -> Result<Option<(KnowledgeUnit, VectorAuthorityInput)>, SearchError> {
+        let Some(pool) = &self.pool else {
+            return Ok(None);
+        };
+        let wanted = item_order(&hit.version, &hit.part);
+        let Ok(at) = self
+            .items
+            .binary_search_by(|(version, part, _)| item_order(version, part).cmp(&wanted))
+        else {
+            return Ok(None);
+        };
+        let (version, part, digest) = &self.items[at];
+        if *version != hit.version || *part != hit.part {
+            return Ok(None);
+        }
+        let cached = self
+            .resolved
+            .lock()
+            .map_err(|_| failed("lock", ()))?
+            .get(digest)
+            .cloned();
+        let entry = match cached {
+            Some(entry) => entry,
+            None => {
+                let mut read = PgPayloadStore::new(pool.clone())
+                    .unit_segments(std::slice::from_ref(digest))
+                    .await
+                    .map_err(|error| failed("unit segment", error))?;
+                let entry = Arc::new(
+                    read.remove(digest)
+                        .ok_or_else(|| failed("unit segment", ()))?,
+                );
+                let mut resolved = self.resolved.lock().map_err(|_| failed("lock", ()))?;
+                if resolved.len() >= RESOLVED_SEGMENTS {
+                    resolved.clear();
+                }
+                resolved.insert(digest.clone(), entry.clone());
+                entry
+            }
+        };
+        let Some(unit) = entry.units.iter().find(|unit| unit.unit_id == hit.unit_id) else {
+            return Ok(None);
+        };
+        let mut unit = unit.clone();
+        Arc::make_mut(&mut unit.provenance).source_snapshot = self.source_snapshot.clone();
+        let authority = unit_authority(self.key, &unit);
+        Ok(Some((unit, authority)))
+    }
 }
 
 /// Resolves hits against the loaded generation and the actor's current Read.
 pub struct DocumentVectorResolver {
     key: ProjectionGenerationKey,
-    units: Arc<VectorUnits>,
+    units: Arc<VectorUnitSegments>,
     access: Arc<DocumentCurrentAccessAdapter>,
     binding: String,
 }
@@ -519,10 +652,13 @@ impl VectorSourceResolverPort for DocumentVectorResolver {
         hit: &'a VectorHitRef,
     ) -> BoxFuture<'a, SourceUnitState> {
         Box::pin(async move {
-            if hit.generation != self.key || scope.source_id() != self.key.source_id {
+            if hit.generation != self.key
+                || scope.source_id() != self.key.source_id
+                || self.units.key != self.key
+            {
                 return Ok(SourceUnitState::NotCurrent);
             }
-            let Some((unit, authority)) = self.units.get(&hit.unit_id) else {
+            let Some((unit, authority)) = self.units.unit(hit).await? else {
                 return Ok(SourceUnitState::NotCurrent);
             };
             let read: AccessDecision = CurrentAccessEvaluatorPort::evaluate(
@@ -533,8 +669,8 @@ impl VectorSourceResolverPort for DocumentVectorResolver {
             .await
             .unwrap_or(AccessDecision::Unknown);
             Ok(SourceUnitState::Current(Box::new(CurrentSourceUnit {
-                unit: unit.clone(),
-                authority: authority.clone(),
+                unit,
+                authority,
                 read,
             })))
         })
@@ -561,7 +697,7 @@ impl DocumentActorVector {
     pub fn new(
         services: VectorServices,
         key: ProjectionGenerationKey,
-        units: Arc<VectorUnits>,
+        units: Arc<VectorUnitSegments>,
         access: Arc<DocumentCurrentAccessAdapter>,
         binding: String,
     ) -> Self {
