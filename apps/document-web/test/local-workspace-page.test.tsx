@@ -132,6 +132,111 @@ test('browsing lists relative entries, opens directories and previews a bounded 
   expect(await screen.findByRole('table', { name: '資料の内容' })).toBeVisible();
 });
 
+test('opening the folder that is already shown lists it again (sees replacements made outside the app)', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await waitFor(() => expect(fake.callsOf('listEntries').length).toBeGreaterThan(before));
+});
+
+test('a desktop whose local runtime could not start says why (another instance holds it)', async () => {
+  const fake = createFakeRuntime();
+  fake.runtime.capabilities = async () => ({ localResources: 'unavailable', nativeDirectoryPicker: 'unavailable', managedWorkspace: 'unavailable', multiWindow: false, sidecar: false });
+  fake.fail('listWorkspaces', new RuntimeFailure('unavailable', 'instance_locked'));
+  renderPage(fake.runtime);
+  expect(await screen.findByText('デスクトップ版が別に起動しています。もう一方を終了してから開き直してください。')).toBeVisible();
+  expect(screen.queryByRole('button', { name: '新しいWorkspace' })).toBeNull();
+});
+
+test('a folder listing that fails after a replacement stops showing the old entries', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  expect(await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。')).toBeVisible();
+  expect(screen.queryByRole('table', { name: '資料の内容' })).toBeNull();
+});
+
+test('a successful re-open after a failed listing clears the failure', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。');
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  expect(await screen.findByRole('table', { name: '資料の内容' })).toBeVisible();
+  expect(screen.queryByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。')).toBeNull();
+});
+
+test('opening the folder again from a subfolder lists only the folder root', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは', sub: { 'inner.txt': 'inner' } } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await user.click(within(await screen.findByRole('table', { name: '資料の内容' })).getByRole('button', { name: 'sub' }));
+  await screen.findByRole('table', { name: '資料 / subの内容' });
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const after = fake.callsOf('listEntries').slice(before).map((call) => (call.args[1] as { locator: string[] }).locator);
+  expect(after).toEqual([[]]);
+});
+
+test('a failed re-list also hides content previewed from the folder', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await user.click(within(await screen.findByRole('table', { name: '資料の内容' })).getByRole('button', { name: 'readme.txt の内容を表示' }));
+  await screen.findByRole('region', { name: 'readme.txt の内容' });
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。');
+  expect(screen.queryByRole('region', { name: 'readme.txt の内容' })).toBeNull();
+});
+
+test('opening the shown folder again keeps the file name and content being typed', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'draft.txt');
+  await user.type(within(form).getByRole('textbox', { name: '内容' }), '書きかけ');
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await waitFor(() => expect(fake.callsOf('listEntries').length).toBeGreaterThan(before));
+  const after = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  expect(within(after).getByRole('textbox', { name: 'ファイル名' })).toHaveValue('draft.txt');
+  expect(within(after).getByRole('textbox', { name: '内容' })).toHaveValue('書きかけ');
+});
+
+test('a re-list that fails after creating a file hides the earlier preview (no 開く involved)', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await user.click(within(await screen.findByRole('table', { name: '資料の内容' })).getByRole('button', { name: 'readme.txt の内容を表示' }));
+  await screen.findByRole('region', { name: 'readme.txt の内容' });
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'new.txt');
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  expect(await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。')).toBeVisible();
+  expect(screen.queryByRole('region', { name: 'readme.txt の内容' })).toBeNull();
+});
+
 test('creating a file keeps input on conflict and replays the same operation after an unknown result', async () => {
   const user = userEvent.setup();
   const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'exists.txt': 'x' } } }] });
@@ -169,8 +274,12 @@ test('a stale context refreshes the workspace instead of acting on old state', a
   await user.click(screen.getByRole('button', { name: '資料を開く' }));
   expect(await screen.findByText(/Workspaceの状態が更新されました/)).toBeVisible();
   await waitFor(() => expect(fake.callsOf('listWorkspaces').length).toBeGreaterThan(before));
+  // The refreshed revision lists again on its own; the explanation stays until the user acts.
+  expect(await screen.findByRole('table', { name: '資料の内容' })).toBeVisible();
+  expect(screen.getByText(/Workspaceの状態が更新されました/)).toBeVisible();
   await user.click(screen.getByRole('button', { name: '資料を開く' }));
   expect(await screen.findByRole('table', { name: '資料の内容' })).toBeVisible();
+  await waitFor(() => expect(screen.queryByText(/Workspaceの状態が更新されました/)).toBeNull());
 });
 
 test('renaming changes only the logical name', async () => {
@@ -265,4 +374,139 @@ test('an uncertain workspace creation can be left for later and confirmed from t
   const attempts = fake.callsOf('createLocalWorkspace');
   expect(attempts).toHaveLength(2);
   expect(attempts[0]!.args[1]).toBe(attempts[1]!.args[1]);
+});
+
+function holdReads(fake: ReturnType<typeof createFakeRuntime>) {
+  const resources = fake.runtime.resources as { readFile: RuntimeAdapter['resources']['readFile'] };
+  const original = resources.readFile;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  resources.readFile = async (...args) => { await gate; return original(...args); };
+  return release;
+}
+
+test('a read still running when the folder is opened again does not bring its preview back', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const release = holdReads(fake);
+  await user.click(screen.getByRole('button', { name: 'readme.txt の内容を表示' }));
+  await waitFor(() => expect(fake.callsOf('openRead')).toHaveLength(1));
+  fake.fail('listEntries', new RuntimeFailure('unavailable', 'folder_replaced'));
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByText('フォルダーが移動・削除・置き換えされたため利用できません。解除してから選び直してください。');
+  release();
+  await waitFor(() => expect(fake.callsOf('closeRead')).toHaveLength(1));
+  expect(screen.queryByRole('region', { name: 'readme.txt の内容' })).toBeNull();
+});
+
+test('a read still running when the folder is listed again successfully does not reappear', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const release = holdReads(fake);
+  await user.click(screen.getByRole('button', { name: 'readme.txt の内容を表示' }));
+  await waitFor(() => expect(fake.callsOf('openRead')).toHaveLength(1));
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await waitFor(() => expect(fake.callsOf('listEntries').length).toBeGreaterThan(before));
+  release();
+  await waitFor(() => expect(fake.callsOf('closeRead')).toHaveLength(1));
+  expect(screen.queryByRole('region', { name: 'readme.txt の内容' })).toBeNull();
+  // A new read after the re-open is shown as usual.
+  await user.click(screen.getByRole('button', { name: 'readme.txt の内容を表示' }));
+  expect(await screen.findByRole('region', { name: 'readme.txt の内容' })).toHaveTextContent('こんにちは');
+});
+
+test('opening the folder again from a later page lists only its first page, once', async () => {
+  const user = userEvent.setup();
+  const files = Object.fromEntries(Array.from({ length: 150 }, (_, index) => [`f${String(index).padStart(3, '0')}.txt`, 'x']));
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': files } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('button', { name: 'f000.txt の内容を表示' });
+  await user.click(screen.getByRole('button', { name: '次の100件' }));
+  await screen.findByRole('button', { name: 'f149.txt の内容を表示' });
+  const before = fake.callsOf('listEntries').length;
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('button', { name: 'f000.txt の内容を表示' });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const after = fake.callsOf('listEntries').slice(before);
+  expect(after.map((call) => call.args[2])).toEqual([undefined]);
+});
+
+test('a listing failure ends once the folder lists successfully again', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  fake.fail('listEntries', new RuntimeFailure('conflict', 'concurrent_change'));
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  const panel = await screen.findByRole('region', { name: '資料 の閲覧' });
+  await within(panel).findByRole('alert');
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'new.txt');
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await screen.findByRole('button', { name: 'new.txt の内容を表示' });
+  expect(within(panel).queryByRole('alert')).toBeNull();
+});
+
+test('opening the folder again also ends an earlier file-creation failure but keeps the input', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'readme.txt': 'こんにちは' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'readme.txt');
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByRole('alert');
+  await user.click(screen.getByRole('button', { name: '資料を開く' }));
+  await waitFor(() => expect(within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).queryByRole('alert')).toBeNull());
+  expect(within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).getByRole('textbox', { name: 'ファイル名' })).toHaveValue('readme.txt');
+});
+
+test('a changed context explained by the file form leaves no listing alert once the retry succeeds', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'a.txt': 'a' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  const panel = await screen.findByRole('region', { name: '資料 の閲覧' });
+  await within(panel).findByRole('table', { name: '資料の内容' });
+  fake.bumpContext();
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'n.txt');
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByText(/Workspaceの状態が更新されました/);
+  await user.click(within(screen.getByRole('form', { name: 'この場所にファイルを作成' })).getByRole('button', { name: '作成する' }));
+  await screen.findByText('ファイル「n.txt」を作成しました。');
+  await screen.findByRole('button', { name: 'n.txt の内容を表示' });
+  expect(within(screen.getByRole('region', { name: '資料 の閲覧' })).queryAllByRole('alert')).toHaveLength(0);
+});
+
+function leaving() {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test('leaving the page is guarded while a local operation is unresolved, and not after it is confirmed', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'a.txt': 'a' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  expect(leaving()).toBe(false);
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'n.txt');
+  fake.fail('createFile', new RuntimeFailure('outcome_unknown'));
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByRole('button', { name: '結果を確認' });
+  expect(leaving()).toBe(true);
+  await user.click(within(form).getByRole('button', { name: '結果を確認' }));
+  await screen.findByText('ファイル「n.txt」を作成しました。');
+  expect(leaving()).toBe(false);
 });

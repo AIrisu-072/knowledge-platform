@@ -99,7 +99,12 @@
 ## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）
 
 - Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません
-- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eを実装しました。Tauri shellは、MPL-2.0・Linux advisory・Windows経路・WebView2・OSV送信の[依頼者判断](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)待ちでSTOPしています。PR52の限定例外は使っていません
+- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eは[PR95](https://github.com/AIrisu-072/knowledge-platform/pull/95)でmainに統合済み
+- 07:30追補：依頼者が[判断5項目](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)に合意。main `04076b1` から作り直した同名branchで、Tauri shell（`apps/desktop/src-tauri`、独立Cargo workspace）を実装し、実アプリのGUIをtauri-driver＋Xvfb＋xdotool＋実backendで17シナリオ確認（ローカル専用、CIにはしない）。Windows実機は未実施。次は独立review→Draft PR→exact-head CI→統合
+- 09:20追補：[PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。1回目の独立reviewを修正し、実GUI確認を24シナリオへ拡充（commit `baad3bc` で `qualifying: true`）。Linuxで未確認の項目は[手順書](../../operations/desktop-workspace-runtime.md)、詳細は[状況](desktop-workspace-runtime-status.md)。次は2回目の独立reviewの確認→exact-head CI→統合→統合後CI
+- 10:10追補：2回目の独立reviewの指摘を修正（設定の上書き防止、転送の上限試験、下書き保持、証跡の厳密化）。commit `3abfeca` と、main（PR #100〜#105）取り込み後の `c31e6d0` で、実GUI 24シナリオ・205項目がそれぞれ連続2回 `qualifying: true`。次はexact-head CI→統合→統合後CI
+- 14:40追補：3回目の独立reviewで、デスクトップ版のタスク画面の作業ファイル保存が必ず失敗する不具合（Work APIの専用headerをshellが落とす）などを発見し修正（`d18df99`）。実GUI 25シナリオ・212項目が連続2回 `qualifying: true`。次はpush→exact-head CI→4回目のreview→統合→統合後CI
+- 2026-10-08追補：4回目の独立reviewで、ウィンドウを閉じる操作でページの離脱確認が働かない不具合などを発見し修正（`6504778`）。実GUI 26シナリオ・217項目が固定版Node 24.21.0で連続2回 `qualifying: true`。デスクトップ版ではタスク・検索の画面へメニューから移れないこと（入口は依頼者の判断事項）を記録。次はpush→exact-head CI→統合→統合後CI
 
 ---
 
@@ -1622,3 +1627,4 @@ Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed ex
 ## End-of-session rule
 
 Before intentional session switch/context exhaustion, record exact branch/head, CI evidence, Plan approval state, blockers, and next exact action.
+- 2026-10-08 05:30追補：最終（5回目）の独立reviewの指摘を修正（閉じる前の確認をshellで出し答えるまで閉じない、ローカルWorkspaceの未確定の操作の離脱確認）。commit `86f187b` で実GUI 26シナリオ・220項目が固定版Node 24.21.0で連続2回 `qualifying: true`。次はpush→exact-head CI→統合→統合後CI

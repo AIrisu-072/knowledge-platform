@@ -1,0 +1,15 @@
+# Applies only to this directory's Cargo.lock (the desktop shell). The root
+# osv-scanner.toml and every other lockfile are unchanged.
+# Owner approval 2026-10-07 (Linux desktop use and OSV submission of this
+# lockfile): docs/decisions/2026-10-07-tauri-v2-desktop-qualification.md
+# Each entry expires so the exception is re-reviewed instead of becoming permanent.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+ignoreUntil = 2027-04-07T00:00:00Z
+reason = "glib 0.18.5 (alias GHSA-wrw7-89jp-8q8g): unsound VariantStrIter iterator impls, fixed in glib 0.20. Pinned by gtk3-rs 0.18, the Linux GTK/WebKitGTK backend of Tauri 2.12.1; the shell does not use glib Variant APIs. Linux desktop only, owner-approved 2026-10-07."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+ignoreUntil = 2027-04-07T00:00:00Z
+reason = "proc-macro-error 1.0.4: unmaintained build-time proc-macro of gtk3-rs 0.18 (Linux desktop only); no known vulnerability. Owner-approved 2026-10-07."

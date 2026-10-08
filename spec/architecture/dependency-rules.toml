@@ -71,6 +71,21 @@ crate_path = "crates/local-workspace-runtime"
 forbidden_dependencies = ["tokio", "axum", "sqlx", "reqwest", "tauri", "document-server", "organization-server", "work-application", "work-api-http", "search-runtime"]
 forbidden_source_patterns = ["std::process", "Command::new", "tokio::fs", "libc::exec", "libc::system", "libc::fork", "libc::vfork", "libc::posix_spawn", "libc::dlopen"]
 
+[workspace.boundaries.desktop_shell]
+# Tauri v2 shell (separate Cargo workspace): one main window, the single
+# bounded broker IPC command and loopback-only /v1 forwarding. This lint checks
+# only Cargo dependency names (no Tauri plugin crate, no server/database crate)
+# and substrings in src/**/*.rs (no process launch, general filesystem,
+# external webview URL, devtools opening or "dangerous" API). The capability,
+# tauri.conf.json and the absence of platform overlays, the resolved Tauri
+# config, the resolved Tauri features and build.rs (which refuses
+# TAURI_CONFIG) are pinned by apps/desktop/src-tauri/tests/config.rs. Those
+# run only locally (mise run desktop:check):
+# building the shell needs WebKitGTK, and no CI job builds it today.
+crate_path = "apps/desktop/src-tauri"
+forbidden_dependencies = ["tauri-plugin-shell", "tauri-plugin-fs", "tauri-plugin-dialog", "tauri-plugin-http", "tauri-plugin-opener", "tauri-plugin-process", "tauri-plugin-updater", "tauri-plugin-sql", "tokio", "axum", "sqlx", "document-server", "organization-server", "work-application", "work-api-http", "search-runtime"]
+forbidden_source_patterns = ["std::process", "Command::new", "std::fs", "tokio::fs", "WebviewUrl::External", "open_devtools", "dangerous", ".eval("]
+
 [workspace.boundaries.search_core]
 crate_path = "crates/search-core"
 forbidden_dependencies = ["sqlx", "axum", "tokio", "tantivy", "search-tantivy", "reqwest"]
