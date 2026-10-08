@@ -412,7 +412,7 @@ async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
                 0
             ))
             .await,
-        Err(ApplicationError::IntegrityViolation)
+        Err(ApplicationError::BusinessRule)
     ));
     let empty = service
         .create_document_items(command(fixture.root_id))
