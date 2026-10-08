@@ -74,6 +74,9 @@ pub fn forget_verified_segments() {
     if let Ok(mut cache) = summary_cache().lock() {
         cache.clear();
     }
+    if let Ok(mut cache) = restored_summaries().lock() {
+        cache.clear();
+    }
 }
 
 /// An item as stored in a segment: every Unit's Source snapshot is cleared.
@@ -347,6 +350,16 @@ const SUMMARY_CACHE_ITEMS: usize = 1_000_000;
 /// Segments read per query by `restore_without_units`, so the Unit text of
 /// one batch at most is held at a time.
 const SUMMARY_FETCH_BATCH: usize = 256;
+
+/// Whole restored summaries kept per process, newest last.
+const RESTORED_SUMMARIES: usize = 2;
+
+type RestoredSummaries = Mutex<Vec<(ProjectionGenerationKey, String, Arc<RestoredSummaryV1>)>>;
+
+fn restored_summaries() -> &'static RestoredSummaries {
+    static CACHE: OnceLock<RestoredSummaries> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
 
 fn summary_cache() -> &'static Mutex<HashMap<String, Arc<SegmentSummary>>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Arc<SegmentSummary>>>> = OnceLock::new();
@@ -870,6 +883,32 @@ impl PgPayloadStore {
     /// process first reads it and then kept only as its coverage item, digest
     /// and Unit count. For a reader that needs no Unit text (T12).
     pub async fn restore_without_units(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+    ) -> Result<RestoredSummaryV1, BundleError> {
+        let key = manifest.key();
+        // The same generation restored and checked by this process before.
+        if let Some(restored) = restored_summaries()
+            .lock()
+            .map_err(|_| BundleError::StoreUnknown)?
+            .iter()
+            .find(|(at, digest, _)| *at == key && *digest == manifest.digest)
+            .map(|(_, _, restored)| restored.clone())
+        {
+            return Ok((*restored).clone());
+        }
+        let restored = self.restore_summary_uncached(manifest).await?;
+        let mut cache = restored_summaries()
+            .lock()
+            .map_err(|_| BundleError::StoreUnknown)?;
+        cache.push((key, manifest.digest.clone(), Arc::new(restored.clone())));
+        if cache.len() > RESTORED_SUMMARIES {
+            cache.remove(0);
+        }
+        Ok(restored)
+    }
+
+    async fn restore_summary_uncached(
         &self,
         manifest: &ProjectionGenerationManifest,
     ) -> Result<RestoredSummaryV1, BundleError> {

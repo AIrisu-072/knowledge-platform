@@ -22,6 +22,7 @@ mod translate;
 pub use api_read::DocumentApiRead;
 pub use body_bundle::{
     PublishedBody, graph_receipt, seal_lexical, seal_lexical_entries, seal_lexical_hashes,
+    unit_seal_entries,
 };
 pub use body_evidence::{
     CurrentVersionReader, DocumentBodyCoverageGaps, DocumentExactTextEvidenceCatalog,

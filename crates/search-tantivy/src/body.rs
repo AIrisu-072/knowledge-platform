@@ -507,10 +507,10 @@ pub(crate) fn lexical_digest(
         optional(&mut hasher, document.locator.as_deref());
     }
     let mut ordered: Vec<&UnitSealEntry> = entries.iter().collect();
-    ordered.sort_by_key(|entry| entry.unit_id);
+    ordered.sort_unstable_by_key(|entry| entry.unit_id);
     hasher.update((ordered.len() as u32).to_be_bytes());
     for entry in &ordered {
-        frame(&mut hasher, entry.unit_id.to_string().as_bytes());
+        frame(&mut hasher, &entry.unit_id.text_bytes());
         hasher.update(entry.hash);
     }
     Ok(LexicalInputDigest {

@@ -17,13 +17,13 @@ use search_application::graph_generation::{
 use search_application::ports::{AccessDecision, BoxFuture};
 use search_application::scoped::{AuthorizedSourceScope, TrustedDiscoveryBinding};
 use search_core::id::{RelationId, ResourceId, SourceId};
-use uuid::Uuid;
 use search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
 use search_core::relation::TypedRelationInstance;
 use search_core::resource::ResourceKind;
 use search_graph::{PostgresGraphStore, canonical_mapping_digest};
+use uuid::Uuid;
 
 use crate::postgres::{DocumentCurrentAccessAdapter, DocumentOutboxSnapshot};
 use crate::relations::{document_resource_id, folder_resource_id};
@@ -151,7 +151,12 @@ pub fn document_graph_records(
         // In relation-ID order, as `relations` iterates.
         let attached_relations = incident
             .get(&id)
-            .map(|relations| relations.iter().map(|relation| (*relation).clone()).collect())
+            .map(|relations| {
+                relations
+                    .iter()
+                    .map(|relation| (*relation).clone())
+                    .collect()
+            })
             .unwrap_or_default();
         records.push(GraphResourceRecord {
             resource_ref: id,
