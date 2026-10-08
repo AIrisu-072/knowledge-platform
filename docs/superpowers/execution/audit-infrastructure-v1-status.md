@@ -1,5 +1,17 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 単位B 確認review round2のMinor指摘（m1–m5）の反映（worktree branch、未push）
+
+- branch `worktree-agent-a07ac0dcd80b1fa0d`（`d2380ca` の上）。各指摘を試験とともに1 commitずつ：
+  - `3fb4071` m1：relay postureは `audit_relay` の表の列の権限（ownerでない全role・PUBLIC。relaclにもhas_table_privilegeにも現れずcommitment saltを読める）を `column_privilege`（object `表.列 role`）として報告する（`source_schema.rs`：operator loginへの `commitment_salt` のSELECT、PUBLICへの `store_seq` のUPDATE）。
+  - `d66a04d` m4：relay postureの `table_access` は、能力を持たないloginについてはDocument DBへのCONNECTがある場合だけ報告する（`predefined_role_member` と同じ条件。能力role・そのloginとserver file・programのroleは接続に関係なく報告）。`source_schema.rs` でCONNECTの無い `pg_write_all_data` loginが報告されず（修正前は `table_access` が出ることを確認）、server fileのroleは報告され、CONNECTを与えると報告されることを確かめる。
+  - `a5bfb8b` m2：方針は「報告する」。Store・relayの両postureで、REPLICATION属性を持つ非superuserのloginを接続に関係なく `replication_login` として報告する（server fileのroleと同じ）。両READMEに、REPLICATION loginは境界の外にあり、superuserのloginで専用のreplication基盤（`pg_hba.conf` の `replication` 行をreplica・backup hostに限る）に限ることを記載（`store_access.rs`：新規loginと既存loginへの属性付与、`source_schema.rs`：CONNECTの無いlogin）。
+  - `4338fb2` m3：assessの `store_behind` は、manifestがexportを切ったこと（最初のintentの `seq_through`、または最初のintentのwatermarkがcheckpointのseq以上）を示す場合だけに適用し、切っていないexportのheadを越えるcheckpoint（古いexportか、Storeが行を失った）はaudit-coreの判定（同じepochでは `tampered`、終了code 5）のままにする。出力に常にaudit-coreの判定 `underlying_verdict`（`broken` ではnull）を出す（`cli_assess.rs`：`--seq-through` exportは `store_behind`／`underlying_verdict` `tampered`／終了code 2、切っていないidentity chain exportは `tampered`／5。単体試験でwatermarkによる切断も確認）。README・telemetry仕様・CLIのhelpを更新。
+  - `2955a8e` m5：`purge_body` が証拠の前に保留中の全拒否連続を書く試験（`store_ingest.rs`：2つのloginのburst後に `purge_body(event_id, 'adapter_defect')`、`denials_pending` 0、各loginの件数がchainで全件、各flushのseqがpurgeの証拠より前）。
+- ローカル検証（`2955a8e`）：`cargo metadata --locked` PASS、`cargo test -p audit-core -p audit-store-postgres -p audit-relay` 全PASS（core 152＋doc 2、Store 71、relay 50＋ignored 1。試験は既存関数内への追加のため件数は不変）、`cargo clippy --locked -p audit-core -p audit-store-postgres -p audit-relay --all-targets -- -D warnings`・`cargo fmt --all -- --check`・`cargo run --quiet --locked -p architecture-lint -- check` PASS。
+- 設計からの差分（承認状態：依頼者の修正指示の範囲内で本trackが採用、確認review未実施）：REPLICATION loginの報告（replicationはsuperuserで行う）、assessの `underlying_verdict`（加法）と `store_behind` の適用条件の縮小。migration 0001（Store・relay、未release）はその場で編集した。
+- 次のexact action：修正確認review（security・correctness、m1–m5を含む）→ 指摘反映 → 最新mainから作り直したbranchへ移してDraft PR → exact-head CI。
+
 ## 2026-10-08 — 文書詳細表示・未読戻しのevent type 2種をcatalogへ加法登録（worktree branch、未push）
 
 - 対象：main PR #106（migration 0012、`current_read_state.rs`）が必須Auditとして書く `document.version.detail_viewed`（VIEW）と `document.version.marked_unread`（RESET）。既存typeは変えていない（rename・意味変更なし）。commit `5e06e15`（catalog・audit-core・Store登録）と、その後のrelay試験・docsのcommit。
