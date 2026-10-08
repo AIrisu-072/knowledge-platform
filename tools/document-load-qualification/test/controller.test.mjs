@@ -17,3 +17,11 @@ test('failed first publish reports actual counts and bounded DSI diagnostics wit
  }});
  assert.equal(report.status,'FAILED');assert.deepEqual(report.counts,{targetDocuments:2,confirmedCreatedDocuments:1,confirmedPublishedDocuments:0});assert.equal(report.metricQualification,'partial-failed-stage');assert.equal(diagnostics,1);assert.equal(report.failureDiagnostic.problemCode,'PUBLISH_QUALITY_REJECTED');assert.equal(report.inspectionDiagnostic.embeddedComments,2);assert.ok(!JSON.stringify(report).includes('PRIVATE_SENTINEL'));
 });
+test('missing DSI on BUSINESS_RULE_REJECTED invokes only a bound worker diagnosis and preserves FAILED',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'controller-worker-'));t.after(()=>rm(dir,{recursive:true,force:true}));const fileId='0198eada-1234-7000-8000-000000000001';let calls=0;
+ const report=await runQualification({directory:dir,runId:'test',plan:plan(),corpus:{hash:'corpus',assets:[]},runtime:{observe:async()=>observation(),identity:async()=>({dataset:'same',humanPid:100,agentPid:200}),diagnosePublication:async()=>({rowCount:0}),diagnoseWorker:async(id,binding)=>{assert.equal(id,fileId);assert.deepEqual(binding,{assetId:'official-a',sha256:'a'.repeat(64)});calls++;return{status:'worker-failure',failureCode:'unsupported_semantic_construct',message:'PRIVATE_SENTINEL'};}},probeFactory:()=>({}),execute:async({journal})=>{
+  await journal.perform('create:0',{assetId:'official-a',sha256:'a'.repeat(64)},async()=>({documentId:'doc',documentVersionId:'version',fileId}),{recoverable:false});
+  await journal.perform('publish:0',{},async()=>{const error=Error('PRIVATE_SENTINEL');error.diagnostic={operation:'publish',httpStatus:422,problemCode:'BUSINESS_RULE_REJECTED'};throw error;});
+ }});
+ assert.equal(calls,1);assert.equal(report.status,'FAILED');assert.equal(report.workerDiagnostic.failureCode,'unsupported_semantic_construct');assert.equal(report.workerDiagnostic.qualification,false);assert.ok(!JSON.stringify(report).includes('PRIVATE_SENTINEL'));
+});

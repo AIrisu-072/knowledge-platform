@@ -30,3 +30,26 @@ export function sanitizeInspectionDiagnostic(value) {
   if (value?.rowCount !== 1 || booleans.some(key=>typeof value[key]!=='boolean') || counts.some(key=>!Number.isSafeInteger(value[key]) || value[key]<0 || value[key]>1000000)) return {status:'unavailable'};
   return {status:'observed',rowCount:1,...Object.fromEntries([...booleans,...counts].map(key=>[key,value[key]]))};
 }
+export function publicationPrerequisiteSql(fileId,sha256,sizeBytes){
+ if(!Number.isSafeInteger(sizeBytes)||sizeBytes<1||sizeBytes>32*1024*1024)throw Error('Invalid expected raw size');
+ inspectionDiagnosticSql(fileId); // Reuse the strict UUID admission, never an interpolated path.
+ if(typeof sha256!=='string' || !/^[a-f0-9]{64}$/.test(sha256))throw Error('Invalid expected raw hash');
+ return `SELECT json_build_object(
+  'fileCount', count(DISTINCT f.file_id), 'versionCount', count(DISTINCT v.document_version_id),
+  'authoritativeItemCount', count(DISTINCT ci.content_item_id),
+  'isWorking', bool_and(v.lifecycle_state = 'WORKING'),
+  'requiresContentClassification', bool_or(v.requires_content_classification),
+  'mediaTypeMatches', bool_and(f.media_type = 'application/pdf'),
+  'rawHashMatches', bool_and(encode(f.content_hash, 'hex') = '${sha256}'),
+  'sizeMatches', bool_and(f.size_bytes = ${sizeBytes})
+ ) FROM file_objects f
+ LEFT JOIN content_representations cr ON cr.file_id = f.file_id AND cr.role = 'AUTHORITATIVE'
+ LEFT JOIN content_items ci ON ci.content_item_id = cr.content_item_id AND ci.authoritative_representation_id = cr.content_representation_id
+ LEFT JOIN document_versions v ON v.document_version_id = ci.document_version_id
+ WHERE f.file_id = '${fileId}'::uuid`;
+}
+export function sanitizePublicationPrerequisites(value){
+ const flags=['isWorking','requiresContentClassification','mediaTypeMatches','rawHashMatches','sizeMatches'];
+ if(value?.fileCount!==1 || value.versionCount!==1 || value.authoritativeItemCount!==1 || !flags.every(key=>typeof value[key]==='boolean'))return{status:'unavailable'};
+ return{status:'observed',fileCount:1,versionCount:1,authoritativeItemCount:1,...Object.fromEntries(flags.map(key=>[key,value[key]]))};
+}

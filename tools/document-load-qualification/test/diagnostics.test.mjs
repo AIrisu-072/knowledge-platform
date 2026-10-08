@@ -33,3 +33,13 @@ test('diagnostic SQL follows exact persisted DSI field names and rejected-qualit
  for(const field of ['tracked_changes','comments','cryptographic_validity']){assert.ok(sql.includes(field));assert.ok(source.includes(field));}
  assert.match(sql,/observed_raw_content_hash = f.content_hash/);assert.match(sql,/observed_size_bytes = f.size_bytes/);
 });
+test('publication prerequisites are bound to one owned raw hash and contain only scalar state',()=>{
+ assert.equal(typeof module.publicationPrerequisiteSql,'function');
+ const sql=module.publicationPrerequisiteSql(fileId,'a'.repeat(64),200);
+ assert.match(sql,/requires_content_classification/);assert.match(sql,/lifecycle_state = 'WORKING'/);assert.match(sql,/f\.media_type = 'application\/pdf'/);assert.match(sql,/encode\(f\.content_hash, 'hex'\)/);
+ assert.match(sql,/f\.size_bytes = 200/);
+ assert.doesNotMatch(sql,/SELECT\s+\*|storage_locator|original_filename|title|metadata/i);
+ assert.throws(()=>module.publicationPrerequisiteSql(fileId,"';bad"));
+ const input={fileCount:1,versionCount:1,authoritativeItemCount:1,isWorking:true,requiresContentClassification:false,mediaTypeMatches:true,rawHashMatches:true,sizeMatches:true,secret:'PRIVATE_SENTINEL'};
+ assert.deepEqual(module.sanitizePublicationPrerequisites(input),{status:'observed',fileCount:1,versionCount:1,authoritativeItemCount:1,isWorking:true,requiresContentClassification:false,mediaTypeMatches:true,rawHashMatches:true,sizeMatches:true});
+});

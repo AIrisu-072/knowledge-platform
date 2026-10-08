@@ -92,3 +92,7 @@ PR108 の運用追補にある「並行登録器を作らない」は、Search c
 失敗時は既存 Error Registry にある code と実 HTTP status が一致する場合だけ Problem code を記録します。detail、traceId、field error、本文は保存・出力しません。目標件数とは別に、journal の成功応答を保持できた登録数・初回公開数を confirmedCreatedDocuments / confirmedPublishedDocuments として示します。応答不明の場合は実際に保存された件数がこれより多い可能性があり、未保存を断定しません。途中失敗の数値は `partial-failed-stage` とし、容量・性能の成功根拠にしません。
 
 公開拒否時に限り、自分の journal の pending publication に対応する FileId 1 件を、自分の disposable DB で read-only 集計します。DSI保存行の有無、PDF判定、原本 hash/size一致、未解決変更・embedded comments・invalid/unverifiable署名の件数だけです。これは Common API を迂回する製品読取機能ではなく、失敗解析用の検証計測です。コメント内容、作者、locator、署名主体、parser message はSQLでも選びません。未取得は unavailable / not-found のままで、拒否を成功へ変えません。
+
+DSI行が無い `BUSINESS_RULE_REJECTED` の場合は、検査APIの呼び忘れと断定しません。現在のHTTP契約では、workerの未対応構造・文字抽出失敗等も同じ422へまとめられます。専用Cargo example `document-load-inspection` は、同runでbuild/test/hashを確認した既存LinuxSandboxRunnerへ、変更していない公式原本を渡す診断driverです。既存worker/PDFium、mandatory sandbox、既定10秒上限は維持します。直接worker起動、portable parserへのfallback、失敗時の許可はありません。
+
+実行前に、自分のpending publicationのFileIdについて、保存済みhash・size・mediaTypeと公式原本が一致し、WORKING・未分類でない・単一authoritative参照であることをread-only確認します。一致しなければdriverも実行しません。診断は固定worker failure codeまたは件数/原本bindingのみを出し、常に `qualification:false` です。元のAPI公開FAILは保持します。この補助検査成功だけでは、API公開・再起動・容量試験の成功になりません。

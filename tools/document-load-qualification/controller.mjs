@@ -4,7 +4,8 @@ import {join}from'node:path';
 import {admitStage,summarizeTimings,validatePlan}from'./safety.mjs';
 import {Journal}from'./journal.mjs';
 import {exerciseStage,verifyRetained}from'./workflow.mjs';
-import {sanitizeFailureDiagnostic,sanitizeInspectionDiagnostic} from './diagnostics.mjs';
+import {sanitizeWorkerDiagnostic} from './worker-probe.mjs';
+import {sanitizeFailureDiagnostic,sanitizeInspectionDiagnostic,sanitizePublicationPrerequisites} from './diagnostics.mjs';
 export async function runQualification({directory,runId,plan,previousReport,corpus,runtime,probeFactory,execute=exerciseStage,verify=verifyRetained}){
  await mkdir(directory,{recursive:true,mode:0o700});
  const started=performance.now(),timings=[],observations=[];
@@ -61,6 +62,11 @@ export async function runQualification({directory,runId,plan,previousReport,corp
    const fileId=pending?journal.get(pending[0].replace('publish:','create:'))?.result?.fileId
     :journal.get('publish-next')&&!Object.hasOwn(journal.get('publish-next'),'result')?journal.get('next-version')?.request?.fileId:undefined;
    if(fileId){try{report.inspectionDiagnostic=sanitizeInspectionDiagnostic(await runtime.diagnosePublication(fileId));}catch{report.inspectionDiagnostic={status:'unavailable'};}}
+   if(fileId && report.inspectionDiagnostic?.status==='not-found' && report.failureDiagnostic.problemCode==='BUSINESS_RULE_REJECTED' && runtime.diagnoseWorker){
+    const declaration=pending?journal.get(pending[0].replace('publish:','create:'))?.request:journal.get('next-version')?.request;
+    try{const result=await runtime.diagnoseWorker(fileId,{assetId:declaration?.assetId,sha256:declaration?.sha256});report.workerDiagnostic=sanitizeWorkerDiagnostic(result);report.publicationPrerequisites=sanitizePublicationPrerequisites(result?.binding);}catch{report.workerDiagnostic={status:'unavailable',qualification:false};}
+   }
+
   }
  }
  finally{

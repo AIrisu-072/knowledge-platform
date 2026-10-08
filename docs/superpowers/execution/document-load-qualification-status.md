@@ -62,3 +62,19 @@ Status: ACTIVE / 実 API 資格は未取得
 ローカル原本構造のread-only確認では、001472933.pdfはFreeText注釈1件、001472934.pdfは注釈0件だった。これはpypdfによる補助観測であり、実workerの拒否理由とはまだ断定しない。原本を加工・注釈削除して通さない。診断のRED→GREEN後、型build・全Node回帰254/254成功、skip0。独立レビューと新headの実再試験はこれから。
 
 07:54追補：診断追補は独立レビューGO。新規57件を含む全Node回帰254/254成功、skip0。SQLはschema/predicate静的照合済みで、実PostgreSQL実行は次hostedで確認する。登録/公開数はconfirmed*（成功応答をjournalへ保存済み）へ明記し、結果不明時に実件数が増えていないとは主張しない。まず同じ公式原本で実DSI理由を確定し、その後に正当な拒否ならnegative corpusへ分類する。注釈の除去や未説明422の期待成功化はしない。
+
+## 2026-10-08 08:11 UTC — 診断headの実run、ログ入力待ち
+
+診断head `9f9dc606f84c7af023b11c0e9ba7a1727fc276f0` / tree `478d0c596dc5d1855dfcbb71210450d6e5ac3fd0` を同PRへ保存しreadback一致。既存labelにより[CI37746426778](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37746426778)を実行し、Document [job113208886558](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37746426778/job/113208886558)はcomposition-root/summaryでFAILとなった。今回もcloud connectorのログ取得はTransport closedで本文未取得。failureDiagnostic / inspectionDiagnostic / confirmed countsの実値は許可済みMacのread-only取得待ちで、未説明422を期待成功にはしていない。
+
+次のexact actionは、このjob末尾のdocumentLoadQualification JSONを受領し実DSI拒否理由を確定すること。正当な品質拒否が実証されれば原本/出典を保存したままnegative corpusへ分類し、注釈のない公式PDFをpositiveの登録/版更新へ使う。次候補001472935.pdf（30頁1,008,343B、sha256 7e906b176e1ba50e34c6be6fbba37569238c404549de20b490b4a27ce2efed8b）は公式ページから取得済み、pypdfの補助読取で注釈0・署名field0。実DSI/公開はまだ未資格。製品validatorや注釈そのものは変更しない。
+
+## 2026-10-08 08:43 UTC — BUSINESS_RULE_REJECTED と missing DSI の診断
+
+許可済みMacで得たjob113208886558の実JSONは `operation:publish / httpStatus:422 / problemCode:BUSINESS_RULE_REJECTED`、`inspectionDiagnostic.status:not-found`、目標2/confirmed create1/publish0だった。PUBLISH_QUALITY_REJECTEDではなく、FreeText注釈を原因と扱わない。
+
+公開serviceはWORKING/分類状態を確認した後にDSIを行い、既存synthetic PDF受入もcreate直後に同じpublish APIを使う。別の検査API呼出しが必要な契約ではない。一方、InspectionFailedのrequires_ocr・format_mismatch・semantic_extraction_failed・unsupported_semantic_construct等はHTTPでBUSINESS_RULE_REJECTEDへ集約されるため、保存行が無い理由は現時点では未確定。
+
+親承認の限定driverを専用toolsに追加し、既存runner Cargo.tomlへexample登録だけを行う。新dependency/lock変更なし。既存optional runtimeがbuild/test/hashを固定し、元のLinuxSandboxRunner・worker・PDFium・10秒上限を再利用する。保存FileIdのhash/size/media/WORKING/分類状態を先に照合し、元API失敗を保持したまま固定worker codeだけを採取する。失敗時sandbox bypassはない。
+
+Node契約の欠如RED→GREEN。独立レビューでDB size binding不足を見つけ、size照合必須のRED→GREENで補修した。独立レビューGO。新規62件、既存visualと合わせ77件の独立検査成功。全Node回帰259/259成功、skip0。Rust source/APIの静的照合は済んだが、cloudにRustが無いためcompile/format/2単体testと実sandbox実行はhosted待ち。原本の負例分類や製品規則変更はまだしない。

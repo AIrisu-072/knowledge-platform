@@ -63,6 +63,10 @@ try {
     await run('build-rust', 'cargo', ['build', '--locked', '-p', 'document-server', '-p', 'document-semantic-inspection-worker', '-p', 'document-diff-worker']);
     await run('build-web', 'pnpm', ['--filter', '@knowledge-platform/document-web', 'build']);
     await run('build-mcp', 'pnpm', ['--filter', '@knowledge-platform/document-mcp', 'build']);
+    if (documentLoadEnabled) {
+      await run('document-load-inspection-tests', 'cargo', ['test', '--locked', '-p', 'document-semantic-inspection-runner', '--example', 'document-load-inspection']);
+      await run('document-load-inspection-build', 'cargo', ['build', '--locked', '-p', 'document-semantic-inspection-runner', '--example', 'document-load-inspection']);
+    }
   });
   const binary = join(binaryDir, 'document-server');
   const storage = join(directory, 'storage');
@@ -87,6 +91,7 @@ try {
       mcp: await sha256File(join(root, 'apps/document-mcp/dist/main.cjs')),
       mcpConsistency: await sha256File(join(root, 'apps/document-mcp/dist/consistency.cjs')),
       mcpRuntime: await sha256File(join(root, 'apps/document-mcp/dist/runtime.cjs')), web: {} };
+    if (documentLoadEnabled) report.data.artifacts.inspectionProbe = await sha256File(join(binaryDir, 'examples', 'document-load-inspection'));
     async function recordAssets(path, prefix = '') {
       for (const entry of await readdir(path, { withFileTypes: true })) {
         if (entry.isDirectory()) await recordAssets(join(path, entry.name), `${prefix}${entry.name}/`);
@@ -321,7 +326,7 @@ try {
   await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
   if (documentLoadEnabled) await report.stage('document-load-qualification', async () => {
     report.data.documentLoadQualification = await runDocumentLoad({ root, directory, runId,
-      sourceHead: report.data.gitHead, artifacts: report.data.artifacts, storage, cid, password, human, agent, run,
+      sourceHead: report.data.gitHead, artifacts: report.data.artifacts, storage, cid, password, human, agent, run, worker: dsi, pdfium,
       getPids: () => [humanProcess.child.pid, agentProcess.child.pid],
       identity: async () => { await recordRuntime('documentLoadCheckpoint'); return {
         ...report.data.runtimeProvenance.documentLoadCheckpoint,
