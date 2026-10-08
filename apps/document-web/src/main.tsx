@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { installDocumentViewNavigation } from './application/document-view-navigation';
 import { OrganizationProvider } from './application/organization-context';
+import { landingScreen } from './application/work-availability';
 import { validateTaskSearch } from './application/work-workspace';
 import { DocumentHomePage } from './routes/DocumentHomePage';
 import { DocumentListRouteError } from './routes/DocumentListRouteError';
@@ -24,11 +25,22 @@ if (!rootElement) {
   throw new Error('Missing application root element');
 }
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 15_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 const rootRoute = createRootRoute({ component: Outlet });
+// Landing is タスク when the server offers the Work API; a document-only server keeps the document list.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
+  beforeLoad: async () => {
+    if ((await landingScreen(queryClient)) === 'tasks') throw redirect({ to: '/tasks', search: {} });
     throw redirect({ to: '/documents', search: validateListSearch({}) });
   },
 });
@@ -57,15 +69,6 @@ const localWorkspacesRoute = createRoute({ getParentRoute: () => rootRoute, path
 const routeTree = rootRoute.addChildren([indexRoute, documentsRoute, documentDetailRoute, tasksRoute, searchRoute, responsibilitiesRoute, localWorkspacesRoute]);
 const runtime = selectRuntime();
 const router = createRouter({ routeTree });
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 15_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 installDocumentViewNavigation(router, queryClient);
 

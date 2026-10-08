@@ -302,6 +302,25 @@ async function alertText(session, text, options) {
   return session.waitForText('[role="alert"]', text, options);
 }
 
+const MENU = ['タスク', '文書', '編集作業', '文書履歴', '検索'];
+
+/** The app opens on タスク: the backend offers the Work API. */
+async function landed(session) {
+  await session.waitFor(async () => new URL(await session.url()).pathname === '/tasks', { message: 'landing on /tasks' });
+  return session.waitForText('nav a[aria-current="page"]', 'タスク');
+}
+
+/** From the landing screen, opens the document list with the menu, as a user would. */
+async function openDocumentList(session) {
+  await landed(session);
+  await clickText(session, 'nav a', '文書');
+  return session.waitForText('[role="row"]', 'デスクトップ確認用資料');
+}
+
+function menuLinks(session) {
+  return session.execute('return [...document.querySelectorAll(\'nav[aria-label="メインナビゲーション"] a\')].map((link) => link.textContent.trim());');
+}
+
 async function gotoLocalWorkspaces(session) {
   await clickText(session, 'header a', 'ローカルWorkspace');
   await session.waitForText('h1', 'ローカルWorkspace');
@@ -505,14 +524,21 @@ after(async () => {
   console.log(`desktop GUI evidence: ${directory} (status ${report.status}, qualifying ${report.qualifying})`);
 });
 
-scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳細→戻る）', async () => {
+scenario('起動・単一ウィンドウ・最初の画面はタスク、メニューから文書（一覧→詳細→戻る）とタスクへ', async () => {
   const s = await launch(main);
   try {
-    await s.waitFor(async () => new URL(await s.url()).pathname === '/documents', { message: '/documents' });
-    check('既存の文書一覧が実Document APIの合成文書を表示する', await s.waitForText('[role="row"]', 'デスクトップ確認用資料'));
+    check('起動直後（/）はタスク画面（/tasks）で、メニューの「タスク」が現在の画面', await landed(s));
+    const firstTask = await s.waitFor(async () => (await s.findAll('[aria-label="タスク一覧"] button')).length > 0, { timeout: 30_000, message: 'task list' });
+    check('タスク一覧がWork APIの合成タスクを表示する', firstTask);
+    check('メニューはタスク・文書・編集作業・文書履歴・検索', JSON.stringify(await menuLinks(s)) === JSON.stringify(MENU), await menuLinks(s));
     check('WebDriver：ウィンドウはmain 1つだけ', (await s.handles()).length === 1, await s.handles());
-    check('WebDriver：文書画面のdocument.title', (await s.title()) === '文書管理 | Knowledge Platform', await s.title());
+    check('WebDriver：document.title（全画面共通の題名）', (await s.title()) === '文書管理 | Knowledge Platform', await s.title());
     check('ヘッダーにデスクトップ実行の表示', (await s.bodyText()).includes('デスクトップで実行中'));
+    await shot(s, 'landing-tasks');
+    await clickText(s, 'nav a', '文書');
+    await s.waitFor(async () => new URL(await s.url()).pathname === '/documents', { message: '/documents' });
+    check('メニューの「文書」で、既存の文書一覧が実Document APIの合成文書を表示する', await s.waitForText('[role="row"]', 'デスクトップ確認用資料'));
+    check('文書画面でもメニューはタスク・文書・編集作業・文書履歴・検索', JSON.stringify(await menuLinks(s)) === JSON.stringify(MENU), await menuLinks(s));
     await shot(s, 'documents');
     await clickText(s, 'button[data-document-id]', 'デスクトップ確認用資料');
     await clickText(s, 'button', '詳細を開く');
@@ -528,6 +554,8 @@ scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳�
     await clickText(s, 'button', '← 一覧へ戻る');
     await s.waitFor(async () => new URL(await s.url()).pathname === '/documents', { message: 'back to the list' });
     check('画面の「← 一覧へ戻る」で一覧へ戻る', await s.waitForText('[role="row"]', 'デスクトップ確認用資料'));
+    await clickText(s, 'nav a', 'タスク');
+    check('メニューの「タスク」でタスク画面へ戻る', await landed(s));
   } finally {
     await quit(s);
   }
@@ -536,7 +564,7 @@ scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳�
 scenario('Router・Query：deep link（/tasks）と再読み込み、タスク・検索・担当と委任・文書のナビゲーション', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await openDocumentList(s);
     await s.execute('window.location.assign("/tasks")');
     await s.waitFor(async () => new URL(await s.url()).pathname === '/tasks', { message: '/tasks deep link' });
     const api = await s.executeAsync(`const done = arguments[arguments.length - 1];
@@ -572,7 +600,7 @@ scenario('Router・Query：deep link（/tasks）と再読み込み、タスク�
 scenario('キーボード操作とfocus（skip link、ダイアログの開閉とfocus復帰）', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await landed(s);
     // The skip link belongs to the shared shell. Check it on the Local Workspace
     // screen: the document list moves focus to its selected row once loaded,
     // which can race with the first Tab.
@@ -617,7 +645,7 @@ scenario('reduced motion：既定（動きあり）', async () => {
 scenario('Document API転送：上り下りのbody完全性、原本ダウンロード、境界（脱出・CSP・応答の型）', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await openDocumentList(s);
     const integrity = await s.executeAsync(`const done = arguments[arguments.length - 1]; (async () => {
       const line = '【合成】デスクトップ転送確認の行です。0123456789\\n';
       const text = Array.from({ length: 40000 }, (_, i) => i + ':' + line).join('');
@@ -715,7 +743,7 @@ scenario('Document API転送：上り下りのbody完全性、原本ダウンロ
 scenario('GUIでの文書登録：ファイル選択→multipart上り（shell経由）→登録結果と一覧の更新', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await openDocumentList(s);
     const source = join(fixtures, '登録用原本.txt');
     const original = `${'【合成】デスクトップから登録する原本です。\n'.repeat(2000)}`;
     await writeFile(source, original);
@@ -749,7 +777,7 @@ scenario('GUIでの文書登録：ファイル選択→multipart上り（shell�
 scenario('GUIでの文書編集：メタデータ保存（PATCH）と作業版の原本差し替え（multipart PUT）', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await openDocumentList(s);
     await s.execute('window.location.assign(arguments[0]);', [`/documents/${registeredId}?view=authoring`]);
     await s.waitForText('h1', 'デスクトップ登録確認（合成）');
     await clickText(s, 'button', 'メタデータを編集');
@@ -790,9 +818,7 @@ scenario('GUIでの文書編集：メタデータ保存（PATCH）と作業版�
 scenario('タスク画面の作業ファイル：画面から選んだファイルを保存（Work APIのPUTと専用header）し、取得した内容が一致', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
-    await s.execute('window.location.assign("/tasks")');
-    await s.waitFor(async () => new URL(await s.url()).pathname === '/tasks', { message: '/tasks' });
+    await landed(s);
     // The seeded task that sales-01 may edit (no claim needed).
     const editable = await s.executeAsync(`const done = arguments[arguments.length - 1];
       fetch('/v1/organization/tasks').then(async (r) => { const item = ((await r.json()).items ?? []).find((entry) => entry.canEdit);
@@ -1239,7 +1265,8 @@ scenario('ウィンドウを閉じる操作：処理中の操作があれば確�
     const centre = (css, text) => s.execute(`const element = [...document.querySelectorAll(arguments[0])].find((item) => !arguments[1] || item.textContent.includes(arguments[1]));
       const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };`, [css, text]);
     try {
-      await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+      // Both this app and the directly started ones open on タスク.
+      await landed(s);
       at.authoring = await centre('nav a', '編集作業');
       await clickText(s, 'nav a', '編集作業');
       await s.waitForText('button[data-document-id]', 'デスクトップ登録確認（合成）');
@@ -1484,7 +1511,7 @@ scenario('reduced motion：GTKのアニメーション無効設定がページ�
   await writeFile(settings, '[Settings]\ngtk-enable-animations=false\n');
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await landed(s);
     const motion = await s.execute('return { reduce: matchMedia("(prefers-reduced-motion: reduce)").matches, fast: getComputedStyle(document.documentElement).getPropertyValue("--motion-fast").trim(), scroll: getComputedStyle(document.documentElement).scrollBehavior };');
     check('ページのscript：prefers-reduced-motion: reduce が成立', motion.reduce === true, motion);
     check('ページのscript：motion tokenが0msになる', motion.fast === '0ms', motion);
@@ -1502,7 +1529,7 @@ scenario('XDGのダウンロード先が無い端末でも、原本は ~/Downloa
   const s = await Session.create(driver.url, binary);
   try {
     await s.waitFor(async () => (await s.url()).startsWith('tauri://localhost/'), { message: 'app' });
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await openDocumentList(s);
     check('準備：user-dirs.dirsが無い', !(await stat(join(bare, '.config/user-dirs.dirs')).catch(() => undefined)));
     await (await s.waitForText('button', 'ファイルを取得')).click();
     const saved = join(bare, 'Downloads', 'desktop-reference.txt');
@@ -1519,7 +1546,7 @@ scenario('XDGのダウンロード先が無い端末でも、原本は ~/Downloa
 scenario('backend停止中：文書画面は失敗を表示し、ローカル機能は使える', async () => {
   const s = await launch(main);
   try {
-    await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
+    await openDocumentList(s);
     await backend.stop();
     backend = undefined;
     await s.execute('window.location.assign("/documents")');
@@ -1540,7 +1567,9 @@ scenario('接続先が未設定のshell：/v1は503で、外部へは出ない',
   try {
     const api = await pageFetch(s, '/v1/organization/session');
     check('ページのscript：/v1は503 problem', api.status === 503 && api.body.includes('サーバーの接続先が設定されていません。'), api);
-    check('文書画面は失敗を表示', await s.waitForText('[role="alert"]', '読み込みに失敗しました', { timeout: 30_000 }));
+    const failed = await s.waitForText('[role="alert"]', '読み込みに失敗しました', { timeout: 30_000 });
+    check('Work APIの有無が分からないため、最初の画面は今までどおり文書で、失敗を表示', failed && new URL(await s.url()).pathname === '/documents', await s.url());
+    check('メニューは文書・編集作業・文書履歴だけ（タスク・検索を出さない）', JSON.stringify(await menuLinks(s)) === JSON.stringify(['▯文書', '✎編集作業', '文書履歴']), await menuLinks(s));
     await s.execute('window.location.assign("/tasks")');
     check('タスク画面は「タスクを開けません」と接続の確認を表示', await s.waitForText('h1', 'タスクを開けません', { timeout: 30_000 })
       && await s.waitForText('[role="alert"]', 'サーバーから結果を取得できませんでした。接続を確認して再読込してください。'));
