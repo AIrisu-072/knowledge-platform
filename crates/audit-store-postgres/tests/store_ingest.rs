@@ -1350,7 +1350,7 @@ async fn a_minute_passes(db: &TestDb) {
 /// No sampling: a coalesced denial streak that simply stops is chained in
 /// full by any later append once the streak is older than the coalescing
 /// window, and at once (stale or not) before verify, checkpoint, a
-/// disclosure intent and expire record their evidence.
+/// disclosure intent, expire and purge_body record their evidence.
 #[tokio::test]
 async fn a_stopped_denial_streak_is_chained_before_evidence_and_by_later_appends() {
     let db = TestDb::start().await;
@@ -1450,6 +1450,39 @@ async fn a_stopped_denial_streak_is_chained_before_evidence_and_by_later_appends
         .expect("refusal recorded");
     assert_eq!(refused.status, "stale_revision");
     assert_eq!(chained_denials(&db, &role).await, 2, "before expire");
+
+    // purge_body chains every pending streak (of every login, within the
+    // coalescing window) before its evidence.
+    let target = doc(4);
+    relay.ingest(&target).await.expect("stored");
+    let first = denial_burst(&db, "burst_purge_a", 6).await;
+    let second = denial_burst(&db, "burst_purge_b", 2).await;
+    assert_eq!(pending().await, 6);
+    let purged = maintainer
+        .purge_body(target.id(), "adapter_defect")
+        .await
+        .expect("purged");
+    assert_eq!(purged.status, "purged");
+    let purge_seq = purged.seq.expect("purge evidence seq");
+    assert_eq!(pending().await, 0);
+    assert_eq!(chained_denials(&db, &first).await, 6, "before the purge");
+    assert_eq!(chained_denials(&db, &second).await, 2, "before the purge");
+    // Each streak is its first record plus one flush record (a flush of a
+    // single pending denial carries no `suppressed_since_last`), all before
+    // the purge evidence.
+    let denials = control_events(&db.admin, "audit.access.denied").await;
+    for role in [&first, &second] {
+        let seqs: Vec<i64> = denials
+            .iter()
+            .filter(|(_, d)| d["session_role"] == json!(role))
+            .map(|(seq, _)| *seq)
+            .collect();
+        assert_eq!(seqs.len(), 2, "{role}: first record and one flush");
+        assert!(
+            seqs.iter().all(|seq| *seq < purge_seq),
+            "{role}: {seqs:?} before {purge_seq}"
+        );
+    }
     db.assert_store_conforms().await;
 }
 
