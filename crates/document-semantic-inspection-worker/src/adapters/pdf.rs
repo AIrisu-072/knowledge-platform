@@ -961,8 +961,10 @@ fn collect_content_paints(
             }
             "Do" => {
                 if !graphics::text_is_supported(state) {
-                    return Err(failure(WorkerFailureCode::UnsupportedSemanticConstruct,
-                        "nondefault color with PDF XObject is not qualified"));
+                    return Err(failure(
+                        WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "nondefault color with PDF XObject is not qualified",
+                    ));
                 }
                 let [Object::Name(name)] = operation.operands.as_slice() else {
                     return Err(failure(
@@ -980,8 +982,10 @@ fn collect_content_paints(
             }
             "Tj" | "TJ" | "'" | "\"" => {
                 if !graphics::text_is_supported(state) {
-                    return Err(failure(WorkerFailureCode::UnsupportedSemanticConstruct,
-                        "nonblack PDF text is not qualified"));
+                    return Err(failure(
+                        WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "nonblack PDF text is not qualified",
+                    ));
                 }
                 if text_show_has_bytes(operation, page_number)?
                     && state.text_render_mode != 3

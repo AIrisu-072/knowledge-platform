@@ -294,9 +294,8 @@ fn enclosing_page_clip_does_not_change_unclipped_content_identity() {
 #[test]
 fn enclosing_clip_before_text_preserves_pixels_and_identity() {
     let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
-    let clipped = native_text_pdf_with_prefix(
-        "0 0 200 200 re W* n", "20 20 m 80 20 l S", UNUSED_PIXEL,
-    );
+    let clipped =
+        native_text_pdf_with_prefix("0 0 200 200 re W* n", "20 20 m 80 20 l S", UNUSED_PIXEL);
     assert_eq!(render_rgba(&baseline), render_rgba(&clipped));
     assert_eq!(fingerprint(&baseline), fingerprint(&clipped));
 }
@@ -304,13 +303,16 @@ fn enclosing_clip_before_text_preserves_pixels_and_identity() {
 #[test]
 fn clip_hiding_native_text_is_rejected_after_rendered_difference_proof() {
     let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
-    let clipped = native_text_pdf_with_prefix(
-        "0 0 200 100 re W* n", "20 20 m 80 20 l S", UNUSED_PIXEL,
-    );
+    let clipped =
+        native_text_pdf_with_prefix("0 0 200 100 re W* n", "20 20 m 80 20 l S", UNUSED_PIXEL);
     assert_ne!(render_rgba(&baseline), render_rgba(&clipped));
-    let error = PdfAdapter.inspect(&clipped, &AdapterProfile::default())
+    let error = PdfAdapter
+        .inspect(&clipped, &AdapterProfile::default())
         .expect_err("clipped-away text must not count as visible native text");
-    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+    assert_eq!(
+        error.code(),
+        document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
+    );
 }
 
 #[test]
@@ -318,9 +320,13 @@ fn nondefault_stroked_text_is_not_silently_unchanged() {
     let baseline = native_text_pdf_with_prefix("1 Tr", "", UNUSED_PIXEL);
     let widened = native_text_pdf_with_prefix("1 Tr 8 w", "", UNUSED_PIXEL);
     assert_ne!(render_rgba(&baseline), render_rgba(&widened));
-    let error = PdfAdapter.inspect(&widened, &AdapterProfile::default())
+    let error = PdfAdapter
+        .inspect(&widened, &AdapterProfile::default())
         .expect_err("stroke-state text requires a qualified semantic mapping");
-    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+    assert_eq!(
+        error.code(),
+        document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
+    );
 }
 
 #[test]
@@ -328,16 +334,25 @@ fn default_colour_space_override_is_explicitly_unsupported() {
     let bytes = native_text_pdf("0 G 20 20 m 80 20 l S", UNUSED_PIXEL);
     let mut document = lopdf::Document::load_mem(&bytes).expect("synthetic PDF");
     let page_id = document.get_pages()[&1];
-    let resources = document.get_dictionary_mut(page_id).unwrap()
-        .get_mut(b"Resources").unwrap().as_dict_mut().unwrap();
+    let resources = document
+        .get_dictionary_mut(page_id)
+        .unwrap()
+        .get_mut(b"Resources")
+        .unwrap()
+        .as_dict_mut()
+        .unwrap();
     let mut spaces = lopdf::Dictionary::new();
     spaces.set("DefaultGray", lopdf::Object::Name(b"DeviceGray".to_vec()));
     resources.set("ColorSpace", spaces);
     let mut changed = Vec::new();
     document.save_to(&mut changed).unwrap();
-    let error = PdfAdapter.inspect(&changed, &AdapterProfile::default())
+    let error = PdfAdapter
+        .inspect(&changed, &AdapterProfile::default())
         .expect_err("resource-dependent default colors require explicit qualification");
-    assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+    assert_eq!(
+        error.code(),
+        document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
+    );
 }
 
 #[test]
@@ -346,12 +361,18 @@ fn vector_occluding_only_one_text_run_is_never_accepted_as_unchanged() {
     let middle = "BT /F1 12 Tf 52 180 Td (NATIVE ) Tj ET";
     let last = "BT /F1 12 Tf 100 180 Td (TEXT) Tj ET";
     let cover = "q 1 g 51 177 48 15 re f Q";
-    let visible = native_text_pdf_content(&format!("{first}\n{cover}\n{middle}\n{last}"), UNUSED_PIXEL);
-    let obscured = native_text_pdf_content(&format!("{first}\n{middle}\n{cover}\n{last}"), UNUSED_PIXEL);
+    let visible =
+        native_text_pdf_content(&format!("{first}\n{cover}\n{middle}\n{last}"), UNUSED_PIXEL);
+    let obscured =
+        native_text_pdf_content(&format!("{first}\n{middle}\n{cover}\n{last}"), UNUSED_PIXEL);
     assert_ne!(render_rgba(&visible), render_rgba(&obscured));
     for input in [&visible, &obscured] {
-        let error = PdfAdapter.inspect(input, &AdapterProfile::default())
+        let error = PdfAdapter
+            .inspect(input, &AdapterProfile::default())
             .expect_err("overlapping text/vector ordering needs a qualified association");
-        assert_eq!(error.code(), document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct);
+        assert_eq!(
+            error.code(),
+            document_semantic_inspection_worker::WorkerFailureCode::UnsupportedSemanticConstruct
+        );
     }
 }
