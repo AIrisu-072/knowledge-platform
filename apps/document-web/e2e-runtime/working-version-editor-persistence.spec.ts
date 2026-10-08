@@ -9,7 +9,7 @@ test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 test('両HTTP再起動後も初回WORKINGと複数原本の公開切替・元名・保持bytes・操作IDを復元する', async ({ page }) => {
   const context = await runtime();
   const state = JSON.parse(await readFile(workingEditorStatePath(context), 'utf8')) as WorkingEditorState;
-  expect(state.documents.map(item => item.key).sort()).toEqual(['initial', 'multiple']);
+  expect(state.documents.map(item => item.key).sort()).toEqual(['initial', 'multiple', 'structure']);
   expect((await getSession(options(context.human))).data.principal.principalId).toBe('poc-human');
   expect((await getSession(options(context.agent))).data.principal.principalId).toBe('poc-agent');
   for (const { key, snapshot } of state.documents) {
@@ -26,7 +26,7 @@ test('両HTTP再起動後も初回WORKINGと複数原本の公開切替・元名
       expect(snapshot.versions).toHaveLength(2);
       expect(await lifecycleSnapshot(context.agent, snapshot.documentId)).toEqual(await lifecycleSnapshot(context.human, snapshot.documentId));
       await page.goto(`/documents/${snapshot.documentId}?view=published&tab=overview`);
-      await expect(page.getByRole('heading', { name: '【合成データ】複数原本編集', level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { name: snapshot.manifest.title, level: 1 })).toBeVisible();
     }
   }
   test.info().annotations.push({ type: 'runtime-completed', description: 'gui-working-restart-verified' });

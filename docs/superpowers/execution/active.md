@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-08 — 作業版の原本構成・初回複数原本登録
+
+- 再開先は[状況](document-original-management-status.md)、[承認範囲](../specs/2026-10-08-document-original-management.md)、[実装計画](../plans/2026-10-08-document-original-management-implementation.md)。06:23:37 UTCの「この方針で進めてください」で、作業版だけの追加・削除・並替（最終原本不可、公開/履歴保持）と初回複数の原子的作成を承認。下の旧設計待ち記録を現在状態として使用しない。
+- branch `feat/document-originals-20261008`、製品 `17db92dcdde07fec28e8368cf909ac527d3f0d2e`。PR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82` を通常mergeし、製品sourceを保持。全GUI1786件、Rust focused24件、実PostgreSQL18.6+FS1件、型/build/Clippy、SDK/API契約が成功。詳細なログ保存の境界は状況へ。
+- registration/schema/SDKの独立レビューは指摘修正後GO。全体の独立レビューと保存headのCIは親が確認する。Linux sandbox/PDFiumが必須の実browser journey・再起動persistenceはこのMacでは未実施。実対象PC・本番認証/TLS・実アカウントの設定は変更していない。
+- 次は親のexact-headレビューを確認し、同一機能Draft PRのLinux hosted資格を実行する。main統合は正確headの必須CI成功後、統合後CIまで確認する。下のDocument/Desktop/Auditの記録は保持する。
+
+---
+
 ## 2026-10-08 — 文書管理残タスク（Mac側、クラウド親と分担）
 
 - 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。

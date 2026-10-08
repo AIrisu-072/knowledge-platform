@@ -8,7 +8,7 @@ import { validateDetailSearch, validateListSearch } from '../src/application/sea
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
   getRootFolder: jest.fn(), listFolderChildren: jest.fn(), listDocuments: jest.fn(),
-  getDocument: jest.fn(), getDocumentVersion: jest.fn(), createDocument: jest.fn(),
+  getDocument: jest.fn(), getDocumentVersion: jest.fn(), createDocument: jest.fn(), createDocumentWithOriginals: jest.fn(), prepareDocumentWithOriginals: jest.fn(),
   recoverDocumentCreation: jest.fn(),
 } }));
 
@@ -25,6 +25,7 @@ function setup(entry = '/documents?view=authoring') {
   api.listFolderChildren.mockImplementation((id: string) => Promise.resolve({ items: id === rootId ? [{ folderId: childId, name: '共有文書', revision: 1, parentFolderId: rootId }] : [], nextCursor: null, capabilities: { createDocument: available } }));
   api.listDocuments.mockResolvedValue({ view: 'authoring', items: [], nextCursor: null });
   api.createDocument.mockResolvedValue(result);
+  api.prepareDocumentWithOriginals.mockReturnValue({ prepared: true });
   api.recoverDocumentCreation.mockResolvedValue(result);
   const root = createRootRoute({ component: Outlet });
   const list = createRoute({ getParentRoute: () => root, path: '/documents', validateSearch: validateListSearch, component: DocumentHomePage });
@@ -296,4 +297,116 @@ test('未解決markerの保存が拒否されたら初回POSTを送信しない'
   fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
   await waitFor(() => expect(within(dialog).getByRole('alert')).toBeVisible());
   expect(api.createDocument).not.toHaveBeenCalled();
+});
+
+
+test('複数原本を一つの文書へ一要求で登録し、legacy createとの二段階保存を行わない', async () => {
+  const { api } = setup();
+  const secondId = '00000000-0000-4000-8000-000000000006';
+  api.createDocumentWithOriginals.mockResolvedValue({ ...result, fileIds: [result.fileId, secondId] });
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  const files = [new File(['A'], 'A.txt', { type: 'text/plain' }), new File(['B'], 'B.txt', { type: 'text/plain' })];
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), files);
+  expect(within(dialog).getByText('A.txt')).toBeVisible();
+  expect(within(dialog).getByText('B.txt')).toBeVisible();
+  fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
+  await screen.findByRole('heading', { name: '登録した文書の詳細' });
+  expect(api.createDocument).not.toHaveBeenCalled();
+  expect(api.createDocumentWithOriginals).toHaveBeenCalledTimes(1);
+  expect(api.createDocumentWithOriginals).toHaveBeenCalledWith(expect.objectContaining({ title: '複数原本' }), [
+    { file: files[0], logicalPath: 'A.txt', ordinal: 0 }, { file: files[1], logicalPath: 'B.txt', ordinal: 1 },
+  ], { prepared: true });
+});
+
+test('複数原本の結果不明後は全FileIDsを保持し、部分一致の回復を成功にしない', async () => {
+  const { api } = setup();
+  const ids = { ...result, fileIds: [result.fileId, '00000000-0000-4000-8000-000000000006'] };
+  api.createDocumentWithOriginals.mockRejectedValue({ type: 'about:blank', title: 'Unknown', status: 503, code: 'COMMIT_OUTCOME_UNKNOWN', traceId: 'synthetic', retryable: false, recovery: ids });
+  api.recoverDocumentCreation.mockResolvedValue(result);
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), [new File(['A'], 'A.txt'), new File(['B'], 'B.txt')]);
+  fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
+  await user.click(await within(dialog).findByRole('button', { name: '登録結果を確認' }));
+  await waitFor(() => expect(api.recoverDocumentCreation).toHaveBeenCalledWith(ids));
+  expect(screen.queryByRole('heading', { name: '登録した文書の詳細' })).not.toBeInTheDocument();
+  expect(api.createDocumentWithOriginals).toHaveBeenCalledTimes(1);
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('登録結果を確認できません');
+});
+
+
+test('重複pathや不正pathは複数登録を送信せず、明示修正で登録できる', async () => {
+  const { api } = setup();
+  api.createDocumentWithOriginals.mockResolvedValue({ ...result, fileIds: [result.fileId, '00000000-0000-4000-8000-000000000006'] });
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), [new File(['A'], 'same.txt'), new File(['B'], 'same.txt')]);
+  const submit = within(dialog).getByRole('button', { name: '下書きとして登録' });
+  expect(submit).toBeDisabled(); expect(within(dialog).getByRole('alert')).toHaveTextContent('重複');
+  const path = within(dialog).getByLabelText('原本パス 2');
+  fireEvent.change(path, { target: { value: '../bad' } }); expect(submit).toBeDisabled();
+  fireEvent.change(path, { target: { value: 'second.txt' } }); expect(submit).toBeEnabled();
+  expect(api.createDocumentWithOriginals).not.toHaveBeenCalled();
+  fireEvent.submit(submit.closest('form')!); await screen.findByRole('heading', { name: '登録した文書の詳細' });
+});
+
+test('初回複数原本の順序と除外を保存する一要求へ反映する', async () => {
+  const { api } = setup();
+  api.createDocumentWithOriginals.mockResolvedValue({ ...result, fileIds: [result.fileId, '00000000-0000-4000-8000-000000000006'] });
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  const files = ['A', 'B', 'C'].map(value => new File([value], `${value}.txt`));
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), files);
+  await user.click(within(dialog).getByRole('button', { name: 'C.txtを上へ' }));
+  await user.click(within(dialog).getByRole('button', { name: 'B.txtを除外' }));
+  fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
+  await screen.findByRole('heading', { name: '登録した文書の詳細' });
+  expect(api.createDocumentWithOriginals.mock.calls[0][1]).toEqual([
+    { file: files[0], logicalPath: 'A.txt', ordinal: 0 }, { file: files[2], logicalPath: 'C.txt', ordinal: 1 },
+  ]);
+});
+
+test('複数登録の回復情報に全FileIDsがなければlegacy回復へ暗黙fallbackしない', async () => {
+  const { api } = setup();
+  api.createDocumentWithOriginals.mockRejectedValue({ type: 'about:blank', title: 'Unknown', status: 503, code: 'COMMIT_OUTCOME_UNKNOWN', traceId: 'synthetic', retryable: false, recovery: result });
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), [new File(['A'], 'A.txt'), new File(['B'], 'B.txt')]);
+  fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
+  await within(dialog).findByRole('alert');
+  expect(within(dialog).queryByRole('button', { name: '登録結果を確認' })).not.toBeInTheDocument();
+  expect(api.recoverDocumentCreation).not.toHaveBeenCalled();
+  expect(api.createDocument).not.toHaveBeenCalled();
+});
+
+
+test('複数multipartの準備拒否はPOSTもunknown markerも作らず入力修正を許す', async () => {
+  const { api } = setup();
+  api.prepareDocumentWithOriginals.mockImplementation(() => { throw new Error('JSONと境界を含む送信全体は1 GiB以下です。'); });
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), [new File(['A'], 'A.txt'), new File(['B'], 'B.txt')]);
+  fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('1 GiB');
+  expect(api.createDocumentWithOriginals).not.toHaveBeenCalled();
+  expect(window.sessionStorage.length).toBe(0);
+  expect(within(dialog).getByLabelText('文書名')).toBeEnabled();
+});
+
+
+test('複数選択から一原本へ除外しても入力済みpathをlegacy primaryへ黙って変えない', async () => {
+  const { api } = setup();
+  api.createDocumentWithOriginals.mockResolvedValue({ ...result, fileIds: [result.fileId] });
+  const { user, dialog } = await openForm();
+  await user.type(within(dialog).getByLabelText('文書名'), '複数原本');
+  const files = [new File(['A'], 'A.txt'), new File(['B'], 'B.txt')];
+  await user.upload(within(dialog).getByLabelText('原本ファイル'), files);
+  fireEvent.change(within(dialog).getByLabelText('原本パス 1'), { target: { value: 'folder/a' } });
+  await user.click(within(dialog).getByRole('button', { name: 'B.txtを除外' }));
+  expect(within(dialog).getByLabelText('原本パス 1')).toHaveValue('folder/a');
+  fireEvent.submit(within(dialog).getByRole('button', { name: '下書きとして登録' }).closest('form')!);
+  await screen.findByRole('heading', { name: '登録した文書の詳細' });
+  expect(api.createDocument).not.toHaveBeenCalled();
+  expect(api.createDocumentWithOriginals.mock.calls[0][1]).toEqual([{ file: files[0], logicalPath: 'folder/a', ordinal: 0 }]);
 });
