@@ -6,5 +6,6 @@ mod document;
 mod support;
 
 mod journey;
+mod relay_crash;
 mod staging_failure;
 mod store_outage;
