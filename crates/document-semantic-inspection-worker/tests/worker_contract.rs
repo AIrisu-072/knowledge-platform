@@ -173,7 +173,11 @@ fn plain_text_quoting_markup_keeps_its_declared_format() {
             FormatId::Txt
         );
     }
-    let req = request("text/plain", sha256(article.as_bytes()), article.len() as u64);
+    let req = request(
+        "text/plain",
+        sha256(article.as_bytes()),
+        article.len() as u64,
+    );
     let mut reader = Cursor::new(article.as_bytes());
     let prepared = prepare_input_bounded(&req, &mut reader, 4096).unwrap();
     assert_eq!(prepared.detected_format(), FormatId::Txt);
