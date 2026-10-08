@@ -6,3 +6,4 @@ mod document;
 mod support;
 
 mod journey;
+mod staging_failure;
