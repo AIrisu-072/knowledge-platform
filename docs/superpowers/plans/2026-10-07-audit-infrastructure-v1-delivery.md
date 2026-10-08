@@ -43,7 +43,7 @@
 
 ## 単位C：Document受入・handoff
 
-状況（2026-10-08）：手順1–4は実施済み（worktree branch `audit-unit-c`、未push）。残りは手順5。
+状況（2026-10-08）：手順1–4は実施済み。手順5はDraft PR #115（branch `claude/cool-darwin-7xh893`）で進行中。
 
 1. 実Document producerからStoreまでのE2E（作成〜公開終了、scheduler attribution、拒否）、staging失敗時のrollback、Document migration追加時の互換。
    - 実施：`crates/audit-acceptance` のT1（全23 type・40件）、T2、`document_migration`。HTTP層・worker binary・`DueScheduler` 本体は通していない（crate READMEの「含まないもの」）。
@@ -54,4 +54,4 @@
 4. capability matrixの最終更新と、未検証事項の記録。
    - 実施：設計§2.2（2026-10-08 最終状態）。§2.1は初期状態として保持。
 5. branch `claude/cool-darwin-7xh893` へのpush（mainからのfast-forward）とDraft PR → 独立review → exact-head hosted CI → main統合 → main CI確認。
-   - 未実施。
+   - 実施中：pushとDraft PR #115、独立確認review（GO。Minor 4件は `facb755`・`591006a`・`df1bd19` と状況文書の更新で反映）まで済んだ。最初のexact-head CI（`660670d`、run 37761824323）はrust-testだけがFAILUREで、GitHub runnerでtestcontainersのimage取得がstreamの途中で切れたためである（試験本体の前。他の31試験はPASS）。`b233652` でPullImageの失敗だけを最大3回再試行する。ほかの全jobはSUCCESS。次はpush（PR #115の更新）→ exact-head CI → main統合 → main CI確認。
