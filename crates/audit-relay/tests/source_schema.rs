@@ -610,6 +610,20 @@ async fn role_matrix_posture_and_session_refusal() {
             format!("REVOKE pg_write_all_data FROM {worker_role}"),
             "table_access",
         ),
+        // Column grants are invisible to the table ACL and to
+        // has_table_privilege: the commitment salts, or one receipt column.
+        (
+            format!("GRANT SELECT (commitment_salt) ON audit_relay.deliveries TO {operator_role}"),
+            format!(
+                "REVOKE SELECT (commitment_salt) ON audit_relay.deliveries FROM {operator_role}"
+            ),
+            "column_privilege",
+        ),
+        (
+            "GRANT UPDATE (store_seq) ON audit_relay.deliveries TO PUBLIC".into(),
+            "REVOKE UPDATE (store_seq) ON audit_relay.deliveries FROM PUBLIC".into(),
+            "column_privilege",
+        ),
         (
             format!("ALTER ROLE {worker_role} IN DATABASE {DOC_DB} SET statement_timeout = 0"),
             format!("ALTER ROLE {worker_role} IN DATABASE {DOC_DB} SET statement_timeout = '30s'"),

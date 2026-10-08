@@ -1446,6 +1446,19 @@ FROM pg_class AS c, aclexplode(c.relacl) AS g
 LEFT JOIN pg_roles AS r ON r.oid = g.grantee
 WHERE c.relnamespace = (SELECT s.oid FROM schema_oid AS s) AND g.grantee <> c.relowner
 UNION ALL
+-- Column privileges are not in relacl, and has_table_privilege ignores them:
+-- a column grant (to any role or PUBLIC) would expose the commitment salts
+-- or let a login write a receipt column (as in the Store's posture).
+SELECT DISTINCT 'column_privilege',
+       c.oid::regclass::text || '.' || a.attname::text || ' '
+           || coalesce(r.rolname::text, 'PUBLIC')
+FROM pg_class AS c
+JOIN pg_attribute AS a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+CROSS JOIN LATERAL aclexplode(a.attacl) AS g
+LEFT JOIN pg_roles AS r ON r.oid = g.grantee
+WHERE c.relnamespace = (SELECT s.oid FROM schema_oid AS s)
+  AND a.attacl IS NOT NULL AND g.grantee <> c.relowner
+UNION ALL
 SELECT 'table_owner', c.oid::regclass::text FROM pg_class AS c
 WHERE c.relnamespace = (SELECT s.oid FROM schema_oid AS s)
   AND c.relowner IS DISTINCT FROM (SELECT o.oid FROM owner_role AS o)
