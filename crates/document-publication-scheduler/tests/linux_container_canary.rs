@@ -5,10 +5,11 @@ mod database;
 
 use database::TestDatabase;
 use document_application::{
-    AccessPolicyService, BootstrapRootPolicy, Clock, CreateDocumentCommand, DocumentService,
-    DocumentVersionService, IdGenerator, IdentityContextResolver, ManagementCommand,
-    ManagementOperationId, PublicationScheduleRepository, PublishOperationId,
-    SchedulePublishCommand,
+    AccessPolicyService, BootstrapRootPolicy, CancelScheduleCommand, Clock,
+    CreateDocumentCommand, DocumentService, DocumentVersionService, IdGenerator,
+    IdentityContextResolver, ManagementCommand,
+    ManagementOperationId, PublicationScheduleRepository, PublishOperationId, SchedulePublishCommand,
+    VersionOperationId,
 };
 use document_domain::{
     Action, DocumentId, DocumentVersionId, FolderId, MediaType, Metadata, PolicyGrant, PolicyMode,
@@ -18,6 +19,7 @@ use document_publication_scheduler::{StaticRequesterResolver, probe_mandatory_sa
 use document_repository_postgres::{PostgresDocumentRepository, SYSTEM_ROOT_FOLDER_ID, migrate};
 use document_semantic_inspection_runner::{RunnerConfig, RunnerInspectionExecutor};
 use document_storage_fs::FileSystemStorage;
+use organization_server::organization_root_grants;
 use sqlx::{ConnectOptions, PgPool, postgres::PgConnectOptions};
 use std::str::FromStr;
 use std::{io::Cursor, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
@@ -75,14 +77,72 @@ impl IdGenerator for UuidV7Ids {
         Uuid::now_v7()
     }
 }
-fn grants(actions: impl IntoIterator<Item = Action>) -> Vec<PolicyGrant> {
-    vec![
-        PolicyGrant::new(
-            PolicySubject::new(PolicySubjectKind::Group, "poc", "poc-users").unwrap(),
-            actions,
-        )
-        .unwrap(),
-    ]
+#[derive(Clone, Copy)]
+enum RuntimeFixture {
+    Poc,
+    Organization,
+}
+
+impl RuntimeFixture {
+    fn mode(self) -> &'static str {
+        match self {
+            Self::Poc => "poc",
+            Self::Organization => "organization-synthetic",
+        }
+    }
+
+    fn requester(self) -> &'static str {
+        match self {
+            Self::Poc => "poc-human",
+            Self::Organization => "sales-01",
+        }
+    }
+
+    fn read_only_requester(self) -> &'static str {
+        match self {
+            Self::Poc => "poc-agent",
+            Self::Organization => "office-01",
+        }
+    }
+
+    fn principal(self) -> PrincipalRef {
+        PrincipalRef::new(self.mode(), self.requester()).unwrap()
+    }
+
+    fn grants(self, actions: impl IntoIterator<Item = Action>) -> Vec<PolicyGrant> {
+        let (kind, subject) = match self {
+            Self::Poc => (PolicySubjectKind::Group, "poc-users"),
+            Self::Organization => (PolicySubjectKind::Principal, self.requester()),
+        };
+        vec![
+            PolicyGrant::new(
+                PolicySubject::new(kind, self.mode(), subject).unwrap(),
+                actions,
+            )
+            .unwrap(),
+        ]
+    }
+
+    fn root_grants(self) -> Vec<PolicyGrant> {
+        if matches!(self, Self::Organization) {
+            return organization_root_grants();
+        }
+        let mut grants = self.grants([
+            Action::Read,
+            Action::ReadHistory,
+            Action::Write,
+            Action::Publish,
+            Action::Administer,
+        ]);
+        grants.push(
+            PolicyGrant::new(
+                PolicySubject::new(PolicySubjectKind::Group, "poc", "poc-agents").unwrap(),
+                [Action::Read, Action::ReadHistory],
+            )
+            .unwrap(),
+        );
+        grants
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -90,6 +150,7 @@ struct Reservation {
     document: DocumentId,
     version: DocumentVersionId,
     operation: PublishOperationId,
+    revision: i64,
 }
 
 type Versions = DocumentVersionService<
@@ -102,16 +163,26 @@ type Versions = DocumentVersionService<
 type Documents =
     DocumentService<UuidV7Ids, SystemClock, FileSystemStorage, PostgresDocumentRepository>;
 
-async fn reserve(documents: &Documents, versions: &Versions, title: &str) -> Reservation {
+async fn reserve(
+    documents: &Documents,
+    versions: &Versions,
+    title: &str,
+    runtime: RuntimeFixture,
+) -> Reservation {
     // Each scenario call site must carry only the small wrapper future.
     // Boxing only the scenario leaves repeated large reservation temporaries in
     // its debug poll stack, which overflows the unchanged default test stack.
-    Box::pin(run_reservation(documents, versions, title)).await
+    Box::pin(run_reservation(documents, versions, title, runtime)).await
 }
 
-async fn run_reservation(documents: &Documents, versions: &Versions, title: &str) -> Reservation {
+async fn run_reservation(
+    documents: &Documents,
+    versions: &Versions,
+    title: &str,
+    runtime: RuntimeFixture,
+) -> Reservation {
     CanaryStage::ReservationStarted.report();
-    let human = PrincipalRef::new("poc", "poc-human").unwrap();
+    let human = runtime.principal();
     let created = documents
         .create_document(CreateDocumentCommand {
             folder_id: FolderId::from_uuid(SYSTEM_ROOT_FOLDER_ID),
@@ -127,7 +198,7 @@ async fn run_reservation(documents: &Documents, versions: &Versions, title: &str
         .unwrap();
     CanaryStage::DocumentCreated.report();
     let operation = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
-    versions
+    let scheduled = versions
         .schedule_publish(
             SchedulePublishCommand::new(
                 operation,
@@ -146,6 +217,7 @@ async fn run_reservation(documents: &Documents, versions: &Versions, title: &str
         document: created.document_id(),
         version: created.document_version_id(),
         operation,
+        revision: scheduled.accepted_revision,
     }
 }
 
@@ -187,10 +259,11 @@ fn start(
     storage: &std::path::Path,
     worker: &std::path::Path,
     application: &str,
+    runtime: RuntimeFixture,
 ) -> Child {
     Command::new(env!("CARGO_BIN_EXE_document-publication-scheduler"))
         .env_clear()
-        .env("KP_RUNTIME_MODE", "poc")
+        .env("KP_RUNTIME_MODE", runtime.mode())
         .env(
             "DOCUMENT_DATABASE_URL",
             scheduler_database_url(pool.connect_options().as_ref(), application),
@@ -266,14 +339,20 @@ async fn publication_counts(pool: &PgPool, reservation: Reservation) -> (i64, i6
 #[tokio::test]
 #[ignore = "explicit real PostgreSQL, production DSI sandbox and separate scheduler process acceptance"]
 async fn future_stop_restart_revocation_and_concurrent_processes_preserve_single_publication() {
-    canary().await;
+    canary(RuntimeFixture::Poc).await;
 }
 
-async fn canary() {
+#[tokio::test]
+#[ignore = "explicit Organization PostgreSQL, production DSI and separate scheduler process acceptance"]
+async fn organization_publication_cancellation_revocation_and_restart_use_current_authority() {
+    canary(RuntimeFixture::Organization).await;
+}
+
+async fn canary(runtime: RuntimeFixture) {
     CanaryStage::Started.report();
     // Keep the large test-only scenario state on the heap. Do not expand the
     // test/production stack limit or change any worker isolation setting.
-    Box::pin(run_process_canary()).await;
+    Box::pin(run_process_canary(runtime)).await;
 }
 
 #[test]
@@ -281,7 +360,7 @@ fn process_canary_future_has_a_small_test_stack_frame() {
     fn frame_size<F>(_constructor: impl FnOnce() -> F) -> usize {
         std::mem::size_of::<F>()
     }
-    let size = frame_size(canary);
+    let size = frame_size(|| canary(RuntimeFixture::Poc));
     assert!(
         size < 64 * 1024,
         "canary future frame is {size} bytes; keep below one thirty-second of the default 2MiB test stack"
@@ -293,7 +372,7 @@ fn process_canary_scenario_has_a_small_test_stack_frame() {
     fn frame_size<F>(_constructor: impl FnOnce() -> F) -> usize {
         std::mem::size_of::<F>()
     }
-    let size = frame_size(run_process_canary);
+    let size = frame_size(|| run_process_canary(RuntimeFixture::Poc));
     assert!(
         size < 64 * 1024,
         "scenario future frame is {size} bytes; nested fixture futures must not inflate the scenario poll stack"
@@ -307,7 +386,9 @@ fn reservation_wrapper_has_a_small_test_stack_frame() {
     ) -> usize {
         std::mem::size_of::<F>()
     }
-    let size = frame_size(reserve);
+    let size = frame_size(|documents, versions, title| {
+        reserve(documents, versions, title, RuntimeFixture::Poc)
+    });
     assert!(
         size < 1024,
         "reservation wrapper future is {size} bytes; heap-box the fixture body before embedding it in each scenario call site"
@@ -332,7 +413,7 @@ fn stage_report_survives_libtest_capture_and_process_abort() {
     assert_eq!(output.stderr, b"scheduler-canary:ReservationStarted\n");
 }
 
-async fn run_process_canary() {
+async fn run_process_canary(runtime: RuntimeFixture) {
     let worker =
         PathBuf::from(std::env::var_os("DSI_WORKER_BIN").expect("DSI_WORKER_BIN is required"));
     let database = TestDatabase::new().await;
@@ -349,42 +430,57 @@ async fn run_process_canary() {
         "mandatory production sandbox must pass; no fake/skip/fallback qualifies acceptance",
     );
     CanaryStage::SandboxVerified.report();
-    let resolver = StaticRequesterResolver::for_runtime_mode("poc").unwrap();
-    let human = PrincipalRef::new("poc", "poc-human").unwrap();
+    let resolver = StaticRequesterResolver::for_runtime_mode(runtime.mode()).unwrap();
+    let human = runtime.principal();
     let human_context = resolver.resolve(&human).await.unwrap();
-    let mut root_grants = grants([
-        Action::Read,
-        Action::ReadHistory,
-        Action::Write,
-        Action::Publish,
-        Action::Administer,
-    ]);
-    root_grants.push(
-        PolicyGrant::new(
-            PolicySubject::new(PolicySubjectKind::Group, "poc", "poc-agents").unwrap(),
-            [Action::Read, Action::ReadHistory],
-        )
-        .unwrap(),
-    );
-    PostgresDocumentRepository::new_with_bootstrap_actor(pool.clone(), human)
-        .initialize_root_policy(&human_context, root_grants)
+    PostgresDocumentRepository::new_with_bootstrap_actor(pool.clone(), human.clone())
+        .initialize_root_policy(&human_context, runtime.root_grants())
         .await
         .unwrap();
     CanaryStage::RootPolicyInitialized.report();
     let ids = Arc::new(UuidV7Ids);
     let clock = Arc::new(SystemClock);
+    let authorized_repository = Arc::new(repository.with_verified_actor(human_context.clone()));
     let documents = DocumentService::new(
         ids.clone(),
         clock.clone(),
         storage.clone(),
-        repository.clone(),
+        authorized_repository.clone(),
     );
-    let versions = DocumentVersionService::new(ids, clock, storage, executor, repository.clone());
-    let warmup = reserve(&documents, &versions, "Synthetic ready proof").await;
-    let future = reserve(&documents, &versions, "Synthetic future publication").await;
-    let revoked = reserve(&documents, &versions, "Synthetic revoked publication").await;
-    let unknown = reserve(&documents, &versions, "Synthetic unresolvable requester").await;
-    let agent = reserve(&documents, &versions, "Synthetic agent requester denial").await;
+    let versions =
+        DocumentVersionService::new(ids, clock, storage, executor, authorized_repository);
+    let warmup = reserve(&documents, &versions, "Synthetic ready proof", runtime).await;
+    let future = reserve(&documents, &versions, "Synthetic future publication", runtime).await;
+    let revoked = reserve(&documents, &versions, "Synthetic revoked publication", runtime).await;
+    let unknown = reserve(&documents, &versions, "Synthetic unresolvable requester", runtime).await;
+    let agent = reserve(&documents, &versions, "Synthetic agent requester denial", runtime).await;
+    let cancelled = reserve(&documents, &versions, "Synthetic cancelled publication", runtime).await;
+    make_due(pool, cancelled).await;
+    let cancellation = CancelScheduleCommand::new(
+        VersionOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+        cancelled.operation,
+        cancelled.document,
+        cancelled.version,
+        cancelled.revision,
+        human.clone(),
+    )
+    .unwrap();
+    let cancellation_result = Box::pin(versions.cancel_schedule(cancellation.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        Box::pin(versions.cancel_schedule(cancellation)).await.unwrap(),
+        cancellation_result
+    );
+    assert_eq!(
+        repository
+            .get_schedule(cancelled.operation)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "CANCELLED"
+    );
     CanaryStage::FixturesReserved.report();
     AccessPolicyService::new(repository.clone())
         .set_access_policy(
@@ -393,7 +489,7 @@ async fn run_process_canary() {
                 operation_id: ManagementOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
                 target: PolicyTarget::Document(revoked.document),
                 expected_policy_revision: 0,
-                mode: PolicyMode::Explicit(grants([Action::Read])),
+                mode: PolicyMode::Explicit(runtime.grants([Action::Read])),
                 reason: "Synthetic revoke before due".into(),
             },
         )
@@ -402,11 +498,11 @@ async fn run_process_canary() {
     // Fault injection only: an original requester no longer resolvable by this runtime.
     sqlx::query("UPDATE document_publish_schedules SET actor_principal_id = 'missing-requester' WHERE publish_operation_id = $1")
         .bind(unknown.operation.as_uuid()).execute(pool).await.unwrap();
-    sqlx::query("UPDATE document_publish_schedules SET actor_principal_id = 'poc-agent' WHERE publish_operation_id = $1")
-        .bind(agent.operation.as_uuid()).execute(pool).await.unwrap();
+    sqlx::query("UPDATE document_publish_schedules SET actor_principal_id = $2 WHERE publish_operation_id = $1")
+        .bind(agent.operation.as_uuid()).bind(runtime.read_only_requester()).execute(pool).await.unwrap();
     CanaryStage::RevocationsPrepared.report();
     make_due(pool, warmup).await;
-    let mut first = start(pool, storage_root.path(), &worker, "r5-first");
+    let mut first = start(pool, storage_root.path(), &worker, "r5-first", runtime);
     CanaryStage::FirstProcessStarted.report();
     // A committed warmup proves the real main passed preflight and polled. A
     // fixed sleep or merely alive PID would not prove process startup.
@@ -448,8 +544,8 @@ async fn run_process_canary() {
         .fetch_one(&mut *barrier)
         .await
         .unwrap();
-    let mut first = start(pool, storage_root.path(), &worker, "r5-first");
-    let mut second = start(pool, storage_root.path(), &worker, "r5-second");
+    let mut first = start(pool, storage_root.path(), &worker, "r5-first", runtime);
+    let mut second = start(pool, storage_root.path(), &worker, "r5-second", runtime);
     CanaryStage::ContendersStarted.report();
     tokio::time::timeout(Duration::from_secs(30), async {
     loop {
@@ -467,6 +563,16 @@ async fn run_process_canary() {
     await_status(pool, unknown, "TERMINAL", &mut [&mut first, &mut second]).await;
     await_status(pool, agent, "TERMINAL", &mut [&mut first, &mut second]).await;
     CanaryStage::ContendersCompleted.report();
+    assert_eq!(publication_counts(pool, cancelled).await, (0, 0, 0));
+    assert_eq!(
+        repository
+            .get_schedule(cancelled.operation)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "CANCELLED"
+    );
     assert_eq!(publication_counts(pool, agent).await, (0, 0, 0));
     assert_eq!(publication_counts(pool, future).await, (1, 1, 1));
     assert_eq!(publication_counts(pool, revoked).await, (0, 0, 0));
@@ -476,8 +582,8 @@ async fn run_process_canary() {
     assert_eq!(
         identity,
         (
-            "poc".into(),
-            "poc-human".into(),
+            runtime.mode().into(),
+            runtime.requester().into(),
             "service".into(),
             "scheduler".into()
         )
@@ -486,16 +592,16 @@ async fn run_process_canary() {
         .bind(revoked.operation.as_uuid()).bind(unknown.operation.as_uuid()).fetch_all(pool).await.unwrap();
     assert_eq!(reasons, ["authorization_revoked", "identity_invalid"]);
     for (reservation, requester, reason) in [
-        (revoked, "poc-human", "authorization_revoked"),
+        (revoked, runtime.requester(), "authorization_revoked"),
         (unknown, "missing-requester", "identity_invalid"),
-        (agent, "poc-agent", "authorization_revoked"),
+        (agent, runtime.read_only_requester(), "authorization_revoked"),
     ] {
         let terminal: (String, String, String, String, String) = sqlx::query_as("SELECT actor_identity_provider, actor_principal_id, data->'serviceExecutor'->>'identityProvider', data->'serviceExecutor'->>'principalId', data->>'terminalReason' FROM audit_outbox_events WHERE resource_id = $1 AND event_type = 'document.version.publication.terminal'")
             .bind(reservation.document.as_uuid()).fetch_one(pool).await.unwrap();
         assert_eq!(
             terminal,
             (
-                "poc".into(),
+                runtime.mode().into(),
                 requester.into(),
                 "service".into(),
                 "scheduler".into(),
@@ -522,13 +628,63 @@ async fn run_process_canary() {
     stop(&mut first).await;
     stop(&mut second).await;
     CanaryStage::ContendersStopped.report();
-    let mut restarted = start(pool, storage_root.path(), &worker, "r5-restarted");
+    let mut restarted = start(pool, storage_root.path(), &worker, "r5-restarted", runtime);
     CanaryStage::Restarted.report();
     // Fresh work proves the restarted process actually polls before checking replay.
-    let after_restart = reserve(&documents, &versions, "Synthetic second restart proof").await;
+    let after_restart = reserve(&documents, &versions, "Synthetic second restart proof", runtime).await;
     make_due(pool, after_restart).await;
     await_status(pool, after_restart, "PUBLISHED", &mut [&mut restarted]).await;
     CanaryStage::RestartPublished.report();
+    assert_eq!(publication_counts(pool, cancelled).await, (0, 0, 0));
+    let cancelled_current: Option<Uuid> =
+        sqlx::query_scalar("SELECT current_version_id FROM documents WHERE document_id = $1")
+            .bind(cancelled.document.as_uuid())
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(cancelled_current, None);
+    let cancelled_projection: (String, Option<OffsetDateTime>) = sqlx::query_as(
+        "SELECT lifecycle_state, scheduled_publish_at FROM document_versions WHERE document_version_id = $1",
+    )
+    .bind(cancelled.version.as_uuid())
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(cancelled_projection, ("WORKING".into(), None));
+    let cancel_audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_outbox_events WHERE resource_id = $1 AND event_type = 'document.version.publication.cancelled'",
+    )
+    .bind(cancelled.document.as_uuid())
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(cancel_audit_count, 1);
+    assert_eq!(
+        repository
+            .get_schedule(cancelled.operation)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "CANCELLED"
+    );
+    let cancellation_identity: (String, String, String, String, bool) = sqlx::query_as(
+        "SELECT actor_identity_provider, actor_principal_id, data->>'documentVersionId', data->>'publishOperationId', data ? 'serviceExecutor' FROM audit_outbox_events WHERE resource_id = $1 AND event_type = 'document.version.publication.cancelled'",
+    )
+    .bind(cancelled.document.as_uuid())
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        cancellation_identity,
+        (
+            runtime.mode().into(),
+            runtime.requester().into(),
+            cancelled.version.as_uuid().to_string(),
+            cancelled.operation.as_uuid().to_string(),
+            false,
+        )
+    );
     assert_eq!(publication_counts(pool, future).await, (1, 1, 1));
     stop(&mut restarted).await;
     database.close().await;

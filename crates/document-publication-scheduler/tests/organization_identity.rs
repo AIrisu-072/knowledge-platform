@@ -4,6 +4,7 @@ use document_application::{
 use document_domain::PrincipalRef;
 use document_publication_scheduler::{StaticRequesterResolver, scheduler_executor};
 use organization_server::{OrganizationProfile, SyntheticIdentityAdapter};
+use time::{Duration, OffsetDateTime};
 
 #[tokio::test]
 async fn organization_requesters_match_the_existing_http_adapter_without_extra_authority() {
@@ -70,7 +71,11 @@ async fn organization_context_is_refreshed_for_each_due_attempt() {
     let principal = PrincipalRef::new("organization-synthetic", "sales-01").unwrap();
     let first = resolver.resolve(&principal).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let before = OffsetDateTime::now_utc();
     let second = resolver.resolve(&principal).await.unwrap();
+    let after = OffsetDateTime::now_utc();
+    assert!(second.valid_until() >= before + Duration::minutes(5));
+    assert!(second.valid_until() <= after + Duration::minutes(5));
     assert!(second.valid_until() > first.valid_until());
     assert_eq!(first.subjects(), second.subjects());
     assert!(second.ensure_current().is_ok());
