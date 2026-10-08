@@ -1264,22 +1264,38 @@ scenario('ウィンドウを閉じる操作：処理中の操作があれば確�
     const s = await launch(closing);
     const centre = (css, text) => s.execute(`const element = [...document.querySelectorAll(arguments[0])].find((item) => !arguments[1] || item.textContent.includes(arguments[1]));
       const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };`, [css, text]);
+    // Measured as the replay will find it: after the same wait as the replay,
+    // and once the position stops moving (a side panel may still be loading).
+    // Any extra settling time is added to the replay's wait.
+    const settled = async (css, text) => {
+      await s.waitForText(css, text ?? '');
+      const started = Date.now();
+      let last = await centre(css, text);
+      for (;;) {
+        await delay(500);
+        const next = await centre(css, text);
+        if (next.x === last.x && next.y === last.y) return { ...next, extra: Date.now() - started };
+        if (Date.now() - started > 15_000) throw new Error(`the position of ${text ?? css} did not settle`);
+        last = next;
+      }
+    };
+    // A plain click, as the replay's: no scrolling into view first.
+    const press = async (css, text, wait) => { await (await s.waitForText(css, text)).click(); await delay(wait); };
     try {
       // Both this app and the directly started ones open on タスク.
       await landed(s);
-      at.authoring = await centre('nav a', '編集作業');
-      await clickText(s, 'nav a', '編集作業');
-      await s.waitForText('button[data-document-id]', 'デスクトップ登録確認（合成）');
-      at.row = await centre('button[data-document-id]', 'デスクトップ登録確認（合成）');
-      await clickText(s, 'button[data-document-id]', 'デスクトップ登録確認（合成）');
-      at.open = await centre('button', '詳細を開く');
-      await clickText(s, 'button', '詳細を開く');
+      at.authoring = await settled('nav a', '編集作業');
+      await press('nav a', '編集作業', 2_500);
+      at.row = await settled('button[data-document-id]', 'デスクトップ登録確認（合成）');
+      await press('button[data-document-id]', 'デスクトップ登録確認（合成）', 1_500);
+      at.open = await settled('button', '詳細を開く');
+      await press('button', '詳細を開く', 3_000);
       await s.waitForText('h1', 'デスクトップ登録確認（合成）');
-      at.edit = await centre('button', 'メタデータを編集');
-      await clickText(s, 'button', 'メタデータを編集');
-      await s.waitFor(() => s.find('[role="dialog"] textarea[aria-label="変更理由"]'), { message: 'metadata dialog' });
-      at.reason = await centre('[role="dialog"] textarea[aria-label="変更理由"]');
-      at.save = await centre('[role="dialog"] button', '保存する');
+      at.edit = await settled('button', 'メタデータを編集');
+      await press('button', 'メタデータを編集', 2_000);
+      at.reason = await settled('[role="dialog"] textarea[aria-label="変更理由"]');
+      at.save = await settled('[role="dialog"] button', '保存する');
+      check('準備：X操作で押す位置を、X操作と同じ待ち時間の後、位置が動かなくなってから測った', true, at);
     } finally {
       await quit(s);
     }
@@ -1318,10 +1334,10 @@ scenario('ウィンドウを閉じる操作：処理中の操作があれば確�
   app = await startDirect();
   try {
     const click = async (point, wait) => { await X.clickAt(app.origin.x + point.x, app.origin.y + point.y); await delay(wait); };
-    await click(at.authoring, 2_500);
-    await click(at.row, 1_500);
-    await click(at.open, 3_000);
-    await click(at.edit, 2_000);
+    await click(at.authoring, 2_500 + at.row.extra);
+    await click(at.row, 1_500 + at.open.extra);
+    await click(at.open, 3_000 + at.edit.extra);
+    await click(at.edit, 2_000 + at.reason.extra);
     await click(at.reason, 500);
     await X.typeAscii('close check');
     backend.pause();
