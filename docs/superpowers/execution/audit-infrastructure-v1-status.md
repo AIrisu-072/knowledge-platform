@@ -1,5 +1,21 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 単位C（Document受入・handoff・capability matrix最終版）（worktree branch `audit-unit-c`、未push）
+
+- 前提（GitHubの状態）：単位AはPR #98でmain `643cc85`（main CI run 37699545947 SUCCESS）。単位BはPR #113でmain `dba8168`（exact-head `8a275b1` のCI run 37753371438で全job SUCCESS）。**main `dba8168` のpush CI：確認中**（`<<ORCHESTRATOR: dba8168 main push CI のrun IDと結果を記入>>`）。
+- branch `audit-unit-c`＝`dba8168`＋単位Cのcommit。code：`c9ca0a2`（crate `audit-acceptance`とT1）、`f7e626d`（T2）、`7c252f7`（T3）、`d9cd323`（T4）、`9929e14`（T5）、`ac16157`（Document migration互換、待ちの安定化）、`bf2afb1`（T1を全23 typeへ）、`02797ff`（README）、`65fa9f3`（未使用定数の削除）。docs：`3751c1c`（[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)）、`02de8a3`（[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)§2.2 最終capability matrix）、本commit（状況・計画・active pointer）。
+- 内容（[受入試験README](../../../crates/audit-acceptance/README.md)）：production codeの無い試験専用crate。Documentの実producer（application service・PostgreSQL repository・file storage）→ `audit_outbox_events` → relay → Store。
+  - T1：40件・catalogのDocument全23 typeがStoreへevent_idごとに1件。actor・subject・correlation、schedulerの `service_executor`（actorは依頼者のまま）、理由文・本文・storage locator・ACLだけの主体がStoreの全表（`pg_dump`）とexportに無いこと、produced／delivered／stored／verifiedが別の値、verify ok、assess `authentic`。
+  - T2：staging・配送登録の失敗で業務がrollback（Document全表と登録が不変）。T3：Store停止中も業務継続、試行返却、health `store_unavailable`・`circuit_open`・`outage_held`、復旧後1回ずつ。T4：Store保存後・ack前のrelay SIGKILL → 再起動で `duplicate` 1回。T5：Store backup/restore → 消失範囲の再配送、assess `lost`／記録なしは `unverified_recovery`、上限不明も `authentic` にならない。`document_migration`：relay migration後のnullable列追加の互換。
+- 検証：単位Cの実装者の報告では `dba8168` へのrebase後にlocalで `cargo test -p audit-acceptance` 6 passed（PostgreSQL 18.6 testcontainers、約20秒）。本docs作業では重いbuild・試験を再実行していない。docs commit後（本commitの作業tree）：`cargo run --quiet --locked -p architecture-lint -- check`（architecture: pass）、`mise.toml` の `repo:policy` と同じ検査 PASS（miseは環境に無く同じcommandを直接実行）、追加した相対linkとpath:lineの存在確認（欠落0）。hosted CIは未実施（統合時）。本番credential・migration・deployは行っていない。
+- 含まないもの：DSI・Diff worker binary（process内の合成実装）、`DueScheduler` 本体（`poll_once` と同じ順で `execute_due_authorized`＋`scheduler_executor()` を呼ぶ。PoCの `StaticRequesterResolver` は `poc` 主体だけなので試験用directoryで再解決）、HTTP層、`audit-relay`・`audit-admin` binaryのprocess起動（library入口）、別hostのStore停止、実producer行でのDocument DB restore・組restore・in-place restore・replay・quarantine・retention（単位Bが合成行で試験）。
+- 観察：
+  - 非superuserの `public.audit_outbox_events` のOWNERは自分の表のrelay triggerを無効化・削除できるが、relay postureは表のownerを報告しない。未登録行はhealth `unregistered_rows` とreconcile repairで、登録済み行の削除はFKで、改変は `source_digest` で事後に捉える。Document PoCは単一superuserでmigrate・serveしておりrole分離は未充足 → Document・依頼者へのhandoff（runtime loginをstaging表のownerにしない。引継ぎ§5.3、§6 A5・D5）。
+  - ingest時のStore障害の直後、healthは次のprobeまで `circuit` open・gate okを示し得る（運用上の注意）。
+- 設計からの差分：なし（§2を初期状態と最終状態に分けただけ）。
+- 見送り（承認状態：依頼者判断待ち。単位Bから継続）：purgeとlegal holdの優先、`register_source_service` の記録のsource kind、ackのepoch（probe時かcommit時か）、reconcileの `repaired_*` を計画件数で記録すること。
+- 次のexact action：`audit-unit-c` のcommitを `claude/cool-darwin-7xh893` へpush（mainからのfast-forward）→ 単位CのDraft PR → 独立review → 指摘反映 → exact-head hosted CI → main統合 → main CI確認 → 本節のplaceholderとactive pointerを更新。
+
 ## 2026-10-08 — 単位B 差分の独立review（delta-security-correctness・docs-accuracy）の指摘反映（worktree branch、未push）
 
 - branch `worktree-agent-a07ac0dcd80b1fa0d`（`c398976` の上）。Important 2件は修正前に失敗する試験を書いてから直した。commit：
