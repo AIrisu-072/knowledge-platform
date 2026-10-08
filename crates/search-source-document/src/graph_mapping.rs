@@ -6,7 +6,7 @@
 //! authorization service on every call. There is no RAM owner map and no
 //! caller-supplied owner.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use document_domain::{DocumentId, FolderId};
 use search_application::SearchError;
@@ -17,6 +17,7 @@ use search_application::graph_generation::{
 use search_application::ports::{AccessDecision, BoxFuture};
 use search_application::scoped::{AuthorizedSourceScope, TrustedDiscoveryBinding};
 use search_core::id::{RelationId, ResourceId, SourceId};
+use uuid::Uuid;
 use search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
@@ -86,6 +87,38 @@ pub fn document_graph_records(
         ));
     }
 
+    // Owners and incident relations by Resource, each built once: every
+    // Resource looks up its own instead of scanning the whole snapshot.
+    let mut by_version: HashMap<Uuid, BTreeSet<Uuid>> = HashMap::new();
+    let mut by_document: HashMap<ResourceId, BTreeSet<Uuid>> = HashMap::new();
+    let mut by_placement: HashMap<ResourceId, BTreeSet<(Uuid, Uuid)>> = HashMap::new();
+    for record in &snapshot.live {
+        let (document, folder) = (record.snapshot.document_id, record.snapshot.folder_id);
+        by_version
+            .entry(record.snapshot.document_version_id.as_uuid())
+            .or_default()
+            .insert(document.as_uuid());
+        by_document
+            .entry(document_resource_id(source, document))
+            .or_default()
+            .insert(document.as_uuid());
+        by_placement
+            .entry(folder_resource_id(source, document, folder))
+            .or_default()
+            .insert((document.as_uuid(), folder.as_uuid()));
+    }
+    let mut incident: HashMap<ResourceId, Vec<&TypedRelationInstance>> = HashMap::new();
+    for relation in relations.values() {
+        let members: BTreeSet<ResourceId> = relation
+            .participants
+            .iter()
+            .map(|participant| participant.resource_ref)
+            .collect();
+        for member in members {
+            incident.entry(member).or_default().push(relation);
+        }
+    }
+
     let mut records = Vec::with_capacity(projections.len());
     for projection in projections {
         let id = projection.directory.resource_ref;
@@ -95,44 +128,19 @@ pub fn document_graph_records(
                 {
                     return Err(mapping_error("Knowledge node is not its own Version"));
                 }
-                let document_id = exactly_one(
-                    snapshot
-                        .live
-                        .iter()
-                        .filter(|record| {
-                            record.snapshot.document_version_id.as_uuid() == id.as_uuid()
-                        })
-                        .map(|record| record.snapshot.document_id.as_uuid())
-                        .collect(),
-                )?;
+                let document_id =
+                    exactly_one(by_version.get(&id.as_uuid()).cloned().unwrap_or_default())?;
                 GraphSourceMapping::Version {
                     document_id,
                     version_id: id.as_uuid(),
                 }
             }
             ResourceKind::Document => GraphSourceMapping::Document {
-                document_id: exactly_one(
-                    snapshot
-                        .live
-                        .iter()
-                        .map(|record| record.snapshot.document_id)
-                        .filter(|document| document_resource_id(source, *document) == id)
-                        .map(|document| document.as_uuid())
-                        .collect(),
-                )?,
+                document_id: exactly_one(by_document.get(&id).cloned().unwrap_or_default())?,
             },
             ResourceKind::FolderPlacement => {
-                let (document_id, folder_id) = exactly_one(
-                    snapshot
-                        .live
-                        .iter()
-                        .map(|record| (record.snapshot.document_id, record.snapshot.folder_id))
-                        .filter(|(document, folder)| {
-                            folder_resource_id(source, *document, *folder) == id
-                        })
-                        .map(|(document, folder)| (document.as_uuid(), folder.as_uuid()))
-                        .collect(),
-                )?;
+                let (document_id, folder_id) =
+                    exactly_one(by_placement.get(&id).cloned().unwrap_or_default())?;
                 GraphSourceMapping::FolderPlacement {
                     document_id,
                     folder_id,
@@ -140,11 +148,11 @@ pub fn document_graph_records(
             }
             _ => return Err(mapping_error("Resource kind has no Document mapping")),
         };
-        let attached_relations = relations
-            .values()
-            .filter(|relation| relation.participants.iter().any(|p| p.resource_ref == id))
-            .cloned()
-            .collect();
+        // In relation-ID order, as `relations` iterates.
+        let attached_relations = incident
+            .get(&id)
+            .map(|relations| relations.iter().map(|relation| (*relation).clone()).collect())
+            .unwrap_or_default();
         records.push(GraphResourceRecord {
             resource_ref: id,
             kind: projection.directory.kind,
