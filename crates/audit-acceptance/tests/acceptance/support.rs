@@ -46,7 +46,6 @@ pub const STORE_ISSUER: &str = "synthetic-audit-idp";
 pub const DOC_DB: &str = "document_acceptance";
 pub const STORE_DB: &str = "audit_store_acceptance";
 pub const DOC_OWNER: &str = "document_app";
-pub const SOURCE: &str = "urn:knowledge-platform:document-platform";
 
 /// Store roles of the relay service login (design §10.1).
 pub const RELAY_SERVICE_ROLES: [&str; 3] = [
@@ -1017,8 +1016,8 @@ pub fn assert_absent(haystack: &str, what: &str, needles: &[String]) {
     }
 }
 
-/// Grants of every capability a running relay needs are in place and the
-/// relay's own posture is clean (otherwise `run` refuses to start).
+/// `audit_relay.posture_check()` reports nothing: with the Document runtime
+/// as the non-superuser owner of the Document schema, `run` may start.
 pub async fn assert_relay_posture_clean(env: &Env) {
     let violations: Vec<(String, String)> =
         sqlx::query_as("SELECT violation, object FROM audit_relay.posture_check()")
