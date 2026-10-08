@@ -27,7 +27,9 @@ harnessで公開するのは、元のbrowser失敗がFinding GET503だった場�
 
 診断の処理段階は失敗位置の絞り込みに使う。SQLエラー分類や期限超過を実際に観測するまでは、それを原因と断定しない。runtimeが成功しただけの場合は「今回再現せず」と記録し、原因修正済みとはしない。観測後の最小修正案は別途確認する。
 
-今回の診断ではDocument provider内部のtimeoutと内部DB障害までは分離しない。`evidence/document` または `agent/agent` の観測が得られた場合は、その結果を根拠に必要最小限の次の切り分けを提案する。
+実測された `agent/agent` の11ms失敗を受け、DocumentAgentSource内部の失敗時に `KP_DOCUMENT_AGENT_DIAGNOSTIC` を追加する。項目は `identity`、`phase`、`failure`、`elapsed_ms` の4つだけ。identityはrequester/provider、phaseはidentity/revision/files、failureは固定されたidentity・timeout・ApplicationError分類で、error内の本文や識別子を受け取る出力APIは持たない。既存404へ写像されるsource_mismatch/forbidden/not_found/staleはharnessの503観測から除外する。CursorStaleとStaleComparisonInputは既存503のままconflictへ分類する。
+
+追加記録とWork記録が両方ある場合は `ambiguous` となる。連続する段階の観測として読み、同一要求の証明や最後の記録だけによる原因断定に使用しない。内部ApplicationErrorの分類が判明しても、DocumentのSQLSTATEやSQL実行箇所まで分かった証拠とは扱わない。認可の順序、結果の写像、remainingと5秒の最小値によるdeadline、成功時の無出力、元の受入assertionを保持する。
 
 ## 他担当の変更
 

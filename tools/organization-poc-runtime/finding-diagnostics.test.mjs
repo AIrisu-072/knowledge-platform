@@ -71,3 +71,33 @@ test('excess active processes and duplicate keys are refused rather than silentl
   const duplicate = line(event).replace('"operation":"finding"','"operation":"finding_list","operation":"finding"');
   assert.deepEqual(records(duplicate),[]);
 });
+
+const documentEvent = { identity:'provider', phase:'files', failure:'repository_unavailable', elapsed_ms:12 };
+const documentLine = value => `KP_DOCUMENT_AGENT_DIAGNOSTIC ${JSON.stringify(value)}\n`;
+test('Document agent boundary has an independent exact closed schema and remains phase-window bound', () => {
+  assert.deepEqual(records(documentLine(documentEvent)),[documentEvent]);
+  let raw = documentLine({...documentEvent,elapsed_ms:1});
+  const read = beginFindingDiagnosticWindow([{child:{exitCode:null},output:()=>raw}]);
+  assert.deepEqual(read(),{correlation:'none',events:[]});
+  raw += documentLine(documentEvent); assert.deepEqual(read(),{correlation:'single',events:[documentEvent]});
+});
+test('Document agent unknown identities, phases, AppError classes and raw fields never leak', () => {
+  for (const override of [{identity:'PRIVATE_SECRET'},{phase:'PRIVATE_SECRET'},{failure:'PRIVATE_SECRET'},{elapsed_ms:'PRIVATE_SECRET'},{elapsed_ms:-1},{elapsed_ms:4294967296},{elapsed_ms:0.5},{url:'PRIVATE_SECRET'},{error:'PRIVATE_SECRET'},{resourceId:'PRIVATE_SECRET'},{operation:'finding'},{phase:{raw:'PRIVATE_SECRET'}}]) {
+    assert.deepEqual(records(documentLine({...documentEvent,...override})),[]);
+  }
+  const missing = {...documentEvent}; delete missing.identity;
+  assert.deepEqual(records(documentLine(missing)),[]);
+  assert.deepEqual(records(documentLine(documentEvent).replace('"identity":"provider"','"identity":"requester","identity":"provider"')),[]);
+  assert.deepEqual(records(documentLine(documentEvent).trimEnd()),[]);
+  assert.deepEqual(records(documentLine({...documentEvent,error:'PRIVATE_SECRET'.repeat(5000)})),[]);
+});
+test('Document agent expected404 classes are excluded; all503 AppError classes are closed', () => {
+  for (const failure of ['source_mismatch','forbidden','not_found','stale']) assert.deepEqual(records(documentLine({...documentEvent,failure})),[]);
+  for (const identity of ['requester','provider']) for (const phase of ['identity','revision','files']) for (const failure of ['identity_unavailable','timeout','validation','conflict','business_rule','repository_unavailable','storage_unavailable','integrity','commit_unknown','internal','other_application']) {
+    const value = {identity,phase,failure,elapsed_ms:4294967295}; assert.deepEqual(records(documentLine(value)),[value]);
+  }
+});
+test('mixed Work and Document diagnostics cannot be attributed to one request, and share the four-record cap', () => {
+  assert.deepEqual(findingFailureDiagnostics(line(event)+documentLine(documentEvent)),{correlation:'ambiguous',events:[event,documentEvent]});
+  assert.deepEqual(findingFailureDiagnostics(line(event)+documentLine(documentEvent).repeat(4)),{correlation:'overflow',events:[]});
+});

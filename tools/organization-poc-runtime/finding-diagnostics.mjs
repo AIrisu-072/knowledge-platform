@@ -1,5 +1,6 @@
 // Failure-only, closed backend projection. Never print raw process output/errors.
 const PREFIX = 'KP_FINDING_DIAGNOSTIC ';
+const DOCUMENT_PREFIX = 'KP_DOCUMENT_AGENT_DIAGNOSTIC ';
 const MAX_BYTES = 64 * 1024, MAX_LINE_BYTES = 512, MAX_LINES = 128, MAX_EVENTS = 4, MAX_PROCESSES = 6;
 const enums = {
   operation: new Set(['finding', 'finding_list']),
@@ -8,8 +9,16 @@ const enums = {
   sql_class: new Set(['none', 'connection', 'acquire_timeout', 'pool_closed', 'database_connection', 'transaction_rollback', 'data_exception', 'constraint', 'resource', 'other_database', 'decode', 'other']),
   failure: new Set(['dependency_unavailable', 'commit_unknown', 'artifact_unavailable', 'forbidden', 'not_found', 'conflict', 'validation', 'integrity']),
 };
-const keys = [...Object.keys(enums), 'elapsed_ms'];
-function project(value) {
+const documentEnums = {
+  identity: new Set(['requester', 'provider']),
+  phase: new Set(['identity', 'revision', 'files']),
+  failure: new Set(['identity_unavailable', 'timeout', 'source_mismatch', 'forbidden', 'not_found', 'stale', 'validation', 'conflict', 'business_rule', 'repository_unavailable', 'storage_unavailable', 'integrity', 'commit_unknown', 'internal', 'other_application']),
+};
+const schemas = [
+  { prefix: PREFIX, enums, failures: new Set(['dependency_unavailable', 'commit_unknown', 'artifact_unavailable']) },
+  { prefix: DOCUMENT_PREFIX, enums: documentEnums, failures: new Set(['identity_unavailable', 'timeout', 'validation', 'conflict', 'business_rule', 'repository_unavailable', 'storage_unavailable', 'integrity', 'commit_unknown', 'internal', 'other_application']) },
+].map(schema => ({ ...schema, keys: [...Object.keys(schema.enums), 'elapsed_ms'] }));
+function project(value, { enums, keys }) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) return null;
   for (const [key, allowed] of Object.entries(enums)) if (!allowed.has(value[key])) return null;
   if (!Number.isInteger(value.elapsed_ms) || value.elapsed_ms < 0 || value.elapsed_ms > 4294967295) return null;
@@ -18,7 +27,6 @@ function project(value) {
 const unavailable = () => ({ correlation: 'none', events: [] });
 const overflow = () => ({ correlation: 'overflow', events: [] });
 const result = events => ({ correlation: events.length === 0 ? 'none' : events.length === 1 ? 'single' : 'ambiguous', events });
-const unavailableFailures = new Set(['dependency_unavailable', 'commit_unknown', 'artifact_unavailable']);
 export function findingFailureDiagnostics(raw) {
   if (typeof raw !== 'string') return unavailable();
   // Reject oversized phase output instead of attributing a truncated tail.
@@ -27,12 +35,13 @@ export function findingFailureDiagnostics(raw) {
   const lines = raw.slice(0, complete).split('\n'); if (lines.length > MAX_LINES) return overflow();
   const events = [];
   for (const line of lines) {
-    if (!line.startsWith(PREFIX) || Buffer.byteLength(line) > MAX_LINE_BYTES) continue;
+    const schema = schemas.find(candidate => line.startsWith(candidate.prefix));
+    if (!schema || Buffer.byteLength(line) > MAX_LINE_BYTES) continue;
     try {
-      const json = line.slice(PREFIX.length);
+      const json = line.slice(schema.prefix.length);
       // Valid enum values contain no object syntax; reject duplicate/extra JSON keys.
-      if (json.match(/"[^"]*"\s*:/gu)?.length !== keys.length) continue;
-      const event = project(JSON.parse(json)); if (event && unavailableFailures.has(event.failure)) events.push(event);
+      if (json.match(/"[^"]*"\s*:/gu)?.length !== schema.keys.length) continue;
+      const event = project(JSON.parse(json), schema); if (event && schema.failures.has(event.failure)) events.push(event);
     }
     catch { /* Malformed or unrelated output is not diagnostic evidence. */ }
     if (events.length > MAX_EVENTS) return overflow();

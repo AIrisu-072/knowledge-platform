@@ -1,6 +1,9 @@
 //! Reference-only source checks through Document's existing current authority.
 //! These separate provider reads do not form an atomic transaction with Work.
+#[path = "document_agent_diagnostics.rs"]
+mod diagnostics;
 use crate::{OrganizationProfile, SyntheticIdentityAdapter};
+use diagnostics::{Boundary, Failure, Identity, Phase, Trace};
 use document_application::{
     ApplicationError, DocumentHistoryRepository, DocumentHistoryService,
     DocumentRevisionDetailQuery, DocumentRevisionReadRepository, DocumentRevisionReadService,
@@ -8,7 +11,10 @@ use document_application::{
 };
 use document_domain::{DocumentId, DocumentVersionId};
 use document_server::identity::{PoCIdentityProfile, StaticPoCIdentityAdapter};
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use work_application::{AgentSourcePort, EvidenceSourcePort, EvidenceSourcePurpose, WorkFuture};
 use work_domain::{AgentDispatchContext, EvidenceSource, RevisionRef, VerifiedActor, WorkError};
 
@@ -100,6 +106,7 @@ impl<R: DocumentRevisionReadRepository + DocumentHistoryRepository> EvidenceSour
                     SourceIdentity::Requester(actor),
                     &source,
                     purpose,
+                    None,
                 ),
             )
             .await
@@ -130,12 +137,15 @@ impl<R: DocumentRevisionReadRepository + DocumentHistoryRepository> AgentSourceP
             }
             // The repository checks current Work/cancel/context before and after
             // this single exact-source operation, outside every Work row lock.
-            tokio::time::timeout(remaining.min(AUTHORIZATION_BUDGET), async {
+            let started = Instant::now();
+            let boundary = Trace::new();
+            let result = tokio::time::timeout(remaining.min(AUTHORIZATION_BUDGET), async {
                 authorize_source(
                     self.repository.clone(),
                     SourceIdentity::Requester(context.execution.requested_by),
                     source,
                     EvidenceSourcePurpose::ReadHistory,
+                    Some(&boundary),
                 )
                 .await?;
                 authorize_source(
@@ -143,11 +153,26 @@ impl<R: DocumentRevisionReadRepository + DocumentHistoryRepository> AgentSourceP
                     SourceIdentity::DocumentAgent,
                     source,
                     EvidenceSourcePurpose::ReadHistory,
+                    Some(&boundary),
                 )
                 .await
             })
             .await
-            .map_err(|_| WorkError::DependencyUnavailable)?
+            .map_err(|_| {
+                boundary_failure(Some(&boundary), Failure::Timeout);
+                WorkError::DependencyUnavailable
+            })
+            .and_then(|result| result);
+            if result.is_err()
+                && let Some(line) = boundary.get().json(started.elapsed().as_millis())
+            {
+                use std::io::Write;
+                let _ = writeln!(
+                    std::io::stderr().lock(),
+                    "KP_DOCUMENT_AGENT_DIAGNOSTIC {line}"
+                );
+            }
+            result
         })
     }
 }
@@ -159,6 +184,7 @@ async fn authorize_source<R: DocumentRevisionReadRepository + DocumentHistoryRep
     identity: SourceIdentity,
     source: &EvidenceSource,
     purpose: EvidenceSourcePurpose,
+    boundary: Option<&Trace>,
 ) -> Result<(), WorkError> {
     if source.source_ref.provider_id != "document"
         || source.authoritative_locator.kind != "contentItem"
@@ -168,7 +194,11 @@ async fn authorize_source<R: DocumentRevisionReadRepository + DocumentHistoryRep
             EvidenceSourcePurpose::ReadHistory => WorkError::EvidenceNotFound,
         });
     }
-    let ctx = identity.current_context()?;
+    boundary_phase(boundary, identity, Phase::Identity);
+    let ctx = identity
+        .current_context()
+        .inspect_err(|_| boundary_failure(boundary, Failure::IdentityUnavailable))?;
+    boundary_phase(boundary, identity, Phase::Revision);
     let revision = DocumentRevisionReadService::new(repository.clone())
         .get_document_revision(
             &ctx,
@@ -178,13 +208,21 @@ async fn authorize_source<R: DocumentRevisionReadRepository + DocumentHistoryRep
             },
         )
         .await
-        .map_err(source_error)?;
+        .map_err(|error| {
+            boundary_failure(boundary, application_failure(&error));
+            source_error(error)
+        })?;
     if revision.summary.revision_id != source.source_ref.revision_id
         || revision.summary.document_version_id.as_uuid() != source.source_ref.version_id
     {
+        boundary_failure(boundary, Failure::SourceMismatch);
         return Err(WorkError::EvidenceNotFound);
     }
-    let ctx = identity.current_context()?;
+    boundary_phase(boundary, identity, Phase::Identity);
+    let ctx = identity
+        .current_context()
+        .inspect_err(|_| boundary_failure(boundary, Failure::IdentityUnavailable))?;
+    boundary_phase(boundary, identity, Phase::Files);
     let files = DocumentHistoryService::new(repository)
         .list_version_files(
             &ctx,
@@ -198,16 +236,80 @@ async fn authorize_source<R: DocumentRevisionReadRepository + DocumentHistoryRep
             },
         )
         .await
-        .map_err(source_error)?;
+        .map_err(|error| {
+            boundary_failure(boundary, application_failure(&error));
+            source_error(error)
+        })?;
     if !files.iter().any(|file| {
         file.content_item_id == source.authoritative_locator.content_item_id
             && file.representation_id == source.authoritative_locator.representation_id
             && file.role == "AUTHORITATIVE"
     }) {
+        boundary_failure(boundary, Failure::SourceMismatch);
         return Err(WorkError::EvidenceNotFound);
     }
     // No metadata, body, fragment, comparison verdict or inferred truth leaves this port.
     Ok(())
+}
+
+fn boundary_phase(boundary: Option<&Trace>, identity: SourceIdentity, phase: Phase) {
+    if let Some(boundary) = boundary {
+        boundary.set(Boundary {
+            identity: match identity {
+                SourceIdentity::Requester(_) => Identity::Requester,
+                SourceIdentity::DocumentAgent => Identity::Provider,
+            },
+            phase,
+            failure: None,
+        });
+    }
+}
+fn boundary_failure(boundary: Option<&Trace>, failure: Failure) {
+    if let Some(boundary) = boundary {
+        boundary.set(Boundary {
+            failure: Some(failure),
+            ..boundary.get()
+        });
+    }
+}
+fn application_failure(error: &ApplicationError) -> Failure {
+    match error {
+        ApplicationError::Forbidden => Failure::Forbidden,
+        ApplicationError::FolderNotFound
+        | ApplicationError::DocumentNotFound
+        | ApplicationError::DocumentRevisionNotFound
+        | ApplicationError::DocumentVersionNotFound
+        | ApplicationError::FileObjectNotFound => Failure::NotFound,
+        ApplicationError::StaleVersion => Failure::Stale,
+        ApplicationError::Validation(_) => Failure::Validation,
+        ApplicationError::Conflict
+        | ApplicationError::OperationConflict
+        | ApplicationError::ReadStateRevisionConflict
+        | ApplicationError::CursorStale
+        | ApplicationError::StaleComparisonInput => Failure::Conflict,
+        ApplicationError::BusinessRule | ApplicationError::Management(_) => Failure::BusinessRule,
+        ApplicationError::RepositoryUnavailable => Failure::RepositoryUnavailable,
+        ApplicationError::StorageUnavailable
+        | ApplicationError::StorageWriteFailed
+        | ApplicationError::StorageSyncFailed
+        | ApplicationError::StorageFinalizeFailed => Failure::StorageUnavailable,
+        ApplicationError::IntegrityViolation
+        | ApplicationError::SemanticInspectionDeterminismViolation
+        | ApplicationError::InvalidWorkerResult => Failure::Integrity,
+        ApplicationError::CommitOutcomeUnknown { .. }
+        | ApplicationError::PublishCommitOutcomeUnknown { .. }
+        | ApplicationError::ScheduleCommitOutcomeUnknown { .. }
+        | ApplicationError::VersionCommitOutcomeUnknown { .. }
+        | ApplicationError::PublicationEndCommitOutcomeUnknown { .. }
+        | ApplicationError::ManagementCommitOutcomeUnknown { .. }
+        | ApplicationError::ReadStateCommitOutcomeUnknown { .. }
+        | ApplicationError::CurrentReadStateCommitOutcomeUnknown { .. }
+        | ApplicationError::FileAccessAuditCommitOutcomeUnknown { .. } => Failure::CommitUnknown,
+        ApplicationError::Internal(_) => Failure::Internal,
+        ApplicationError::InspectionFailed(_) | ApplicationError::PublishQualityRejected(_) => {
+            Failure::OtherApplication
+        }
+    }
 }
 
 fn source_error(error: ApplicationError) -> WorkError {
@@ -240,6 +342,64 @@ mod agent_identity_tests {
         .unwrap()
     }
 
+    #[test]
+    fn application_diagnostics_do_not_copy_sensitive_error_payloads_or_change_results() {
+        for (error, expected) in [
+            (
+                ApplicationError::Internal("secret://private/body".into()),
+                Failure::Internal,
+            ),
+            (
+                ApplicationError::Validation("secret://private/body".into()),
+                Failure::Validation,
+            ),
+            (
+                ApplicationError::RepositoryUnavailable,
+                Failure::RepositoryUnavailable,
+            ),
+            (
+                ApplicationError::StorageUnavailable,
+                Failure::StorageUnavailable,
+            ),
+            (ApplicationError::IntegrityViolation, Failure::Integrity),
+            (ApplicationError::Forbidden, Failure::Forbidden),
+            (ApplicationError::DocumentNotFound, Failure::NotFound),
+            (ApplicationError::StaleVersion, Failure::Stale),
+            (ApplicationError::CursorStale, Failure::Conflict),
+        ] {
+            assert_eq!(application_failure(&error), expected);
+            let trace = Trace::new();
+            boundary_phase(Some(&trace), SourceIdentity::DocumentAgent, Phase::Revision);
+            boundary_failure(Some(&trace), application_failure(&error));
+            let line = trace.get().json(11).unwrap();
+            assert!(
+                !line.contains("secret") && !line.contains("private") && !line.contains("body")
+            );
+            assert!(line.contains("\"identity\":\"provider\""));
+            let expected_result = match expected {
+                Failure::Forbidden | Failure::NotFound | Failure::Stale => {
+                    WorkError::EvidenceNotFound
+                }
+                _ => WorkError::DependencyUnavailable,
+            };
+            assert_eq!(source_error(error), expected_result);
+        }
+    }
+    #[test]
+    fn independent_agent_calls_keep_boundary_and_success_state_separate() {
+        let first = Trace::new();
+        let second = Trace::new();
+        boundary_phase(Some(&first), SourceIdentity::DocumentAgent, Phase::Files);
+        boundary_failure(Some(&first), Failure::Timeout);
+        assert!(second.get().json(0).is_none());
+        assert!(first.get().json(5).unwrap().contains("\"phase\":\"files\""));
+        boundary_phase(
+            Some(&second),
+            SourceIdentity::DocumentAgent,
+            Phase::Revision,
+        );
+        assert!(second.get().json(0).is_none());
+    }
     #[test]
     fn agent_provider_is_fixed_independently_from_the_organization_executor() {
         assert_eq!(
