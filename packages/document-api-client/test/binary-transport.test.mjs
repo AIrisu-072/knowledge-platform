@@ -252,3 +252,67 @@ test('version request has a 120-second deadline even when the fetch never settle
   t.mock.timers.tick(120000);
   await assertion; assert.equal(signal.aborted, true);
 });
+
+const viewerFile = { documentId, versionId, contentItemId: fileId, representationId: renditionId, purpose: 'published' };
+test('viewer bounded download rejects a lying length and cancels before retaining oversized chunk', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(4)); controller.enqueue(new Uint8Array(5)); }, cancel() { cancelled = true; } });
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => new Response(body, { headers: { 'content-length': '1', 'content-type': 'application/pdf' } }) });
+  await assert.rejects(bridge.downloadVersionFileBlob(viewerFile, { maxBytes: 8 }), /limit|maximum|large/i);
+  assert.equal(cancelled, true);
+});
+test('viewer bounded download accepts exact limit without content length', async () => {
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => new Response(new Uint8Array(8), { headers: { 'content-type': 'text/plain' } }) });
+  const blob = await bridge.downloadVersionFileBlob(viewerFile, { maxBytes: 8 });
+  assert.equal(blob.size, 8);
+  assert.equal(blob.type, 'text/plain');
+});
+test('viewer bounded download rejects announced oversized response before reading it', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({ cancel() { cancelled = true; } });
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => new Response(body, { headers: { 'content-length': '9' } }) });
+  await assert.rejects(bridge.downloadVersionFileBlob(viewerFile, { maxBytes: 8 }), /limit|maximum|large/i);
+  assert.equal(cancelled, true);
+});
+test('viewer bounded response read releases a stalled stream when external authorization invalidation aborts', async () => {
+  let cancelled = false;
+  const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(4)); }, cancel() { cancelled = true; } });
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => new Response(stream) });
+  const controller = new AbortController(); const result = bridge.downloadVersionFileBlob(viewerFile, { maxBytes: 8, signal: controller.signal });
+  const rejected = assert.rejects(result, /cancelled|aborted/); await new Promise(resolve => setImmediate(resolve)); controller.abort(); await rejected;
+  assert.equal(cancelled, true);
+});
+test('bounded original requests send only a lowering shell hint and ordinary downloads do not', async () => {
+  const requests = [];
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (_url, init) => { requests.push(init); return new Response('four', { headers: { 'content-type': 'text/plain' } }); } });
+  await bridge.downloadVersionFileBlob(viewerFile, { maxBytes: 8 }); await bridge.downloadVersionFileBlob(viewerFile);
+  assert.equal(requests[0].headers?.['x-knowledge-viewer-max-bytes'], '8');
+  assert.equal(requests[1].headers?.['x-knowledge-viewer-max-bytes'], undefined);
+});
+
+test('atomic initial items upload binds all binaries once without client FileIDs or partial legacy POST', async () => {
+  const calls = [];
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (url, init) => {
+    calls.push({ url: String(url), init }); return jsonResponse({ documentId, documentVersionId: versionId, fileId, fileIds: [fileId, renditionId] }, 201);
+  }});
+  const request = { folderId: documentId, title: 'Multiple', documentMetadata: {}, versionMetadata: {}, items: [
+    { logicalPath: 'a', ordinal: 0, partId: 'a', mediaType: 'text/plain', originalFilename: 'a.txt' },
+    { logicalPath: 'b', ordinal: 1, partId: 'b', mediaType: 'text/plain', originalFilename: 'b.txt' },
+  ] };
+  const result = await bridge.createDocumentItems({ request, files: new Map([['a', new Blob(['AAA'])], ['b', new Blob(['BBB'])]]) });
+  assert.deepEqual(result.fileIds, [fileId, renditionId]); assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://documents.test/v1/documents');
+  const wire = await calls[0].init.body.text();
+  assert.match(wire, /X-Part-Id: a/); assert.match(wire, /X-Part-Id: b/); assert.match(wire, /AAA/); assert.match(wire, /BBB/);
+  assert.doesNotMatch(wire, /"fileId"/);
+});
+
+test('atomic initial manifest rejects missing or extra parts before network', async () => {
+  let count = 0;
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => { count++; return jsonResponse({}); } });
+  const request = { folderId: documentId, title: 'Multiple', documentMetadata: {}, versionMetadata: {}, items: [
+    { logicalPath: 'a', ordinal: 0, partId: 'a', mediaType: 'text/plain', originalFilename: 'a.txt' },
+  ] };
+  await assert.rejects(bridge.createDocumentItems({ request, files: new Map([['b', new Blob(['B'])]]) }), /match/);
+  assert.equal(count, 0);
+});

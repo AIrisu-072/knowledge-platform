@@ -168,8 +168,13 @@ async fn create_outcome_requires_all_generated_ids_and_current_authoring_permiss
         document_id: fixture.document_id,
         document_version_id: version_id,
         file_id,
+        file_ids: None,
     };
-    let result = service.recover(&context(), probe).await.unwrap().unwrap();
+    let result = service
+        .recover(&context(), probe.clone())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(result.document_id(), fixture.document_id);
     assert_eq!(result.document_version_id(), version_id);
     assert_eq!(result.file_id(), file_id);
@@ -179,7 +184,7 @@ async fn create_outcome_requires_all_generated_ids_and_current_authoring_permiss
                 &context(),
                 CreateOutcomeProbe {
                     file_id: FileId::from_uuid(Uuid::now_v7()),
-                    ..probe
+                    ..probe.clone()
                 }
             )
             .await
@@ -192,7 +197,7 @@ async fn create_outcome_requires_all_generated_ids_and_current_authoring_permiss
                 &context(),
                 CreateOutcomeProbe {
                     document_id: DocumentId::from_uuid(Uuid::now_v7()),
-                    ..probe
+                    ..probe.clone()
                 }
             )
             .await
@@ -213,7 +218,13 @@ async fn create_outcome_requires_all_generated_ids_and_current_authoring_permiss
         )
         .await
         .unwrap();
-    assert!(service.recover(&context(), probe).await.unwrap().is_none());
+    assert!(
+        service
+            .recover(&context(), probe.clone())
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

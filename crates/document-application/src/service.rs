@@ -2,20 +2,20 @@ use std::{collections::HashSet, sync::Arc};
 
 use document_domain::{
     AuditEventId, CreateInitialDocument, DocumentId, DocumentVersionId, DomainError, EventId,
-    FileId, InitialDocument, Title,
+    FileId, FileObject, InitialDocument, LogicalPath, Title,
 };
 use serde_json::json;
 use time::Duration;
 
 use crate::{
     AUDIT_DOCUMENT_CREATED, AUDIT_DOCUMENT_VERSION_CREATED, AUDIT_DOCUMENT_VERSION_PUBLISHED,
-    ApplicationError, AuditEventRecord, AuthoritativeDocument, Clock, ContentReader,
-    CreateDocumentCommand, CreateDocumentResult, CreateInitialDocumentRecord, DOCUMENT_CREATED,
-    DOCUMENT_VERSION_CREATED, DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository,
-    DocumentRepository, DomainEventRecord, FileStorage, IdGenerator, PublishCommandIdentity,
-    PublishDocumentCommand, PublishDocumentResult, PublishInitialVersionRecord,
-    PublishOperationRecord, ReconciliationFinding, RepositoryError, StorageObjectKind,
-    StoreFileRequest, classify,
+    ApplicationError, AuditEventRecord, AuthoritativeContentItem, AuthoritativeDocument, Clock,
+    ContentReader, CreateDocumentCommand, CreateDocumentItem, CreateDocumentItemsCommand,
+    CreateDocumentResult, CreateInitialDocumentRecord, DOCUMENT_CREATED, DOCUMENT_VERSION_CREATED,
+    DOCUMENT_VERSION_PUBLISHED, DocumentPublishRepository, DocumentRepository, DomainEventRecord,
+    FileStorage, IdGenerator, PublishCommandIdentity, PublishDocumentCommand,
+    PublishDocumentResult, PublishInitialVersionRecord, PublishOperationRecord,
+    ReconciliationFinding, RepositoryError, StorageObjectKind, StoreFileRequest, classify,
 };
 
 pub struct DocumentService<I, C, F, R> {
@@ -52,38 +52,91 @@ where
         &self,
         command: CreateDocumentCommand,
     ) -> Result<CreateDocumentResult, ApplicationError> {
-        let CreateDocumentCommand {
+        self.create_initial_items(
+            CreateDocumentItemsCommand {
+                folder_id: command.folder_id,
+                title: command.title,
+                document_metadata: command.document_metadata,
+                version_metadata: command.version_metadata,
+                principal: command.principal,
+                items: vec![CreateDocumentItem {
+                    logical_path: LogicalPath::new("primary")?,
+                    ordinal: 0,
+                    original_filename: command.original_filename,
+                    media_type: command.media_type,
+                    content: command.content,
+                }],
+            },
+            false,
+        )
+        .await
+    }
+
+    pub async fn create_document_items(
+        &self,
+        command: CreateDocumentItemsCommand,
+    ) -> Result<CreateDocumentResult, ApplicationError> {
+        self.create_initial_items(command, true).await
+    }
+
+    async fn create_initial_items(
+        &self,
+        command: CreateDocumentItemsCommand,
+        manifest: bool,
+    ) -> Result<CreateDocumentResult, ApplicationError> {
+        let CreateDocumentItemsCommand {
             folder_id,
             title,
             document_metadata,
             version_metadata,
             principal,
-            original_filename,
-            media_type,
-            content,
+            mut items,
         } = command;
-
         let title = Title::new(title)?;
-        if original_filename.trim().is_empty() {
+        if items.is_empty() || items.len() > 63 {
             return Err(ApplicationError::Validation(
-                "original filename cannot be blank".to_owned(),
+                "initial manifest must contain 1 to 63 originals".into(),
             ));
         }
-
+        let mut anchors = HashSet::new();
+        for item in &items {
+            if item.original_filename.trim().is_empty()
+                || !anchors.insert((item.logical_path.clone(), item.ordinal))
+            {
+                return Err(ApplicationError::Validation(
+                    "invalid initial manifest".into(),
+                ));
+            }
+        }
+        items.sort_by(|a, b| {
+            (a.ordinal, a.logical_path.as_str()).cmp(&(b.ordinal, b.logical_path.as_str()))
+        });
         let occurred_at = self.clock.now();
         let document_id = DocumentId::from_uuid(self.ids.next_uuid_v7());
         let document_version_id = DocumentVersionId::from_uuid(self.ids.next_uuid_v7());
-        let file_id = FileId::from_uuid(self.ids.next_uuid_v7());
+        let file_ids: Vec<_> = items
+            .iter()
+            .map(|_| FileId::from_uuid(self.ids.next_uuid_v7()))
+            .collect();
+        let file_id = file_ids[0];
         let document_created_id = EventId::from_uuid(self.ids.next_uuid_v7());
         let version_created_id = EventId::from_uuid(self.ids.next_uuid_v7());
         let audit_document_created_id = AuditEventId::from_uuid(self.ids.next_uuid_v7());
         let audit_version_created_id = AuditEventId::from_uuid(self.ids.next_uuid_v7());
-
-        let stored_file = self
-            .storage
-            .put_immutable(StoreFileRequest::new(file_id, content, media_type))
-            .await?;
-
+        let mut content_items = Vec::with_capacity(items.len());
+        for (item, id) in items.into_iter().zip(&file_ids) {
+            let stored = self
+                .storage
+                .put_immutable(StoreFileRequest::new(*id, item.content, item.media_type))
+                .await?;
+            content_items.push(AuthoritativeContentItem::new(
+                item.logical_path,
+                item.ordinal,
+                FileObject::restore(*id, stored.into_descriptor(), occurred_at),
+                item.original_filename,
+            ));
+        }
+        let first = &content_items[0];
         let initial = InitialDocument::create(CreateInitialDocument {
             document_id,
             version_id: document_version_id,
@@ -93,11 +146,25 @@ where
             document_metadata,
             version_metadata,
             principal: principal.clone(),
-            stored_file: stored_file.into_descriptor(),
-            original_filename,
+            stored_file: document_domain::StoredFileDescriptor::new(
+                first.file().storage_key().clone(),
+                first.file().content_hash(),
+                first.file().size_bytes(),
+                first.file().media_type().clone(),
+            ),
+            original_filename: first.original_filename().to_owned(),
             created_at: occurred_at,
         })?;
-        let authoritative = AuthoritativeDocument::from_initial(initial);
+        let (document, version, file, version_file) = initial.into_parts();
+        let authoritative = AuthoritativeDocument::from_parts_with_items(
+            document,
+            version,
+            file,
+            version_file,
+            content_items,
+            false,
+        );
+        let receipt_file_ids = manifest.then_some(file_ids);
 
         let domain_events = vec![
             DomainEventRecord::new(
@@ -145,16 +212,16 @@ where
 
         let record = CreateInitialDocumentRecord::new(authoritative, domain_events, audit_events);
         match self.repository.create_initial_document(record).await {
-            Ok(()) => Ok(CreateDocumentResult::new(
-                document_id,
-                document_version_id,
-                file_id,
-            )),
+            Ok(()) => Ok(
+                CreateDocumentResult::new(document_id, document_version_id, file_id)
+                    .with_file_ids(receipt_file_ids),
+            ),
             Err(RepositoryError::CommitOutcomeUnknown) => {
                 Err(ApplicationError::CommitOutcomeUnknown {
                     document_id,
                     document_version_id,
                     file_id,
+                    file_ids: receipt_file_ids,
                 })
             }
             Err(error) => Err(error.into()),

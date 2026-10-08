@@ -21,6 +21,7 @@ import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { denyDocumentRevisionReads, useDocumentRevisions, type DocumentRevisionsRead } from '../application/use-document-revisions';
 import { denyDocumentHistoryReads, useDocumentHistory } from '../application/use-document-history';
 import { DocumentEventHistory } from '../components/document/DocumentEventHistory';
+import { DocumentOriginalViewer } from '../components/document/DocumentOriginalViewer';
 import { DocumentContentHistory } from '../components/document/DocumentContentHistory';
 import { useDocumentContentHistory, type DocumentContentHistoryRead, discardContentHistoryReads, denyDocumentContentHistoryReads } from '../application/use-document-content-history';
 import { DocumentRevisionDetailPanel } from '../components/document/DocumentRevisionDetailPanel';
@@ -342,7 +343,7 @@ export function DocumentDetailPage() {
                 ))}
               </div>
               <section id="document-tab-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0} className={styles.tabPanel}>
-                {activeTab === 'overview' && <div ref={overviewRef}>{search.view === 'published' && !search.workflow && <DocumentReadState read={readState} />}<OverviewTab key={location.href} document={document} filesQuery={filesQuery} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} /></div>}
+                {activeTab === 'overview' && <div ref={overviewRef}>{search.view === 'published' && !search.workflow && <DocumentReadState read={readState} />}<OverviewTab key={location.href} document={document} filesQuery={filesQuery} purpose={search.view} fileVersionId={currentFileVersionId} canDownload={versionDetailQuery.data?.capabilities.download.status === 'available' && !versionDetailQuery.isFetching && !versionDetailQuery.error} reload={async () => { const result = await detailQuery.refetch(); if (result.error) throw result.error; }} /></div>}
                 {activeTab === 'versions' && search.workflow !== 'newVersion' && <>{versionsPanel}{search.view === 'authoring' && selectedVersion && (!search.versionId || search.versionId === selectedVersion.versionId) && <DocumentWorkingComparison key={`working-comparison:${location.href}:${selectedVersion.versionId}`} documentId={documentId} versionId={selectedVersion.versionId} /> }{!historyVersions && <DocumentContentHistory key={location.href} documentId={documentId} />}{selectedVersion && <DocumentScheduleCancellation key={`${documentId}:${selectedVersion.versionId}`} document={document} view={search.view} versionId={selectedVersion.versionId} version={versionDetailQuery.data} contextKey={`${documentId}:${search.view}:${activeTab}:${selectedVersion.versionId}`} currentRead={!detailQuery.isFetching && !detailQuery.isError && !versionDetailQuery.isFetching && !versionDetailQuery.isError} />}</>}
                 {activeTab === 'history' && <DocumentEventHistory read={historyRead} />}
                 {activeTab === 'access' && canManageAccess && <DocumentAccessPolicy document={document} view={search.view} policy={accessQuery.data} loading={accessQuery.isPending} error={accessQuery.error} />}
@@ -355,7 +356,8 @@ export function DocumentDetailPage() {
   );
 }
 
-function OverviewTab({ document, filesQuery, reload }: {
+function OverviewTab({ document, filesQuery, reload, purpose, fileVersionId, canDownload }: {
+  purpose: 'published' | 'authoring'; fileVersionId?: string; canDownload: boolean;
   reload: () => Promise<unknown>;
   document: DocumentDetail;
   filesQuery: { data?: FileList; isPending: boolean; error: unknown; refetch: () => Promise<unknown> };
@@ -390,6 +392,7 @@ function OverviewTab({ document, filesQuery, reload }: {
             <ul className={styles.fileList}>
               {filesQuery.data.items.map((file) => <li key={`${file.contentItemId}:${file.representationId}`}>
                 <div><strong>{file.displayName}</strong><small>{file.mediaType} · {formatBytes(file.sizeBytes)}</small></div>
+                {canDownload && fileVersionId && <DocumentOriginalViewer documentId={document.documentId} versionId={fileVersionId} purpose={purpose} file={file} />}
               </li>)}
             </ul>
           )}

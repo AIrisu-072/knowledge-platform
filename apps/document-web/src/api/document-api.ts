@@ -4,6 +4,7 @@ import {
   recordDocumentVersionView,
   resetDocumentVersionReadState,
   type CurrentReadState,
+  type CreateDocumentItemsUpload,
   type ReadStateMutationRequest,
   type ReadStateMutationResult,
   cancelPublicationSchedule,
@@ -84,6 +85,8 @@ function apiSort(sort: string | undefined): string | undefined {
   }
 }
 
+type PreparedInitialCreation = { upload: CreateDocumentItemsUpload; multipart: ReturnType<BinaryTransportBridge['prepareDocumentItemsUpload']> };
+
 export const documentApi = {
   getCurrentDocumentVersionReadState(documentId: string, versionId: string, options?: { signal?: AbortSignal }): Promise<CurrentReadState> {
     return payload(getCurrentDocumentVersionReadState({ ...data, path: { documentId, versionId }, ...(options?.signal ? { signal: options.signal } : {}) }));
@@ -119,9 +122,22 @@ export const documentApi = {
   createDocument(request: CommandsCreateDocument, file: File): Promise<CreateDocumentResult> {
     return binary.createDocument({ request, file, originalFilename: file.name, mediaType: file.type || 'application/octet-stream' });
   },
+  prepareDocumentWithOriginals(request: CommandsCreateDocument, originals: readonly { file: File; logicalPath: string; ordinal: number }[]): PreparedInitialCreation {
+    const files = new Map<string, File>();
+    const items = originals.map(original => {
+      const partId = crypto.randomUUID(); files.set(partId, original.file);
+      return { logicalPath: original.logicalPath, ordinal: original.ordinal, partId, mediaType: original.file.type || 'application/octet-stream', originalFilename: original.file.name };
+    });
+    const upload = { request: { ...request, items }, files };
+    return { upload, multipart: binary.prepareDocumentItemsUpload(upload) };
+  },
+  createDocumentWithOriginals(request: CommandsCreateDocument, originals: readonly { file: File; logicalPath: string; ordinal: number }[], prepared?: PreparedInitialCreation): Promise<CreateDocumentResult> {
+    const fixed = prepared ?? documentApi.prepareDocumentWithOriginals(request, originals);
+    return binary.createDocumentItems(fixed.upload, fixed.multipart);
+  },
   recoverDocumentCreation(ids: CreateDocumentResult): Promise<CreateDocumentResult> {
     return payload(recoverDocumentCreation({ ...data, path: { documentId: ids.documentId },
-      query: { documentVersionId: ids.documentVersionId, fileId: ids.fileId } }));
+      query: { documentVersionId: ids.documentVersionId, fileId: ids.fileId, ...(ids.fileIds ? { fileIds: ids.fileIds.join(',') } : {}) } }));
   },
   getSession(): Promise<ModelsSession> {
     return payload(getSession(data));
@@ -221,7 +237,7 @@ export const documentApi = {
     contentItemId: string;
     representationId: string;
     purpose: View;
-  }, options?: { signal?: AbortSignal }) {
+  }, options?: { signal?: AbortSignal; maxBytes?: number }) {
     return binary.downloadVersionFileBlob(input, options);
   },
 };

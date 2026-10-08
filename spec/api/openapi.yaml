@@ -90,6 +90,13 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/Uuid'
+      - name: fileIds
+        in: query
+        required: false
+        description: Comma-separated ordered full original File IDs; required to recover an atomic items create. Legacy three-ID recovery only accepts a single primary original.
+        schema:
+          type: string
+          minLength: 1
       responses:
         '200':
           $ref: '#/components/responses/CreateDocumentResult'
@@ -782,6 +789,14 @@ components:
           $ref: '#/components/schemas/Uuid'
         fileId:
           $ref: '#/components/schemas/Uuid'
+        fileIds:
+          type: array
+          minItems: 1
+          maxItems: 63
+          uniqueItems: true
+          description: Complete ordered initial File IDs for atomic items creation recovery.
+          items:
+            $ref: '#/components/schemas/Uuid'
         recoveryEndpoint:
           type: string
           format: uri-reference
@@ -1290,10 +1305,31 @@ components:
             additionalProperties: false
             required:
             - request
-            - file
+            oneOf:
+            - required: [file]
+              not:
+                anyOf:
+                - required: [files]
+                - properties:
+                    request:
+                      required: [items]
+            - required: [files]
+              not:
+                required: [file]
+              properties:
+                request:
+                  required: [items]
             properties:
               request:
                 $ref: '#/components/schemas/CreateDocument'
+              files:
+                type: array
+                description: One binary per request.items partId using X-Part-Id, same framing as VersionMultipart. Cannot be mixed with legacy file.
+                minItems: 1
+                maxItems: 63
+                items:
+                  type: string
+                  format: binary
               file:
                 type: string
                 format: binary

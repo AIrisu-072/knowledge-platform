@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-08 — 作業版の原本構成・初回複数原本登録
+
+- 再開先は[状況](document-original-management-status.md)、[承認範囲](../specs/2026-10-08-document-original-management.md)、[実装計画](../plans/2026-10-08-document-original-management-implementation.md)。06:23:37 UTCの「この方針で進めてください」で、作業版だけの追加・削除・並替（最終原本不可、公開/履歴保持）と初回複数の原子的作成を承認。下の旧設計待ち記録を現在状態として使用しない。
+- branch `feat/document-originals-20261008`、製品 `17db92dcdde07fec28e8368cf909ac527d3f0d2e`。PR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82` を通常mergeし、製品sourceを保持。全GUI1786件、Rust focused24件、実PostgreSQL18.6+FS1件、型/build/Clippy、SDK/API契約が成功。詳細なログ保存の境界は状況へ。
+- registration/schema/SDKの独立レビューは指摘修正後GO。全体の独立レビューと保存headのCIは親が確認する。Linux sandbox/PDFiumが必須の実browser journey・再起動persistenceはこのMacでは未実施。実対象PC・本番認証/TLS・実アカウントの設定は変更していない。
+- 次は親のexact-headレビューを確認し、同一機能Draft PRのLinux hosted資格を実行する。main統合は正確headの必須CI成功後、統合後CIまで確認する。下のDocument/Desktop/Auditの記録は保持する。
+
+---
+
 ## 2026-10-08 — 文書管理残タスク（Mac側、クラウド親と分担）
 
 - 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。
@@ -20,10 +29,11 @@
 
 ---
 
-## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
-- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
-- branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
+- 単位A（PR #98、main `643cc85`）と単位B（Store・relay、PR #113、main `dba8168`）はmain統合済み（`dba8168` のmain CIは、Organization受入の既知の断続的な503でFAILURE。単位Bの起因ではなく、`dba8168` を含むPR #115のhead `660670d` では同じ手順がSUCCESS。詳細は状況文書）。単位C（`crates/audit-acceptance` の受入試験、[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)、設計§2.2の最終capability matrix）はDraft [PR #115](https://github.com/AIrisu-072/knowledge-platform/pull/115)（branch `claude/cool-darwin-7xh893`）。最初のexact-head CI（`660670d`、run 37761824323）はrust-testだけがFAILUREで、原因はGitHub runnerでtestcontainersのimage取得がstreamの途中で切れたこと（「bytes remaining on stream」、試験本体の前。他の31試験はPASS）。`b233652` でPullImageの失敗だけを最大3回再試行する。独立確認reviewはGOで、Minor 4件は `facb755`・`591006a`・`df1bd19` と状況文書の更新で閉じた。
+- 次は `audit-unit-c` のHEADを `claude/cool-darwin-7xh893` へpush（PR #115のhead `660670d` からのfast-forward）、exact-head CI、main統合、main CI。現在状態は状況文書の先頭とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
 
 ---
 

@@ -75,6 +75,7 @@ sourceごとに1件。envelopeの `provenance` と `correlation.trace_id` の検
 | `uuid` / `nullable_uuid` | 小文字・hyphen付きのcanonical UUID（nil不可。nilの扱いは下記 `nil_client_id`）。値は約16 byteの不透明な値で、versionやvariantは検査しない |
 | `counter` / `nullable_counter` | 0以上 `i64::MAX` 以下 |
 | `positive_counter` / `nullable_positive_counter` | 1以上 `i64::MAX` 以下（nullable はnullも可） |
+| `safe_counter` / `positive_safe_counter` | 0（positiveは1）以上 2^53−1（`MAX_SAFE_INTEGER` = 9007199254740991。JSONの数値が全readerで正確に保たれる上限）以下。producerがこの範囲に制限するcounter（Documentの既読状態revision、migration 0012のCHECK）に使う |
 | `boolean` | 真偽値 |
 | `enum` / `nullable_enum` | `values` のいずれか（nullable はnullも可） |
 | `enum_list` | `values` の要素を1個以上、重複なし |
@@ -164,7 +165,7 @@ catalogはclientが選ぶIDだけに印を付ける：fieldの `client_chosen: t
  "versions": {"1": {"<fixture名>@<入力行hashの先頭16桁>": "<sha256 hex>"}}}
 ```
 
-- digestは `sha256(AuditEnvelope::to_json_string())`（compact、keyはbyte順）である。Rust投影の固定であり、Storeの `kp-audit-jsonb-sha256-v1`（jsonb textのdigest）ではない。Store側の固定はunit Bの試験が行う。
+- digestは `sha256(AuditEnvelope::to_json_string())`（compact、keyはbyte順）である。Rust投影の固定であり、Storeの `kp-audit-jsonb-sha256-v1`（jsonb textのdigest）ではない。Store側の固定はunit Bの試験（`crates/audit-store-postgres/tests/store_golden.rs`、`tests/data/store-envelope-golden.json`）が行い、entryのkey（Storeが投影する入力行のhash）と判定（`tests/common/mod.rs` の `check_golden`）をこの節と共有する。
 - entryのkeyは `<fixture名>@<sha256(入力のclaim行の全列をkey順のcompact JSONにしたもの)の先頭16桁>` である。fixtureの追加・改名・入力の編集は新しいentryの追加になり、既存entryを書き換えない（古いentryは履歴として残す）。
 - 試験（`tests/golden_projection.rs`）は次を確認する。
   - 現在の `LEGACY_ADAPTER_VERSION` のsectionがあり、全acceptance fixtureの現在のkeyを含み、digestが一致すること。
@@ -173,6 +174,13 @@ catalogはclientが選ぶIDだけに印を付ける：fieldの `client_chosen: t
 - 投影の出力（adapterのcodeと、出力に影響するcatalog属性：event_class、details allowlistとkind、持ち上げるfield、reason扱い、subject形、correlation写像）を変えたら、`LEGACY_ADAPTER_VERSION` とcatalogのDocument adapterの `adapter_version` を同時に上げ、新しいversion sectionを追加し、1つ前のsectionのdigestを `FROZEN_SECTION_DIGESTS` に加える。
 - 失敗messageは問題のentryだけを示す。新しいkeyはdigest付きで（追加用）、digestの変わったkeyはkeyだけを「projection output changed: bump LEGACY_ADAPTER_VERSION and add a new version section; never edit an existing version's entries」とともに示す（変わったdigestは示さない）。
 - `LEGACY_ADAPTER_VERSION` とcatalogのadapter_versionの一致も試験で確認する。
+- typeの追加は投影の変更ではない。既存typeのentryとその出力（既存entryのdigest）を変えずにcatalogへentryを足す場合、`adapter_version` は上げない。新typeの行は、追加前のcatalogでは投影されず（relayが `relay_catalog_skew` として保留する。quarantineも保存もしない）、その版で保存された出力が存在しないためである。新typeの代表fixtureを追加し、そのentryを現在のsectionへ追記する（Storeの `store-envelope-golden.json` も同じ）。Storeの `registered_types` には (source, 新type, 現在のadapter_version) を加える。既存entryのdigestが1つでも変われば、上の規則どおり版を上げる。
+  - 2026-10-08：`document.version.detail_viewed` と `document.version.marked_unread`（main PR #106、migration 0012）をこの規則で追加した（adapter_version 1のまま、section 1へ3 entryを追記）。
+  - 2026-10-08：`authorization.denied` の `action_code` へ `get_current_read_state` と `mutate_read_state`（main `6a34de3` の `current_read_state.rs`）を下のenum拡張の規則で追加した（adapter_version 1のまま、section 1へ2 entryを追記）。
+  - 配備順：Storeの `registered_types` に無いtypeをrelayのcatalogが期待すると、probeが `store_unregistered_type` になりrelay全体が配送を止める。新typeを登録したStoreを先に（または同時に）配備し、その後relayを新catalogへ更新する。新typeを知らないrelayは、そのtypeの行だけを `relay_catalog_skew` として保留し（他の行は配送する）、healthが `catalog_skew_held` / `relay_held` を出し続ける。catalogを更新すれば保留行はそのまま配送できる。
+- 既存typeのenum系fieldへの値の追加も投影の変更ではない。既存の値は削除・改名せず意味も変えない（廃止した値は残す）。追加前に受理された行の出力（既存entryのdigest）は変わらず、新しい値の行は追加前のcatalogでは受理されないのでその版で保存された出力が存在しない。したがって `adapter_version` は上げない。新しい値の代表fixtureを追加し、そのentryを現在のsectionへ追記する（Storeの `store-envelope-golden.json` も同じ）。Storeはrelay eventのdetailsの値を検査しない（`registered_types` は (source, type, adapter_version) の単位）ので、Store側の変更は要らない。
+  - typeの追加と違い、catalogが知らないenum値の行は保留されない。relayは `invalid_field` として終端のquarantineにする。producerが新しい値を書く前にrelayのcatalogを更新する。更新前に書かれた行は、catalogを更新したrelayの配備後に `audit-relay replay`（運用手順§6）で戻す。
+  - `authorization.denied` の `action_code` は、`crates/audit-core/tests/catalog_contract.rs` がDocument producerのsource（`record_authorization_denied` の全呼出しの第3引数と `ManagementCommand::operation_kind`）から集めた値と照合する。producerの値がcatalogに無ければ失敗し、どのproducerも書かない値は `RETIRED_DENIAL_CODES` に挙げなければ失敗する。mainを取り込んだらこの試験で差分を確かめる。
 
 ## schema生成とRust⊂schema
 
@@ -218,14 +226,14 @@ envelope全体の32 KiB（jsonb text）上限もRustだけが検査する。
 | type | origin | class | 主なdetails |
 |---|---|---|---|
 | `audit.access.intent_opened` | store | DATA_ACCESS | operation、型付きfilter（`filter_seq_after` / `filter_seq_through` を含む）、filter_digest、watermark、page_size、max_pages、include_control、期限、token digest |
-| `audit.access.denied` | store | SECURITY | operation（`ingest`、`report_regression`、`declare_recovery_pending` を含む）、denial_code（unbound / insufficient_capability / invalid_input / self_grant / not_source_service）、required_capability |
+| `audit.access.denied` | store | SECURITY | operation（`ingest`、`report_regression`、`declare_recovery_pending` を含む）、denial_code（unbound / insufficient_capability / invalid_input / self_grant / not_source_service）、required_capability、suppressed_since_last（任意。同じloginの同じcode・actorの拒否を1分単位でまとめた場合に、前回の記録以後にまとめた件数。間引きはしない。止まった連続の件数も、集約windowを過ぎた後の最初の追記の前と、verify・checkpoint・開示intent・expire・purgeの記録の前に、そのloginの記録として必ずchainへ残る） |
 | `audit.access.closed` | store | DATA_ACCESS | intent seq、返した件数、page数、page digestのdigest |
 | `audit.access_policy.changed` | store | ACCESS_POLICY | change（granted / revoked / bound / unbound / bootstrap / reapplied）、対象主体、capability、db_role |
 | `audit.retention.policy_changed` | store | CONFIGURATION | policy_id、revision、selector（event type・sourceは各16件まで）、selector_digest、retain_days（NULLまたは1以上） |
 | `audit.retention.expired` | store | PRIVILEGED_OPERATION | policy_id、revision、selector snapshot、retain_days、cutoff、effective_cutoff、tx_time、limit、count、first_seq / last_seq（count=0ならnull）、expired_set_digest |
 | `audit.retention.expire_refused` | store | PRIVILEGED_OPERATION | policy_id、expected_revision、current_revision、refusal（stale_revision / not_expirable / held）、retain_days（NULLまたは1以上）、cutoff、tx_time |
 | `audit.body.purged` | store | PRIVILEGED_OPERATION | target_seq、target_event_id、purge_reason_code |
-| `audit.integrity.verified` | store | SYSTEM_AUDIT | trigger（verify / checkpoint）、from/to seq、watermark、checked、head（`head_seq`、`head_epoch`、`head_chain`）、outcome、違反code別件数 |
+| `audit.integrity.verified` | store | SYSTEM_AUDIT | trigger（verify / checkpoint）、from/to seq（to ≤ watermark）、watermark、checked、head（範囲内で実在する最後の行の `head_seq`、`head_epoch`、`head_chain`）、outcome、違反code別件数 |
 | `audit.integrity.conflict_detected` | store | SECURITY | event_id、既存seq・origin、conflict_kind、commitment一致の有無、adapter_version |
 | `audit.recovery.epoch_started` | store | SYSTEM_AUDIT | old_epoch、new_epoch、restored_head_seq、restored_head_chain、照合checkpoint（epoch/seq/chain、nullable）と分類（match / ahead / store_behind / mismatch / epoch_mismatch）、classification（restore / planned_move / regression）、identity_range_digest、lost_from_seq、lost_upper_seq、lost_upper_known、regressionの証拠（報告seq・event_id・digest・報告者のdb role・時刻・報告時head。nullable）、旧/新fingerprint（system identifier、database oid、timeline。`int8_text`） |
 | `audit.delivery.replay_requested` | relay_control | PRIVILEGED_OPERATION | event_id、quarantine_code（replayで解除する旧quarantine code） |
@@ -250,7 +258,7 @@ envelope全体の32 KiB（jsonb text）上限もRustだけが検査する。
 | `record_relay_control(RelayControl)` | `replay_requested` / `reconciliation.completed` / `source_mismatch_detected` を記録し、（seq, epoch）を返す。source_mismatchは (event_id, code) で冪等 |
 | `report_regression(ReceiptIdentity)` | ack済みのreceiptが解決できないことを報告する。StoreはHead lockの下で再確認してからrecovery_pendingを設定する |
 
-receiptとstatusが持つStore由来の文字列は検査済みの型である。typeは `EventTypeName`（catalogの文法、128 byte以下）、control receiptのcodeは `BoundedCode`（`[a-z0-9_]{1,64}`）。decoderは、seq・epochが1未満、未知のorigin、文法外のtype、32 byteでないdigest・commitment、上限外のcode（control receiptではcontrol originと `audit.*` typeも要求）を `Outage { store_other }` とする。未検査の行（`RawReceiptRow` 等）のDebugは検査に通った値だけを表示する。
+receiptとstatusが持つStore由来の文字列は検査済みの型である。typeは `EventTypeName`（catalogの文法、128 byte以下）、control receiptのcodeは `BoundedCode`（`[a-z0-9_]{1,64}`）。decoderは、seq・epochが1未満、未知のorigin、文法外のtype、32 byteでないdigest・commitment、上限外のcode（control receiptではcontrol originと `audit.*` typeも要求）を `Outage { store_other }` とする。列どうしの整合も検査し、食い違う行も `store_other` とする：originとtypeの系統（relayの行は `audit.*` でなく、controlの行は `audit.*`。このcrateのcatalogにあるtypeはcatalogのorigin）、controlの行はcommitmentを持たず失効しない、control receiptでは `audit.delivery.replay_requested` と `audit.integrity.source_mismatch_detected` が対象event_idとcodeを持ち、`audit.reconciliation.completed` が対象を持たずmode（`read_only` / `repair`）をcodeに持ち、それ以外のcontrol typeはcodeを持たない。未検査の行（`RawReceiptRow` 等）のDebugは検査に通った値だけを表示する。
 
 `StoreStatus` は head_seq、recovery_epoch、`state`（`Operational` / `RecoveryMode`（fingerprint不一致かrecovery_pending、`store_recovery_required`）/ `PostureInvalid`（`store_posture_invalid`）/ `ReadOnly`（`store_read_only`））、missing_types（`EventTypeName`。文法外の名前はadapterが `store_other` にする）、regression_detected、last_verified_seq を持つ。`admission()` は、state、regression（`store_regressed`）、未登録type（`store_unregistered_type`）の順に判定する。
 
@@ -278,7 +286,7 @@ receiptとstatusが持つStore由来の文字列は検査済みの型である�
 
 | status | 結果 |
 |---|---|
-| `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt。seq（≥1）、32 byteのdigest、adapter_version（≥1）が欠けていれば不正な結果行として `store_other`（streakに数える） |
+| `stored` / `duplicate` / `duplicate_expired` / `duplicate_reprojected` | receipt。seq（≥1）、32 byteのdigest、adapter_version（≥1）が欠けている、またはcodeを持つ行は不正な結果行として `store_other`（streakに数える） |
 | `conflict` | `Conflict` |
 | `rejected` | `Rejected { code }`。codeが無い・`[a-z0-9_]{1,64}` でなければ `store_other` |
 | `recovery_required` | `store_recovery_required` |
@@ -327,32 +335,33 @@ export行は次の10 keyを持つ（閉じた集合、重複key不可）。
     - DB外の失効検証が示すのは集合の整合（件数、seq範囲、`expired_set_digest`、purgeの対象）だけであり、retentionの適格性（selector、cutoff、policy）ではない。selector・cutoff・identity列はexportにもchainにも入っていない。
   - epoch：減少は `EpochRegressed`、+1以外の増加は `EpochSkipped`。増加はorigin=storeの本文付き `audit.recovery.epoch_started` の行で起き、そのdetailsが次を満たさなければならない（満たさなければ `UnattestedEpochChange`）。
     - `old_epoch` / `new_epoch` が列の値と一致する。
-    - `0 ≤ restored_head_seq <` その行のseq、`lost_from_seq = restored_head_seq + 1`、`lost_upper_seq ≥ restored_head_seq`、`classification` が restore / planned_move / regression のいずれか。
+    - `0 ≤ restored_head_seq <` その行のseq、`lost_from_seq = restored_head_seq + 1`、`lost_upper_seq ≥ restored_head_seq`、`lost_upper_known` がboolean（欠落・null・他の型は不適合）、`classification` が restore / planned_move / regression のいずれか。
     - 検証経路上にあれば `restored_head_chain` がそのseqのchainと一致する。`restored_head_seq` がanchorより前の場合は比較できないので、黙って通さず `ExportReport.unverified_restored_heads` に数える。
-    - 遷移は `EpochTransition { seq, old_epoch, new_epoch, attestation }` として列挙し、`attestation`（`EpochAttestation`）に本文の restored_head_seq、restored_head_chain、lost_from_seq、lost_upper_seq、classification を保持する。この場合 `epochs_authenticated = true`。
+    - 遷移は `EpochTransition { seq, old_epoch, new_epoch, attestation }` として列挙し、`attestation`（`EpochAttestation`）に本文の restored_head_seq、restored_head_chain、lost_from_seq、lost_upper_seq、lost_upper_known、classification を保持する。この場合 `epochs_authenticated = true`。
     - epochが変わらない行にorigin=storeの `audit.recovery.epoch_started` があれば `EpochStartedWithoutTransition` とする（chainの対象外のepoch列を旧epochへ書き換えてrecoveryを隠すことを防ぐ）。
 - `verify_export_complete(text, Anchor, watermark)`：manifestのwatermark Wまでの完全な本文付きexportを検証する。`verify_export` の検査に加えて、headがちょうどW（そうでなければ `WatermarkMismatch`）で、`expired_by_seq` がWを超える行が無い（あれば `ExpiryEvidenceMissing`）ことを要求する。完全なexportは参照する証拠をすべて含むので、失効したcontrol行のoriginをrelayへ書き換える偽装を閉じる（証拠はretention・purgeの本文でなければならず、それらはrelay行だけを失効させる）。
-- `verify_identity_chain(text, Anchor)`：本文の無いidentity chainを同様に検査する（seq、chain、epochの単調性と+1、失効行の `expired_by_seq`）。本文が無いので、epochは `epochs_authenticated = false`（遷移の `attestation` は `None`）、失効はすべて `unverified_expiry_evidence` に数える。
+- `verify_identity_chain(text, Anchor)`：本文の無いidentity chainを同様に検査する（seq、chain、epochの単調性と+1、失効行の `expired_by_seq`）。本文が無いので、epochは `epochs_authenticated = false`（遷移の `attestation` は `None`）、失効はすべて `unverified_expiry_evidence` に数える。`verify_identity_chain_complete(text, Anchor, watermark)` は、`verify_export_complete` と同じくheadがちょうどWで、Wを超える `expired_by_seq` が無いことも要求する。
+- `ChainIntegrity::of(&検証結果)`：chain自体について確立したことの区分で、真正性の主張ではない（真正性は `assess_recovery` がcheckpointから判定する）。`Intact`（anchorから連続し、seq・prev_chainの連鎖・chainの再計算がすべて一致。identity chainではepochと失効は未証明のまま）、`Broken(ExportError)`（欠落・入替・書換え・連鎖切れ・epoch規則違反・不正な行。最初の行を示す）、`Unanchored`（filter付きの部分集合。chainについて何も示さない）。`audit-admin` はexportのmanifestと検証失敗時の出力に `chain_integrity`（`intact` / `broken` / `unanchored`）を出す。
 - `verify_export_subset(text)`：filter付きexportの行単位の整合だけを見る。結果は常に `anchored: false` であり、真正性の根拠にならない。
 - `ExportReport` は `epoch_transitions()`、`expired_rows()`、`epoch_at(seq)`、`chain_at(seq)` を持つ。
-- `compare_checkpoint(report, checkpoint)`：`Match` / `Mismatch` / `EpochMismatch` / `StoreBehind` / `Ahead` / `BeforeAnchor` / `Unanchored`。checkpointは（epoch, seq, chain）で、`checkpoint.epoch` はそのseqの行の `recovery_epoch`（取得時の `publication_head.recovery_epoch`）である。chainは一致するがepochが異なる場合は、書換えではなく `EpochMismatch`（epoch列または帯域外記録の改変）とする。`Ahead` はそのcheckpointまでしか真正性を示さない。前方部分（`seq_through`）を検証する場合は、export headまでのcheckpointだけを渡す（それより後は `StoreBehind`）。
+- `compare_checkpoint(report, checkpoint)`：`Match` / `Mismatch` / `EpochMismatch` / `StoreBehind` / `Ahead` / `BeforeAnchor` / `Unanchored`。checkpointは（epoch, seq, chain）で、`checkpoint.epoch` はそのseqの行の `recovery_epoch`（取得時の `publication_head.recovery_epoch`）である。chainは一致するがepochが異なる場合は、書換えではなく `EpochMismatch`（epoch列または帯域外記録の改変）とする。`Ahead` はそのcheckpointまでしか真正性を示さない。前方部分（`seq_through`）を検証する場合は、export headまでのcheckpointだけを渡す（それより後は `StoreBehind`。`audit-admin assess` は、headと同じかより後のepochのcheckpointがheadを越える場合を `store_behind`（終了code 2）として扱う）。
 
 ## recovery epochのDB外判定
 
 epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery.epoch_started` の行（新しいepochの最初の行、通常は復元head+1）で起きる。
 
-`assess_recovery(report, checkpoints, records)` は、anchor付きで検証したexport（identity chainを含む）を、帯域外のcheckpointと遷移記録（`RecoveryRecord { old_epoch, new_epoch, restored_head_seq, restored_head_chain, lost_upper }`）で判定する（設計§8）。`lost_upper = restored_head_seq` は消失の無い計画的な移動である。
+`assess_recovery(report, checkpoints, records)` は、anchor付きで検証したexport（identity chainを含む）を、帯域外のcheckpointと遷移記録（`RecoveryRecord { old_epoch, new_epoch, restored_head_seq, restored_head_chain, lost_upper, lost_upper_known }`）で判定する（設計§8）。`lost_upper = restored_head_seq` かつ `lost_upper_known` は消失の無い計画的な移動である。`lost_upper_known = false`（checkpoint・relay seq・regression報告の無いrestoreで、Storeが消失範囲の上限を知らない。`lost_upper = restored_head_seq`）の記録は復元head以後のすべてが消失した可能性を表し、その遷移は消失として扱う（`Authentic` にならない）。
 
 記録は、次をすべて満たす場合に遷移を説明する。
 
 - epochが一致し、`0 ≤ restored_head_seq <` 遷移のseq。
 - 復元headと遷移の間の行が消失範囲に入る（`遷移のseq - 1 ≤ lost_upper`）。計画的な移動では、遷移のseqが `restored_head_seq + 1` に限られる。
-- 本文付きexportでは、記録の restored_head_seq、restored_head_chain、lost_upper が `epoch_started` 本文の値と等しく、本文の分類が `planned_move` なら消失範囲が空である。
+- 本文付きexportでは、記録の restored_head_seq、restored_head_chain、lost_upper、lost_upper_known が `epoch_started` 本文の値と等しく、本文の分類が `planned_move` なら消失範囲が空である（上限が不明な本文に「既知で空」と主張する記録は一致しない）。
 - 復元headが検証経路上にあれば、そのchainが一致する。
 
-一致しない記録は `UnverifiedRecovery` になる。ただし、anchorより前のrecoveryの記録（`new_epoch ≤ anchor.epoch`）は `records_before_anchor` に列挙するだけで、判定に影響しない（帯域外の記録全体を渡してcheckpointから検証できる）。anchorのepochより後のepochの記録は、exportの遷移と一致しなければならない。説明された遷移でも、復元headがanchorより前でchainを比較できなければ `EpochReview.restored_head_verified = false` とし、`UnverifiedRecovery` とする（より前のanchorから検証すれば確認できる）。
+一致しない記録は `UnverifiedRecovery` になる。ただし、anchorより前のrecoveryの記録（`new_epoch ≤ anchor.epoch`）は `records_before_anchor` に、検証したheadより後のrecoveryの記録（`old_epoch ≥ head.epoch`。その遷移は経路の終端より後にあり、例えばより後のrestoreより前に取ったexport）は `records_after_head` に列挙するだけで、判定に影響しない（帯域外の記録全体を渡してcheckpointから検証できる）。経路が通るepochの遷移の記録は、exportの遷移と一致しなければならない。記録された遷移を消す巻戻しは、その遷移より後に取ったcheckpoint（`StoreBehind` / `Mismatch` / `EpochMismatch`）で検出する。説明された遷移でも、復元headがanchorより前でchainを比較できなければ `EpochReview.restored_head_verified = false` とし、`UnverifiedRecovery` とする（より前のanchorから検証すれば確認できる）。
 
-真正性は、headと一致する帯域外checkpoint（`Match`）がある場合だけ主張する。`authenticated_through` は `Match` または `Ahead` のcheckpointの最大seqである。anchorより前のcheckpoint（`BeforeAnchor`）は中立で、判定に影響しない。
+真正性は、headと一致する帯域外checkpoint（`Match`）がある場合だけ主張する。`authenticated_through` は `Match` または `Ahead` のcheckpointの最大seqである。anchorより前のcheckpoint（`BeforeAnchor`）と、anchorと同じseqのcheckpoint（比較結果は事実どおり `findings` に残す）は中立で、判定にも `authenticated_through` にも影響しない。anchorは前提として信頼する起点なので、同じ位置のcheckpointはexportの行について何も確認せず、anchorと食い違う場合も帯域外の入力どうしの食い違いであってexportの改ざんの証拠ではない（`Tampered` にしない）。
 
 | verdict（良い順） | 意味 |
 |---|---|
@@ -360,7 +369,7 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 | `AuthenticThrough { seq }` | 帯域外checkpointが経路を `seq`（headより前）までしか確認しない。`seq` より後の行は認証されない（chainは公開のsha256なので、exportを持つ誰でも延長できる） |
 | `UnverifiedExpiry` | 経路は確認されたが、認証範囲内の行の本文削除が確認できない（証拠が `authenticated_through` より後・exportの外・anchorより前の集合にある、または本文の無いexport）。件数は `unconfirmed_expiries` |
 | `NoCheckpoint` | 経路を確認する帯域外checkpointが無い（真正とは主張しない） |
-| `Lost` | 差異が帯域外に記録されたrecoveryの消失範囲（restored_head_seq, lost_upper]だけで説明できる（authenticとはしない） |
+| `Lost` | 差異が帯域外に記録されたrecoveryの消失範囲（restored_head_seq, lost_upper]（上限が不明なら復元head以後のすべて）だけで説明できる。上限が不明な記録の遷移は差異が無くても `Lost`（authenticとはしない） |
 | `UnverifiedRecovery` | recovery epochに帯域外記録が無い、記録・本文と食い違う、復元headを確認できない、またはcheckpointのepochだけが異なる（改変の疑い） |
 | `Tampered` | 復元head以下、またはrecoveryの無い位置で帯域外checkpointと食い違う |
 | `Unanchored` | filter付きの部分集合 |
@@ -369,11 +378,17 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 
 全recovery epochと消失範囲は `epochs` に列挙され、人の確認対象になる。
 
+### 帯域外の記録の形式とCLI
+
+- checkpoint：`audit-admin checkpoint --out FILE` が書くJSON `{"format":"kp-audit-checkpoint-v1","epoch","seq","chain","verified_through","genesis"}`（mode 0600）。`(epoch, seq, chain)` が `Checkpoint` である。
+- recovery記録：`kp-audit-recovery-records-v1` のJSON lines。1行が1つの `RecoveryRecord` で、閉じたkey集合 `{"format":"kp-audit-recovery-records-v1","old_epoch","new_epoch","restored_head_seq","restored_head_chain","lost_upper"}`（全keyが必須、重複key不可、`new_epoch = old_epoch + 1`、`old_epoch ≥ 1`、chainは64桁の小文字hex）を持つ。`lost_upper` は数値（`0 ≤ restored_head_seq ≤ lost_upper`、`lost_upper_known = true`）か、Storeが上限を知らない場合の `null`（`lost_upper_known = false`。keyの欠落は不正）である。`begin-recovery-epoch` の開始では、記録の値を `--expect-lost-upper N`、`null` を `--expect-lost-upper unknown` として渡し、Storeは上限の既知・不明も含めて一致する場合だけ開始する。epoch順に追記し、空行は無視する。不正な行が1つでもあれば読込みは失敗する（判定はしない）。`audit-admin begin-recovery-epoch` は `--preview` でも開始の成功後でも、2行目にこの1行をそのまま出力する（開始はpreviewと同じ値の記録をStoreが確認した場合だけ成功するので、両者は一致する）。
+- 総合判定：`audit-admin assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]` はDBに接続せず、`audit-admin export` のdirectoryを改めて検証して `assess_recovery` を実行する。anchorはgenesisか、exportの `seq_after` にある帯域外checkpointで、manifestの主張は検証に使わない。manifestのwatermarkは最初のintentの `seq_through`（無ければそのintentのwatermark。`seq_through` はintentのwatermark以下）と一致しなければ `broken` とする（watermarkで判定を緩められないように）。出力は判定code・seq・epoch・chain値・件数だけの1行のJSONで、`verdict` は表の各判定のsnake_case（`authentic`、`authentic_through`、`unverified_expiry`、`no_checkpoint`、`lost`、`unverified_recovery`、`tampered`、`unanchored`）と、検証に失敗したchain・manifestの `broken`、切ったexportの最後のseqより先にcheckpointがある `store_behind` である。`store_behind` は、manifestがexportを切ったこと（最初のintentの `seq_through`）を示し、headと同じかより後のepochのcheckpointがheadを越える場合で、切ったexportでは真正とも改ざんとも判定しない。切っていないexportのheadを越えるcheckpoint（古いexportか、Storeが行を失った）はaudit-coreの判定（同じepochでは `tampered`）のままとする。出力は常にaudit-coreの判定を `underlying_verdict` に持ち（`verdict` と異なるのは `store_behind` のときだけ、`broken` ではnull）、`store_behind` を真正の判定に使わない。checkpointはexportの最後のseq以前のものを使う（checkpointまでを改めてexportし、それでもheadがcheckpointに届かなければStoreが行を失っている）。終了codeは `authentic` が0、`authentic_through`・`unverified_expiry`・`no_checkpoint`・`lost`・`unverified_recovery` が4（人が確認する）、`tampered`・`unanchored`・`broken` が5、`store_behind` が2（使い方の誤りと同じ）、入力fileを読めない・形式が不正な場合が1である。`epochs` の各遷移は `lost_upper_known` を持つ。
+
 ## 拒否code
 
 `envelope_too_large`、`invalid_json`、`duplicate_key`、`invalid_envelope`、`unknown_event_type`、`control_type_forbidden`、`invalid_source`、`invalid_subject`、`invalid_resource`、`nil_client_id`、`invalid_result`、`invalid_actor`、`invalid_service_executor`、`unknown_field`、`missing_field`、`invalid_field`、`invalid_correlation`、`invalid_source_correlation`、`invalid_reason`、`reason_not_string`、`actor_mismatch`、`source_row_too_large`、`source_digest_mismatch`、`invalid_provenance`、`invalid_extensions`。拒否は、codeと、catalogのfield名または固定の位置名（`type`、`source`、`data.resource.type`、`data.resource.id` 等）だけを持つ。payloadの値は含めない。
 
-## producerとの対応（main `d515aa3`）
+## producerとの対応（main `d515aa3`。VIEW/RESETの2種と既読状態の拒否codeはmain `6a34de3`）
 
 | type | producer |
 |---|---|
@@ -386,8 +401,9 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 | `document.metadata.changed`、`document.moved` | `document_management.rs` → `targeted_events.rs` |
 | `folder.created/renamed/moved` | `folder_management.rs` → `targeted_events.rs` |
 | `access_policy.changed` | `access_policy.rs`（通常・bootstrap） |
-| `authorization.denied` | `targeted_events.rs`（`access_policy.rs`・`read_state.rs` から） |
+| `authorization.denied` | `targeted_events.rs`（`access_policy.rs`・`read_state.rs`・`current_read_state.rs` から。`action_code` は管理操作6種・`lookup_management_operation`・`mark_version_read`・`get_current_read_state`・`mutate_read_state`） |
 | `document.version.read_confirmed` | `read_state.rs` |
+| `document.version.detail_viewed`、`document.version.marked_unread` | `current_read_state.rs`（実遷移だけ。`resulting = expected + 1`、`first_record` はVIEWだけ） |
 | `document.file.access_granted` | `file_access.rs` |
 | `document.diff.result_access_granted` | `document_diff_access.rs` |
 | `document.revision_comparison.result_access_granted` | `document_revision_read.rs` |

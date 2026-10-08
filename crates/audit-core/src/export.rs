@@ -194,12 +194,16 @@ pub struct EpochTransition {
 /// The details of a verified `audit.recovery.epoch_started` body. The lost
 /// range is `(restored_head_seq, lost_upper_seq]`, so `lost_from_seq` is
 /// always `restored_head_seq + 1` and `lost_upper_seq >= restored_head_seq`.
+/// `lost_upper_known` is false when the Store could not bound the lost range
+/// (no checkpoint, no relay seq, no regression report): `lost_upper_seq` is
+/// then only a lower bound and the epoch is never authentic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EpochAttestation {
     pub restored_head_seq: i64,
     pub restored_head_chain: [u8; 32],
     pub lost_from_seq: i64,
     pub lost_upper_seq: i64,
+    pub lost_upper_known: bool,
     pub classification: RecoveryClassification,
 }
 
@@ -242,7 +246,10 @@ pub struct ExpiredRowEvidence {
 /// `restored_head_seq` / `restored_head_chain` name the last surviving row;
 /// `lost_upper` is the claimed upper bound of the lost range
 /// `(restored_head_seq, lost_upper]` (equal to `restored_head_seq` for a
-/// planned move, which loses nothing).
+/// planned move, which loses nothing). `lost_upper_known` is false when the
+/// bound is unknown (the Store's `lost_upper_known: false`): `lost_upper` is
+/// then `restored_head_seq`, everything after the restored head may be lost
+/// and the epoch is reported as lost, never as authentic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoveryRecord {
     pub old_epoch: i64,
@@ -250,6 +257,7 @@ pub struct RecoveryRecord {
     pub restored_head_seq: i64,
     pub restored_head_chain: [u8; 32],
     pub lost_upper: i64,
+    pub lost_upper_known: bool,
 }
 
 impl RecoveryRecord {
@@ -260,9 +268,9 @@ impl RecoveryRecord {
     ///   the lost range (`transition.seq - 1 <= lost_upper`; for a planned
     ///   move, which loses nothing, this forces
     ///   `transition.seq == restored_head_seq + 1`);
-    /// - in body exports, the restored head, its chain and the lost upper
-    ///   bound equal the chained `epoch_started` body, and a body classified
-    ///   `planned_move` has an empty lost range;
+    /// - in body exports, the restored head, its chain, the lost upper bound
+    ///   and whether it is known equal the chained `epoch_started` body, and
+    ///   a body classified `planned_move` has an empty lost range;
     /// - when the restored head lies on the verified path, its chain matches.
     fn matches(&self, transition: &EpochTransition, report: &ExportReport) -> bool {
         let Some(last_before) = transition.seq.checked_sub(1) else {
@@ -277,6 +285,7 @@ impl RecoveryRecord {
             body.restored_head_seq == self.restored_head_seq
                 && body.restored_head_chain == self.restored_head_chain
                 && body.lost_upper_seq == self.lost_upper
+                && body.lost_upper_known == self.lost_upper_known
                 && (body.classification != RecoveryClassification::PlannedMove || !self.loses())
         });
         shape
@@ -286,8 +295,66 @@ impl RecoveryRecord {
                 .is_none_or(|chain| chain == self.restored_head_chain)
     }
 
+    /// Whether the recovery lost (or may have lost) rows: a non-empty lost
+    /// range, or an unknown bound.
     fn loses(&self) -> bool {
-        self.lost_upper > self.restored_head_seq
+        !self.lost_upper_known || self.lost_upper > self.restored_head_seq
+    }
+
+    /// Whether `seq` lies in the lost range (an unknown bound covers every
+    /// seq after the restored head).
+    fn covers(&self, seq: i64) -> bool {
+        seq > self.restored_head_seq && (!self.lost_upper_known || seq <= self.lost_upper)
+    }
+}
+
+/// What verifying an export established about the chain itself, before any
+/// out-of-band checkpoint is compared (design §8). It is never an
+/// authenticity claim: [`assess_recovery`] decides that from checkpoints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChainIntegrity {
+    /// Contiguous from a trusted anchor: every seq follows the previous one,
+    /// every `prev_chain` links to the previous chain and every chain value
+    /// recomputes. For identity chains (no bodies), epoch changes and
+    /// expiries are intact but not attested
+    /// ([`ExportReport::epochs_authenticated`],
+    /// [`ExportReport::unverified_expiry_evidence`]).
+    Intact,
+    /// Verification failed: rows are missing, reordered or rewritten, a link
+    /// or recomputation fails, an epoch rule is violated or a line is
+    /// malformed. The error names the first offending line.
+    Broken(ExportError),
+    /// A filtered subset without an anchor: rows were checked one by one;
+    /// nothing is established about the chain.
+    Unanchored,
+}
+
+impl ChainIntegrity {
+    /// The verdict of a verification result ([`verify_export`],
+    /// [`verify_export_complete`], [`verify_identity_chain`],
+    /// [`verify_identity_chain_complete`] or [`verify_export_subset`]).
+    pub fn of(result: &Result<ExportReport, ExportError>) -> Self {
+        match result {
+            Ok(report) => Self::of_report(report),
+            Err(error) => Self::Broken(error.clone()),
+        }
+    }
+
+    /// The verdict of a successful verification.
+    pub fn of_report(report: &ExportReport) -> Self {
+        if report.anchored {
+            Self::Intact
+        } else {
+            Self::Unanchored
+        }
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Intact => "intact",
+            Self::Broken(_) => "broken",
+            Self::Unanchored => "unanchored",
+        }
     }
 }
 
@@ -338,8 +405,9 @@ pub struct EpochReview {
 }
 
 /// How one out-of-band checkpoint relates to the verified path.
-/// `BeforeAnchor` findings are neutral: their verdict (`NoCheckpoint`, they
-/// confirm nothing) does not enter the overall verdict.
+/// Findings for checkpoints before the anchor (`BeforeAnchor`) or at the
+/// anchor's own seq (any comparison) are neutral: their verdict
+/// (`NoCheckpoint`, they confirm nothing) does not enter the overall verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckpointFinding {
     pub checkpoint: Checkpoint,
@@ -365,6 +433,12 @@ pub struct RecoveryAssessment {
     /// Out-of-band records of recoveries that precede the anchor
     /// (`new_epoch <= anchor.epoch`): neutral, listed for review only.
     pub records_before_anchor: Vec<RecoveryRecord>,
+    /// Out-of-band records of recoveries that come after the verified head
+    /// (`old_epoch >= head epoch`: the transition leaves the head's epoch, so
+    /// the path ends before it, for example an export taken before a later
+    /// restore): neutral, listed for review only. A rollback that removes a
+    /// recorded transition is caught by a checkpoint taken after it.
+    pub records_after_head: Vec<RecoveryRecord>,
     /// Expired rows at or below `authenticated_through` whose removal is not
     /// confirmed: their evidence lies past `authenticated_through` or could
     /// not be verified in the export. Rows past `authenticated_through` are
@@ -378,13 +452,19 @@ pub struct RecoveryAssessment {
 /// - Authenticity: `Authentic` needs a checkpoint that `Match`es the head; a
 ///   checkpoint behind the head (`Ahead`) gives at most
 ///   `AuthenticThrough { seq }`; with neither, `NoCheckpoint`. Checkpoints
-///   before the anchor are neutral.
+///   before the anchor, and checkpoints at the anchor's own seq (the trusted
+///   starting point confirms nothing new and is not evidence about the
+///   exported rows, whatever it holds), are neutral.
+/// - Records of recoveries before the anchor or after the verified head are
+///   neutral (listed for review).
 /// - Expiry: an expired row at or below `authenticated_through` whose
 ///   evidence is unverified or lies past it makes the verdict at least
 ///   `UnverifiedExpiry`. `Authentic` is never returned while
 ///   `report.unverified_expiry_evidence > 0`.
 /// - A difference at or below a documented restored head is tampering.
-/// - A difference inside a documented lost range is `Lost`.
+/// - A difference inside a documented lost range is `Lost`; a record whose
+///   bound is unknown covers everything after its restored head, and its
+///   epoch is `Lost` even without any difference.
 /// - A difference past an undocumented recovery epoch, an undocumented epoch,
 ///   a record that matches no epoch (and does not precede the anchor), a
 ///   restored head that cannot be checked on this path, or a checkpoint
@@ -403,6 +483,7 @@ pub fn assess_recovery(
             findings: Vec::new(),
             unmatched_records: records.to_vec(),
             records_before_anchor: Vec::new(),
+            records_after_head: Vec::new(),
             unconfirmed_expiries: 0,
         };
     };
@@ -429,12 +510,14 @@ pub fn assess_recovery(
             }
         })
         .collect();
-    let (records_before_anchor, unmatched_records): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) =
-        records
-            .iter()
-            .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
-            .copied()
-            .partition(|record| record.new_epoch <= anchor.epoch);
+    let (records_before_anchor, rest): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) = records
+        .iter()
+        .filter(|record| !epochs.iter().any(|e| e.record == Some(**record)))
+        .copied()
+        .partition(|record| record.new_epoch <= anchor.epoch);
+    let (records_after_head, unmatched_records): (Vec<RecoveryRecord>, Vec<RecoveryRecord>) = rest
+        .into_iter()
+        .partition(|record| record.old_epoch >= report.head.epoch);
     let mut worst = ChainVerdict::Authentic;
     for epoch in &epochs {
         let verdict = match epoch.record {
@@ -448,11 +531,17 @@ pub fn assess_recovery(
     if !unmatched_records.is_empty() {
         worst = worst.max(ChainVerdict::UnverifiedRecovery);
     }
+    // A checkpoint at the anchor's own seq names the trusted starting point:
+    // it confirms nothing about the exported rows, and a disagreement with
+    // the anchor is between the out-of-band inputs, not evidence against the
+    // export. Its finding keeps the factual comparison.
+    let at_anchor = |checkpoint: &Checkpoint| checkpoint.seq == anchor.seq;
     let mut authenticated_through: Option<i64> = None;
     let mut findings = Vec::with_capacity(checkpoints.len());
     for checkpoint in checkpoints {
         let comparison = compare_checkpoint(report, checkpoint);
         let (verdict, explained_by) = match comparison {
+            _ if at_anchor(checkpoint) => (ChainVerdict::NoCheckpoint, None),
             CheckpointComparison::Match => (ChainVerdict::Authentic, None),
             CheckpointComparison::Ahead => (
                 ChainVerdict::AuthenticThrough {
@@ -468,6 +557,7 @@ pub fn assess_recovery(
             }
         };
         match comparison {
+            _ if at_anchor(checkpoint) => {}
             CheckpointComparison::Match | CheckpointComparison::Ahead => {
                 authenticated_through = authenticated_through.max(Some(checkpoint.seq));
             }
@@ -506,6 +596,7 @@ pub fn assess_recovery(
         findings,
         unmatched_records,
         records_before_anchor,
+        records_after_head,
         unconfirmed_expiries,
     }
 }
@@ -527,7 +618,7 @@ fn classify_difference(
             Some(record) if checkpoint.seq <= record.restored_head_seq => {
                 return (ChainVerdict::Tampered, None);
             }
-            Some(record) if checkpoint.seq <= record.lost_upper => {
+            Some(record) if record.covers(checkpoint.seq) => {
                 return (ChainVerdict::Lost, Some(record));
             }
             // The record's lost range does not cover the checkpoint.
@@ -637,6 +728,18 @@ pub fn verify_identity_chain(text: &str, start: Anchor) -> Result<ExportReport, 
     verify(text, Some(start), Mode::IdentityChain, None)
 }
 
+/// Verifies a complete identity-chain export up to the manifest `watermark`:
+/// like [`verify_identity_chain`], but the head must be exactly `watermark`
+/// ([`ExportError::WatermarkMismatch`]) and no row may name expiry evidence
+/// past it ([`ExportError::ExpiryEvidenceMissing`]).
+pub fn verify_identity_chain_complete(
+    text: &str,
+    start: Anchor,
+    watermark: i64,
+) -> Result<ExportReport, ExportError> {
+    verify(text, Some(start), Mode::IdentityChain, Some(watermark))
+}
+
 /// Checks a filtered export row by row (digest, id, origin, self-consistent
 /// chain step, increasing seq). The result is never anchored.
 pub fn verify_export_subset(text: &str) -> Result<ExportReport, ExportError> {
@@ -724,6 +827,7 @@ enum Evidence {
         restored_head_chain: Option<[u8; 32]>,
         lost_from_seq: Option<i64>,
         lost_upper_seq: Option<i64>,
+        lost_upper_known: Option<bool>,
         classification: Option<RecoveryClassification>,
     },
 }
@@ -783,6 +887,7 @@ fn evidence(event_type: &str, details: &Value) -> Option<Evidence> {
             restored_head_chain: hex(details.get("restored_head_chain")),
             lost_from_seq: int("lost_from_seq"),
             lost_upper_seq: int("lost_upper_seq"),
+            lost_upper_known: details.get("lost_upper_known").and_then(Value::as_bool),
             classification: details
                 .get("classification")
                 .and_then(Value::as_str)
@@ -1005,9 +1110,9 @@ impl ExpiryLedger {
 /// The attestation of an epoch change by the line's body: an origin=store
 /// `audit.recovery.epoch_started` whose epochs equal the change, whose
 /// restored head precedes the line (`0 <= restored_head_seq < seq`), whose
-/// lost range `(restored_head_seq, lost_upper_seq]` is well formed, and
-/// whose restored head chain matches the verified path when the head lies on
-/// it.
+/// lost range `(restored_head_seq, lost_upper_seq]` is well formed (with a
+/// boolean `lost_upper_known`), and whose restored head chain matches the
+/// verified path when the head lies on it.
 fn attest_transition(
     line: &Line<'_>,
     old_epoch: i64,
@@ -1021,6 +1126,7 @@ fn attest_transition(
         restored_head_chain: Some(restored_chain),
         lost_from_seq: Some(lost_from),
         lost_upper_seq: Some(lost_upper),
+        lost_upper_known: Some(lost_upper_known),
         classification: Some(classification),
     }) = body.evidence
     else {
@@ -1042,6 +1148,7 @@ fn attest_transition(
         restored_head_chain: restored_chain,
         lost_from_seq: lost_from,
         lost_upper_seq: lost_upper,
+        lost_upper_known,
         classification,
     })
 }

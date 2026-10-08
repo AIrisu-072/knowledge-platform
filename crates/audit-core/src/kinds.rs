@@ -24,6 +24,11 @@ pub const MAX_EVENT_TYPE_BYTES: usize = 128;
 pub const MAX_CODE_BYTES: usize = 64;
 /// The nil UUID in canonical form.
 pub const NIL_UUID: &str = "00000000-0000-0000-0000-000000000000";
+/// Upper bound of the `safe_counter` kinds: 2^53 - 1, the largest integer a
+/// JSON number keeps exactly in every IEEE 754 reader (JavaScript
+/// `Number.MAX_SAFE_INTEGER`). Producers that bound a counter by it (the
+/// Document read-state revision, migration 0012 CHECK) use these kinds.
+pub const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 /// Typed value shapes admitted in `details`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
@@ -78,6 +83,11 @@ pub enum Kind {
     Int8Text,
     /// Control events only: a machine code `[a-z0-9_]{1,64}`.
     Code,
+    /// 0 to [`MAX_SAFE_INTEGER`] (a counter the producer bounds to the JSON
+    /// safe integer range).
+    SafeCounter,
+    /// 1 to [`MAX_SAFE_INTEGER`].
+    PositiveSafeCounter,
 }
 
 impl Kind {
@@ -112,6 +122,8 @@ impl Kind {
             Self::PrincipalRef => "principal_ref",
             Self::Int8Text => "int8_text",
             Self::Code => "code",
+            Self::SafeCounter => "safe_counter",
+            Self::PositiveSafeCounter => "positive_safe_counter",
         }
     }
 
@@ -200,8 +212,17 @@ impl Kind {
             Self::PrincipalRef => text(is_principal_part),
             Self::Int8Text => text(is_int8_text),
             Self::Code => text(is_code),
+            Self::SafeCounter => is_safe_counter(value, 0),
+            Self::PositiveSafeCounter => is_safe_counter(value, 1),
         }
     }
+}
+
+/// A JSON integer (never `1.0` or `1e0`) in `min..=MAX_SAFE_INTEGER`.
+fn is_safe_counter(value: &Value, min: i64) -> bool {
+    value
+        .as_i64()
+        .is_some_and(|n| (min..=MAX_SAFE_INTEGER).contains(&n))
 }
 
 /// 1 to [`MAX_CONTROL_LIST`] distinct items that all pass `item`.
@@ -472,6 +493,32 @@ mod tests {
         assert!(!Kind::Counter.accepts(&[], &json!(1.0)));
         assert!(!Kind::PositiveCounter.accepts(&[], &json!(0)));
         assert!(Kind::NullableCounter.accepts(&[], &Value::Null));
+    }
+
+    #[test]
+    fn safe_counters_stop_at_the_json_safe_integer() {
+        assert_eq!(MAX_SAFE_INTEGER, (1_i64 << 53) - 1);
+        let accepts = |kind: Kind, value: Value| kind.accepts(&[], &value);
+        assert!(accepts(Kind::SafeCounter, json!(0)));
+        assert!(accepts(Kind::SafeCounter, json!(MAX_SAFE_INTEGER)));
+        assert!(accepts(Kind::PositiveSafeCounter, json!(1)));
+        assert!(accepts(Kind::PositiveSafeCounter, json!(MAX_SAFE_INTEGER)));
+        for kind in [Kind::SafeCounter, Kind::PositiveSafeCounter] {
+            for bad in [
+                json!(-1),
+                json!(MAX_SAFE_INTEGER + 1),
+                json!(i64::MAX),
+                json!(u64::MAX),
+                json!(1.0),
+                json!("1"),
+                Value::Null,
+                json!(true),
+            ] {
+                assert!(!accepts(kind, bad.clone()), "{kind:?} {bad}");
+            }
+            assert!(!kind.is_control_only() && !kind.takes_values());
+        }
+        assert!(!accepts(Kind::PositiveSafeCounter, json!(0)));
     }
 
     #[test]

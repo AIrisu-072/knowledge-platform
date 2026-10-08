@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { documentApi, type FileList } from '../../application/document-workspace';
 import { useContentHistoryVersion, useDocumentContentHistory } from '../../application/use-document-content-history';
+import { DocumentOriginalViewer } from './DocumentOriginalViewer';
 import { ApiFeedback, LoadingState } from '../shared/ApiFeedback';
 import { versionStatusLabel } from '../../view-model/document-status';
 import { formatDateTime } from '../../view-model/date-time';
@@ -98,6 +99,7 @@ function SelectedContentVersion({ documentId, versionId, isDocumentReadable }: {
         {originals.length === 0 && <p>原本ファイルはありません</p>}
         <ul>{originals.map(file => <li key={`${file.contentItemId}:${file.representationId}`}>
           <span>{file.displayName} · {file.mediaType} · {file.sizeBytes} bytes</span>
+          {version.capabilities.download?.status === 'available' && <DocumentOriginalViewer documentId={documentId} versionId={versionId} purpose="history" file={file} showDownload={false} historyRead={() => documentReadable.current?.() === false ? null : liveRead.current.downloadTarget()} onDenied={read.stop} />}
           {version.capabilities.download?.status === 'available' && <button type="button" disabled={downloading} aria-busy={downloading} onClick={() => void download(file)}>履歴の原本を取得: {file.displayName}</button>}
         </li>)}</ul>
       </>}

@@ -165,6 +165,32 @@ pub fn forwarded_request_headers(headers: &HeaderMap) -> HeaderMap {
     kept
 }
 
+// Local shell hint only. It can lower buffering, never expand the global bound,
+// and is intentionally absent from REQUEST_HEADERS (the backend never sees it).
+const VIEWER_MAX_BYTES_HEADER: &str = "x-knowledge-viewer-max-bytes";
+fn viewer_response_limit(
+    headers: &HeaderMap,
+    method: &Method,
+    maximum: usize,
+) -> Result<usize, ()> {
+    let mut values = headers.get_all(VIEWER_MAX_BYTES_HEADER).iter();
+    let Some(value) = values.next() else {
+        return Ok(maximum);
+    };
+    if method != Method::GET || values.next().is_some() {
+        return Err(());
+    }
+    let raw = value.to_str().map_err(|_| ())?;
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(());
+    }
+    let limit = raw.parse::<usize>().map_err(|_| ())?;
+    if limit == 0 {
+        return Err(());
+    }
+    Ok(limit.min(maximum))
+}
+
 pub fn returned_response_headers(headers: &HeaderMap) -> HeaderMap {
     let mut kept = HeaderMap::new();
     for name in &RESPONSE_HEADERS {
@@ -369,6 +395,17 @@ impl Proxy {
                 app_origin,
             );
         }
+        let response_limit =
+            match viewer_response_limit(&parts.headers, &parts.method, self.limits.response_body) {
+                Ok(limit) => limit,
+                Err(()) => {
+                    return problem(
+                        StatusCode::BAD_REQUEST,
+                        "表示する原本の受信上限が正しくありません。",
+                        app_origin,
+                    );
+                }
+            };
         let mut outbound = client
             .request(parts.method.clone(), target)
             .headers(forwarded_request_headers(&parts.headers));
@@ -394,7 +431,7 @@ impl Proxy {
         };
         if upstream
             .content_length()
-            .is_some_and(|length| length > self.limits.response_body as u64)
+            .is_some_and(|length| length > response_limit as u64)
         {
             return problem(
                 StatusCode::BAD_GATEWAY,
@@ -408,7 +445,7 @@ impl Proxy {
         loop {
             match upstream.chunk().await {
                 Ok(Some(chunk)) => {
-                    if bytes.len() + chunk.len() > self.limits.response_body {
+                    if bytes.len().saturating_add(chunk.len()) > response_limit {
                         return problem(
                             StatusCode::BAD_GATEWAY,
                             "サーバーの応答が大きすぎます。",
@@ -664,6 +701,94 @@ mod tests {
         // At the limit the request is sent, so it fails only for want of a backend.
         let at_limit = forward(&proxy, "POST", &[b'x'; 16]);
         assert_eq!(at_limit.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn viewer_header_can_only_lower_limits_and_never_reaches_the_backend() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(viewer_response_limit(&headers, &Method::GET, 32), Ok(32));
+        headers.insert(VIEWER_MAX_BYTES_HEADER, HeaderValue::from_static("16"));
+        assert_eq!(viewer_response_limit(&headers, &Method::GET, 32), Ok(16));
+        assert!(!forwarded_request_headers(&headers).contains_key(VIEWER_MAX_BYTES_HEADER));
+        headers.insert(VIEWER_MAX_BYTES_HEADER, HeaderValue::from_static("64"));
+        assert_eq!(viewer_response_limit(&headers, &Method::GET, 32), Ok(32));
+        assert_eq!(viewer_response_limit(&headers, &Method::POST, 32), Err(()));
+        headers.append(VIEWER_MAX_BYTES_HEADER, HeaderValue::from_static("16"));
+        assert_eq!(viewer_response_limit(&headers, &Method::GET, 32), Err(()));
+    }
+
+    #[test]
+    fn invalid_viewer_limits_are_rejected_before_connecting() {
+        let proxy = Proxy::with_limits(Ok(closed_origin()), APP, small(32, Duration::from_secs(5)));
+        for value in [
+            "",
+            "0",
+            "-1",
+            "+1",
+            "1.5",
+            "1e1",
+            " 16",
+            "16 ",
+            "16,16",
+            "999999999999999999999999999",
+        ] {
+            let request = Request::builder()
+                .method("GET")
+                .uri("tauri://localhost/v1/documents/files")
+                .header(VIEWER_MAX_BYTES_HEADER, value)
+                .body(Vec::new())
+                .unwrap();
+            assert_eq!(
+                tauri::async_runtime::block_on(proxy.forward(request)).status(),
+                StatusCode::BAD_REQUEST,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn viewer_limit_exact_boundary_is_allowed_but_large_hint_cannot_raise_global_bound() {
+        for (length, hint, status) in [
+            (16, "16", StatusCode::OK),
+            (17, "64", StatusCode::BAD_GATEWAY),
+        ] {
+            let reply: &'static [u8] = if length == 16 {
+                b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 16\r\n\r\n0123456789012345"
+            } else {
+                b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 17\r\n\r\n01234567890123456"
+            };
+            let proxy = Proxy::with_limits(
+                Ok(backend(reply, Duration::ZERO)),
+                APP,
+                small(16, Duration::from_secs(5)),
+            );
+            let request = Request::builder()
+                .method("GET")
+                .uri("tauri://localhost/v1/documents/files")
+                .header(VIEWER_MAX_BYTES_HEADER, hint)
+                .body(Vec::new())
+                .unwrap();
+            assert_eq!(
+                tauri::async_runtime::block_on(proxy.forward(request)).status(),
+                status
+            );
+        }
+    }
+
+    #[test]
+    fn viewer_header_lowers_declared_and_chunked_response_bounds() {
+        for reply in [
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/pdf\r\ncontent-length: 17\r\n\r\n01234567890123456".as_slice(),
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/pdf\r\ntransfer-encoding: chunked\r\n\r\n10\r\n0123456789012345\r\n1\r\nx\r\n0\r\n\r\n".as_slice(),
+        ] {
+            let upstream = backend(reply, Duration::ZERO);
+            let proxy = Proxy::with_limits(Ok(upstream), APP, small(32, Duration::from_secs(5)));
+            let request = Request::builder().method("GET").uri("tauri://localhost/v1/documents/files")
+                .header("x-knowledge-viewer-max-bytes", "16").body(Vec::new()).unwrap();
+            let response = tauri::async_runtime::block_on(proxy.forward(request));
+            assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+            assert!(detail(&response).contains("大きすぎます"));
+        }
     }
 
     #[test]

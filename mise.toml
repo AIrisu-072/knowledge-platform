@@ -390,8 +390,9 @@ run = [
 ]
 
 [tasks."desktop:bridge:e2e"]
-description = "Browser E2E of the desktop runtime adapter against the real local Workspace broker (TEST-ONLY stdio bridge; not Tauri/WebView2/Windows proof)"
+description = "Actual-source desktop proxy tests and browser E2E against the real local Workspace broker (TEST-ONLY stdio bridge; not Tauri/WebView2/Windows proof)"
 run = [
+  "cargo test --locked --manifest-path tools/desktop-proxy-qualification/Cargo.toml",
   "cargo build --locked -p local-workspace-runtime --example stdio_bridge",
   "pnpm --filter @knowledge-platform/document-web build",
   "pnpm --filter @knowledge-platform/document-web exec tsc -p tsconfig.desktop-bridge.json",

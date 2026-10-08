@@ -239,3 +239,46 @@ fn changing_an_unused_xobject_does_not_change_reader_visible_semantics() {
         "resource bytes with no reachable Do invocation are not reader-visible semantics"
     );
 }
+
+#[test]
+fn explicit_default_graphics_state_preserves_existing_pdf_identity() {
+    let baseline = native_text_pdf(BASE_PAINT, UNUSED_PIXEL);
+    let explicit = native_text_pdf(
+        "0 g 0 G 1 w 0 J 0 j 10 M [] 0 d\nq 40 0 0 40 20 20 cm /Im0 Do Q",
+        UNUSED_PIXEL,
+    );
+    assert_eq!(render_rgba(&baseline), render_rgba(&explicit));
+    assert_eq!(fingerprint(&baseline), fingerprint(&explicit));
+}
+
+#[test]
+fn vector_line_change_is_verified_by_pixels_and_semantic_identity() {
+    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let changed = native_text_pdf("20 20 m 120 20 l S", UNUSED_PIXEL);
+    assert_ne!(render_rgba(&baseline), render_rgba(&changed));
+    assert_ne!(fingerprint(&baseline), fingerprint(&changed));
+}
+
+#[test]
+fn equivalent_line_numbers_and_redundant_state_have_same_identity() {
+    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let changed = native_text_pdf("q 0 G 1.0 w 20.0 20 m 80 20.00 l S Q", UNUSED_PIXEL);
+    assert_eq!(render_rgba(&baseline), render_rgba(&changed));
+    assert_eq!(fingerprint(&baseline), fingerprint(&changed));
+}
+
+#[test]
+fn vector_stroke_colour_is_not_dropped_from_identity() {
+    let baseline = native_text_pdf("0 0 0 RG 20 20 m 80 20 l S", UNUSED_PIXEL);
+    let changed = native_text_pdf("1 0 0 RG 20 20 m 80 20 l S", UNUSED_PIXEL);
+    assert_ne!(render_rgba(&baseline), render_rgba(&changed));
+    assert_ne!(fingerprint(&baseline), fingerprint(&changed));
+}
+
+#[test]
+fn enclosing_page_clip_does_not_change_unclipped_content_identity() {
+    let baseline = native_text_pdf("20 20 m 80 20 l S", UNUSED_PIXEL);
+    let clipped = native_text_pdf("0 0 200 200 re W* n 20 20 m 80 20 l S", UNUSED_PIXEL);
+    assert_eq!(render_rgba(&baseline), render_rgba(&clipped));
+    assert_eq!(fingerprint(&baseline), fingerprint(&clipped));
+}

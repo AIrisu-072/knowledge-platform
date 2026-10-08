@@ -11,6 +11,7 @@ import { Blocked, EvidenceReport, binaryDirectory, command, freePort, postgresAr
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from '../document-poc-runtime/postgres-readiness.mjs';
 import { ORGANIZATION_PROFILES, organizationEnvironment } from './settings.mjs';
 import { readBrowserFailureDiagnostics } from './browser-diagnostics.mjs';
+import { beginFindingDiagnosticWindow } from './finding-diagnostics.mjs';
 
 if (process.argv.length !== 2) throw Error('Organization runtime accepts no alternate or prebuilt mode');
 if (process.env.TEST_DATABASE_URL || process.env.WORK_POC_TEST_DATABASE_URL) throw Error('Organization acceptance creates its own disposable databases');
@@ -118,11 +119,21 @@ try {
   await writeFile(contextPath, JSON.stringify({ sales, office, documentId, statePath: join(directory, 'state.json') }), { mode: 0o600 });
   const require = createRequire(join(root, 'apps/document-web/package.json'));
   await access(require('@playwright/test').chromium.executablePath(), constants.X_OK);
-  async function browser(phase, runtimeContext = contextPath) {
+  async function browser(phase, runtimeContext = contextPath, probeBase) {
+    const outputBase = probeBase ?? directory;
+    const persistenceFile = probeBase
+      ? String.raw`(?:^|[/\\])e2e-organization[/\\]finding-read-diagnostic[/\\]persistence\.spec\.ts$`
+      : String.raw`(?:^|[/\\])e2e-organization[/\\]persistence\.spec\.ts$`;
+    const findingDiagnostics = beginFindingDiagnosticWindow(processes);
     try {
-      await run(`browser-${phase}`, 'pnpm', ['--filter', '@knowledge-platform/document-web', 'exec', 'playwright', 'test', '--config', 'playwright.organization.config.ts'], { ...process.env, KP_ORGANIZATION_RUNTIME_CONTEXT: runtimeContext, KP_ORGANIZATION_RUNTIME_PHASE: phase, KP_ORGANIZATION_BROWSER_OUTPUT: join(directory, `browser-${phase}`), PLAYWRIGHT_JSON_OUTPUT_FILE: join(directory, `browser-${phase}`, 'results.json') });
+      await run(`browser-${phase}`, 'pnpm', ['--filter', '@knowledge-platform/document-web', 'exec', 'playwright', 'test', '--config', 'playwright.organization.config.ts', ...(phase === 'persistence' ? [persistenceFile] : [])], { ...process.env, KP_ORGANIZATION_RUNTIME_CONTEXT: runtimeContext, KP_ORGANIZATION_RUNTIME_PHASE: phase, KP_ORGANIZATION_BROWSER_OUTPUT: join(outputBase, `browser-${phase}`), PLAYWRIGHT_JSON_OUTPUT_FILE: join(outputBase, `browser-${phase}`, 'results.json') });
     } catch (error) {
-      console.error(`Organization browser failure: ${JSON.stringify(await readBrowserFailureDiagnostics(directory, phase))}`);
+      const browserDiagnostics = await readBrowserFailureDiagnostics(outputBase, phase);
+      console.error(`Organization browser failure: ${JSON.stringify(browserDiagnostics)}`);
+      if (browserDiagnostics.failure?.httpStatus === 503 && browserDiagnostics.failure.readEndpoint === 'finding') {
+        try { console.error(`Organization Finding dependency failure: ${JSON.stringify(findingDiagnostics())}`); }
+        catch { /* Diagnostics must never replace the original runtime failure. */ }
+      }
       throw error;
     }
   }
@@ -131,7 +142,27 @@ try {
     await stopProcess(salesProcess); await stopProcess(officeProcess);
     salesProcess = await start('sales-01', 2); officeProcess = await start('office-01', 2);
   });
-  await report.stage('persistence', () => browser('persistence'));
+  async function findingReadExperiment() {
+    for (const cycle of [1, 2]) {
+      const before = join(directory, `finding-read-${cycle}-before`);
+      await mkdir(before, { mode: 0o700 });
+      console.error(`Organization Finding read probe: ${JSON.stringify({ cycle, point: 'before', status: 'begin' })}`);
+      await browser('persistence', contextPath, before);
+      console.error(`Organization Finding read probe: ${JSON.stringify({ cycle, point: 'before', status: 'passed' })}`);
+      await stopProcess(salesProcess); await stopProcess(officeProcess);
+      salesProcess = await start('sales-01', cycle + 2); officeProcess = await start('office-01', cycle + 2);
+      const after = join(directory, `finding-read-${cycle}-after`);
+      await mkdir(after, { mode: 0o700 });
+      console.error(`Organization Finding read probe: ${JSON.stringify({ cycle, point: 'after', status: 'begin' })}`);
+      await browser('persistence', contextPath, after);
+      console.error(`Organization Finding read probe: ${JSON.stringify({ cycle, point: 'after', status: 'passed' })}`);
+    }
+    console.error('Organization Finding read experiment: no_reproduction');
+  }
+  await report.stage('persistence', async () => {
+    await browser('persistence'); // Preserve the original acceptance assertions once.
+    await findingReadExperiment();
+  });
   await report.stage('shutdown', async () => { await stopProcess(salesProcess); await stopProcess(officeProcess); });
 
   // Six fixed-profile processes on a separate fresh database, so the accepted

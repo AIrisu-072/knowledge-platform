@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { documentApi, type DocumentDetail, type VersionDetail } from '../../application/document-workspace';
-import { originalOf, prepareWorkingVersion, refreshWorkingQueries, replacementError, runWorkingOperation, workingOperationKey, workingEditorSource,
-  type EditManifest, type WorkingOperation } from '../../application/document-working-version';
+import { addedOriginalFileError, addedOriginalPathError, originalOf, prepareWorkingVersion, refreshWorkingQueries, replacementError, runWorkingOperation, workingOperationKey, workingEditorSource,
+  type AddedWorkingOriginal, type EditManifest, type WorkingOperation } from '../../application/document-working-version';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
 import { CapabilityButton } from '../shared/CapabilityButton';
@@ -149,6 +149,12 @@ function ManifestForm({ manifest, mode, allowed, readOnly, onClose, onRefresh, r
   const client = useQueryClient();
   const [title, setTitle] = useState(manifest.title);
   const [replacements, setReplacements] = useState<Map<string, File>>(new Map());
+  const [itemIds, setItemIds] = useState(manifest.items.map(item => item.contentItemId));
+  const [additions, setAdditions] = useState<AddedWorkingOriginal[]>([]);
+  const [excluded, setExcluded] = useState<Map<string, number>>(new Map());
+  const [adding, setAdding] = useState(false);
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [newPath, setNewPath] = useState('');
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const controller = useRef<AbortController | null>(null);
@@ -156,15 +162,48 @@ function ManifestForm({ manifest, mode, allowed, readOnly, onClose, onRefresh, r
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.abort(); }; }, []);
   useEffect(() => { if (!allowed) controller.current?.abort(); }, [allowed]);
-  const changed = title.trim().normalize('NFC') !== manifest.title.trim().normalize('NFC') || replacements.size > 0;
-  const invalidReplacement = manifest.items.map(item => replacements.has(item.contentItemId) ? replacementError(originalOf(item), replacements.get(item.contentItemId)!) : null).find(Boolean);
-  const submitAllowed = !readOnly && !refreshing && allowed && Boolean(title.trim()) && !invalidReplacement && (mode === 'update' || changed);
+  const structuralChange = itemIds.length !== manifest.items.length || itemIds.some((id, index) => id !== manifest.items[index]?.contentItemId);
+  const allItems = [...manifest.items, ...additions.map(addition => ({ contentItemId: addition.id, logicalPath: addition.logicalPath, ordinal: 0,
+    representations: [{ representationId: addition.id, fileId: '', role: 'authoritative' as const, mediaType: addition.file.type,
+      originalFilename: addition.file.name, sizeBytes: addition.file.size }] }))];
+  const items = itemIds.map(id => allItems.find(item => item.contentItemId === id)!);
+  const newError = addedOriginalPathError(newPath, items.map(item => item.logicalPath)) ?? (newFile ? addedOriginalFileError(newFile) : '追加原本ファイルを選択してください。');
+  const controlsDisabled = preparing || readOnly || refreshing || !allowed;
+  function move(id: string, delta: number) {
+    if (controlsDisabled) return;
+    setItemIds(previous => { const index = previous.indexOf(id); const next = [...previous];
+      if (index < 0 || index + delta < 0 || index + delta >= next.length) return previous;
+      [next[index], next[index + delta]] = [next[index + delta]!, next[index]!]; return next; });
+  }
+  function exclude(id: string) {
+    if (controlsDisabled || itemIds.length <= 1) return;
+    setExcluded(previous => new Map(previous).set(id, itemIds.indexOf(id))); setItemIds(previous => previous.filter(value => value !== id)); setError(null);
+  }
+  function restore(id: string) {
+    if (controlsDisabled) return;
+    const position = excluded.get(id)!;
+    const item = allItems.find(value => value.contentItemId === id)!;
+    if (additions.some(value => value.id === id || (itemIds.includes(value.id) && value.logicalPath === item.logicalPath))) {
+      const invalid = addedOriginalPathError(item.logicalPath, items.map(value => value.logicalPath));
+      if (invalid) { setError(new Error(invalid)); return; }
+    }
+    setItemIds(previous => { const next = [...previous]; next.splice(Math.min(position, next.length), 0, id); return next; });
+    setExcluded(previous => { const next = new Map(previous); next.delete(id); return next; }); setError(null);
+  }
+  function confirmAddition() {
+    if (controlsDisabled || !newFile || newError) return;
+    const id = createOperationId(); setAdditions(previous => [...previous, { id, logicalPath: newPath.normalize('NFC'), file: newFile }]);
+    setItemIds(previous => [...previous, id]); setAdding(false); setNewFile(null); setNewPath(''); setError(null);
+  }
+  const changed = structuralChange || title.trim().normalize('NFC') !== manifest.title.trim().normalize('NFC') || replacements.size > 0;
+  const invalidReplacement = items.filter(item => !additions.some(addition => addition.id === item.contentItemId)).map(item => replacements.has(item.contentItemId) ? replacementError(originalOf(item), replacements.get(item.contentItemId)!) : null).find(Boolean);
+  const submitAllowed = !readOnly && !refreshing && allowed && Boolean(title.trim()) && !invalidReplacement && !adding && itemIds.length > 0 && (mode === 'update' || changed);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (controller.current || !submitAllowed) return;
     const attempt = new AbortController(); controller.current = attempt; setPreparing(true); setError(null);
     try {
-      const intent = await prepareWorkingVersion({ manifest, mode, title, replacements, signal: attempt.signal });
+      const intent = await prepareWorkingVersion({ manifest, mode, title, replacements, signal: attempt.signal, ...(mode === 'update' ? { structure: { itemIds, additions: additions.filter(addition => itemIds.includes(addition.id)) } } : {}) });
       if (!mounted.current || attempt.signal.aborted || !currentAllowed.current) return;
       // No await between the final local guard and the synchronous pending cache write.
       void runWorkingOperation(client, intent);
@@ -176,21 +215,45 @@ function ManifestForm({ manifest, mode, allowed, readOnly, onClose, onRefresh, r
   const failure = problem ? mapApiProblem(problem).message : error instanceof Error ? error.message : 'ファイルを取得できませんでした。';
   return <form aria-label="作業版の原本を編集" className={styles.newVersionWorkspace} onSubmit={event => void submit(event)} aria-busy={preparing}>
     <label className={workspace.formField}>文書名<input value={title} disabled={preparing || readOnly || refreshing} required maxLength={500} onChange={event => { setTitle(event.target.value); setError(null); }} /></label>
-    <p>すべての原本を確認し、差し替える原本を選択してください。パス・順序・形式の変更、原本の追加・削除はできません。</p>
+    <p>{mode === 'update' ? '原本を追加・除外・上下移動できます。既存原本のパスと形式は変更できません。構成を変更した保存では表示順に0から再採番します。' : 'すべての原本を確認し、差し替える原本を選択してください。パス・順序・形式の変更、原本の追加・削除はできません。'}</p>
+    {mode === 'update' && <>
+      <p>保存する原本: {items.length}件・除外する原本: {excluded.size}件。最後の原本は除外できません。</p>
+      {!adding ? <button type="button" disabled={controlsDisabled} onClick={() => setAdding(true)}>原本を追加</button> : <fieldset disabled={controlsDisabled}>
+        <legend>追加する原本</legend>
+        <label className={workspace.formField}>追加原本ファイル<input type="file" onChange={event => { setNewFile(event.target.files?.item(0) ?? null); setError(null); }} /></label>
+        <label className={workspace.formField}>追加原本パス<input value={newPath} onChange={event => { setNewPath(event.target.value); setError(null); }} /></label>
+        <p>相対パスを / 区切りで入力してください。追加時にNFCへ正規化します。</p>
+        {newError && <p role="alert">{newError}</p>}
+        <button type="button" disabled={Boolean(newError)} onClick={confirmAddition}>追加原本を確定</button>
+        <button type="button" onClick={() => { setAdding(false); setNewFile(null); setNewPath(''); }}>追加を取消</button>
+      </fieldset>}
+    </>}
     <p>公開を確定するまで、現行の公開版は変わりません。保存時は保持する原本・補助ファイルも認可・監査を経て取得します。</p>
-    <ul className={styles.fileList}>{manifest.items.map(item => {
-      const original = originalOf(item); const selected = replacements.get(item.contentItemId); const renditions = item.representations.filter(part => part.role === 'rendition');
+    <ul className={styles.fileList}>{items.map((item, index) => {
+      const original = originalOf(item); const selected = replacements.get(item.contentItemId); const renditions = item.representations.filter(part => part.role === 'rendition'); const addition = additions.find(value => value.id === item.contentItemId); const ordinal = structuralChange ? index : item.ordinal;
       return <li key={item.contentItemId}><div>
-        <h3>{original.originalFilename}</h3><dl><dt>固定パス</dt><dd>{item.logicalPath}</dd><dt>順序</dt><dd>{item.ordinal}</dd><dt>形式</dt><dd>{original.mediaType}</dd></dl>
-        <label className={workspace.formField}>差替ファイル: {original.originalFilename}（固定パス: {item.logicalPath}、順序: {item.ordinal}）<input type="file" disabled={preparing || readOnly || refreshing} onChange={event => {
+        <h3>{original.originalFilename}</h3><dl><dt>固定パス</dt><dd>{item.logicalPath}</dd><dt>順序</dt><dd>{ordinal}</dd><dt>形式</dt><dd>{original.mediaType}</dd></dl>
+        {!addition && <label className={workspace.formField}>差替ファイル: {original.originalFilename}（固定パス: {item.logicalPath}、順序: {ordinal}）<input type="file" disabled={preparing || readOnly || refreshing} onChange={event => {
           const file = event.target.files?.item(0); setReplacements(previous => { const next = new Map(previous); if (file) next.set(item.contentItemId, file); else next.delete(item.contentItemId); return next; }); setError(null);
-        }} /></label>
-        {selected ? <p>差替後: {selected.name} · {selected.size.toLocaleString()} bytes</p> : <p>原本を保持 · {original.sizeBytes.toLocaleString()} bytes</p>}
+        }} /></label>}
+        {addition && <p>追加原本 · {addition.file.size.toLocaleString()} bytes（補助ファイルなし）</p>}
+        {mode === 'update' && <div className={styles.actionRow}>
+          <button type="button" disabled={controlsDisabled || index === 0} onClick={() => move(item.contentItemId, -1)}>{original.originalFilename}を上へ</button>
+          <button type="button" disabled={controlsDisabled || index === items.length - 1} onClick={() => move(item.contentItemId, 1)}>{original.originalFilename}を下へ</button>
+          <button type="button" disabled={controlsDisabled || items.length <= 1} onClick={() => exclude(item.contentItemId)}>{original.originalFilename}を除外</button>
+        </div>}
+        {selected ? <p>差替後: {selected.name} · {selected.size.toLocaleString()} bytes</p> : !addition && <p>原本を保持 · {original.sizeBytes.toLocaleString()} bytes</p>}
         <p>{selected ? `除外する補助ファイル: ${renditions.length}件` : `保持する補助ファイル: ${renditions.length}件`}</p>
         {renditions.length > 0 && <ul>{renditions.map(part => <li key={part.representationId}>{part.originalFilename}</li>)}</ul>}
       </div></li>;
     })}</ul>
-    <p>差し替える原本に属する補助ファイルだけを除外します。作業版から除外したファイルの永続的な履歴保存は保証されません。</p>
+    {excluded.size > 0 && <section aria-label="除外予定の原本"><h3>除外予定（保存まで取消可能）</h3><ul>{[...excluded.keys()].map(id => {
+      const item = allItems.find(value => value.contentItemId === id)!; const original = originalOf(item);
+      const renditionCount = item.representations.filter(part => part.role === 'rendition').length;
+      return <li key={id}>{original.originalFilename} · {item.logicalPath} · 除外する補助ファイル: {renditionCount}件
+        <button type="button" disabled={controlsDisabled} onClick={() => restore(id)}>{original.originalFilename}の除外を取消</button></li>;
+    })}</ul></section>}
+    <p>差し替え・除外対象の原本に属する補助ファイルを除外します。作業版から除外したファイルの永続的な履歴保存は保証されません。</p>
     <p>上限: 原本・補助ファイル計63件、各256 MiB、JSON 1 MiB、境界を含む送信全体1 GiB、送信120秒。</p>
     {!allowed && !readOnly && <div role="alert"><p>権限または文書の状態が更新されました。最新状態を確認してから編集をやり直してください。</p><button type="button" disabled={refreshing} onClick={() => { cancelPreparation(); void onRefresh(); }}>最新状態を確認</button></div>}
     {invalidReplacement && <p role="alert">{invalidReplacement}</p>}

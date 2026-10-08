@@ -78,3 +78,19 @@ Status: ACTIVE / 実 API 資格は未取得
 親承認の限定driverを専用toolsに追加し、既存runner Cargo.tomlへexample登録だけを行う。新dependency/lock変更なし。既存optional runtimeがbuild/test/hashを固定し、元のLinuxSandboxRunner・worker・PDFium・10秒上限を再利用する。保存FileIdのhash/size/media/WORKING/分類状態を先に照合し、元API失敗を保持したまま固定worker codeだけを採取する。失敗時sandbox bypassはない。
 
 Node契約の欠如RED→GREEN。独立レビューでDB size binding不足を見つけ、size照合必須のRED→GREENで補修した。独立レビューGO。新規62件、既存visualと合わせ77件の独立検査成功。全Node回帰259/259成功、skip0。Rust source/APIの静的照合は済んだが、cloudにRustが無いためcompile/format/2単体testと実sandbox実行はhosted待ち。原本の負例分類や製品規則変更はまだしない。
+
+## 2026-10-08 09:16 UTC — harness診断準備済み、製品coverageでBLOCKED
+
+Macタスクの実結果をread-onlyで確認：d217f51d/run37752175251/job113227809431は、保存前提がすべて一致した上で、同じLinuxSandboxRunnerが `unsupported_semantic_construct` を返した。APIは422 BUSINESS_RULE_REJECTED、登録1/公開0、DSI行なし、qualification:false。注釈が原因とは断定しない。
+
+CIは終端14job中12成功（Rust test/static・両macOS parity等を含む）、Documentと集約required-checkは失敗。別のDSI PoC37752175211 / Sandbox Preflight37752175213は成功。これをsmall/大量/本番資格の合格とはしない。PR110はDraftのまま、mainへmergeしていない。
+
+最新main b1c5c36d（PR109）をlocal worktreeへconflictなしでno-commit mergeした。まだ公開しておらず、この組合せの資格も未取得。PDF worker/runnerとversioning preflightは診断headとmainで同じ。製品coverageは変更していない。
+
+再開先は[限定設計提案](../specs/2026-10-08-document-official-pdf-coverage-proposal.md)。利用者承認前はread-only/designのみ。推奨は既存PDFium/lopdfで意味を検証できる描画・構造の限定拡張、rasterは検証oracleのみ。一般PDFを単純なfixtureへ置き換えて実用成功にしない。表/ActualText/clip/新Difffield/cacheを落とさず、意味profile変更が必要なら別承認を求める。1,000以上はNOT_ADMITTED/未実行のまま。
+
+## 2026-10-08 13:54 UTC — 限定PDF対応の承認とtest-first再開
+
+13:49:25 UTCの「確認待ちの4点は進めてください」により、提示済みA（既存エンジンで文字中心PDFの描画・タグ意味を限定対応、Diffも検証、未知構造は拒否）の承認を受領。main114 `7f5dd26bb96d65f1dd478e644e9480d8666ebb7d` を競合なく保持した。旧成功corpusのfingerprint/evidence不変を互換条件にし、新profile・旧版identity移行が必要なら別判断を求める。
+
+最初の変更はPDF paint契約のtest-only5件（default状態不変、vector形状・色の差、同値数値/default、包含clip）であり、製品codeは未変更。PDFiumの別process rasterでfixture表示差も検証する。cloudにRustがなく、Macの正確sourceによるRED確認待ち。smallの前回FAILと大量未資格は維持する。
