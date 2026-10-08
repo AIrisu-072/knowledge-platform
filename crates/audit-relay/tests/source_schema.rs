@@ -6,6 +6,7 @@
 
 mod support;
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -645,6 +646,14 @@ async fn role_matrix_posture_and_session_refusal() {
                 .into(),
             "trigger_missing",
         ),
+        (
+            "DROP TRIGGER deliveries_writer ON audit_relay.deliveries".into(),
+            "CREATE TRIGGER deliveries_writer BEFORE INSERT OR UPDATE OR DELETE \
+             ON audit_relay.deliveries \
+             FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_writer()"
+                .into(),
+            "trigger_missing",
+        ),
     ];
     for (break_sql, repair_sql, violation) in &scenarios {
         exec(admin, break_sql).await;
@@ -660,6 +669,126 @@ async fn role_matrix_posture_and_session_refusal() {
             "{repair_sql}"
         );
     }
+}
+
+/// A Document login outside the relay's role matrix (no capability role,
+/// e.g. a reporting or maintenance login) that holds the predefined data
+/// roles can write the relay tables directly and forge a first delivery
+/// receipt. The posture reports it, and the guards refuse a receipt that
+/// does not come through the relay's definer functions, even with the
+/// transition marker set. File and program access is reported for any
+/// login.
+#[tokio::test]
+async fn a_document_login_with_data_bypass_roles_cannot_forge_a_receipt() {
+    let env = DocEnv::start().await;
+    let admin = env.admin();
+    let row = Staged::created();
+    insert_staged(admin, &row).await;
+    let worker = &env.worker.pool;
+    assert_eq!(posture_codes(worker).await, Vec::<String>::new());
+
+    let forger = doc_login(
+        &env.cluster,
+        "document_reporting",
+        &["pg_read_all_data", "pg_write_all_data"],
+    )
+    .await;
+    let found: BTreeSet<(String, String)> = audit_relay::session::posture(worker)
+        .await
+        .expect("posture")
+        .into_iter()
+        .map(|v| (v.violation, v.object))
+        .collect();
+    for expected in [
+        ("table_access", forger.role.clone()),
+        (
+            "predefined_role_member",
+            format!("{}:pg_read_all_data", forger.role),
+        ),
+        (
+            "predefined_role_member",
+            format!("{}:pg_write_all_data", forger.role),
+        ),
+    ] {
+        assert!(
+            found.contains(&(expected.0.to_owned(), expected.1.clone())),
+            "{expected:?}: {found:?}"
+        );
+    }
+    // The forged first receipt (and a forged history row) is refused, also
+    // with the transition marker a definer path would set.
+    for statement in [
+        format!(
+            "UPDATE audit_relay.deliveries SET delivered_at = now(), store_seq = 7, \
+             store_envelope_digest = '\\x{}', store_outcome = 'stored', \
+             store_recovery_epoch = 1 WHERE event_id = '{}'",
+            "11".repeat(32),
+            row.event_id
+        ),
+        format!(
+            "SET audit_relay.transition = 'repair_reset_missing'; \
+             UPDATE audit_relay.deliveries SET delivered_at = now(), store_seq = 7, \
+             store_envelope_digest = '\\x{}', store_outcome = 'stored', \
+             store_recovery_epoch = 1 WHERE event_id = '{}'",
+            "11".repeat(32),
+            row.event_id
+        ),
+        format!(
+            "UPDATE audit_relay.deliveries SET quarantined_at = now(), \
+             quarantine_code = 'conflict' WHERE event_id = '{}'",
+            row.event_id
+        ),
+        "UPDATE audit_relay.delivery_progress SET success_generation = success_generation + 1"
+            .to_owned(),
+        "UPDATE audit_relay.delivery_policy SET max_attempts = 1, revision = revision + 1"
+            .to_owned(),
+    ] {
+        let error = sqlx::raw_sql(sqlx::AssertSqlSafe(statement.clone()))
+            .execute(&forger.pool)
+            .await
+            .expect_err("forged write");
+        assert_eq!(sqlstate(&error), "42501", "{statement}: {error}");
+    }
+    let delivered: Option<i64> =
+        sqlx::query_scalar("SELECT store_seq FROM audit_relay.deliveries WHERE event_id = $1")
+            .bind(row.event_id)
+            .fetch_one(admin)
+            .await
+            .expect("delivery");
+    assert_eq!(delivered, None, "no receipt was forged");
+    exec(
+        admin,
+        &format!(
+            "REVOKE pg_read_all_data, pg_write_all_data FROM {}",
+            forger.role
+        ),
+    )
+    .await;
+    assert_eq!(posture_codes(worker).await, Vec::<String>::new());
+
+    // File and program access bypasses everything at the OS level.
+    for role in [
+        "pg_read_server_files",
+        "pg_write_server_files",
+        "pg_execute_server_program",
+    ] {
+        exec(admin, &format!("GRANT {role} TO {}", forger.role)).await;
+        let found: Vec<(String, String)> = audit_relay::session::posture(worker)
+            .await
+            .expect("posture")
+            .into_iter()
+            .map(|v| (v.violation, v.object))
+            .collect();
+        assert_eq!(
+            found,
+            vec![(
+                "predefined_role_member".to_owned(),
+                format!("{}:{role}", forger.role)
+            )]
+        );
+        exec(admin, &format!("REVOKE {role} FROM {}", forger.role)).await;
+    }
+    assert_eq!(posture_codes(worker).await, Vec::<String>::new());
 }
 
 async fn posture_codes(pool: &PgPool) -> Vec<String> {

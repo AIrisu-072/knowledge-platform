@@ -329,6 +329,7 @@ async fn posture_is_clean_and_detects_each_violation() {
     }
     let (r, dba) = (&cast.reader.role, &cast.dba.role);
     let backup = db.role_name("backup");
+    let files = db.role_name("files");
     let d = &db.database;
     let scenarios: Vec<(String, String, &str)> = vec![
         (
@@ -480,6 +481,33 @@ async fn posture_is_clean_and_detects_each_violation() {
                  GRANT pg_read_all_data TO {backup}; GRANT CONNECT ON DATABASE {d} TO {backup}"
             ),
             format!("REVOKE CONNECT ON DATABASE {d} FROM {backup}; DROP ROLE {backup}"),
+            "predefined_role_member",
+        ),
+        // File and program access bypasses every privilege at the OS level
+        // (the data files of every database): reported for any login, even
+        // one that cannot connect to this database.
+        (
+            format!(
+                "CREATE ROLE {files} LOGIN PASSWORD '{PASSWORD}'; \
+                 GRANT pg_read_server_files TO {files}"
+            ),
+            format!("DROP ROLE {files}"),
+            "predefined_role_member",
+        ),
+        (
+            format!(
+                "CREATE ROLE {files} LOGIN PASSWORD '{PASSWORD}'; \
+                 GRANT pg_write_server_files TO {files}"
+            ),
+            format!("DROP ROLE {files}"),
+            "predefined_role_member",
+        ),
+        (
+            format!(
+                "CREATE ROLE {files} LOGIN PASSWORD '{PASSWORD}'; \
+                 GRANT pg_execute_server_program TO {files}"
+            ),
+            format!("DROP ROLE {files}"),
             "predefined_role_member",
         ),
         (

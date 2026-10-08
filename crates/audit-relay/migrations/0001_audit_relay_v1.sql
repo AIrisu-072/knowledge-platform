@@ -503,6 +503,27 @@ BEGIN
 END
 $guard_deliveries$;
 
+-- Defence in depth (the boundary is the posture): every row of the relay
+-- tables is written by the relay's definer functions, which run as
+-- audit_relay_owner (and by the migration, as that role). SECURITY INVOKER,
+-- so current_user is the role that issued the write: a direct write by any
+-- other role (e.g. a login holding pg_write_all_data, which needs no table
+-- grant) is refused, also with the audit_relay.transition marker set, which
+-- any session can set. Superusers stay outside this boundary (design §5.3).
+CREATE FUNCTION audit_relay.guard_writer()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, pg_temp AS $guard_writer$
+BEGIN
+    IF current_user = 'audit_relay_owner'
+       OR coalesce((SELECT r.rolsuper FROM pg_catalog.pg_roles AS r
+                    WHERE r.rolname = current_user), FALSE) THEN
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END IF;
+    RAISE EXCEPTION '%.%: % only through the relay functions', TG_TABLE_SCHEMA,
+        TG_TABLE_NAME, TG_OP USING ERRCODE = '42501';
+END
+$guard_writer$;
+
 CREATE FUNCTION audit_relay.refuse_mutation()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $refuse_mutation$
@@ -537,6 +558,16 @@ $guard_progress$;
 
 CREATE TRIGGER deliveries_guard BEFORE INSERT OR UPDATE OR DELETE ON audit_relay.deliveries
     FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_deliveries();
+CREATE TRIGGER deliveries_writer BEFORE INSERT OR UPDATE OR DELETE ON audit_relay.deliveries
+    FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_writer();
+CREATE TRIGGER history_writer BEFORE INSERT OR UPDATE OR DELETE ON audit_relay.delivery_history
+    FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_writer();
+CREATE TRIGGER policy_writer BEFORE INSERT OR UPDATE OR DELETE ON audit_relay.delivery_policy
+    FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_writer();
+CREATE TRIGGER progress_writer BEFORE INSERT OR UPDATE OR DELETE ON audit_relay.delivery_progress
+    FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_writer();
+CREATE TRIGGER runtime_writer BEFORE INSERT OR UPDATE OR DELETE ON audit_relay.relay_runtime
+    FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_writer();
 CREATE TRIGGER deliveries_no_truncate BEFORE TRUNCATE ON audit_relay.deliveries
     FOR EACH STATEMENT EXECUTE FUNCTION audit_relay.refuse_mutation();
 CREATE TRIGGER history_guard BEFORE UPDATE OR DELETE ON audit_relay.delivery_history
@@ -996,7 +1027,12 @@ SET search_path = pg_catalog, pg_temp AS $trigger_enabled$
                      ('deliveries_guard', 'audit_relay.guard_deliveries', 31),
                      ('deliveries_no_truncate', 'audit_relay.refuse_mutation', 34),
                      ('history_guard', 'audit_relay.refuse_mutation', 27),
-                     ('history_no_truncate', 'audit_relay.refuse_mutation', 34))
+                     ('history_no_truncate', 'audit_relay.refuse_mutation', 34),
+                     ('deliveries_writer', 'audit_relay.guard_writer', 31),
+                     ('history_writer', 'audit_relay.guard_writer', 31),
+                     ('policy_writer', 'audit_relay.guard_writer', 31),
+                     ('progress_writer', 'audit_relay.guard_writer', 31),
+                     ('runtime_writer', 'audit_relay.guard_writer', 31))
              AS x(name, function, kind) ON x.name = t.tgname
         WHERE t.tgrelid = p_table AND t.tgname = p_name
           AND t.tgenabled IN ('O', 'A')
@@ -1432,7 +1468,12 @@ SELECT 'trigger_missing', t.name FROM (VALUES
     ('audit_relay.deliveries'::regclass, 'deliveries_guard'),
     ('audit_relay.deliveries'::regclass, 'deliveries_no_truncate'),
     ('audit_relay.delivery_history'::regclass, 'history_guard'),
-    ('audit_relay.delivery_history'::regclass, 'history_no_truncate')) AS t(rel, name)
+    ('audit_relay.delivery_history'::regclass, 'history_no_truncate'),
+    ('audit_relay.deliveries'::regclass, 'deliveries_writer'),
+    ('audit_relay.delivery_history'::regclass, 'history_writer'),
+    ('audit_relay.delivery_policy'::regclass, 'policy_writer'),
+    ('audit_relay.delivery_progress'::regclass, 'progress_writer'),
+    ('audit_relay.relay_runtime'::regclass, 'runtime_writer')) AS t(rel, name)
 WHERE NOT audit_relay.trigger_enabled(t.rel, t.name)
 UNION ALL
 -- Each timeout must be set and non-zero (0 disables it); a per-database
@@ -1467,11 +1508,42 @@ SELECT 'staging_read', h.rolname FROM capability_holders AS h
 WHERE has_any_column_privilege(h.oid, 'public.audit_outbox_events'::regclass, 'SELECT')
 UNION ALL
 -- Nor read or write the relay tables (grants, pg_read_all_data,
--- pg_write_all_data: a forged receipt needs no guard bypass).
-SELECT DISTINCT 'table_access', h.rolname FROM capability_holders AS h, pg_class AS c
+-- pg_write_all_data: a forged receipt needs no guard bypass). No other
+-- login (a Document reporting or maintenance login, for instance) may
+-- write them either: only audit_relay_owner (through the definer
+-- functions) and superusers do.
+SELECT DISTINCT 'table_access', a.rolname
+FROM (
+    SELECT h.oid, h.rolname, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE' AS privileges
+    FROM capability_holders AS h
+    UNION ALL
+    SELECT l.oid, l.rolname::text, 'INSERT, UPDATE, DELETE, TRUNCATE'
+    FROM pg_roles AS l
+    WHERE l.rolcanlogin AND NOT l.rolsuper AND l.rolname <> 'audit_relay_owner'
+) AS a, pg_class AS c
 WHERE c.relnamespace = (SELECT s.oid FROM schema_oid AS s)
   AND c.relkind IN ('r', 'p', 'v', 'm')
-  AND has_table_privilege(h.oid, c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE')
+  AND has_table_privilege(a.oid, c.oid, a.privileges)
+UNION ALL
+-- Predefined roles that bypass the table ACLs (as in the Store's posture):
+-- pg_read_all_data reads staged content and the commitment salts,
+-- pg_write_all_data writes receipts, pg_maintain locks the tables. Reported
+-- for every non-superuser login that can connect to this database.
+SELECT 'predefined_role_member', l.rolname::text || ':' || p.rolname::text
+FROM pg_roles AS l
+JOIN pg_roles AS p ON p.rolname IN ('pg_read_all_data', 'pg_write_all_data', 'pg_maintain')
+WHERE l.rolcanlogin AND NOT l.rolsuper
+  AND pg_has_role(l.oid, p.oid, 'MEMBER')
+  AND has_database_privilege(l.oid, (SELECT d.oid FROM this_db AS d), 'CONNECT')
+UNION ALL
+-- Server file and program access bypasses every privilege at the OS level:
+-- reported for every non-superuser login, whether or not it can connect.
+SELECT 'predefined_role_member', l.rolname::text || ':' || p.rolname::text
+FROM pg_roles AS l
+JOIN pg_roles AS p ON p.rolname IN ('pg_read_server_files', 'pg_write_server_files',
+                                     'pg_execute_server_program')
+WHERE l.rolcanlogin AND NOT l.rolsuper
+  AND pg_has_role(l.oid, p.oid, 'MEMBER')
 UNION ALL
 -- Row security on the staging table hides rows from the definer functions
 -- (audit_relay_owner is NOBYPASSRLS): claim and reconcile would silently

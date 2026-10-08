@@ -782,6 +782,16 @@ WHERE l.rolcanlogin AND NOT l.rolsuper
   AND pg_has_role(l.oid, p.oid, 'MEMBER')
   AND has_database_privilege(l.oid, (SELECT d.oid FROM this_db AS d), 'CONNECT')
 UNION ALL
+-- Server file and program access bypasses every privilege at the OS level
+-- (the data files of every database of the cluster, COPY ... PROGRAM): reported
+-- for every non-superuser login, whether or not it can connect here.
+SELECT 'predefined_role_member', l.rolname::text || ':' || p.rolname::text
+FROM pg_roles AS l
+JOIN pg_roles AS p ON p.rolname IN ('pg_read_server_files', 'pg_write_server_files',
+                                     'pg_execute_server_program')
+WHERE l.rolcanlogin AND NOT l.rolsuper
+  AND pg_has_role(l.oid, p.oid, 'MEMBER')
+UNION ALL
 SELECT 'schema_usage', CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE g.rolname::text END
 FROM pg_namespace AS n
 CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) AS a
