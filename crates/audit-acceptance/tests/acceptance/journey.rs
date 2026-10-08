@@ -371,9 +371,13 @@ async fn journey() {
     let store = env.store_client().await;
     let stored = assert_delivered_exactly_once(&env, &env.store_admin, &store).await;
     let ledger = deliveries(&env).await;
+    let mut late_duplicates = 0;
     for delivery in ledger.values() {
-        assert_eq!(delivery.store_outcome.as_deref(), Some("stored"));
-        assert_eq!(delivery.attempt_count, 1, "no retries were needed");
+        late_duplicates += usize::from(assert_stored_or_late_duplicate(delivery));
+        assert_eq!(
+            delivery.attempt_count, 1,
+            "one attempt each (a timed-out attempt is returned)"
+        );
         assert_eq!(delivery.registration_kind, "trigger");
     }
     for row in &executed {
@@ -518,8 +522,8 @@ async fn journey() {
     .expect("assess");
     assert_eq!(assessed.class(), AssessClass::Authentic, "{assessed:?}");
     eprintln!(
-        "journey: produced={} types={} delivered={} stored_head={head} verified_through={} \
-         checkpoint_seq={} export_rows={} verdict={}",
+        "journey: produced={} types={} delivered={} late_duplicates={late_duplicates} \
+         stored_head={head} verified_through={} checkpoint_seq={} export_rows={} verdict={}",
         staged.len(),
         distinct.len(),
         ledger.len(),

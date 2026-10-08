@@ -59,6 +59,16 @@ pub const RELAY_OPERATOR_ROLES: [&str; 2] = ["audit_store_relay_control", "audit
 /// The bound for every wait on the relay or the scheduler.
 pub const CONVERGE: Duration = Duration::from_secs(45);
 
+/// The relay's lease in these tests.
+pub const LEASE: Duration = Duration::from_secs(15);
+/// The relay's ingest (and probe and control) timeout, and the timeout of
+/// every Store client the tests open. Generous for a loaded CI host, and
+/// below a third of [`LEASE`] as `AUDIT_RELAY_INGEST_TIMEOUT_MS` requires
+/// (`RunConfig::from_lookup` refuses anything else). An answer later than
+/// this is a commit-unknown outage: the attempt is returned and the retry
+/// is acknowledged as `duplicate` ([`assert_stored_or_late_duplicate`]).
+pub const STORE_TIMEOUT: Duration = Duration::from_secs(4);
+
 /// Runs one acceptance scenario on its own runtime, on a thread with a large
 /// stack: the scenarios compose deep production futures (Document services,
 /// relay, Store administration) that overflow the default test-thread stack
@@ -318,19 +328,16 @@ impl Env {
     /// The relay service's Store client (ingest + relay_control +
     /// reconciler).
     pub async fn store_client(&self) -> PostgresAuditStore {
-        PostgresAuditStore::new(self.relay_store.pool.clone(), Duration::from_millis(1_500))
+        PostgresAuditStore::new(self.relay_store.pool.clone(), STORE_TIMEOUT)
             .await
             .expect("relay store session")
     }
 
     /// The relay operator's Store client (reconcile, replay, health).
     pub async fn operator_client(&self) -> PostgresAuditStore {
-        PostgresAuditStore::new(
-            self.operator_store.pool.clone(),
-            Duration::from_millis(1_500),
-        )
-        .await
-        .expect("operator store session")
+        PostgresAuditStore::new(self.operator_store.pool.clone(), STORE_TIMEOUT)
+            .await
+            .expect("operator store session")
     }
 
     pub async fn verifier_admin(&self) -> AuditAdmin {
@@ -348,10 +355,9 @@ impl Env {
     }
 
     pub async fn health_against(&self, store_url: &str, reconcile: bool) -> Value {
-        let (source, store) =
-            connect_for_health(&self.worker.url, store_url, Duration::from_millis(1_500))
-                .await
-                .expect("health connects");
+        let (source, store) = connect_for_health(&self.worker.url, store_url, STORE_TIMEOUT)
+            .await
+            .expect("health connects");
         let report = health(
             &source,
             store,
@@ -526,19 +532,23 @@ pub fn scratch_dir(name: &str) -> PathBuf {
 // ---------------------------------------------------------------------------
 
 /// The `audit-relay run` configuration from its environment variables, with
-/// test timings (short lease, poll and breaker cooldowns).
+/// test timings (short poll and breaker cooldowns, [`LEASE`],
+/// [`STORE_TIMEOUT`]).
 pub fn run_config(source_url: &str, store_url: &str) -> RunConfig {
     let vars: BTreeMap<&str, String> = BTreeMap::from([
         (audit_relay::config::SOURCE_URL, source_url.to_owned()),
         (audit_relay::config::STORE_URL, store_url.to_owned()),
         ("AUDIT_RELAY_BATCH_SIZE", "8".to_owned()),
         ("AUDIT_RELAY_MAX_IN_FLIGHT", "4".to_owned()),
-        ("AUDIT_RELAY_LEASE_MS", "6000".to_owned()),
+        ("AUDIT_RELAY_LEASE_MS", LEASE.as_millis().to_string()),
         ("AUDIT_RELAY_RENEW_MS", "1000".to_owned()),
         ("AUDIT_RELAY_MAX_PROCESSING_MS", "60000".to_owned()),
         ("AUDIT_RELAY_DRAIN_MS", "5000".to_owned()),
         ("AUDIT_RELAY_POLL_MS", "50".to_owned()),
-        ("AUDIT_RELAY_INGEST_TIMEOUT_MS", "1500".to_owned()),
+        (
+            "AUDIT_RELAY_INGEST_TIMEOUT_MS",
+            STORE_TIMEOUT.as_millis().to_string(),
+        ),
         ("AUDIT_RELAY_BREAKER_INITIAL_MS", "50".to_owned()),
         ("AUDIT_RELAY_BREAKER_MAX_MS", "400".to_owned()),
         ("AUDIT_RELAY_PROGRESS_MS", "1000".to_owned()),
@@ -767,6 +777,30 @@ pub async fn deliveries(env: &Env) -> BTreeMap<Uuid, DeliveryRow> {
         )
     })
     .collect()
+}
+
+/// The Store outcome of one acknowledged first delivery: `stored`, or
+/// `duplicate` only after an earlier attempt of the same row whose answer
+/// came too late. Such an ingest timed out ([`STORE_TIMEOUT`],
+/// `store_timeout`; the attempt is returned as an outage) after the Store
+/// had committed, and the retry found the stored event (design §6.3,
+/// commit outcome unknown) — correct behaviour on a loaded host.
+/// Exactly-once is proven by the Store's rows
+/// ([`assert_delivered_exactly_once`]), not by this outcome. Returns
+/// whether the row was such a late duplicate.
+pub fn assert_stored_or_late_duplicate(delivery: &DeliveryRow) -> bool {
+    match delivery.store_outcome.as_deref() {
+        Some("stored") => false,
+        Some("duplicate") => {
+            assert_eq!(
+                delivery.last_outage_code.as_deref(),
+                Some("store_timeout"),
+                "a duplicate needs an earlier timed-out attempt: {delivery:?}"
+            );
+            true
+        }
+        other => panic!("unexpected Store outcome {other:?}: {delivery:?}"),
+    }
 }
 
 /// One relay-origin event as the Store holds it.

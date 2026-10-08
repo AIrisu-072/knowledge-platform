@@ -235,7 +235,9 @@ async fn store_outage() {
     let client = env.store_client().await;
     assert_delivered_exactly_once(&env, &env.store_admin, &client).await;
     for delivery in deliveries(&env).await.values() {
-        assert_eq!(delivery.store_outcome.as_deref(), Some("stored"));
+        // `stored`; `duplicate` only after a timed-out attempt (the claimed
+        // row's outage attempt never reached the Store).
+        assert_stored_or_late_duplicate(delivery);
         assert_eq!(delivery.attempt_count, 1, "the outage attempt was returned");
     }
     assert_eq!(assert_store_chain(&env.store_admin).await, staged.len());

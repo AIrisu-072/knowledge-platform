@@ -17,7 +17,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use audit_relay::reconcile::Reconciler;
 use audit_store_postgres::admin::{AccessOperation, AuditAdmin};
@@ -244,7 +243,7 @@ async fn store_restore() {
     let relay = RunningRelay::start_with(run_config(&env.worker.url, &restored_url));
     let operator_store = PostgresAuditStore::new(
         env.pool_on(&env.operator_store, RESTORED_DB).await,
-        Duration::from_millis(1_500),
+        STORE_TIMEOUT,
     )
     .await
     .expect("operator Store client");
@@ -270,7 +269,7 @@ async fn store_restore() {
     // epoch 2 now, what survived keeps its epoch-1 receipt.
     let restored_store = PostgresAuditStore::new(
         env.pool_on(&env.relay_store, RESTORED_DB).await,
-        Duration::from_millis(1_500),
+        STORE_TIMEOUT,
     )
     .await
     .expect("relay Store client");

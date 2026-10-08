@@ -9,6 +9,7 @@
 //! ignored `child_relay_fixture` with a Store client that ingests for real,
 //! reports the receipt on stdout and then hangs until it is killed.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -37,6 +38,10 @@ const INGESTED: &str = "AUDIT_ACCEPTANCE_CHILD_INGESTED";
 const CHILD_SOURCE: &str = "AUDIT_ACCEPTANCE_CHILD_SOURCE";
 const CHILD_STORE: &str = "AUDIT_ACCEPTANCE_CHILD_STORE";
 const CHILD_LIFETIME: Duration = Duration::from_secs(90);
+/// The child's `application_name` on both databases: the parent waits until
+/// every backend of the killed process has ended before it reads what the
+/// child committed.
+const CHILD_APP: &str = "audit-acceptance-child-relay";
 /// The killed relay's lease: the restarted relay claims its rows again
 /// once it has expired (no forced SQL).
 const CHILD_LEASE: Duration = Duration::from_secs(3);
@@ -147,7 +152,7 @@ async fn child_relay() {
         breaker: BreakerConfig {
             initial_cooldown: Duration::from_millis(20),
             max_cooldown: Duration::from_millis(200),
-            probe_timeout: Duration::from_millis(1_500),
+            probe_timeout: STORE_TIMEOUT,
             closed_claims: 8,
         },
         policy: Default::default(),
@@ -167,6 +172,7 @@ struct ChildRelay {
 
 impl ChildRelay {
     fn spawn(source: &str, store: &str) -> Self {
+        let named = |url: &str| format!("{url}?application_name={CHILD_APP}");
         let mut child = Command::new(std::env::current_exe().expect("test executable"))
             .args([
                 "--exact",
@@ -174,8 +180,8 @@ impl ChildRelay {
                 "--ignored",
                 "--nocapture",
             ])
-            .env(CHILD_SOURCE, source)
-            .env(CHILD_STORE, store)
+            .env(CHILD_SOURCE, named(source))
+            .env(CHILD_STORE, named(store))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -263,6 +269,20 @@ async fn relay_crash() {
     let mut child = ChildRelay::spawn(&env.worker.url, &env.relay_store.url);
     let (killed, seq) = child.wait_ingested().await;
     child.kill9();
+    // A statement the server had already received when the process died
+    // still runs to its end (another in-flight ingest may commit after the
+    // kill): read the ledger and the Store once every backend of the
+    // killed process is gone.
+    wait_until("the killed relay's sessions end", CONVERGE, || async {
+        let sessions: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM pg_stat_activity WHERE application_name = $1")
+                .bind(CHILD_APP)
+                .fetch_one(&env.doc_admin)
+                .await
+                .expect("sessions");
+        sessions == 0
+    })
+    .await;
     let ledger = deliveries(&env).await;
     let row = &ledger[&killed];
     assert!(!row.delivered, "killed before the ack");
@@ -290,6 +310,26 @@ async fn relay_crash() {
     .await
     .expect("leased rows");
     assert!(in_flight.contains(&killed));
+    let committed_by_child: BTreeMap<Uuid, i64> = sqlx::query_as::<_, (Uuid, i64)>(
+        "SELECT event_id, seq FROM audit_store.events WHERE event_id = ANY($1)",
+    )
+    .bind(&in_flight)
+    .fetch_all(&env.store_admin)
+    .await
+    .expect("rows the child stored")
+    .into_iter()
+    .collect();
+    assert_eq!(committed_by_child.get(&killed), Some(&seq));
+    let stored_relay_rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM audit_store.events WHERE origin = 'relay'")
+            .fetch_one(&env.store_admin)
+            .await
+            .expect("count");
+    assert_eq!(
+        stored_relay_rows,
+        committed_by_child.len() as i64,
+        "the child stored only rows it had leased"
+    );
 
     // Restart: `audit-relay run`. The lease expires, the row is claimed
     // again and the Store recognizes the delivery.
@@ -312,22 +352,32 @@ async fn relay_crash() {
     for id in &in_flight {
         assert_eq!(ledger[id].attempt_count, 2, "{id}: claimed by both relays");
     }
+    // Every row the killed relay stored is acknowledged by the restarted
+    // one as a duplicate of the child's receipt. Every other row is stored
+    // by the restarted relay, or acknowledged as a duplicate only after its
+    // own timed-out attempt (a late Store answer on a loaded host).
+    let mut late_duplicates = 0;
+    for (id, row) in &ledger {
+        match committed_by_child.get(id) {
+            Some(child_seq) => {
+                assert_eq!(row.store_outcome.as_deref(), Some("duplicate"), "{row:?}");
+                assert_eq!(row.store_seq, Some(*child_seq), "the child's receipt");
+            }
+            None => late_duplicates += usize::from(assert_stored_or_late_duplicate(row)),
+        }
+    }
     let duplicates = ledger
         .values()
         .filter(|row| row.store_outcome.as_deref() == Some("duplicate"))
         .count();
-    assert!(duplicates >= 1 && duplicates <= in_flight.len());
+    assert_eq!(duplicates, committed_by_child.len() + late_duplicates);
     eprintln!(
-        "relay_crash: staged={} killed_seq={seq} in_flight_at_kill={} duplicates={duplicates}",
+        "relay_crash: staged={} killed_seq={seq} in_flight_at_kill={} stored_by_child={} \
+         duplicates={duplicates} late_duplicates={late_duplicates}",
         staged.len(),
-        in_flight.len()
+        in_flight.len(),
+        committed_by_child.len()
     );
-    for row in ledger.values() {
-        assert!(
-            matches!(row.store_outcome.as_deref(), Some("stored" | "duplicate")),
-            "{row:?}"
-        );
-    }
 
     // A read-only reconcile run (worker login, operator's Store login):
     // every row ok, recorded once in the Store.
