@@ -48,7 +48,7 @@ use uuid::Uuid;
 
 use crate::api::{ActorPorts, ActorPortsFactory};
 use crate::lexical_artifact::LexicalArtifactStore;
-use crate::payload::{PgPayloadStore, RestoredPayloadV1};
+use crate::payload::PgPayloadStore;
 use crate::recovery::{CurrentState, PgStartupRecovery};
 
 /// Why a durable generation could not be loaded.
@@ -83,8 +83,9 @@ pub struct LoadedGeneration {
     store: MemoryProjectionStore,
     lexical: Arc<TantivyLexicalIndex>,
     graph: DurableDocumentGraph,
-    /// E: the generation's indexed Units for Vector hit resolution.
-    vector_units: Arc<crate::vector_runtime::VectorUnits>,
+    /// E: the generation's indexed items and Unit segments for Vector hit
+    /// resolution.
+    vector_units: Arc<crate::vector_runtime::VectorUnitSegments>,
 }
 
 impl LoadedGeneration {
@@ -110,7 +111,7 @@ pub struct DurableDocumentReadModel {
     pool: PgPool,
     lexical_root: PathBuf,
     source: DiscoverableSource,
-    /// Whether loads keep the Units for Vector hit resolution.
+    /// Whether loads keep the Unit segment list for Vector hit resolution.
     vector_units: bool,
     loaded: RwLock<Option<Arc<LoadedGeneration>>>,
     /// The key being loaded and the outcome of its load task. The load runs
@@ -133,8 +134,8 @@ impl DurableDocumentReadModel {
         }
     }
 
-    /// For a host without Vector retrieval: loads do not keep a copy of every
-    /// Unit, and a Vector hit never resolves to a current Unit.
+    /// For a host without Vector retrieval: a Vector hit never resolves to a
+    /// current Unit.
     pub fn without_vector_units(mut self) -> Self {
         self.vector_units = false;
         self
@@ -257,27 +258,19 @@ impl DurableDocumentReadModel {
         }
         let manifest = self.manifest(key).await?;
         let payloads = PgPayloadStore::new(self.pool.clone());
-        // Without Vector retrieval no Unit text is needed: the payloads are
-        // checked from per-segment summaries and the Units are never held.
-        let (projection, vector_units) = if self.vector_units {
-            let RestoredPayloadV1 {
-                projection,
-                unit_manifest,
-                coverage: _,
-            } = payloads
-                .restore(&manifest)
-                .await
-                .map_err(|error| store_error("payload restore", error))?;
-            let units = crate::vector_runtime::vector_units(key, &unit_manifest);
-            (projection, units)
+        // No Unit text is held: the payloads are checked from per-segment
+        // summaries, and a Vector hit reads its Unit from its segment.
+        let restored = payloads
+            .restore_without_units(&manifest)
+            .await
+            .map_err(|error| store_error("payload restore", error))?;
+        let vector_units = Arc::new(if self.vector_units {
+            crate::vector_runtime::VectorUnitSegments::of_summary(self.pool.clone(), &restored)
+                .map_err(|error| store_error("vector Units", error))?
         } else {
-            let restored = payloads
-                .restore_without_units(&manifest)
-                .await
-                .map_err(|error| store_error("payload restore", error))?;
-            (restored.projection, Default::default())
-        };
-        let vector_units = Arc::new(vector_units);
+            crate::vector_runtime::VectorUnitSegments::none(key)
+        });
+        let projection = restored.projection;
 
         // Structural owners come from the verified Graph rows, never RAM.
         let (_, records, _) = PostgresGraphStore::new(self.pool.clone())

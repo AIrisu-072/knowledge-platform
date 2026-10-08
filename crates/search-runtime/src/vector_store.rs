@@ -26,6 +26,7 @@ use search_application::vector::{PinnedVectorGeneration, VectorGenerationPort, V
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 pub const VECTOR_ENGINE: &str = "exact-cosine";
@@ -185,15 +186,21 @@ struct LoadedStage {
     segments: Vec<Arc<LoadedSegment>>,
 }
 
+type LoadOutcome = watch::Receiver<Option<Result<Arc<LoadedStage>, String>>>;
+
 /// The exact-scan index over PostgreSQL rows.
 pub struct PgVectorIndex {
     pool: PgPool,
     floor: f32,
-    loaded: Mutex<BTreeMap<String, Arc<LoadedStage>>>,
+    loaded: Arc<Mutex<BTreeMap<String, Arc<LoadedStage>>>>,
     /// Scan segments of the loaded stage, shared by the next one.
-    scan_segments: Mutex<HashMap<String, Arc<LoadedSegment>>>,
+    scan_segments: Arc<Mutex<HashMap<String, Arc<LoadedSegment>>>>,
     /// Verified segment entries of the last stage this process wrote or read.
-    stored_segments: Mutex<HashMap<String, Arc<StoredSegment>>>,
+    stored_segments: Arc<Mutex<HashMap<String, Arc<StoredSegment>>>>,
+    /// The stage being loaded and the outcome of its load task. The load
+    /// runs detached, so a request that gives up at its deadline does not
+    /// cancel it; later requests wait for the same outcome.
+    loading: Arc<Mutex<Option<(String, LoadOutcome)>>>,
 }
 
 impl PgVectorIndex {
@@ -202,9 +209,22 @@ impl PgVectorIndex {
         Self {
             pool,
             floor,
-            loaded: Mutex::new(BTreeMap::new()),
-            scan_segments: Mutex::new(HashMap::new()),
-            stored_segments: Mutex::new(HashMap::new()),
+            loaded: Default::default(),
+            scan_segments: Default::default(),
+            stored_segments: Default::default(),
+            loading: Default::default(),
+        }
+    }
+
+    /// The same index and caches, for a detached load task.
+    fn detached(&self) -> Self {
+        Self {
+            pool: self.pool.clone(),
+            floor: self.floor,
+            loaded: self.loaded.clone(),
+            scan_segments: self.scan_segments.clone(),
+            stored_segments: self.stored_segments.clone(),
+            loading: self.loading.clone(),
         }
     }
 
@@ -546,6 +566,8 @@ impl PgVectorIndex {
         ))
     }
 
+    /// The loaded stage of `index_digest`; a stage not loaded yet is loaded
+    /// by one detached task that every waiting request shares.
     async fn load(&self, index_digest: &str) -> Result<Arc<LoadedStage>, SearchError> {
         if let Some(stage) = self
             .loaded
@@ -555,6 +577,41 @@ impl PgVectorIndex {
         {
             return Ok(stage.clone());
         }
+        let mut outcome = {
+            let mut loading = self.loading.lock().map_err(|_| unavailable("lock"))?;
+            match loading.as_ref() {
+                Some((digest, outcome)) if digest == index_digest => outcome.clone(),
+                _ => {
+                    let (sender, outcome) = watch::channel(None);
+                    let task = self.detached();
+                    let digest = index_digest.to_owned();
+                    tokio::spawn(async move {
+                        let result = task.load_now(&digest).await.map_err(|error| error.to_string());
+                        if let Ok(mut loading) = task.loading.lock()
+                            && loading.as_ref().is_some_and(|(at, _)| *at == digest)
+                        {
+                            *loading = None;
+                        }
+                        let _ = sender.send(Some(result));
+                    });
+                    *loading = Some((index_digest.to_owned(), outcome.clone()));
+                    outcome
+                }
+            }
+        };
+        let result = outcome
+            .wait_for(Option::is_some)
+            .await
+            .map_err(|_| unavailable("stage load stopped"))?
+            .clone();
+        match result {
+            Some(Ok(stage)) => Ok(stage),
+            Some(Err(error)) => Err(SearchError::SourceUnavailable(error)),
+            None => Err(unavailable("stage load")),
+        }
+    }
+
+    async fn load_now(&self, index_digest: &str) -> Result<Arc<LoadedStage>, SearchError> {
         let (bundle, model_id, count, digests) = self.stage_list(index_digest).await?;
         let cached: HashMap<String, Arc<LoadedSegment>> = {
             let cache = self.scan_segments.lock().map_err(|_| unavailable("lock"))?;

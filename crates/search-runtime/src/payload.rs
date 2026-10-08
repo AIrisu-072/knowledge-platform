@@ -164,6 +164,8 @@ pub struct UnitManifestSummaryV1 {
     pub profile_set_digest: [u8; 32],
     /// Every Unit's ID and `unit_doc_hash`, in manifest order.
     pub units: Vec<UnitSealEntry>,
+    /// Each item's stored Unit segment digest, in coverage item order.
+    pub segments: Vec<String>,
 }
 
 /// A bundle whose payload digests were all recomputed. Not a READY proof.
@@ -971,9 +973,37 @@ impl PgPayloadStore {
                 items: items_len,
                 profile_set_digest,
                 units,
+                segments: list,
             },
             coverage,
         })
+    }
+
+    /// The listed Unit segments, each verified as a restore verifies it, with
+    /// every Unit's Source snapshot cleared. Not kept in the process cache.
+    pub async fn unit_segments(
+        &self,
+        digests: &[String],
+    ) -> Result<HashMap<String, BodyItemEntry>, BundleError> {
+        let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
+            "SELECT segment_digest, dto_version, payload::text, unit_count \
+             FROM search_unit_segment WHERE segment_digest = ANY($1)",
+        )
+        .bind(digests)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = HashMap::with_capacity(rows.len());
+        for (digest, version, text, count) in rows {
+            if version != PAYLOAD_DTO_VERSION {
+                return Err(BundleError::Shape);
+            }
+            let entry = verified_segment(&digest, count, &text)?;
+            out.insert(digest, entry);
+        }
+        if digests.iter().any(|digest| !out.contains_key(digest)) {
+            return Err(BundleError::Shape);
+        }
+        Ok(out)
     }
 
     /// Restores the payload rows of `manifest` and revalidates them against the
