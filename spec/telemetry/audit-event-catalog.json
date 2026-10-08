@@ -729,7 +729,9 @@
             "move_folder",
             "rename_folder",
             "set_access_policy",
-            "update_document_metadata"
+            "update_document_metadata",
+            "get_current_read_state",
+            "mutate_read_state"
           ]
         },
         "reason_code": {"kind": "enum", "values": ["forbidden"]}

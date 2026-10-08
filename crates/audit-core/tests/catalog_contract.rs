@@ -1154,3 +1154,157 @@ fn embedded_text_is_the_spec_file() {
     .expect("catalog file");
     assert_eq!(Catalog::embedded_text(), on_disk);
 }
+
+/// `action_code` values the catalog keeps although no producer on main
+/// stages them any more. The catalog is additive (values are never removed),
+/// so a code the producer drops moves here instead of out of the catalog.
+const RETIRED_DENIAL_CODES: [&str; 0] = [];
+
+/// The workspace directory of a sibling crate (read as text only; the audit
+/// crates never depend on the Document crates).
+fn workspace_path(relative: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
+
+/// The text between the `(` at `open` and its matching `)`.
+fn balanced_args(text: &str, open: usize) -> &str {
+    let mut depth = 0_usize;
+    for (offset, ch) in text[open..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &text[open + 1..open + offset];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("unbalanced call at byte {open}");
+}
+
+/// The `"…"` literals of the `match` in `ManagementCommand::operation_kind`
+/// (the code `access_policy.rs` passes for a refused management command).
+fn management_operation_kinds() -> BTreeSet<String> {
+    let path = workspace_path("crates/document-application/src/management_command.rs");
+    let text = std::fs::read_to_string(&path).expect("management_command.rs");
+    let start = text
+        .find("pub const fn operation_kind(&self) -> &'static str {")
+        .expect("ManagementCommand::operation_kind on main");
+    let body = &text[start..];
+    let end = body.find("\n    }\n").expect("end of operation_kind");
+    body[..end]
+        .split("=> \"")
+        .skip(1)
+        .map(|rest| rest[..rest.find('"').expect("closing quote")].to_owned())
+        .collect()
+}
+
+/// Every `action_code` the Document producer can stage for
+/// `authorization.denied`: the third argument of each
+/// `record_authorization_denied(...)` call in `document-repository-postgres`,
+/// with `operation_kind` expanded to `ManagementCommand::operation_kind`.
+fn producer_denial_codes() -> BTreeSet<String> {
+    let dir = workspace_path("crates/document-repository-postgres/src");
+    let helper = std::fs::read_to_string(dir.join("targeted_events.rs")).expect("targeted_events");
+    assert!(
+        helper.contains("VALUES ($1,'authorization.denied',")
+            && helper
+                .contains(r#"json!({"action_code": action_code, "reason_code": "forbidden"})"#),
+        "record_authorization_denied no longer stages its argument as action_code; update this test"
+    );
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .expect("producer src")
+        .map(|entry| entry.expect("dir entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
+    files.sort();
+    let needle = "record_authorization_denied(";
+    let mut codes = BTreeSet::new();
+    let mut calls = 0;
+    for path in files {
+        let text = std::fs::read_to_string(&path).expect("producer file");
+        let name = path.file_name().expect("file name").to_string_lossy();
+        for (at, _) in text.match_indices(needle) {
+            if text[..at].ends_with("fn ") {
+                continue;
+            }
+            calls += 1;
+            let args = balanced_args(&text, at + needle.len() - 1);
+            let parts: Vec<&str> = args.split(',').map(str::trim).collect();
+            let code = parts.get(2).copied().unwrap_or_default();
+            if let Some(literal) = code.strip_prefix('"').and_then(|c| c.strip_suffix('"')) {
+                codes.insert(literal.to_owned());
+            } else if code == "operation_kind"
+                && text.contains("let operation_kind = command.operation_kind();")
+            {
+                codes.extend(management_operation_kinds());
+            } else {
+                panic!(
+                    "{name}: record_authorization_denied passes an action_code this test \
+                     cannot resolve ({code:?}); teach the test and add the codes to the catalog"
+                );
+            }
+        }
+    }
+    assert!(
+        calls >= 4,
+        "found only {calls} record_authorization_denied calls; was the helper renamed?"
+    );
+    codes
+}
+
+#[test]
+fn authorization_denied_action_codes_cover_every_producer_code() {
+    let catalog = Catalog::embedded();
+    let field = &catalog
+        .get("authorization.denied")
+        .expect("authorization.denied")
+        .fields["action_code"];
+    assert_eq!(field.kind, Kind::Enum);
+    let catalog_codes: BTreeSet<String> = field.values.iter().cloned().collect();
+    let producer = producer_denial_codes();
+    let missing: Vec<_> = producer.difference(&catalog_codes).collect();
+    assert!(
+        missing.is_empty(),
+        "the producer stages authorization.denied action_code values the catalog refuses \
+         (the relay would quarantine them as invalid_field): {missing:?}"
+    );
+    let retired: BTreeSet<String> = RETIRED_DENIAL_CODES
+        .iter()
+        .map(|c| (*c).to_owned())
+        .collect();
+    let unexplained: Vec<_> = catalog_codes
+        .difference(&producer)
+        .filter(|code| !retired.contains(*code))
+        .collect();
+    assert!(
+        unexplained.is_empty(),
+        "catalog action_code values no producer stages; list them in RETIRED_DENIAL_CODES: \
+         {unexplained:?}"
+    );
+}
+
+#[test]
+fn read_state_denial_codes_have_accepted_fixtures() {
+    let fixtures: BTreeSet<String> = accepted_fixtures()
+        .into_iter()
+        .filter(|f| f.row.event_type == "authorization.denied")
+        .map(|f| {
+            f.row.data.as_ref().expect("data")["action_code"]
+                .as_str()
+                .expect("action_code")
+                .to_owned()
+        })
+        .collect();
+    for code in [
+        "get_current_read_state",
+        "mutate_read_state",
+        "mark_version_read",
+    ] {
+        assert!(fixtures.contains(code), "{code} has no accepted fixture");
+    }
+}

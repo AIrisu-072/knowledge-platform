@@ -176,7 +176,11 @@ catalogはclientが選ぶIDだけに印を付ける：fieldの `client_chosen: t
 - `LEGACY_ADAPTER_VERSION` とcatalogのadapter_versionの一致も試験で確認する。
 - typeの追加は投影の変更ではない。既存typeのentryとその出力（既存entryのdigest）を変えずにcatalogへentryを足す場合、`adapter_version` は上げない。新typeの行は、追加前のcatalogでは投影されず（relayが `relay_catalog_skew` として保留する。quarantineも保存もしない）、その版で保存された出力が存在しないためである。新typeの代表fixtureを追加し、そのentryを現在のsectionへ追記する（Storeの `store-envelope-golden.json` も同じ）。Storeの `registered_types` には (source, 新type, 現在のadapter_version) を加える。既存entryのdigestが1つでも変われば、上の規則どおり版を上げる。
   - 2026-10-08：`document.version.detail_viewed` と `document.version.marked_unread`（main PR #106、migration 0012）をこの規則で追加した（adapter_version 1のまま、section 1へ3 entryを追記）。
+  - 2026-10-08：`authorization.denied` の `action_code` へ `get_current_read_state` と `mutate_read_state`（main `6a34de3` の `current_read_state.rs`）を下のenum拡張の規則で追加した（adapter_version 1のまま、section 1へ2 entryを追記）。
   - 配備順：Storeの `registered_types` に無いtypeをrelayのcatalogが期待すると、probeが `store_unregistered_type` になりrelay全体が配送を止める。新typeを登録したStoreを先に（または同時に）配備し、その後relayを新catalogへ更新する。新typeを知らないrelayは、そのtypeの行だけを `relay_catalog_skew` として保留し（他の行は配送する）、healthが `catalog_skew_held` / `relay_held` を出し続ける。catalogを更新すれば保留行はそのまま配送できる。
+- 既存typeのenum系fieldへの値の追加も投影の変更ではない。既存の値は削除・改名せず意味も変えない（廃止した値は残す）。追加前に受理された行の出力（既存entryのdigest）は変わらず、新しい値の行は追加前のcatalogでは受理されないのでその版で保存された出力が存在しない。したがって `adapter_version` は上げない。新しい値の代表fixtureを追加し、そのentryを現在のsectionへ追記する（Storeの `store-envelope-golden.json` も同じ）。Storeはrelay eventのdetailsの値を検査しない（`registered_types` は (source, type, adapter_version) の単位）ので、Store側の変更は要らない。
+  - typeの追加と違い、catalogが知らないenum値の行は保留されない。relayは `invalid_field` として終端のquarantineにする。producerが新しい値を書く前にrelayのcatalogを更新する。更新前に書かれた行は、catalogを更新したrelayの配備後に `audit-relay replay`（運用手順§6）で戻す。
+  - `authorization.denied` の `action_code` は、`crates/audit-core/tests/catalog_contract.rs` がDocument producerのsource（`record_authorization_denied` の全呼出しの第3引数と `ManagementCommand::operation_kind`）から集めた値と照合する。producerの値がcatalogに無ければ失敗し、どのproducerも書かない値は `RETIRED_DENIAL_CODES` に挙げなければ失敗する。mainを取り込んだらこの試験で差分を確かめる。
 
 ## schema生成とRust⊂schema
 
@@ -384,7 +388,7 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 
 `envelope_too_large`、`invalid_json`、`duplicate_key`、`invalid_envelope`、`unknown_event_type`、`control_type_forbidden`、`invalid_source`、`invalid_subject`、`invalid_resource`、`nil_client_id`、`invalid_result`、`invalid_actor`、`invalid_service_executor`、`unknown_field`、`missing_field`、`invalid_field`、`invalid_correlation`、`invalid_source_correlation`、`invalid_reason`、`reason_not_string`、`actor_mismatch`、`source_row_too_large`、`source_digest_mismatch`、`invalid_provenance`、`invalid_extensions`。拒否は、codeと、catalogのfield名または固定の位置名（`type`、`source`、`data.resource.type`、`data.resource.id` 等）だけを持つ。payloadの値は含めない。
 
-## producerとの対応（main `d515aa3`。VIEW/RESETの2種はmain `6a34de3`）
+## producerとの対応（main `d515aa3`。VIEW/RESETの2種と既読状態の拒否codeはmain `6a34de3`）
 
 | type | producer |
 |---|---|
@@ -397,7 +401,7 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 | `document.metadata.changed`、`document.moved` | `document_management.rs` → `targeted_events.rs` |
 | `folder.created/renamed/moved` | `folder_management.rs` → `targeted_events.rs` |
 | `access_policy.changed` | `access_policy.rs`（通常・bootstrap） |
-| `authorization.denied` | `targeted_events.rs`（`access_policy.rs`・`read_state.rs` から） |
+| `authorization.denied` | `targeted_events.rs`（`access_policy.rs`・`read_state.rs`・`current_read_state.rs` から。`action_code` は管理操作6種・`lookup_management_operation`・`mark_version_read`・`get_current_read_state`・`mutate_read_state`） |
 | `document.version.read_confirmed` | `read_state.rs` |
 | `document.version.detail_viewed`、`document.version.marked_unread` | `current_read_state.rs`（実遷移だけ。`resulting = expected + 1`、`first_record` はVIEWだけ） |
 | `document.file.access_granted` | `file_access.rs` |

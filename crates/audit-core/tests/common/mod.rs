@@ -681,6 +681,26 @@ pub fn accepted_fixtures() -> Vec<Fixture> {
                 ..Expect::default()
             },
         ),
+        // current_read_state.rs (main 6a34de3): a reader without ReadHistory
+        // who reads or mutates the read state of a non-current version.
+        fixture(
+            "authorization.denied/get_current_read_state",
+            denied_row("get_current_read_state"),
+            Expect {
+                correlation: json!({}),
+                reason_code: Some("forbidden"),
+                ..Expect::default()
+            },
+        ),
+        fixture(
+            "authorization.denied/mutate_read_state",
+            denied_row("mutate_read_state"),
+            Expect {
+                correlation: json!({}),
+                reason_code: Some("forbidden"),
+                ..Expect::default()
+            },
+        ),
     ]
 }
 

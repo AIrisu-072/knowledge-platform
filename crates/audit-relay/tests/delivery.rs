@@ -96,6 +96,11 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         Staged::read_state(true, 0, true),
         Staged::read_state(false, 1, false),
         Staged::read_state(true, 2, false),
+        // Read-state refusals (read_state.rs, current_read_state.rs on main
+        // 6a34de3): SECURITY events that must be stored, not quarantined.
+        Staged::denied("mark_version_read"),
+        Staged::denied("get_current_read_state"),
+        Staged::denied("mutate_read_state"),
     ];
     let produced = json!(rows.len());
     for row in &rows {
@@ -177,7 +182,7 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     );
     // Read-state events keep the producer's payload as details and carry its
     // operation id as correlation.
-    for row in &rows[6..] {
+    for row in &rows[6..9] {
         let body: Value =
             serde_json::from_str(&env.store_body(row.event_id).await.expect("body")).expect("json");
         let data = &body["data"];
@@ -194,6 +199,26 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
                    "version_id": row.resource_version_id})
         );
         assert!(data.get("reason").is_none());
+    }
+    // Denials keep the action code as details and the reason code as the
+    // reason summary, on the nil AccessPolicy resource.
+    for row in &rows[9..] {
+        let body: Value =
+            serde_json::from_str(&env.store_body(row.event_id).await.expect("body")).expect("json");
+        let data = &body["data"];
+        assert_eq!(body["type"], json!("authorization.denied"));
+        assert_eq!(data["event_class"], json!("SECURITY"));
+        assert_eq!(data["result"], json!("denied"));
+        assert_eq!(data["reason_code"], json!("forbidden"));
+        assert_eq!(
+            data["details"]["action_code"], row.data["action_code"],
+            "{}",
+            row.data
+        );
+        assert_eq!(
+            data["resource"],
+            json!({"type": "AccessPolicy", "id": Uuid::nil()})
+        );
     }
 
     // Health keeps produced / delivered / stored / verified apart.

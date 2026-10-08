@@ -729,6 +729,20 @@ impl Staged {
         )
     }
 
+    /// `authorization.denied` as `targeted_events.rs`
+    /// `record_authorization_denied` stages it: nil `AccessPolicy` resource,
+    /// fixed subject, result `denied`, `{action_code, reason_code}` data.
+    pub fn denied(action_code: &str) -> Self {
+        let mut row = Self::base(
+            "authorization.denied",
+            "authorization/denied".to_owned(),
+            ("AccessPolicy", Uuid::nil(), None),
+            json!({"action_code": action_code, "reason_code": "forbidden"}),
+        );
+        row.result = "denied".to_owned();
+        row
+    }
+
     pub fn with_data(mut self, data: Value) -> Self {
         self.data = data;
         self
