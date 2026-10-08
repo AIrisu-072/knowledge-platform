@@ -287,11 +287,19 @@ function fillRepeated(session, css, char, count) {
 }
 
 async function clickText(session, css, text) {
-  const element = await session.waitForText(css, text);
-  // As a user would: scroll it into view first (for example the footer of a long dialog).
-  await session.execute('arguments[0].scrollIntoView({ block: "center" });', [element.ref]);
-  await element.click();
-  return element;
+  // A screen still loading in stages (the task screen right after launch) can
+  // replace the element between finding and clicking it: find it again.
+  for (let attempt = 1; ; attempt++) {
+    const element = await session.waitForText(css, text);
+    try {
+      // As a user would: scroll it into view first (for example the footer of a long dialog).
+      await session.execute('arguments[0].scrollIntoView({ block: "center" });', [element.ref]);
+      await element.click();
+      return element;
+    } catch (error) {
+      if (attempt >= 3 || !/stale element/.test(String(error?.message))) throw error;
+    }
+  }
 }
 
 async function notice(session, text, options) {
@@ -304,10 +312,12 @@ async function alertText(session, text, options) {
 
 const MENU = ['タスク', '文書', '編集作業', '文書履歴', '検索'];
 
-/** The app opens on タスク: the backend offers the Work API. */
+/** The app opens on タスク (the backend offers the Work API); waits for its task list. */
 async function landed(session) {
   await session.waitFor(async () => new URL(await session.url()).pathname === '/tasks', { message: 'landing on /tasks' });
-  return session.waitForText('nav a[aria-current="page"]', 'タスク');
+  const current = await session.waitForText('nav a[aria-current="page"]', 'タスク');
+  await session.waitFor(async () => (await session.findAll('[aria-label="タスク一覧"] button')).length > 0, { timeout: 30_000, message: 'task list' });
+  return current;
 }
 
 /** From the landing screen, opens the document list with the menu, as a user would. */
