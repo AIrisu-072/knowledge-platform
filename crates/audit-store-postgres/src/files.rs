@@ -20,6 +20,12 @@
 //! unverified expiry evidence, and `assess_recovery` never calls it
 //! `Authentic`. Export again (a new intent's W covers the evidence) to
 //! verify those rows.
+//!
+//! The out-of-band recovery records (`kp-audit-recovery-records-v1`) are
+//! JSON lines, one [`RecoveryRecordLine`] per recovery epoch, appended by the
+//! operator outside the database (design §8, §11). `audit-admin
+//! begin-recovery-epoch` prints the exact line; `audit-admin assess` reads
+//! the file.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -28,8 +34,8 @@ use std::path::{Path, PathBuf};
 
 use audit_core::{
     Anchor, ChainIntegrity, Checkpoint, CheckpointComparison, ExportError, ExportReport, GENESIS,
-    compare_checkpoint, verify_export, verify_export_complete, verify_export_subset,
-    verify_identity_chain, verify_identity_chain_complete,
+    RecoveryRecord, compare_checkpoint, verify_export, verify_export_complete,
+    verify_export_subset, verify_identity_chain, verify_identity_chain_complete,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -43,6 +49,7 @@ pub const EXPORT_FILE: &str = "export.jsonl";
 pub const MANIFEST_FILE: &str = "manifest.json";
 pub const MANIFEST_FORMAT: &str = "kp-audit-export-manifest-v1";
 pub const CHECKPOINT_FORMAT: &str = "kp-audit-checkpoint-v1";
+pub const RECOVERY_RECORDS_FORMAT: &str = "kp-audit-recovery-records-v1";
 
 /// Upper bound on intents per chain export (a runaway guard, not a limit of
 /// the Store: 1000 intents of 100k rows each).
@@ -64,6 +71,8 @@ pub enum FileError {
     Unanchored,
     #[error("refusing to write a checkpoint for a chain with violations")]
     Violations,
+    #[error("recovery records line {line}: not a valid {RECOVERY_RECORDS_FORMAT} record")]
+    RecoveryRecords { line: usize },
 }
 
 /// Creates `path` (it must not exist) with mode 0600 and writes `bytes`.
@@ -135,6 +144,81 @@ impl CheckpointFile {
         write_private(path, text.as_bytes())?;
         Ok(())
     }
+}
+
+/// One line of the out-of-band recovery records file
+/// (`kp-audit-recovery-records-v1`): the operator's record of one recovery
+/// epoch transition (`audit_core::RecoveryRecord`). The lost range is
+/// `(restored_head_seq, lost_upper]`; `lost_upper = restored_head_seq` loses
+/// nothing (a planned move). The file is JSON lines, appended in epoch order;
+/// blank lines are ignored and every other line must be a valid record (the
+/// key set is closed, keys are unique, `new_epoch = old_epoch + 1`,
+/// `0 <= restored_head_seq <= lost_upper`, the chain is 64 lowercase hex
+/// digits).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecoveryRecordLine {
+    pub format: String,
+    pub old_epoch: i64,
+    pub new_epoch: i64,
+    pub restored_head_seq: i64,
+    pub restored_head_chain: String,
+    pub lost_upper: i64,
+}
+
+impl RecoveryRecordLine {
+    pub fn from_record(record: &RecoveryRecord) -> Self {
+        Self {
+            format: RECOVERY_RECORDS_FORMAT.to_owned(),
+            old_epoch: record.old_epoch,
+            new_epoch: record.new_epoch,
+            restored_head_seq: record.restored_head_seq,
+            restored_head_chain: hex::encode(&record.restored_head_chain),
+            lost_upper: record.lost_upper,
+        }
+    }
+
+    /// The record, when the line is well formed.
+    pub fn record(&self) -> Option<RecoveryRecord> {
+        let valid = self.format == RECOVERY_RECORDS_FORMAT
+            && self.old_epoch >= 1
+            && self.old_epoch.checked_add(1) == Some(self.new_epoch)
+            && self.restored_head_seq >= 0
+            && self.lost_upper >= self.restored_head_seq;
+        valid.then_some(())?;
+        Some(RecoveryRecord {
+            old_epoch: self.old_epoch,
+            new_epoch: self.new_epoch,
+            restored_head_seq: self.restored_head_seq,
+            restored_head_chain: hex::decode32(&self.restored_head_chain)?,
+            lost_upper: self.lost_upper,
+        })
+    }
+
+    /// The exact line to append (compact JSON, without the newline).
+    pub fn to_line(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+}
+
+/// Parses a recovery records file (`kp-audit-recovery-records-v1`).
+pub fn parse_recovery_records(text: &str) -> Result<Vec<RecoveryRecord>, FileError> {
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(index, line)| {
+            audit_core::parse_unique(line)
+                .ok()
+                .and_then(|value| serde_json::from_value::<RecoveryRecordLine>(value).ok())
+                .and_then(|line| line.record())
+                .ok_or(FileError::RecoveryRecords { line: index + 1 })
+        })
+        .collect()
+}
+
+/// Reads a recovery records file.
+pub fn read_recovery_records(path: &Path) -> Result<Vec<RecoveryRecord>, FileError> {
+    parse_recovery_records(&std::fs::read_to_string(path)?)
 }
 
 /// Writes the checkpoint file for a clean `checkpoint()` result.
@@ -229,7 +313,8 @@ pub struct ExportOutcome {
     pub manifest_path: PathBuf,
 }
 
-const fn comparison_name(comparison: CheckpointComparison) -> &'static str {
+/// The manifest name of a checkpoint comparison.
+pub const fn comparison_name(comparison: CheckpointComparison) -> &'static str {
     match comparison {
         CheckpointComparison::Match => "match",
         CheckpointComparison::Mismatch => "mismatch",

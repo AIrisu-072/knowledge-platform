@@ -370,6 +370,12 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 
 全recovery epochと消失範囲は `epochs` に列挙され、人の確認対象になる。
 
+### 帯域外の記録の形式とCLI
+
+- checkpoint：`audit-admin checkpoint --out FILE` が書くJSON `{"format":"kp-audit-checkpoint-v1","epoch","seq","chain","verified_through","genesis"}`（mode 0600）。`(epoch, seq, chain)` が `Checkpoint` である。
+- recovery記録：`kp-audit-recovery-records-v1` のJSON lines。1行が1つの `RecoveryRecord` で、閉じたkey集合 `{"format":"kp-audit-recovery-records-v1","old_epoch","new_epoch","restored_head_seq","restored_head_chain","lost_upper"}`（重複key不可、`new_epoch = old_epoch + 1`、`old_epoch ≥ 1`、`0 ≤ restored_head_seq ≤ lost_upper`、chainは64桁の小文字hex）を持つ。epoch順に追記し、空行は無視する。不正な行が1つでもあれば読込みは失敗する（判定はしない）。`audit-admin begin-recovery-epoch` は `--preview` でも開始の成功後でも、2行目にこの1行をそのまま出力する（開始はpreviewと同じ値の記録をStoreが確認した場合だけ成功するので、両者は一致する）。
+- 総合判定：`audit-admin assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]` はDBに接続せず、`audit-admin export` のdirectoryを改めて検証して `assess_recovery` を実行する。anchorはgenesisか、exportの `seq_after` にある帯域外checkpointで、manifestの主張は検証に使わない。出力は判定code・seq・epoch・chain値・件数だけの1行のJSONで、`verdict` は表の各判定のsnake_case（`authentic`、`authentic_through`、`unverified_expiry`、`no_checkpoint`、`lost`、`unverified_recovery`、`tampered`、`unanchored`）と、検証に失敗したchain・manifestの `broken` である。終了codeは `authentic` が0、`authentic_through`・`unverified_expiry`・`no_checkpoint`・`lost`・`unverified_recovery` が4（人が確認する）、`tampered`・`unanchored`・`broken` が5、入力fileを読めない・形式が不正な場合が1である。
+
 ## 拒否code
 
 `envelope_too_large`、`invalid_json`、`duplicate_key`、`invalid_envelope`、`unknown_event_type`、`control_type_forbidden`、`invalid_source`、`invalid_subject`、`invalid_resource`、`nil_client_id`、`invalid_result`、`invalid_actor`、`invalid_service_executor`、`unknown_field`、`missing_field`、`invalid_field`、`invalid_correlation`、`invalid_source_correlation`、`invalid_reason`、`reason_not_string`、`actor_mismatch`、`source_row_too_large`、`source_digest_mismatch`、`invalid_provenance`、`invalid_extensions`。拒否は、codeと、catalogのfield名または固定の位置名（`type`、`source`、`data.resource.type`、`data.resource.id` 等）だけを持つ。payloadの値は含めない。

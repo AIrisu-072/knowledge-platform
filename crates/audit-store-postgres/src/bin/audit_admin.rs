@@ -8,6 +8,11 @@
 //! `options` are refused and every session must report
 //! `SHOW synchronous_commit = on`. Output is JSON on stdout; errors carry
 //! codes only. Files are written with mode 0600.
+//!
+//! `assess` runs offline (no connection): it verifies an export directory
+//! again and prints the overall verdict against an out-of-band checkpoint and
+//! the out-of-band recovery records (`kp-audit-recovery-records-v1`, whose
+//! lines `begin-recovery-epoch` prints).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -17,9 +22,10 @@ use std::process::ExitCode;
 use audit_store_postgres::admin::{
     AccessChange, AccessOperation, AuditAdmin, RecoveryExpectation, parse_utc_text,
 };
+use audit_store_postgres::assess::{AssessClass, AssessError, AssessInputs, assess_dir};
 use audit_store_postgres::files::{
-    CheckpointFile, ExportOutcome, ExportRequest, FileError, export_identity_chain_recovery,
-    export_to_dir, write_checkpoint,
+    CheckpointFile, ExportOutcome, ExportRequest, FileError, RecoveryRecordLine,
+    export_identity_chain_recovery, export_to_dir, read_recovery_records, write_checkpoint,
 };
 use audit_store_postgres::migrate;
 use audit_store_postgres::session::{check_environment, check_url, require_synchronous_commit};
@@ -52,7 +58,14 @@ commands:
   begin-recovery-epoch [--checkpoint FILE] [--relay-max-seq N]
          (--preview | --expect-old-epoch N --expect-head-seq N
           --expect-head-chain HEX --expect-lost-upper N)
-exit status: 0 ok, 1 failed, 2 usage, 3 posture or verification violations";
+         (the second output line is the kp-audit-recovery-records-v1 line)
+  assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]
+         (offline, no database)
+exit status: 0 ok (assess: authentic), 1 failed, 2 usage,
+  3 posture or verification violations,
+  4 assess: not authenticated, review (authentic_through, unverified_expiry,
+    no_checkpoint, lost, unverified_recovery),
+  5 assess: tampered, unanchored or broken";
 
 /// Flags that take no value.
 const SWITCHES: [&str; 3] = ["identity-chain", "recovery", "preview"];
@@ -92,6 +105,10 @@ enum CliError {
     Usage(String),
     Failed(String),
     Violations,
+    /// `assess`: not authenticated; a human reviews the report (exit 4).
+    NotAuthentic(&'static str),
+    /// `assess`: tampered, unanchored or broken (exit 5).
+    Rejected(&'static str),
 }
 
 impl<E: fmt::Display> From<E> for CliError {
@@ -262,13 +279,58 @@ fn operation(args: &Args) -> Result<AccessOperation, CliError> {
 }
 
 fn checkpoint_arg(args: &Args) -> Result<Option<audit_core::Checkpoint>, CliError> {
-    args.optional("checkpoint")
+    checkpoint_flag(args, "checkpoint")
+}
+
+fn checkpoint_flag(args: &Args, name: &str) -> Result<Option<audit_core::Checkpoint>, CliError> {
+    args.optional(name)
         .map(|path| {
             CheckpointFile::read(&PathBuf::from(path))?
                 .checkpoint()
                 .ok_or_else(|| CliError::Failed("invalid checkpoint file".into()))
         })
         .transpose()
+}
+
+/// Prints the out-of-band recovery record line of an epoch transition
+/// (`kp-audit-recovery-records-v1`), to append to the records file kept
+/// outside the database.
+fn print_record_line(expectation: Option<RecoveryExpectation>) -> Result<(), CliError> {
+    let expectation =
+        expectation.ok_or_else(|| CliError::Failed("invalid restored head chain".into()))?;
+    println!(
+        "{}",
+        RecoveryRecordLine::from_record(&expectation.record()).to_line()
+    );
+    Ok(())
+}
+
+/// `assess`: offline, no connection. Prints the bounded report, then exits
+/// 0 for `authentic`, 4 for verdicts a human reviews, 5 for tampered,
+/// unanchored or broken exports.
+fn assess(args: &Args) -> Result<(), CliError> {
+    let dir = PathBuf::from(args.get("dir")?);
+    let checkpoint = checkpoint_flag(args, "checkpoint")?
+        .ok_or_else(|| CliError::Usage("--checkpoint is required".into()))?;
+    let inputs = AssessInputs {
+        checkpoint,
+        anchor: checkpoint_flag(args, "anchor")?,
+        records: args
+            .optional("recovery-records")
+            .map(|path| read_recovery_records(&PathBuf::from(path)))
+            .transpose()?
+            .unwrap_or_default(),
+    };
+    let report = assess_dir(&dir, &inputs).map_err(|error| match error {
+        AssessError::AnchorRequired { .. } => CliError::Usage(format!("{error} (--anchor)")),
+        AssessError::Io(_) => CliError::Failed(error.to_string()),
+    })?;
+    print(&report)?;
+    match report.class() {
+        AssessClass::Authentic => Ok(()),
+        AssessClass::Review => Err(CliError::NotAuthentic(report.verdict)),
+        AssessClass::Rejected => Err(CliError::Rejected(report.verdict)),
+    }
 }
 
 /// The out-of-band recovery record the Store must confirm before an epoch
@@ -522,22 +584,25 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
             let relay_max_seq = args.optional_number("relay-max-seq")?;
             let admin = operator(&config).await?;
             if args.switch("preview") {
-                return print(
-                    &admin
-                        .preview_recovery_epoch(checkpoint.as_ref(), relay_max_seq)
-                        .await?,
-                );
+                // The record to append before starting the epoch.
+                let preview = admin
+                    .preview_recovery_epoch(checkpoint.as_ref(), relay_max_seq)
+                    .await?;
+                print(&preview)?;
+                return print_record_line(preview.expectation());
             }
-            print(
-                &admin
-                    .begin_recovery_epoch(
-                        checkpoint.as_ref(),
-                        relay_max_seq,
-                        &recovery_expectation(&args)?,
-                    )
-                    .await?,
-            )
+            let started = admin
+                .begin_recovery_epoch(
+                    checkpoint.as_ref(),
+                    relay_max_seq,
+                    &recovery_expectation(&args)?,
+                )
+                .await?;
+            print(&started)?;
+            // The record the Store confirmed (it equals the expectation).
+            print_record_line(started.expectation())
         }
+        "assess" => assess(&args),
         other => Err(CliError::Usage(format!("unknown command {other}"))),
     }
 }
@@ -561,6 +626,14 @@ async fn main() -> ExitCode {
         Err(CliError::Violations) => {
             eprintln!("violations found");
             ExitCode::from(3)
+        }
+        Err(CliError::NotAuthentic(verdict)) => {
+            eprintln!("not authenticated: {verdict}");
+            ExitCode::from(4)
+        }
+        Err(CliError::Rejected(verdict)) => {
+            eprintln!("rejected: {verdict}");
+            ExitCode::from(5)
         }
         Err(CliError::Failed(message)) => {
             eprintln!("audit-admin: {message}");

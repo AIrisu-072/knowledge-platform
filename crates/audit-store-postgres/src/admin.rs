@@ -247,6 +247,19 @@ impl RecoveryExpectation {
     }
 }
 
+impl EpochStarted {
+    /// The expectation the Store confirmed: its out-of-band record
+    /// ([`RecoveryExpectation::record`]).
+    pub fn expectation(&self) -> Option<RecoveryExpectation> {
+        Some(RecoveryExpectation {
+            old_epoch: self.old_epoch,
+            restored_head_seq: self.restored_head_seq,
+            restored_head_chain: hex::decode32(&self.restored_head_chain)?,
+            lost_upper: self.lost_upper_seq,
+        })
+    }
+}
+
 impl RecoveryPreview {
     /// The expectation that starts exactly this epoch.
     pub fn expectation(&self) -> Option<RecoveryExpectation> {

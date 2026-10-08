@@ -766,7 +766,7 @@ async fn adapter_maps_every_non_verdict_failure_to_an_outage() {
 }
 
 /// The adapter's sources, embedded so the check runs without a database.
-const SOURCES: [(&str, &str); 8] = [
+const SOURCES: [(&str, &str); 9] = [
     ("admin.rs", include_str!("../src/admin.rs")),
     ("error.rs", include_str!("../src/error.rs")),
     ("files.rs", include_str!("../src/files.rs")),
@@ -778,6 +778,7 @@ const SOURCES: [(&str, &str); 8] = [
         "bin/audit_admin.rs",
         include_str!("../src/bin/audit_admin.rs"),
     ),
+    ("assess.rs", include_str!("../src/assess.rs")),
 ];
 
 /// The body of the function declared by `signature` in `source`, up to its

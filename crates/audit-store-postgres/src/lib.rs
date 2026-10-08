@@ -11,9 +11,13 @@
 //!   `store_status` / `lookup_lost_ranges`.
 //! - [`admin::AuditAdmin`] wraps the investigation, verification, retention,
 //!   access and recovery functions used by `audit-admin`.
-//! - [`files`] writes export, manifest and checkpoint files (mode 0600).
+//! - [`files`] writes export, manifest and checkpoint files (mode 0600) and
+//!   reads the out-of-band recovery records.
+//! - [`assess`] gives the overall offline verdict of an export directory
+//!   (`audit-admin assess`, no database connection).
 
 pub mod admin;
+pub mod assess;
 pub mod error;
 pub mod files;
 pub mod hex;

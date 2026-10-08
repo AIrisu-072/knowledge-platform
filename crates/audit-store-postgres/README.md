@@ -6,7 +6,8 @@ Audit Infrastructure v1の監査Store（[設計](../../docs/superpowers/specs/20
 - `admin::AuditAdmin`：調査・export・検証・retention・権限・recoveryのSQL関数のwrapper。
 - `files`：export（JSONL）・manifest・checkpointを mode 0600 で新規作成する。chain exportは最初のintentのwatermarkまでintentを繰り返し、offlineでaudit-coreの `verify_export_complete` / `verify_identity_chain_complete`（watermarkまで欠けがなく、Wを超える失効証拠を指す行が無いこと）で検証する（`files::verify_chain_export`）。manifestの `chain_integrity` は `intact` / `unanchored`（audit-coreの `ChainIntegrity`）で、chainが壊れていればfileを書かず、`audit-admin` は `{"chain_integrity":"broken","error":…}` を出して失敗する。
 - intentがWを固定した後に `expire` / `purge_body` がcommitすると、W以下の行の本文がpage読取り前に消え、その行はWより後の証拠を指す。このexportを完全とは扱わない：`complete: false`、`expired_after_watermark` に件数を出し、その行は未検証の失効証拠として数える（`assess_recovery` は `Authentic` にしない）。証拠を含めて検証するには、改めてexportする（`tests/store_integrity.rs` で、intent → expire → 読取りの順に決定的に試験する）。
-- bin `audit-admin`：運用CLI。
+- `assess`：export directoryのDB外の総合判定（`audit-admin assess`、DB接続なし。下記）。
+- bin `audit-admin`：運用CLI。終了codeは 0 成功（`assess` は `authentic`）、1 失敗、2 使い方の誤り、3 postureまたは検証の違反（`posture`、`verify`、`verify --recovery`）、4 `assess` の要確認、5 `assess` の拒否（下記）。
 
 ## 適用順とrole
 
@@ -56,11 +57,12 @@ LOGIN roleの割当（設計§10.1）：relay serviceはingest + relay_control +
 - tokenは `gen_random_uuid()` 2個（CSPRNG由来244 bit）を連結した32 byteのhexで、Storeにはsha256だけを保存する。filter・範囲・page sizeはchainされたintent本体から読み直し、`access_intents` の行と照合する。
 - filterは設計§10.3のallowlistに `seq_after`（排他の下限）と `seq_through`（包含の上限、watermark以下）を加えた。verify/identity_chainは連続chainを読むためこの2つだけを許す。値は閉じた文法（event_type、source urn、resource_ref、主体文字集合、event type listは1–16件）以外を `invalid_input` で拒否し、記録に任意文字列を残さない。event typeは、文法に合っても登録済みrelay type（`registered_types`）かcatalogのcontrol type（`is_control_type`、catalogとの一致を試験）でなければ拒否する（設計§10.2）。retention selectorのevent typeは登録済みrelay typeだけを許す。issuer `db_role` への権限付与（`change_access`）も拒否する。
 - `verify(from, to)` は範囲（最大10,000,000行）をhead lockなしで単一snapshotで走査し、記録するときだけlockを取る。head照合は範囲の終端がheadのときだけ行う。範囲は `1 ≤ from ≤ to ≤ head` でなければならず、headを越える `to`・headより後の `from`・空の範囲は `invalid_input` で拒否する（存在しない行を欠落として `violations` を記録しないため）。記録する `head_seq` / `head_epoch` / `head_chain` は範囲内で実在する最後の行のものである（終端の行が欠けていれば、その前の行）。
-- `audit-admin verify` / `verify --recovery` は結果を出力した後、`outcome` が `ok` でなければ終了code 3で終わる（`posture` と同じ。定期実行の失敗検知用）。
+- `audit-admin verify` / `verify --recovery` は結果を出力した後、`outcome` が `ok` でなければ（`violations`）終了code 3で終わる（`posture` と同じ。定期実行の失敗検知用）。
 - export行は10 key（`expired_by_seq` を含む）。`audit-admin export --identity-chain` は最初のintentでwatermarkを固定し、以降 `{seq_after, seq_through: W}` で残りを読み、manifestに全intentを列挙する。
 - recovery mode（fingerprint不一致または `recovery_pending`）で通るのは `probe`、`store_status`、`posture_check`、`lookup_receipts`、`list_source_receipts`、`lookup_control_receipts`、`lookup_lost_ranges`、`verify_recovery`、`identity_chain_recovery_page`、`report_regression`、`declare_recovery_pending`、`begin_recovery_epoch` だけで、他はすべて `store_recovery_required`（KA001）になる（`tests/store_recovery.rs` で全関数を確認）。recovery用の関数はrecovery外では `not_in_recovery` で拒否する。
 - `begin_recovery_epoch(checkpoint?, relay_max_seq?, expected)` は復元chainを再検証し、classification（`regression` / 計画的移動 `planned_move` / `restore`）、checkpointの分類（match / ahead / mismatch / epoch_mismatch / store_behind。chainが一致してepochだけ異なる場合が `epoch_mismatch`）、identity範囲digest、消失範囲 `(restored_head, max(checkpoint seq, relay最大seq, 報告seq, restored_head)]`、regressionの証拠、旧/新fingerprintを記録する。旧 `rebind_fingerprint` は廃止し、計画的移動も同じepochとして扱う。
 - `expected` は帯域外のrecovery記録（旧epoch、復元headのseqとchain、消失範囲の上限）である。Storeが計算した実際の値と4つとも一致した場合だけepochを開始し、食い違えば `refused`/`expectation_mismatch` で何も変えない。期待値なしの呼出しはpreview（`refused`/`expectation_required`）で、実際の値だけを返す（`AuditAdmin::preview_recovery_epoch`、`audit-admin begin-recovery-epoch --preview`）。recovery中の拒否は記録しない。
+- `audit-admin begin-recovery-epoch` は、`--preview` でも開始の成功後でも、2行目に帯域外のrecovery記録の1行（`kp-audit-recovery-records-v1`、下記）をそのまま出力する。previewの行は開始前に追記する記録、成功後の行はStoreが確認した記録で、両者は同じ値になる（同じ行を2回追記しても判定は変わらない）。
 - epoch後は `access_reapply_pending` になり、本文を開示する操作（investigate、export、本文を返すverify）は `open_access` でも開いている tokenの `read_page` でも `access_reapply_pending`（55000）で拒否する。開くのは本文を含まないidentity chainと、DB内の `verify` だけである。administratorの `record_access_reapplied` と、retentionの再適用の両方で解除される。retentionの再適用は、有効なpolicyそれぞれについて、epoch後に現行revisionで、policyのcutoff（`tx_time - retain_days`。要求cutoffで狭めない）まで期限切れの本文を残さず失効させた `expire`（`count < limit`）が記録されたときに満たされる（有効なholdによる `held` の拒否も満たす。restoreで戻った失効済み本文が残っている間は開示しない）。有効なpolicyが無いことは `confirm_retention_reapplied` で記録する。
 - `resolve_intent` はtokenの操作のcapabilityに加え、control eventを可視にしたintent（`include_control`）では `administer` も読取りごとに確認する（取消しは開いているtokenにも効く。設計§10.3）。
 - `expire` のcutoffは、記録の `utc_timestamp`（年0001–9999）で表せる範囲だけを受け付ける（範囲外は `invalid_input`）。
@@ -72,13 +74,34 @@ LOGIN roleの割当（設計§10.1）：relay serviceはingest + relay_control +
 1. globals（`roles.sql`、LOGIN role）を先に用意し、`pg_restore --exit-on-error --single-transaction` で新しいDBへ復元する（`--no-owner` 等は使わない）。
 2. `sql/privileges.sql` を再適用する。違反がある間、`begin_recovery_epoch` は `store_posture_invalid` で拒否する。
 3. `audit-admin verify --recovery`、`audit-admin export --identity-chain --recovery --dir D --checkpoint <最新の帯域外checkpoint>` でDB外照合する。
-4. `audit-admin begin-recovery-epoch --checkpoint <file> --relay-max-seq <N> --preview` で復元head・消失範囲を確認し（`N` は `audit-relay health` の `stored.relay_max_seq`：復元したepochでrelayが参照する最大のStore seq。ackだけでなくreplay・repair・source mismatchの記録を含む）、その値を帯域外の記録へepoch遷移として追記してから、`--expect-old-epoch` `--expect-head-seq` `--expect-head-chain` `--expect-lost-upper` に記録の値を渡して `begin-recovery-epoch` を実行する（食い違えば `expectation_mismatch` で拒否される）。
+4. `audit-admin begin-recovery-epoch --checkpoint <file> --relay-max-seq <N> --preview` で復元head・消失範囲を確認し（`N` は `audit-relay health` の `stored.relay_max_seq`：復元したepochでrelayが参照する最大のStore seq。ackだけでなくreplay・repair・source mismatchの記録を含む）、出力の2行目（`kp-audit-recovery-records-v1` の1行）を帯域外のrecovery記録fileへ追記してから、`--expect-old-epoch` `--expect-head-seq` `--expect-head-chain` `--expect-lost-upper` に記録の値を渡して `begin-recovery-epoch` を実行する（食い違えば `expectation_mismatch` で拒否される）。成功時の2行目は追記した行と同じである。
 5. `audit-admin record-access-reapplied`（administrator）と、retentionの再実行（期限切れの本文が残らなくなるまで `audit-admin expire` を繰り返す）または `audit-admin confirm-retention-reapplied`（maintainer）。
+6. relayの再開・再配送の後、新しいcheckpointを取り、そのcheckpointまでのexportを `audit-admin assess --recovery-records <file>` で判定する（消失を伴うrecoveryの後は `lost`、記録の無いepochは `unverified_recovery`）。
 
 同じDBでのregression・既知の事故は、`report_regression`（relay）または `audit-admin declare-recovery-pending --incident-code CODE`（maintainer）から手順3以降を行う。
 
+## DB外の総合判定（`audit-admin assess`）
+
+```text
+audit-admin assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]
+```
+
+- DBに接続しない（`AUDIT_STORE_DATABASE_URL` は不要）。`audit-admin export` が書いたdirectory（`export.jsonl` と `manifest.json`）をaudit-coreで改めて検証し、帯域外のcheckpoint（`kp-audit-checkpoint-v1`）と帯域外のrecovery記録で `audit_core::assess_recovery` の総合判定を出す。
+- manifestから使うのは作り方（operation、最初のintentの `seq_after`、watermark、anchor付きかfilter付きか）だけで、結果の主張は信用しない。anchorはgenesis、またはexportの `seq_after` にある帯域外checkpoint（`--anchor`、または同じseqの `--checkpoint`）で、manifestのcheckpointは使わない。genesisより後から始まるexportにそのcheckpointが無ければ使い方の誤り（終了code 2）。manifestの `rows`・`head` が検証結果と食い違えば `broken`。
+- 出力は1行のJSONで、判定code・seq・epoch・chain値・件数だけを持つ（本文・主体・resourceは出さない）：`verdict`、`authenticated_through`、`chain_integrity`、`error`（`broken` の最初の行。位置だけ）、`operation`、`anchor_seq`、`head`、`rows`、`complete`、`findings`（checkpointの比較結果ごとの件数）、`findings_neutral`（anchor以前・anchor位置のcheckpoint）、`epochs_total`、`epochs_unrecorded`、`epochs`（最大64件：遷移のseq、旧/新epoch、記録の有無、復元headの確認、復元head、消失範囲の上限、分類）、`unmatched_records`、`records_before_anchor`、`records_after_head`、`unconfirmed_expiries`、`unverified_expiry_evidence`、`expired_after_watermark`。
+- 終了code：
+
+| code | verdict |
+|---|---|
+| 0 | `authentic` |
+| 4（要確認） | `authentic_through`、`unverified_expiry`、`no_checkpoint`、`lost`、`unverified_recovery` |
+| 5（拒否） | `tampered`、`unanchored`、`broken`（chainの検証失敗、manifestの不正・不一致） |
+| 1 | fileを読めない、checkpoint fileやrecovery記録fileの形式が不正 |
+
+帯域外のrecovery記録file（`kp-audit-recovery-records-v1`）はJSON lines（1行1遷移、epoch順に追記、空行は無視）で、各行は閉じたkey集合の `{"format":"kp-audit-recovery-records-v1","old_epoch":N,"new_epoch":N+1,"restored_head_seq":S,"restored_head_chain":"<64桁の小文字hex>","lost_upper":U}`（`0 ≤ S ≤ U`、消失範囲は `(S, U]`、`U = S` は消失の無い計画的な移動）である。重複keyや不正な行が1つでもあれば読込みを失敗させる（終了code 1）。`begin-recovery-epoch` が2行目に出す行をそのまま追記する。DB・backupとは別の場所に、checkpointと一緒に保管する。
+
 ## 試験
 
-PostgreSQL 18.6（testcontainers `postgres:18.6-bookworm`）で、合成データとroles.sqlで作ったLOGIN roleだけを使う。`AUDIT_STORE_TEST_DATABASE_URL` に使い捨てのsuperuser serverを指定すると、試験ごとにdatabaseを作る（restore試験はcontainer内の `pg_dump` を使うため、この場合はskipする）。
+PostgreSQL 18.6（testcontainers `postgres:18.6-bookworm`）で、合成データとroles.sqlで作ったLOGIN roleだけを使う。`tests/cli_assess.rs` は `audit-admin export` の出力をDB URLなしの `audit-admin assess` で判定し、判定class（authentic、export行の1行編集による `broken`、digest・chainを再計算した書換えの `tampered`、`authentic_through`、`no_checkpoint`、`unanchored`、`unverified_expiry`、記録あり/なし/食い違いのrecovery epoch：`authentic`・`lost`・`unverified_recovery`）と終了codeを確かめる。`AUDIT_STORE_TEST_DATABASE_URL` に使い捨てのsuperuser serverを指定すると、試験ごとにdatabaseを作る（restore試験はcontainer内の `pg_dump` を使うため、この場合はskipする）。
 
 `tests/data/store-envelope-golden.json` はaudit-coreの全受理fixture（event idはfixture名から導出）をStoreへ保存したときの `kp-audit-jsonb-sha256-v1` envelope digestをadapter_versionごとに固定する。entryは `<fixture>@<投影する入力行（導出したevent idを含む）のhashの先頭16桁>` で、判定はaudit-coreのprojection pinと共通（`crates/audit-core/tests/common/mod.rs` の `check_golden`）である。fixtureの入力を変えると新しいentryになり、再投影して追記するまで試験が失敗する。古いentryは履歴として残す。append-onlyで、既存のentry・sectionは編集しない（旧sectionは `FROZEN_SECTION_DIGESTS` で凍結する）。digestが変わる変更には `LEGACY_ADAPTER_VERSION` の更新、`registered_types` の追加、新しいsectionが要る。更新を忘れたまま同じeventを再配送すると、Storeは上書きせず `conflict` にする（`tests/store_golden.rs`）。
