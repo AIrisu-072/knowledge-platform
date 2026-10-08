@@ -282,6 +282,42 @@ fn publication_command(
     .unwrap()
 }
 
+type TestService = DocumentService<
+    Ids,
+    Now,
+    FileSystemStorage,
+    document_repository_postgres::PostgresDocumentRepository,
+>;
+
+// CI reported a stack overflow in this unoptimized integration test. Keep each
+// service future behind a heap-allocated pointer instead of embedding its state
+// in the test future; preserve the real service, repository and assertions.
+fn publish_for_test(
+    service: &TestService,
+    command: document_application::PublishDocumentCommand,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<document_application::PublishDocumentResult, ApplicationError>,
+            > + '_,
+    >,
+> {
+    Box::pin(service.publish_document(command))
+}
+
+fn create_for_test(
+    service: &TestService,
+    command: CreateDocumentItemsCommand,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<document_application::CreateDocumentResult, ApplicationError>,
+            > + '_,
+    >,
+> {
+    Box::pin(service.create_document_items(command))
+}
+
 #[tokio::test]
 async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
     use document_application::{DocumentPublishRepository, PublishOperationId};
@@ -318,36 +354,30 @@ async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
     let mut manifest = command(fixture.root_id);
     manifest.items[0].logical_path = LogicalPath::new("chapter/A.txt").unwrap();
     manifest.items[1].logical_path = LogicalPath::new("appendix/B.txt").unwrap();
-    let created = service.create_document_items(manifest).await.unwrap();
+    let created = create_for_test(&service, manifest).await.unwrap();
     let candidate = scoped
         .get_publish_candidate(created.document_id(), created.document_version_id())
         .await;
     let stale_id = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
     assert!(matches!(
-        service
-            .publish_document(publication_command(&created, stale_id, 1))
-            .await,
+        publish_for_test(&service, publication_command(&created, stale_id, 1)).await,
         Err(ApplicationError::Conflict)
     ));
     let operation_id = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
-    let published = service
-        .publish_document(publication_command(&created, operation_id, 0))
+    let published = publish_for_test(&service, publication_command(&created, operation_id, 0))
         .await
         .expect(
             "initial publish must accept the complete nested manifest without a primary/0 anchor",
         );
     assert_eq!(candidate.unwrap().file().file_id(), created.file_id());
     assert_eq!(
-        service
-            .publish_document(publication_command(&created, operation_id, 0))
+        publish_for_test(&service, publication_command(&created, operation_id, 0))
             .await
             .unwrap(),
         published
     );
     assert!(matches!(
-        service
-            .publish_document(publication_command(&created, operation_id, 1))
-            .await,
+        publish_for_test(&service, publication_command(&created, operation_id, 1)).await,
         Err(ApplicationError::OperationConflict)
     ));
     assert_eq!(published.resulting_document_revision(), 1);
@@ -398,24 +428,24 @@ async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
     let counts: (i64,i64,i64,i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM content_items WHERE document_version_id=$1), (SELECT count(*) FROM document_publish_operations WHERE document_id=$2), (SELECT count(*) FROM document_revisions WHERE document_id=$2), (SELECT count(*) FROM outbox_events WHERE aggregate_id=$2), (SELECT count(*) FROM audit_outbox_events WHERE resource_id=$2)")
         .bind(created.document_version_id().as_uuid()).bind(created.document_id().as_uuid()).fetch_one(&fixture.pool).await.unwrap();
     assert_eq!(counts, (2, 1, 1, 3, 3));
-    let unclassified = service
-        .create_document_items(command(fixture.root_id))
+    let unclassified = create_for_test(&service, command(fixture.root_id))
         .await
         .unwrap();
     sqlx::query("UPDATE document_versions SET requires_content_classification=TRUE WHERE document_version_id=$1")
         .bind(unclassified.document_version_id().as_uuid()).execute(&fixture.pool).await.unwrap();
     assert!(matches!(
-        service
-            .publish_document(publication_command(
+        publish_for_test(
+            &service,
+            publication_command(
                 &unclassified,
                 PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
                 0
-            ))
-            .await,
+            )
+        )
+        .await,
         Err(ApplicationError::BusinessRule)
     ));
-    let empty = service
-        .create_document_items(command(fixture.root_id))
+    let empty = create_for_test(&service, command(fixture.root_id))
         .await
         .unwrap();
     sqlx::query("DELETE FROM content_items WHERE document_version_id=$1")
@@ -432,8 +462,7 @@ async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
     .execute(&fixture.pool)
     .await
     .unwrap();
-    let missing_rep = service
-        .create_document_items(command(fixture.root_id))
+    let missing_rep = create_for_test(&service, command(fixture.root_id))
         .await
         .unwrap();
     sqlx::query("DELETE FROM content_representations WHERE file_id=$1")
@@ -448,8 +477,7 @@ async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
     .execute(&fixture.pool)
     .await
     .unwrap();
-    let missing_file = service
-        .create_document_items(command(fixture.root_id))
+    let missing_file = create_for_test(&service, command(fixture.root_id))
         .await
         .unwrap();
     sqlx::query("DELETE FROM file_objects WHERE file_id=$1")
@@ -461,23 +489,20 @@ async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
 }
 
 async fn assert_rejected_publication(
-    service: &DocumentService<
-        Ids,
-        Now,
-        FileSystemStorage,
-        document_repository_postgres::PostgresDocumentRepository,
-    >,
+    service: &TestService,
     pool: &sqlx::PgPool,
     created: &document_application::CreateDocumentResult,
 ) {
     use document_application::PublishOperationId;
-    let result = service
-        .publish_document(publication_command(
+    let result = publish_for_test(
+        service,
+        publication_command(
             created,
             PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
             0,
-        ))
-        .await;
+        ),
+    )
+    .await;
     assert!(
         matches!(result, Err(ApplicationError::IntegrityViolation)),
         "invalid complete-manifest state must fail closed: {result:?}"
