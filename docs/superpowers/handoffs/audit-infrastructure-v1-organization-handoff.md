@@ -26,7 +26,7 @@ Status: 2026-10-08。基点はmain `dba8168`（単位A PR #98＋単位B PR #113�
 - 本番導入：Document PoCのruntime・container・Linux手順はrelayを起動しない（`audit-relay` を参照するのはaudit crate・workspace定義・Audit設計・決定記録・運用手順・telemetry仕様・`dependency-rules.toml` だけ）。本番role分離も未実施（§5.3）。
 - Search・Organizationのsource接続（§3、§4）。relayはDocument source固定（`RL/src/breaker.rs:353`、`RL/src/reconcile.rs:474` の `DOCUMENT_SOURCE`）。
 - legal holdの作成・解除（`ST/migrations/0001_audit_store_v1.sql:300-308` の予約表だけ。手順§11）。
-- 単位Cが通していない経路：DSI・Diff worker binary（process内の合成実装で代替）、`DueScheduler` 本体（`poll_once` と同じ順の呼出しで代替）、HTTP層、`audit-relay`・`audit-admin` のprocess起動（library入口で代替）、別hostのStore停止、実producer行でのDocument DB restore・組restore・in-place restore・replay・quarantine・retention（単位Bが合成行で試験）。詳細は[受入試験](../../../crates/audit-acceptance/README.md)の「含まないもの」。
+- 単位Cが通していない経路：DSI・Diff worker binary（process内の合成実装で代替）、`DueScheduler` 本体（`poll_once` と同じ順の呼出しで代替）、HTTP層、`audit-relay`・`audit-admin` のprocess起動（library入口で代替）、別hostのStore停止、実producer行でのDocument DB restore・組restore・in-place restore・replay・quarantine・retention（単位Bが合成行で試験）、`authorization.denied` の記録失敗（業務transactionの外。§5.4）。詳細は[受入試験](../../../crates/audit-acceptance/README.md)の「含まないもの」。
 
 ### 1.3 Auditがしないこと（境界）
 
@@ -43,7 +43,7 @@ Status: 2026-10-08。基点はmain `dba8168`（単位A PR #98＋単位B PR #113�
 |---|---|---|
 | `actor {issuer, principal_id}` | staging列の検証済み主体（Documentでは `VerifiedActorContext.principal`）。`invocation_kind` は行に無いので出さない | `AC/src/legacy.rs:231-234`、`DR/src/file_access.rs:73-74`、設計§4.2 |
 | `service_executor` | 予約公開（published）とterminalでだけ、legacy `data.serviceExecutor` を持ち上げる。actorは予約した依頼者のまま | `AC/src/legacy.rs:181-196`、catalog:164,268、`DR/src/publish.rs:22-42`、`DR/src/schedule.rs:581-591` |
-| schedulerの値 | `{issuer: "service", principal_id: "scheduler"}`。認証主体・policy subjectではない。T1が依頼者actorと並ぶことを確認 | `crates/document-publication-scheduler/src/identity.rs:1-14`、`crates/document-application/src/access_context.rs:65-69`、TC:484、`crates/audit-acceptance/tests/acceptance/journey.rs:335-387` |
+| schedulerの値 | `{issuer: "service", principal_id: "scheduler"}`。認証主体・policy subjectではない。T1が依頼者actorと並ぶことを確認 | `crates/document-publication-scheduler/src/identity.rs:1-14`、`crates/document-application/src/access_context.rs:65-69`、TC:484、`crates/audit-acceptance/tests/acceptance/journey.rs:380-438` |
 | control eventのactor | 束縛された主体。束縛の無いsession（unboundの拒否、bootstrap）は `{issuer: "db_role", principal_id: session_user}` で `details.session_role` と一致 | README:223、`AC/src/envelope.rs:310-312` |
 | correlation | `operation_id` / `publish_operation_id` はcatalogの写像元field、`source_correlation_id` はstaging `trace_id` 列のUUID。W3C `trace_id` は予約で、全adapterが `trace_id: false` | README:112、catalog:9 |
 | 信頼境界 | stagingへINSERTできるroleは任意のactorを書ける。relayが検出するのは行内の不整合だけ | 設計§4.6 |
@@ -142,13 +142,14 @@ Organization専用のtype・field・resource種別は、Organizationの判断と
 
 ### 5.3 stagingのowner（単位Cの観察）
 
-- 非superuserの `public.audit_outbox_events` のOWNERは、自分の表に付いたrelayのtriggerを無効化・削除できる。relayのpostureは表のownerを違反として報告しない（単位Cは非superuserのowner `document_app` でpostureが空であることを前提に動く：`crates/audit-acceptance/tests/acceptance/support.rs:1019-1028`）。
+- 非superuserの `public.audit_outbox_events` のOWNERは、自分の表に付いたrelayのtriggerを無効化・削除できる。relayのpostureは表のownerを違反として報告しない（単位Cは非superuserのowner `document_app` でpostureが空であることを前提に動く：`crates/audit-acceptance/tests/acceptance/support.rs:1080-1089`）。
 - 事後の検出：未登録行はhealthの `unregistered_rows` 警報と `reconcile --repair` の登録で拾われる（repair登録のdigestはrepair時点の値。設計§5.1）。登録済み行はFKで削除できず、改変は `source_digest` で検出する（設計§5.2–5.3）。
 - 現在のDocument PoCは単一superuserでmigrateとserveを行い、role分離を満たさない（設計§5.3、手順§12）。**Documentと依頼者への引継ぎ：本番のruntime loginはstaging表のownerであってはならない**（ownerとruntimeを分け、ownerのloginは配備時だけ使う）。
 
 ### 5.4 既知の欠け（Documentへの引継ぎ、設計§13）
 
 - `authorization.denied`：producerは業務transactionの外（pool）でINSERTする（`DR/src/targeted_events.rs:64-85`）。呼出しは `DR/src/access_policy.rs:544,584`、`DR/src/read_state.rs:183`、`DR/src/current_read_state.rs:334,361`。対象範囲はDocument担当が決める。
+- **management経路の `authorization.denied` は記録に失敗しても握りつぶされる**（§6 D6）：`DR/src/access_policy.rs:543-549`（`ManagementRepository::execute`）と同:583-593（`lookup`）は、Forbiddenの後の `record_authorization_denied` が失敗すると `eprintln!` で1行出すだけでForbiddenを返す。業務transactionの外の1行なので、失敗するとその拒否の監査記録は失われ、staging行が無いのでrelay・health・reconcileにも現れない。既読の経路（`DR/src/read_state.rs:183-184`、`DR/src/current_read_state.rs:334-335,361-366`）は失敗をerrorとして返す。所有者はDocument。Auditの推奨：握りつぶさず、errorとして返す（呼出側が再試行できる）か、再試行してから失敗を返す。AuditはDocumentのcodeを変更しない。単位CのT2はこの行の記録失敗を試さない（戻すべき業務transactionが無い。[受入試験](../../../crates/audit-acceptance/README.md)の「含まないもの」）。
 - `trace_id` 列は `TEXT NULL`（`DR/migrations/0001_document_authoritative_core.sql:96`）でW3C traceparentは保存されない（TC INV-10・AC §13は未充足）。
 - 理由文：caller_textの7種はStoreへ `{provided, utf8_bytes, text_retained}` だけを送る（`AC/src/legacy.rs:144-155`、決定:65-71）。withdraw/endの理由文に上限が無い。通常のACL変更はreasonを記録しない。
 - そのほか：client指定IDのnil UUID（quarantine。README §nil UUIDのclient指定ID）、principalの文字種と長さ上限（README §principalの文字規則）、取下げ・公開終了時のschedule terminal audit、理由文を開示する機能の要否。
@@ -170,6 +171,7 @@ Organization専用のtype・field・resource種別は、Organizationの判断と
 | D3 | withdraw/end理由文の上限、通常ACLのreason、理由文開示機能の要否 | Document（開示はAuditと合同） | — |
 | D4 | 新しいaudit type・enum値の配備順の遵守（§5.2） | Document＋Audit | 各Document PRの統合前 |
 | D5 | 本番のrole分離（serveを非superuserで行い、runtime loginをstaging表のownerにしない。`audit_relay_owner` を分ける） | Document＋依頼者（Auditがreview） | 本番化の前 |
+| D6 | management経路の `authorization.denied` の記録失敗を握りつぶさない（`DR/src/access_policy.rs:543-549`・同:583-593の `eprintln!` だけの処理。§5.4）。Auditの推奨はerrorとして返すか再試行。AuditはDocumentのcodeを変更しない | Document | — |
 | R1 | purgeとlegal holdの優先関係（holdの作成・解除はv1に無い） | 依頼者 | legal hold実装の前 |
 | R2 | `register_source_service` の記録へのsource fieldの追加（kindの判断） | 依頼者 | 2つ目のsourceの前 |
 | R3 | ackに記録するStore epoch（probe時か、commit時のreceiptか） | 依頼者 | — |
