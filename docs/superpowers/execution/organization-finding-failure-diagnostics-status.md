@@ -7,6 +7,8 @@
 - 親は同じPR114でDocumentAgentSource内部のrequester/providerとidentity/改訂取得/原本一覧の閉じた段階・ApplicationError分類を追加し、根因追跡を継続することを承認。本文・ID・URL・生error・秘密情報は出さず、認可・応答・時間制限・元assertionを保持する。次は追加診断の安全性試験・独立レビュー、そのheadでの実runtime観測。診断一段だけで完了とは扱わない。
 - latest mainはAudit受入PR115を含む `712af6d6a1c74f3be33f5381f6a811b99b9d89b0`。既存Diagnostic/Organization sourceとの重複はなく、他担当の監査試験・文書を保持して追従する。
 - 追加診断のpure Rust反例はRED2→GREEN2、readerの旧schemaだけでは追加記録と混合記録が成立しないRED→GREENを確認。固定NodeでOrganization全44件、実Cargoでorganization-server lib6件・Document source port13件が成功。既存requester/provider拒否・exact source束縛・5秒のstalled provider試験を保持。fmt/diff検査も成功。full Linux受入は次の保存headで確認する。
+- 保存head `c4b365bedef6a0c601e4469d3a81bff8dd8e2512` の[CI37768216205](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37768216205)で実runtimeは終了・成功。head一致、dirty=false、Document22段階・Organization23段階を実ログ確認。この回はFinding503が再現せず、追加分類は観測できていない。根因未確定を維持する。
+- 同CIのrust-staticは新診断moduleの `items_after_test_module` だけで失敗した。Trace定義をtestsより前へ移すだけの修正を独立レビューし、Blocking/Important 0。純Rust2件・fmt/diff成功。実runtimeを中断せず結果を保存してから同PRへ修正を保存し、正確headの必須CIと同じ再起動Findingの観測を続ける。認可・期限・応答・分類の変更はない。
 
 ## 初回診断の記録
 

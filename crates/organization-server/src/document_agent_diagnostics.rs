@@ -77,6 +77,20 @@ impl Boundary {
         ))
     }
 }
+/// A per-call trace shared by the sequential reads; locks never span an await.
+pub(super) struct Trace(std::sync::Mutex<Boundary>);
+impl Trace {
+    pub fn new() -> Self {
+        Self(std::sync::Mutex::new(Boundary::default()))
+    }
+    pub fn get(&self) -> Boundary {
+        *self.0.lock().unwrap_or_else(|poison| poison.into_inner())
+    }
+    pub fn set(&self, value: Boundary) {
+        *self.0.lock().unwrap_or_else(|poison| poison.into_inner()) = value;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,19 +118,5 @@ mod tests {
                 .unwrap()
                 .contains("\"elapsed_ms\":4294967295")
         );
-    }
-}
-
-/// A per-call trace shared by the sequential reads; locks never span an await.
-pub(super) struct Trace(std::sync::Mutex<Boundary>);
-impl Trace {
-    pub fn new() -> Self {
-        Self(std::sync::Mutex::new(Boundary::default()))
-    }
-    pub fn get(&self) -> Boundary {
-        *self.0.lock().unwrap_or_else(|poison| poison.into_inner())
-    }
-    pub fn set(&self, value: Boundary) {
-        *self.0.lock().unwrap_or_else(|poison| poison.into_inner()) = value;
     }
 }
