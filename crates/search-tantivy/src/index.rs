@@ -107,14 +107,14 @@ impl LexicalBuildInput {
     /// Make the generation body-ready (schema-2) with exactly these verified
     /// Units. An empty collection is still body-ready: every item had no text.
     pub fn with_body_units(mut self, units: Vec<KnowledgeUnit>) -> Self {
-        self.body_units = Some(BodyUnits(Arc::new(units)));
+        self.body_units = Some(BodyUnits(Arc::new(units), Arc::default()));
         self
     }
 
     /// [`Self::with_body_units`] over Units the caller keeps owning (T12): the
     /// build reads them in place instead of a copy.
     pub fn with_body_unit_source(mut self, units: Arc<dyn UnitSource>) -> Self {
-        self.body_units = Some(BodyUnits(units));
+        self.body_units = Some(BodyUnits(units, Arc::default()));
         self
     }
 
@@ -126,11 +126,15 @@ impl LexicalBuildInput {
         self.body_units.as_ref().map(|units| units.0.units())
     }
 
-    /// The body Units' seal entries their source already holds.
-    pub(crate) fn body_seal_entries(&self) -> Option<Vec<crate::UnitSealEntry>> {
-        self.body_units
-            .as_ref()
-            .and_then(|units| units.0.seal_entries())
+    /// The body Units' seal entries their source already holds, read from
+    /// the source once per input.
+    pub(crate) fn body_seal_entries(&self) -> Option<Arc<Vec<crate::UnitSealEntry>>> {
+        self.body_units.as_ref().and_then(|units| {
+            units
+                .1
+                .get_or_init(|| units.0.seal_entries().map(Arc::new))
+                .clone()
+        })
     }
 }
 
@@ -152,9 +156,13 @@ impl UnitSource for Vec<KnowledgeUnit> {
     }
 }
 
-/// The body Units of one build input; equal when they hold the same Units.
+/// The body Units of one build input and their seal entries once read;
+/// equal when they hold the same Units.
 #[derive(Clone)]
-struct BodyUnits(Arc<dyn UnitSource>);
+struct BodyUnits(
+    Arc<dyn UnitSource>,
+    Arc<std::sync::OnceLock<Option<Arc<Vec<crate::UnitSealEntry>>>>>,
+);
 
 impl std::fmt::Debug for BodyUnits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -351,8 +351,9 @@ const SUMMARY_CACHE_ITEMS: usize = 1_000_000;
 /// one batch at most is held at a time.
 const SUMMARY_FETCH_BATCH: usize = 256;
 
-/// Whole restored summaries kept per process, newest last.
-const RESTORED_SUMMARIES: usize = 2;
+/// Whole restored summaries kept per process, newest last: the one a load
+/// re-verified and then reads (each holds every Unit's seal entry).
+const RESTORED_SUMMARIES: usize = 1;
 
 type RestoredSummaries = Mutex<Vec<(ProjectionGenerationKey, String, Arc<RestoredSummaryV1>)>>;
 
