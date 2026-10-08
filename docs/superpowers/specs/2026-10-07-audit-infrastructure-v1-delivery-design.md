@@ -14,6 +14,8 @@ Status: DESIGN REVISION 4（改訂3：独立review 1・再review・最終review�
 9. §12：検証の被覆は `record_verified` が保つ状態行から読む。
 10. §7.3・§11：postureの追加の違反と、backupを行うlogin。
 
+2026-10-08（単位C）：§2を初期状態（§2.1）と最終状態（§2.2）に分けた。設計内容の変更は無い。
+
 本書は未統合Draft [PR44](https://github.com/AIrisu-072/knowledge-platform/pull/44)（設計）と [PR45](https://github.com/AIrisu-072/knowledge-platform/pull/45)（schema/legacy contract）を置き換える。旧設計の脅威分析・失敗モデルは入力として尊重する。ただし旧基点 `d71753d` は30 merge古く、旧方針「reasonを持つevent・通常ACL変更を配送しない」は今回の要求（取下げ・metadata/ACL変更をStoreまで届ける）と衝突する。旧PRのstackには依存しない。決定事項は [決定記録](../../decisions/2026-10-07-audit-envelope-store-integrity.md) に記す。
 
 規範入力：
@@ -34,9 +36,13 @@ Status: DESIGN REVISION 4（改訂3：独立review 1・再review・最終review�
 7. produced（staged）／delivered（ack済み）／stored（Store受理）／verified（integrity検査済み）を、別々の証拠として扱う。
 8. 本番credential・実データ・本番migration・deployは扱わない。
 
-## 2. Capability matrix（main `d515aa3` 時点）
+## 2. Capability matrix
 
-凡例：実装・検証済み／実装不完全／仕様のみ／欠落／他担当待ち。「本設計」列は、本trackで埋める範囲を示す。
+凡例：実装・検証済み／実装不完全／仕様のみ／欠落／他担当待ち。§2.1は着手時の初期状態（更新しない）、§2.2は2026-10-08の最終状態である。
+
+### 2.1 初期状態（main `d515aa3` 時点、2026-10-07）
+
+「本設計」列は、本trackで埋める範囲を示す。
 
 | Capability | main現状 | 根拠 | 本設計 |
 |---|---|---|---|
@@ -61,6 +67,49 @@ Status: DESIGN REVISION 4（改訂3：独立review 1・再review・最終review�
 | health/reconciliation/restart | 欠落 | — | produced/delivered/stored/verifiedを分けたhealthとreconcile（§12） |
 | Search audit配送 | 他担当待ち | `search_audit_outbox_events` はSearch所有で、R04Aが未実装 | source adapterの契約をhandoffする（§13） |
 | Organization attribution | 他担当待ち | `work.event_staging` にissuer・role・delegationが無い | versioned extensionの接続点とhandoff（§13） |
+
+### 2.2 2026-10-08 最終状態（main `dba8168`＋単位C）
+
+- 対象：単位A（PR #98、main `643cc85`）、単位B（PR #113、main `dba8168`）、単位C（`crates/audit-acceptance`、本表と同じ統合単位でmain未統合）。
+- 「実装・検証済み」は、PostgreSQL 18.6（testcontainers）と合成データの試験で確かめたことを指す。単位A・Bはexact-headのhosted CIで成功した。単位Cはlocalで6試験PASS（約20秒）で、hosted CIは統合時に確かめる。**本番導入（deploy、本番migration、credential、role分離）はどの行も未実施**で、Document PoCのruntimeはrelayを起動しない。
+- 根拠のpathは `crates/` からの相対。T1〜T5は `audit-acceptance/tests/acceptance/` の `journey.rs`（T1）・`staging_failure.rs`（T2）・`store_outage.rs`（T3）・`relay_crash.rs`（T4）・`store_restore.rs`（T5）で、Documentの実producer（productionのapplication service・repository・file storage）から書いた行を使う。handoffは [引継ぎ文書](../handoffs/audit-infrastructure-v1-organization-handoff.md)。
+
+| Capability | 分類 | 根拠 | 残る欠け |
+|---|---|---|---|
+| CloudEvents envelope＋版付きpayload | 実装・検証済み | `audit-core/src/envelope.rs`、`audit-core/tests/envelope_contract.rs`、`golden_projection.rs`、T1（embedded catalogのrelay originのDocument全type＝23種の40件をStoreで受理。catalogに足したtypeはT1が通すまで失敗する） | SDKは使わない（決定D1）。`extensions` 名前空間は未実装（v1は空objectのみ） |
+| schema検証 | 実装・検証済み | catalogと生成schema（`spec/telemetry/`）、`audit-core/tests/schema_contract.rs`・`catalog_contract.rs`・`legacy_projection.rs`、Storeの構造検査（`audit-store-postgres/tests/store_ingest.rs` `structural_rejections_are_verdict_rows_and_version_skew_is_an_outage`） | 標準JSON Schemaで表せない制約はRustだけが拒否する（`rust_only:*` に分類済み） |
+| bounded metadata | 実装・検証済み | jsonb text 32 KiB（`envelope_contract.rs` `size_limit_is_measured_on_the_jsonb_rendering`・`maximal_envelopes_of_every_entry_fit_the_jsonb_limit`）、claim projectionの列1024 B・`data` 16 KiB（`audit-relay/tests/source_schema.rs` `claim_projection_is_total_and_never_carries_the_reason`）、principal各部256 B、list上限 | Documentはprincipalの長さ・文字種の上限を持たない（Documentへのhandoff） |
+| AuditStore port＋backend | 実装・検証済み | `audit-core/src/port.rs`・`tests/store_port.rs`、`audit-store-postgres`（`tests/store_ingest.rs` ほか） | backendはPostgreSQLの暫定採用（決定D2、本番前に再選定：依頼者） |
+| 配送：claim/lease/delivery/ack/retry/backoff | 実装・検証済み | `audit-relay/tests/source_schema.rs` `claims_are_leased_and_stale_tokens_are_fenced`、`delivery.rs` `store_down_holds_without_consuming_attempts_then_drains`・`relay_side_holds_back_off_and_never_starve_deliverable_rows`・`outage_streak_counts_residual_errors_only_after_progress`、T1・T3 | relayの複数instance同時運転、本番のtimeout値・処理量は未検証（運用手順§12） |
+| 配送：duplicate | 実装・検証済み | `delivery.rs` `concurrent_duplicates_store_once_and_stale_acks_are_lost`・`reprojection_acks_the_original_receipt_and_a_forgotten_bump_conflicts`、T4 | — |
+| 配送：restart・dispatcher crash | 実装・検証済み | `audit-relay/tests/recovery.rs` `kill9_after_the_store_commit_redelivers_as_a_duplicate`、T4（子processのrelayをSIGKILLし、`relay::run` で再起動） | process監視（systemd等）と再起動方針は未検証。T4は `audit-relay` binaryではなく同じlibrary入口 |
+| 配送：commit結果不明 | 実装・検証済み | `delivery.rs` `commit_unknown_retries_converge_to_a_duplicate`、`store_ingest.rs` `adapter_maps_every_non_verdict_failure_to_an_outage`、T1・T3・T4（負荷でingestがtimeoutした後の再試行の `duplicate` は、先行試行が `store_timeout` で返却された行にだけ許し、exactly-onceはStoreの行数で確かめる） | — |
+| 配送：terminal failure（quarantine・replay） | 実装・検証済み | `delivery.rs` `invalid_rows_quarantine_and_catalog_skew_is_held`、`recovery.rs` `final_attempt_crash_quarantines_and_only_the_fenced_repair_acks`・`replay_is_audited_and_direct_sql_replay_is_detected` | 実producer行でのquarantine・replayは単位Cで繰り返していない（単位Bの合成行） |
+| reconciliation・repair | 実装・検証済み | `recovery.rs` `store_only_and_unregistered_rows_are_reported_and_repaired`・`repair_never_resets_rows_missing_in_their_own_epoch`、T4（read-only reconcileが全行ok）、T5（`reconcile --repair`） | 記録の `repaired_*` は計画件数（実適用件数はCLI出力だけ。依頼者判断待ち） |
+| event IDの一意性とidempotentなingest | 実装・検証済み | `store_ingest.rs` `idempotency_outcomes_and_conflicts`、`audit-store-postgres/tests/store_golden.rs` `a_forgotten_bump_is_a_conflict_not_an_overwrite`、T1（event_idごとに1件） | commitmentを持たないadapterの規則（§7.2）は実装済みだが、該当adapterがまだ無い |
+| 安定した順序 | 実装・検証済み（Storeへのcommit順） | `store_ingest.rs` `head_lock_serializes_publication_in_commit_order`、T1（受領seqがrelay台帳と一致） | seqは業務の因果順ではない（`occurred_at` を保持）。relayのclaim順は配送順を保証しない |
+| 業務repositoryからのupdate/delete不可 | 実装・検証済み | staging guard（`source_schema.rs` `staging_and_ledger_guards_refuse_mutation`）、Storeのappend-only（`store_ingest.rs` `append_only_for_every_role_including_the_owner_path`）、Document production codeにstagingのUPDATE/DELETEは無い | guardは事故防止で、superuserと非superuserのstaging表ownerはtriggerを無効化・削除できる（postureはownerを報告しない。事後に未登録行・`source_digest` で検出。handoff §5.3）。本番role分離は未実施 |
+| retention・特権maintenance（expire・purge） | 実装・検証済み | `audit-store-postgres/tests/store_integrity.rs` `retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones`、`store_recovery.rs` `reapply_needs_a_drained_retention_run_and_verify_disclosure_stays_closed`、T5（epoch後の再適用） | 年数は固定しない（policyは運用が設定）。source stagingのcleanupはv1に無い |
+| legal hold | 実装不完全（拡張境界のみ） | `audit_store.legal_holds` の予約表。有効なholdが1件でもあれば `expire` は `held`（試験は表へ直接挿入） | holdの作成・解除の関数・CLIは未実装。`purge_body` はholdを見ず、purgeとholdの優先は依頼者判断待ち |
+| integrity metadata | 実装・検証済み | envelope digest・salt付きsource commitment・hash chain・外部checkpoint（`audit-core/tests/chain_export.rs`、`store_integrity.rs`、`audit-store-postgres/tests/cli_assess.rs`）、T1（`assess` が `authentic`）、T5（`lost`・`unverified_recovery`） | D3の限界（DB ownerは全体を再計算できる。署名・WORM・外部anchorは将来）。帯域外記録の保管先と管理者分離は未検証 |
+| 監査の閲覧・調査・export・設定・verifyの認可とaudit-of-audit | 実装・検証済み | `audit-store-postgres/tests/store_access.rs`（`role_matrix_refuses_every_function_outside_the_role`、`unbound_and_unauthorized_principals_are_denied_and_recorded`、`read_page_needs_a_committed_intent_and_a_clean_transaction`、`control_events_are_visible_only_with_administer_and_close_is_recorded`、`self_grant_is_refused_and_bind_unbind_are_owner_only`）、`control_catalog.rs` | 認証境界はDB login（本番identityは未確立）。`pg_dump`・owner/superuserの直接読取・recovery中の読取・export fileは対象外（§10.3）。二人承認なし。調査はfilter付きの読取で全文検索は無い |
+| Document producerのE2E接続 | 実装・検証済み（単位C） | T1（23種すべて）：作成・WORKING更新・rebase・公開・予約と取消・取下げ・公開終了・metadata、ACL変更（通常・bootstrap）、folder・文書の操作、初回既読・VIEW/RESET、原本アクセス、Diff・revision比較、拒否（management・既読）、`service/scheduler` による予約公開と予約の終端 | HTTP層・identity adapter、DSI/Diff worker binary（合成実装で代替）、`DueScheduler` 本体（同じ順の呼出しで代替。PoCの `StaticRequesterResolver` は `poc` 主体だけ）は通していない。`authorization.denied` は業務transactionの外で書かれ、management経路は記録の失敗を握りつぶす（Documentへのhandoff §5.4・D6） |
+| 失敗：staging（Outbox INSERT）・配送登録の失敗 | 実装・検証済み（`authorization.denied` を除く） | T2（catalogのDocument 22種を、試したstaging siteごとに1回ずつ拒否：root policyのbootstrap（setup前）、management（metadata・folder作成・改名・移動・ACL・文書移動）、文書作成、versioning（新しい版・WORKING更新・rebase）、初版の公開（手動・scheduler）と次の版の手動公開（`publish.rs` の2 site）、予約・取消・終端、取下げ、公開終了、初回既読・VIEW・RESET、原本アクセス・Diff・revision比較のgrant。errorはrepositoryのPostgreSQL失敗（`Internal`）、Documentの全表と登録が不変、grantは何も返さない、schedulerの予約公開はPENDINGのまま再試行の記録だけ進み終端は記録されない。妨害を外すと全操作がcommitされ1回ずつ届く）、`source_schema.rs` `registration_failure_rolls_back_the_business_write` | staging失敗をDocument側で監視する手段は無い（運用手順§12）。`authorization.denied` は業務transactionの外でINSERTされ、management経路（`document-repository-postgres/src/access_policy.rs:543-549`・同:583-593）は記録の失敗を `eprintln!` だけで握りつぶしてForbiddenを返すので、その拒否の記録は失われ得て、relay・healthにも現れない（既読の経路はerrorを返す。Documentへのhandoff D6、Auditの推奨はerrorとして返すか再試行。T2の対象外）。versioning preflightのfile object・意味検査と意味検査cacheは業務transactionの外で残る（Documentの設計）。versioningのproducerは整合性SQLSTATE（23505・23503・23514）のstaging失敗を `Conflict` として返す |
+| 失敗：Store停止 | 実装・検証済み | T3（業務継続、試行返却、`store_unavailable`・`circuit_open`・`outage_held`、復旧後1回ずつ）、`delivery.rs` `read_only_lock_and_statement_timeouts_and_version_skew_are_outages` | T3は同じcluster内のdatabaseの接続拒否で、別hostの停止・network分断は未試験。障害直後はhealthが次のprobeまで `circuit` open・gate okを示し得る |
+| 失敗：保存後・ack前のcrash、duplicate | 実装・検証済み | T4、`recovery.rs` `kill9_after_the_store_commit_redelivers_as_a_duplicate` | — |
+| 失敗：不正schema | 実装・検証済み | `delivery.rs` `invalid_rows_quarantine_and_catalog_skew_is_held`、`envelope_contract.rs`、`legacy_projection.rs` | — |
+| 失敗：改ざん | 実装・検証済み | `store_integrity.rs`（`modified_body_is_detected`、`full_rewrite_passes_in_database_but_fails_offline` ほか）、`chain_export.rs`、`delivery.rs` `source_mismatch_records_the_control_event_first_and_once`、`store_access.rs` `tampering_with_a_stored_intent_is_detected` | D3の限界（上記） |
+| 失敗：無権限の閲覧・export | 実装・検証済み | `store_access.rs`（上記）、`audit-store-postgres/tests/cli.rs` `operator_commands_write_private_files_and_refuse_privileged_sessions` | 拒否の記録は呼出側のROLLBACKで消える（§10.3、拒否は何も開示しない） |
+| 失敗：retention | 実装・検証済み | `store_integrity.rs` `retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones` | — |
+| 失敗：restart・recovery（backup/restore） | 実装・検証済み | `store_recovery.rs`、`recovery.rs` `store_restore_into_a_new_database_gates_until_a_new_epoch`・`an_in_place_restore_is_detected_as_store_regressed`、T5（復旧手順の前から復元先へ向けて走る `audit-relay run` は、epochまで新しい行を試行0・leaseなし・outage codeなし・未保存のまま待たせ、epoch後に1回の試行で届ける） | Document DBとStore DBを組で戻すrestoreは未検証。Document DB restore・in-place restoreは合成行だけ。fingerprintは同じtimelineの物理restoreを検知しない |
+| 失敗：機微payloadの拒否 | 実装・検証済み | `delivery.rs` `sensitive_data_keys_are_held_and_never_ingested`、`legacy_projection.rs` `free_text_and_unknown_members_are_quarantined`・`reason_text_never_passes_through`、T1（理由文・題名・folder名・原本file名・metadataの値・本文・storage locator・ACLの主体・DB password・接続URLがStoreの全表（`pg_dump`）とexportに無い。process設定以外の各needleは上流（staging行、Document DB、storageのfile）にあることを先に確かめる） | withdraw/endの理由文に上限が無い（Documentへのhandoff。Storeへは複製しない） |
+| produced／delivered／stored／verifiedの区別 | 実装・検証済み | `audit-relay/src/health.rs`、`audit-relay/tests/runtime.rs`、T1（storedのheadはStoreのcontrol eventを含み、verifiedはverifyの後だけ進む。produced＝delivered）、T3（停止中はproduced＞delivered、produced＝registeredでstaging失敗と区別）、T5（recovery gate中はproduced＞delivered） | — |
+| 検証記録の無限再帰の防止 | 実装・検証済み | `store_integrity.rs` `verify_records_once_and_never_recurses`（記録はWより後のseq） | — |
+| correlation（W3C trace） | 実装不完全 | `operation_id`・`publish_operation_id`・`source_correlation_id` へ写像。`trace_id` は予約で全adapterが `false` | W3C traceparent列はDocumentに無い（TC INV-10・AC §13は未充足。Documentへのhandoff） |
+| catalogとproducerの整合 | 実装・検証済み | PR #106の2種を登録、`authorization.denied` の `action_code` をproducerのsourceと照合（`audit-core/tests/catalog_contract.rs` `authorization_denied_action_codes_cover_every_producer_code`）、Document migration互換（`audit-acceptance/tests/acceptance/document_migration.rs`、`source_schema.rs` `digest_function_tracks_digested_columns`） | 新しいtype名はCIでは検出せず、relayが `relay_catalog_skew` で保留しhealthが警報する（配備順は運用手順§7） |
+| Organizationへのhandoff | 他担当待ち | 引継ぎ文書§2–§3（帰属、versioned extension hook、問いO1–O12） | Organizationの判断（O1–O12）。`extensions` 名前空間・新resource種別はその後のAudit変更 |
+| Searchへのhandoff | 他担当待ち | 引継ぎ文書§4。`search_audit_outbox_events` は未配送 | Searchのsource接続、R04A-Dと決定D4の調整（S1） |
+| 本番導入 | 欠落（本trackの範囲外） | — | deploy・本番migration・credential・process監視・本番role分離（runtime loginをstaging表のownerにしない）・Store基盤の再選定は未実施（依頼者・Document） |
 
 ## 3. 構成とcrate
 
