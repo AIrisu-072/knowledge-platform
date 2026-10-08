@@ -45,3 +45,7 @@ RED: nativeoctet-streamのPDF parser呼出0、history guard未接続、native小
 ログ: `/tmp/viewer-proxy-final.log`, `/tmp/viewer-client-incremental-final.log`, `/tmp/viewer-incremental-e2e.log`, `/tmp/viewer-incremental-build.log`, `/tmp/viewer-incremental-type.log`, `/tmp/viewer-final-all-gui.log`。Rust harnessは同PRに含む独立workspaceでtargetはignore。Tauri/WebView/native配備/実backendAuditは未検証、harness合格をフルTauri合格と扱わない。PDF全heap/一時chunk/Veccapacityの厳密上限は保証しない。CI追加は親とCloud所有者が調整し、こちらではCI定義を変更しない。
 
 最終追補sourceのGUI全体は77 suites1783件/0失敗/0skip（84.083秒）、component15件、history51件、client17件、actualproxyRust26件、実PDFChromium2件成功。最後の型チェックもexit0。historyのqueryFn未指定に関する既存console診断は出るが、試験は全件成功。finalsource logは上記/tmp。CI案は既存mandatory `desktop-runtime-bridge` 内、bridge実行前にharness `cargo test --locked` を追加する構成を親へ伝えた。CI変更・push・PR作成は行っていない。
+
+## 親による必須ゲート接続
+
+独立レビューは完成source `b16d8888a1891e9b431c11944f222af97e98b6ff` に対して Blocking/Important 0、Draft/CIへGO。親が同機能のDraft PR #111を作成した。CI workflow自体は変更せず、既存の `desktop:bridge:e2e` miseタスクの先頭へactual-source harness試験を追加し、現在の必須 `desktop-runtime-bridge` ジョブで実行する。既存のbridgeブラウザー試験・required-check依存を保持する。変更後のexact-head CI成功とレビューを待ち、未完了のCIを合格とは扱わない。
