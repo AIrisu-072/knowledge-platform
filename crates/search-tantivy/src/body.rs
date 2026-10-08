@@ -256,7 +256,7 @@ pub(crate) fn build_unit_index_at(
 /// then builds from nothing. Merging is off, so linked segments stay shared.
 pub(crate) fn build_unit_index_from_base(
     units: &[&KnowledgeUnit],
-    entries: Option<Vec<UnitSealEntry>>,
+    entries: Option<Arc<Vec<UnitSealEntry>>>,
     base: &Path,
     dir: &Path,
     tokenizer: &str,
@@ -296,7 +296,7 @@ pub(crate) fn build_unit_index_from_base(
     // The entries the Unit source keeps, else every Unit hashed here.
     let after: HashMap<UnitId, [u8; 32]> = match entries {
         Some(entries) if entries.len() == units.len() => entries
-            .into_iter()
+            .iter()
             .map(|entry| (entry.unit_id, entry.hash))
             .collect(),
         _ => units
@@ -467,17 +467,19 @@ pub fn lexical_input_digest(
     let units = input.body_units();
     let entries = match input.body_seal_entries() {
         Some(entries) => entries,
-        None => units
-            .as_deref()
-            .unwrap_or(&[])
-            .iter()
-            .map(|unit| {
-                Ok(UnitSealEntry {
-                    unit_id: unit.unit_id,
-                    hash: unit_doc_hash(unit)?,
+        None => Arc::new(
+            units
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .map(|unit| {
+                    Ok(UnitSealEntry {
+                        unit_id: unit.unit_id,
+                        hash: unit_doc_hash(unit)?,
+                    })
                 })
-            })
-            .collect::<Result<Vec<_>, LexicalIndexError>>()?,
+                .collect::<Result<Vec<_>, LexicalIndexError>>()?,
+        ),
     };
     lexical_digest(
         units.is_some(),
