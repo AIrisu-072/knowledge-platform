@@ -644,6 +644,22 @@ where
     }
 }
 
+/// Polls `audit-relay health` until `accept` holds and returns that report.
+pub async fn health_when(env: &Env, accept: impl Fn(&Value) -> bool) -> Value {
+    let deadline = tokio::time::Instant::now() + CONVERGE;
+    loop {
+        let report = env.health(false).await;
+        if accept(&report) {
+            return report;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "health never reached the expected state: {report}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 /// Every staging row has been delivered (and nothing is pending).
 pub async fn drained(env: &Env) -> bool {
     let status = env.relay_status().await;
