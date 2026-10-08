@@ -1,5 +1,13 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 最新main（`6a34de3`）を単位Bへ取り込み（worktree branch、未push）
+
+- `git merge origin/main`（merge commit `a538215`、rebaseなし）。競合なし。`active.md` はAudit節と文書・Desktop側の新しい節を両方保持。`Cargo.toml`・`Cargo.lock` はmain側に変更なし、`dependency-rules.toml` はmainの `desktop_shell` 境界の追加のみ。単位Bはmainに対しDocument・Search・Organization・work・outbox-delivery・appsを変更していない。
+- ローカル検証（merge後）：`cargo metadata --locked` PASS、`cargo test --locked --no-fail-fast -p audit-core -p audit-store-postgres -p audit-relay` 全PASS（core 148＋doc 2、Store 71、relay 50＋ignored 1。merge前と同数）、clippy `-D warnings --all-targets`・`cargo fmt --all -- --check`・`architecture-lint check` PASS。relayの `source_schema`（preflight・backfill・digest等9件）はDocument migration 0012まで適用したDBで通る。
+- D4確認：mainの新しいmigrationは `0012_document_current_read_state.sql` だけで、`document_read_states` への列追加と `document_read_state_operations` の新設のみ。`public.audit_outbox_events` の列・制約・triggerには触れない（Auditのreview対象外）。新producer（`current_read_state.rs`）は既存列だけをINSERTする（`trace_id`・`reason` なし）。
+- 新event type `document.version.detail_viewed`・`document.version.marked_unread` はcatalogに未登録。producerと同じ形の行を一時試験（未commit）で流すと、relayは両方を `relay_catalog_skew` でhold（quarantine・配送・保存なし、attempt 0、breaker Closed）、healthは `catalog_skew_held`・`relay_held` の警報とforecast `{"relay_catalog_skew": 2}`。
+- 次のexact action：2つの新event typeをcatalog（加法）へ登録し、skewが解消して保存・検証されることを試験する。その後、修正確認review → Draft PR → exact-head CI。
+
 ## 2026-10-08 — 単位B 確認review（NO-GO、`478a66f`）の指摘反映（worktree branch、未push）
 
 - branch `worktree-agent-a07ac0dcd80b1fa0d`（`478a66f` の上）。各指摘は先に再現試験を書き、修正前に失敗することを確認してから直した（括弧内は修正前の失敗）。commit：
