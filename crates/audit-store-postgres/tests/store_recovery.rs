@@ -342,7 +342,13 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
             ..honest
         },
         RecoveryExpectation {
-            lost_upper: relay_max_seq,
+            lost_upper: Some(relay_max_seq),
+            ..honest
+        },
+        // The bound is known (checkpoint and relay seq): expecting an
+        // unknown bound is a mismatch too.
+        RecoveryExpectation {
+            lost_upper: None,
             ..honest
         },
     ] {
@@ -363,7 +369,7 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
                 Some(&c2),
                 Some(relay_max_seq),
                 &RecoveryExpectation {
-                    lost_upper: dump_head - 1,
+                    lost_upper: Some(dump_head - 1),
                     ..honest
                 }
             )
@@ -496,6 +502,7 @@ async fn restore_enters_recovery_mode_and_a_new_epoch_continues_the_chain() {
         restored_head_seq: dump_head,
         restored_head_chain: c1.chain,
         lost_upper: relay_max_seq,
+        lost_upper_known: true,
     };
     assert_eq!(
         assess_recovery(&export.report, &checkpoints, &[short]).verdict,
@@ -599,6 +606,7 @@ async fn planned_move_is_an_epoch_with_an_empty_lost_range() {
         restored_head_seq: moved_head,
         restored_head_chain: c.chain,
         lost_upper: moved_head,
+        lost_upper_known: true,
     };
     let assessment = assess_recovery(&export.report, &[c, c_final], &[record]);
     assert_eq!(assessment.epochs[0].record, Some(record));
@@ -684,7 +692,26 @@ async fn a_restore_without_checkpoint_or_relay_seq_has_an_unknown_lost_bound() {
         expect("restored_head_chain"),
     );
     assert_eq!(head_chain, hex(&restored_chain));
-    let lost_upper = expect("lost_upper_seq");
+    // The record line carries the unknown bound explicitly, and the epoch
+    // starts only when the operator expects exactly that.
+    assert_eq!(previewed[1]["lost_upper"], Value::Null, "{}", previewed[1]);
+    let (code, _, stderr) = audit_admin(
+        &url,
+        &[
+            "begin-recovery-epoch",
+            "--expect-old-epoch",
+            &old_epoch,
+            "--expect-head-seq",
+            &head_seq,
+            "--expect-head-chain",
+            &head_chain,
+            "--expect-lost-upper",
+            &head_seq,
+        ],
+    );
+    assert_eq!(code, Some(1), "a known bound is not expected: {stderr}");
+    assert!(stderr.contains("expectation_mismatch"), "{stderr}");
+    let lost_upper = "unknown".to_owned();
     let (code, started, stderr) = audit_admin(
         &url,
         &[

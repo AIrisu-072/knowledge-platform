@@ -150,11 +150,14 @@ impl CheckpointFile {
 /// (`kp-audit-recovery-records-v1`): the operator's record of one recovery
 /// epoch transition (`audit_core::RecoveryRecord`). The lost range is
 /// `(restored_head_seq, lost_upper]`; `lost_upper = restored_head_seq` loses
-/// nothing (a planned move). The file is JSON lines, appended in epoch order;
-/// blank lines are ignored and every other line must be a valid record (the
-/// key set is closed, keys are unique, `new_epoch = old_epoch + 1`,
-/// `0 <= restored_head_seq <= lost_upper`, the chain is 64 lowercase hex
-/// digits).
+/// nothing (a planned move). `lost_upper` is `null` when the Store could not
+/// bound the lost range (`lost_upper_known: false`: a restore recorded
+/// without a checkpoint, a relay seq or a regression report); such a record
+/// is never authentic. The file is JSON lines, appended in epoch order; blank
+/// lines are ignored and every other line must be a valid record (the key set
+/// is closed and every key is required, keys are unique,
+/// `new_epoch = old_epoch + 1`, `0 <= restored_head_seq <= lost_upper` when
+/// it is a number, the chain is 64 lowercase hex digits).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoveryRecordLine {
@@ -163,7 +166,18 @@ pub struct RecoveryRecordLine {
     pub new_epoch: i64,
     pub restored_head_seq: i64,
     pub restored_head_chain: String,
-    pub lost_upper: i64,
+    /// Required; `null` is the unknown bound (never a missing key).
+    #[serde(deserialize_with = "required_nullable")]
+    pub lost_upper: Option<i64>,
+}
+
+/// A required member whose value may be `null` (`Option` members are
+/// otherwise optional in serde).
+fn required_nullable<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<i64>::deserialize(deserializer)
 }
 
 impl RecoveryRecordLine {
@@ -174,24 +188,29 @@ impl RecoveryRecordLine {
             new_epoch: record.new_epoch,
             restored_head_seq: record.restored_head_seq,
             restored_head_chain: hex::encode(&record.restored_head_chain),
-            lost_upper: record.lost_upper,
+            lost_upper: record.lost_upper_known.then_some(record.lost_upper),
         }
     }
 
-    /// The record, when the line is well formed.
+    /// The record, when the line is well formed. An unknown bound
+    /// (`lost_upper: null`) is the record's `lost_upper_known: false` with
+    /// `lost_upper = restored_head_seq`.
     pub fn record(&self) -> Option<RecoveryRecord> {
         let valid = self.format == RECOVERY_RECORDS_FORMAT
             && self.old_epoch >= 1
             && self.old_epoch.checked_add(1) == Some(self.new_epoch)
             && self.restored_head_seq >= 0
-            && self.lost_upper >= self.restored_head_seq;
+            && self
+                .lost_upper
+                .is_none_or(|upper| upper >= self.restored_head_seq);
         valid.then_some(())?;
         Some(RecoveryRecord {
             old_epoch: self.old_epoch,
             new_epoch: self.new_epoch,
             restored_head_seq: self.restored_head_seq,
             restored_head_chain: hex::decode32(&self.restored_head_chain)?,
-            lost_upper: self.lost_upper,
+            lost_upper: self.lost_upper.unwrap_or(self.restored_head_seq),
+            lost_upper_known: self.lost_upper.is_some(),
         })
     }
 

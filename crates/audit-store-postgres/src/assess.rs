@@ -123,6 +123,9 @@ pub struct EpochSummary {
     /// of the attesting `audit.recovery.epoch_started` body).
     pub restored_head_seq: Option<i64>,
     pub lost_upper: Option<i64>,
+    /// False when the bound is unknown (`lost_upper` is then the restored
+    /// head and the epoch is never authentic).
+    pub lost_upper_known: Option<bool>,
     /// `restore` / `planned_move` / `regression` (body exports only).
     pub classification: Option<&'static str>,
 }
@@ -369,6 +372,10 @@ fn summarize(
                     .record
                     .map(|record| record.lost_upper)
                     .or(attestation.map(|body| body.lost_upper_seq)),
+                lost_upper_known: epoch
+                    .record
+                    .map(|record| record.lost_upper_known)
+                    .or(attestation.map(|body| body.lost_upper_known)),
                 classification: attestation.map(|body| body.classification.as_str()),
             }
         })
@@ -437,6 +444,7 @@ mod tests {
             restored_head_seq: 5,
             restored_head_chain: [0xab; 32],
             lost_upper: 7,
+            lost_upper_known: true,
         };
         let line = RecoveryRecordLine::from_record(&record).to_line();
         assert_eq!(
@@ -481,6 +489,39 @@ mod tests {
         }
         let duplicate = line.replacen("\"lost_upper\":7", "\"lost_upper\":7,\"lost_upper\":7", 1);
         assert!(parse_recovery_records(&duplicate).is_err(), "duplicate key");
+
+        // An unknown bound is an explicit null, never a missing key.
+        let unknown = RecoveryRecord {
+            lost_upper: 5,
+            lost_upper_known: false,
+            ..record
+        };
+        let unknown_line = RecoveryRecordLine::from_record(&unknown).to_line();
+        assert!(
+            unknown_line.ends_with(",\"lost_upper\":null}"),
+            "{unknown_line}"
+        );
+        assert_eq!(
+            parse_recovery_records(&unknown_line).expect("parses"),
+            vec![unknown]
+        );
+        let mut missing = base.clone();
+        missing
+            .as_object_mut()
+            .expect("object")
+            .remove("lost_upper");
+        assert!(
+            matches!(
+                parse_recovery_records(&missing.to_string()),
+                Err(FileError::RecoveryRecords { line: 1 })
+            ),
+            "a missing lost_upper is not an unknown bound"
+        );
+        for value in [json!("unknown"), json!(false), json!(5.5)] {
+            let mut bad = base.clone();
+            bad["lost_upper"] = value;
+            assert!(parse_recovery_records(&bad.to_string()).is_err(), "{bad}");
+        }
     }
 
     /// A synthetic identity-chain export of `rows` relay rows from genesis

@@ -194,12 +194,16 @@ pub struct EpochTransition {
 /// The details of a verified `audit.recovery.epoch_started` body. The lost
 /// range is `(restored_head_seq, lost_upper_seq]`, so `lost_from_seq` is
 /// always `restored_head_seq + 1` and `lost_upper_seq >= restored_head_seq`.
+/// `lost_upper_known` is false when the Store could not bound the lost range
+/// (no checkpoint, no relay seq, no regression report): `lost_upper_seq` is
+/// then only a lower bound and the epoch is never authentic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EpochAttestation {
     pub restored_head_seq: i64,
     pub restored_head_chain: [u8; 32],
     pub lost_from_seq: i64,
     pub lost_upper_seq: i64,
+    pub lost_upper_known: bool,
     pub classification: RecoveryClassification,
 }
 
@@ -242,7 +246,10 @@ pub struct ExpiredRowEvidence {
 /// `restored_head_seq` / `restored_head_chain` name the last surviving row;
 /// `lost_upper` is the claimed upper bound of the lost range
 /// `(restored_head_seq, lost_upper]` (equal to `restored_head_seq` for a
-/// planned move, which loses nothing).
+/// planned move, which loses nothing). `lost_upper_known` is false when the
+/// bound is unknown (the Store's `lost_upper_known: false`): `lost_upper` is
+/// then `restored_head_seq`, everything after the restored head may be lost
+/// and the epoch is reported as lost, never as authentic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoveryRecord {
     pub old_epoch: i64,
@@ -250,6 +257,7 @@ pub struct RecoveryRecord {
     pub restored_head_seq: i64,
     pub restored_head_chain: [u8; 32],
     pub lost_upper: i64,
+    pub lost_upper_known: bool,
 }
 
 impl RecoveryRecord {
@@ -260,9 +268,9 @@ impl RecoveryRecord {
     ///   the lost range (`transition.seq - 1 <= lost_upper`; for a planned
     ///   move, which loses nothing, this forces
     ///   `transition.seq == restored_head_seq + 1`);
-    /// - in body exports, the restored head, its chain and the lost upper
-    ///   bound equal the chained `epoch_started` body, and a body classified
-    ///   `planned_move` has an empty lost range;
+    /// - in body exports, the restored head, its chain, the lost upper bound
+    ///   and whether it is known equal the chained `epoch_started` body, and
+    ///   a body classified `planned_move` has an empty lost range;
     /// - when the restored head lies on the verified path, its chain matches.
     fn matches(&self, transition: &EpochTransition, report: &ExportReport) -> bool {
         let Some(last_before) = transition.seq.checked_sub(1) else {
@@ -277,6 +285,7 @@ impl RecoveryRecord {
             body.restored_head_seq == self.restored_head_seq
                 && body.restored_head_chain == self.restored_head_chain
                 && body.lost_upper_seq == self.lost_upper
+                && body.lost_upper_known == self.lost_upper_known
                 && (body.classification != RecoveryClassification::PlannedMove || !self.loses())
         });
         shape
@@ -286,8 +295,16 @@ impl RecoveryRecord {
                 .is_none_or(|chain| chain == self.restored_head_chain)
     }
 
+    /// Whether the recovery lost (or may have lost) rows: a non-empty lost
+    /// range, or an unknown bound.
     fn loses(&self) -> bool {
-        self.lost_upper > self.restored_head_seq
+        !self.lost_upper_known || self.lost_upper > self.restored_head_seq
+    }
+
+    /// Whether `seq` lies in the lost range (an unknown bound covers every
+    /// seq after the restored head).
+    fn covers(&self, seq: i64) -> bool {
+        seq > self.restored_head_seq && (!self.lost_upper_known || seq <= self.lost_upper)
     }
 }
 
@@ -445,7 +462,9 @@ pub struct RecoveryAssessment {
 ///   `UnverifiedExpiry`. `Authentic` is never returned while
 ///   `report.unverified_expiry_evidence > 0`.
 /// - A difference at or below a documented restored head is tampering.
-/// - A difference inside a documented lost range is `Lost`.
+/// - A difference inside a documented lost range is `Lost`; a record whose
+///   bound is unknown covers everything after its restored head, and its
+///   epoch is `Lost` even without any difference.
 /// - A difference past an undocumented recovery epoch, an undocumented epoch,
 ///   a record that matches no epoch (and does not precede the anchor), a
 ///   restored head that cannot be checked on this path, or a checkpoint
@@ -599,7 +618,7 @@ fn classify_difference(
             Some(record) if checkpoint.seq <= record.restored_head_seq => {
                 return (ChainVerdict::Tampered, None);
             }
-            Some(record) if checkpoint.seq <= record.lost_upper => {
+            Some(record) if record.covers(checkpoint.seq) => {
                 return (ChainVerdict::Lost, Some(record));
             }
             // The record's lost range does not cover the checkpoint.
@@ -808,6 +827,7 @@ enum Evidence {
         restored_head_chain: Option<[u8; 32]>,
         lost_from_seq: Option<i64>,
         lost_upper_seq: Option<i64>,
+        lost_upper_known: Option<bool>,
         classification: Option<RecoveryClassification>,
     },
 }
@@ -867,6 +887,7 @@ fn evidence(event_type: &str, details: &Value) -> Option<Evidence> {
             restored_head_chain: hex(details.get("restored_head_chain")),
             lost_from_seq: int("lost_from_seq"),
             lost_upper_seq: int("lost_upper_seq"),
+            lost_upper_known: details.get("lost_upper_known").and_then(Value::as_bool),
             classification: details
                 .get("classification")
                 .and_then(Value::as_str)
@@ -1089,9 +1110,9 @@ impl ExpiryLedger {
 /// The attestation of an epoch change by the line's body: an origin=store
 /// `audit.recovery.epoch_started` whose epochs equal the change, whose
 /// restored head precedes the line (`0 <= restored_head_seq < seq`), whose
-/// lost range `(restored_head_seq, lost_upper_seq]` is well formed, and
-/// whose restored head chain matches the verified path when the head lies on
-/// it.
+/// lost range `(restored_head_seq, lost_upper_seq]` is well formed (with a
+/// boolean `lost_upper_known`), and whose restored head chain matches the
+/// verified path when the head lies on it.
 fn attest_transition(
     line: &Line<'_>,
     old_epoch: i64,
@@ -1105,6 +1126,7 @@ fn attest_transition(
         restored_head_chain: Some(restored_chain),
         lost_from_seq: Some(lost_from),
         lost_upper_seq: Some(lost_upper),
+        lost_upper_known: Some(lost_upper_known),
         classification: Some(classification),
     }) = body.evidence
     else {
@@ -1126,6 +1148,7 @@ fn attest_transition(
         restored_head_chain: restored_chain,
         lost_from_seq: lost_from,
         lost_upper_seq: lost_upper,
+        lost_upper_known,
         classification,
     })
 }

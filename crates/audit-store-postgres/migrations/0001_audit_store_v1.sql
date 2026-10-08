@@ -3544,12 +3544,14 @@ $declare_recovery_pending$;
 --
 -- The operator states what the out-of-band recovery record says (design
 -- §8): the old epoch, the restored head (seq and chain) and the claimed
--- upper bound of the lost range. The epoch starts only when all four equal
--- the Store's actual values; otherwise it is refused ('expectation_mismatch')
--- and nothing changes. Without any expectation the call is a preview
--- ('expectation_required'): it returns the actual values and changes
--- nothing. Refusals in recovery mode are not recorded (the head must not
--- move).
+-- upper bound of the lost range, or NULL for a bound the Store cannot know
+-- (lost_upper_known false: no checkpoint, no relay seq, no regression
+-- report). The epoch starts only when all four equal the Store's actual
+-- values (a NULL bound only when the actual bound is unknown); otherwise it
+-- is refused ('expectation_mismatch') and nothing changes. Without any
+-- expectation the call is a preview ('expectation_required'): it returns the
+-- actual values and changes nothing. Refusals in recovery mode are not
+-- recorded (the head must not move).
 CREATE FUNCTION audit_store.begin_recovery_epoch(
     p_checkpoint_epoch BIGINT, p_checkpoint_seq BIGINT, p_checkpoint_chain TEXT,
     p_relay_max_seq BIGINT, p_expected_old_epoch BIGINT, p_expected_head_seq BIGINT,
@@ -3610,8 +3612,7 @@ BEGIN
            AND (p_expected_old_epoch IS NULL OR p_expected_old_epoch < 1
                 OR p_expected_head_seq IS NULL OR p_expected_head_seq < 0
                 OR NOT audit_store.is_hex64(p_expected_head_chain)
-                OR p_expected_lost_upper IS NULL
-                OR p_expected_lost_upper < p_expected_head_seq)) THEN
+                OR coalesce(p_expected_lost_upper < p_expected_head_seq, FALSE))) THEN
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, NULL::bigint,
                             NULL::bigint, NULL::text, NULL::text, NULL::text, NULL::bigint,
                             NULL::bigint, NULL::boolean, 'invalid_input'::text;
@@ -3662,7 +3663,7 @@ BEGIN
        OR p_expected_old_epoch <> h.recovery_epoch
        OR p_expected_head_seq <> v_head
        OR decode(p_expected_head_chain, 'hex') <> s.head_chain
-       OR p_expected_lost_upper <> v_upper THEN
+       OR p_expected_lost_upper IS DISTINCT FROM (CASE WHEN v_known THEN v_upper END) THEN
         RETURN QUERY SELECT 'refused'::text, NULL::bigint, h.recovery_epoch,
                             h.recovery_epoch + 1, v_head, encode(s.head_chain, 'hex'), v_class,
                             v_cp_class, v_head + 1, v_upper, v_known,

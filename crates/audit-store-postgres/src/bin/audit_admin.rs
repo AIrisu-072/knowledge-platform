@@ -57,8 +57,10 @@ commands:
   declare-recovery-pending --incident-code CODE
   begin-recovery-epoch [--checkpoint FILE] [--relay-max-seq N]
          (--preview | --expect-old-epoch N --expect-head-seq N
-          --expect-head-chain HEX --expect-lost-upper N)
-         (the second output line is the kp-audit-recovery-records-v1 line)
+          --expect-head-chain HEX --expect-lost-upper N|unknown)
+         (the second output line is the kp-audit-recovery-records-v1 line;
+          its lost_upper is null and --expect-lost-upper unknown when the
+          Store cannot bound the lost range)
   assess --dir D --checkpoint FILE [--anchor FILE] [--recovery-records FILE]
          (offline, no database)
 exit status: 0 ok (assess: authentic), 1 failed, 2 usage,
@@ -343,7 +345,14 @@ fn recovery_expectation(args: &Args) -> Result<RecoveryExpectation, CliError> {
         restored_head_chain: audit_store_postgres::hex::decode32(chain).ok_or_else(|| {
             CliError::Usage("--expect-head-chain must be 64 lowercase hex digits".into())
         })?,
-        lost_upper: args.number("expect-lost-upper", None)?,
+        // `unknown`: the record line's `lost_upper: null` (the Store cannot
+        // bound the lost range).
+        lost_upper: match args.get("expect-lost-upper")? {
+            "unknown" => None,
+            text => Some(text.parse().map_err(|_| {
+                CliError::Usage("--expect-lost-upper must be a number or unknown".into())
+            })?),
+        },
     })
 }
 

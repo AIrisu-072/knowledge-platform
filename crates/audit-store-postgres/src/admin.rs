@@ -214,13 +214,15 @@ pub struct RecoveryPreview {
 
 /// The operator's out-of-band recovery record (design §8, §11): the epoch
 /// starts only when the Store's old epoch, restored head (seq and chain) and
-/// lost upper bound equal these values.
+/// lost upper bound equal these values. `lost_upper: None` expects the Store
+/// to report the bound as unknown (`lost_upper_known: false`); a number
+/// expects a known bound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoveryExpectation {
     pub old_epoch: i64,
     pub restored_head_seq: i64,
     pub restored_head_chain: [u8; 32],
-    pub lost_upper: i64,
+    pub lost_upper: Option<i64>,
 }
 
 impl From<&audit_core::RecoveryRecord> for RecoveryExpectation {
@@ -229,20 +231,23 @@ impl From<&audit_core::RecoveryRecord> for RecoveryExpectation {
             old_epoch: record.old_epoch,
             restored_head_seq: record.restored_head_seq,
             restored_head_chain: record.restored_head_chain,
-            lost_upper: record.lost_upper,
+            lost_upper: record.lost_upper_known.then_some(record.lost_upper),
         }
     }
 }
 
 impl RecoveryExpectation {
-    /// The out-of-band record of this transition (`new_epoch = old + 1`).
+    /// The out-of-band record of this transition (`new_epoch = old + 1`;
+    /// an unknown bound is `lost_upper = restored_head_seq`,
+    /// `lost_upper_known: false`).
     pub fn record(&self) -> audit_core::RecoveryRecord {
         audit_core::RecoveryRecord {
             old_epoch: self.old_epoch,
             new_epoch: self.old_epoch + 1,
             restored_head_seq: self.restored_head_seq,
             restored_head_chain: self.restored_head_chain,
-            lost_upper: self.lost_upper,
+            lost_upper: self.lost_upper.unwrap_or(self.restored_head_seq),
+            lost_upper_known: self.lost_upper.is_some(),
         }
     }
 }
@@ -255,7 +260,7 @@ impl EpochStarted {
             old_epoch: self.old_epoch,
             restored_head_seq: self.restored_head_seq,
             restored_head_chain: hex::decode32(&self.restored_head_chain)?,
-            lost_upper: self.lost_upper_seq,
+            lost_upper: self.lost_upper_known.then_some(self.lost_upper_seq),
         })
     }
 }
@@ -267,7 +272,7 @@ impl RecoveryPreview {
             old_epoch: self.old_epoch,
             restored_head_seq: self.restored_head_seq,
             restored_head_chain: hex::decode32(&self.restored_head_chain)?,
-            lost_upper: self.lost_upper_seq,
+            lost_upper: self.lost_upper_known.then_some(self.lost_upper_seq),
         })
     }
 }
@@ -731,7 +736,7 @@ impl AuditAdmin {
         .bind(expected.map(|e| e.old_epoch))
         .bind(expected.map(|e| e.restored_head_seq))
         .bind(expected.map(|e| hex::encode(&e.restored_head_chain)))
-        .bind(expected.map(|e| e.lost_upper))
+        .bind(expected.and_then(|e| e.lost_upper))
         .fetch_one(&self.pool)
         .await?)
     }
@@ -761,7 +766,8 @@ impl AuditAdmin {
     /// `relay_max_seq` the relay's highest acknowledged store seq, if known;
     /// `expected` the out-of-band recovery record. The Store refuses with
     /// `expectation_mismatch` (nothing changes) unless the record equals its
-    /// actual old epoch, restored head and lost upper bound.
+    /// actual old epoch, restored head and lost upper bound (or both say the
+    /// bound is unknown).
     pub async fn begin_recovery_epoch(
         &self,
         checkpoint: Option<&Checkpoint>,

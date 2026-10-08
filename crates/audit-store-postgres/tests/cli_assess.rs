@@ -170,14 +170,21 @@ fn reapply(cast: &Cast) {
 /// Declares a recovery, previews it, then starts the epoch with the
 /// preview as the expectation. Returns the record line `begin-recovery-
 /// epoch` printed (identical to the preview's) and the started epoch.
-fn recovery_epoch(cast: &Cast, checkpoint: &str, relay_max_seq: Option<i64>) -> (String, Value) {
+fn recovery_epoch(
+    cast: &Cast,
+    checkpoint: Option<&str>,
+    relay_max_seq: Option<i64>,
+) -> (String, Value) {
     let maintainer = cast.maintainer.url.as_str();
     json_lines(&audit_admin(
         Some(maintainer),
         &["declare-recovery-pending", "--incident-code", "drill_1"],
     ));
     let max = relay_max_seq.map(|seq| seq.to_string());
-    let mut base = vec!["begin-recovery-epoch", "--checkpoint", checkpoint];
+    let mut base = vec!["begin-recovery-epoch"];
+    if let Some(checkpoint) = checkpoint {
+        base.extend(["--checkpoint", checkpoint]);
+    }
     if let Some(max) = &max {
         base.extend(["--relay-max-seq", max.as_str()]);
     }
@@ -186,6 +193,12 @@ fn recovery_epoch(cast: &Cast, checkpoint: &str, relay_max_seq: Option<i64>) -> 
     let preview = json_lines(&audit_admin(Some(maintainer), &preview_args));
     assert_eq!(preview.len(), 2, "the preview prints the record line");
     assert_eq!(preview[1]["format"], "kp-audit-recovery-records-v1");
+    // The record line names the bound, or null when the Store cannot bound
+    // the lost range; `--expect-lost-upper unknown` expects exactly that.
+    let lost_upper = match &preview[1]["lost_upper"] {
+        Value::Null => "unknown".to_owned(),
+        other => text(other),
+    };
     let expected = [
         ("--expect-old-epoch", text(&preview[0]["old_epoch"])),
         ("--expect-head-seq", text(&preview[0]["restored_head_seq"])),
@@ -193,7 +206,7 @@ fn recovery_epoch(cast: &Cast, checkpoint: &str, relay_max_seq: Option<i64>) -> 
             "--expect-head-chain",
             text(&preview[0]["restored_head_chain"]),
         ),
-        ("--expect-lost-upper", text(&preview[0]["lost_upper_seq"])),
+        ("--expect-lost-upper", lost_upper),
     ];
     let mut args = base;
     for (flag, value) in &expected {
@@ -206,6 +219,7 @@ fn recovery_epoch(cast: &Cast, checkpoint: &str, relay_max_seq: Option<i64>) -> 
         started[1], preview[1],
         "the Store confirmed the previewed record"
     );
+    let known = started[0]["lost_upper_known"] == Value::Bool(true);
     assert_eq!(
         started[1],
         json!({
@@ -214,7 +228,7 @@ fn recovery_epoch(cast: &Cast, checkpoint: &str, relay_max_seq: Option<i64>) -> 
             "new_epoch": started[0]["new_epoch"],
             "restored_head_seq": started[0]["restored_head_seq"],
             "restored_head_chain": started[0]["restored_head_chain"],
-            "lost_upper": started[0]["lost_upper_seq"],
+            "lost_upper": if known { started[0]["lost_upper_seq"].clone() } else { Value::Null },
         })
     );
     let line = String::from_utf8(output.stdout)
@@ -422,7 +436,7 @@ async fn assess_reports_each_verdict_class_offline() {
     let records = dir.join("recovery-records.jsonl");
     let records_text = path_text(&records);
     let (cp4, cp4_record) = checkpoint(&verifier, &dir, "cp4.json");
-    let (line, started) = recovery_epoch(&cast, &cp4, None);
+    let (line, started) = recovery_epoch(&cast, Some(&cp4), None);
     assert_eq!(started["classification"], "planned_move");
     assert_eq!(started["restored_head_seq"], cp4_record["seq"]);
     std::fs::write(&records, format!("{line}\n")).expect("records");
@@ -447,7 +461,7 @@ async fn assess_reports_each_verdict_class_offline() {
     let status = json_lines(&audit_admin(Some(&verifier), &["status"]));
     let head = status[0]["head_seq"].as_i64().expect("head");
     let relay_max_seq = head + 5;
-    let (line, started) = recovery_epoch(&cast, &cp5, Some(relay_max_seq));
+    let (line, started) = recovery_epoch(&cast, Some(&cp5), Some(relay_max_seq));
     assert_eq!(started["classification"], "restore");
     assert_eq!(started["restored_head_seq"], head);
     assert_eq!(started["lost_upper_seq"], relay_max_seq);
@@ -509,6 +523,79 @@ async fn assess_reports_each_verdict_class_offline() {
         (Some(0), json!(1))
     );
     assert_eq!(cp5_record["epoch"], 2);
+
+    // An unknown lost bound: a restore recorded without a checkpoint and
+    // without the relay's highest referenced seq. The record line says so
+    // (`lost_upper: null`) and the epoch is never authentic, even with a
+    // checkpoint at the head of an export that crosses only this epoch.
+    let (line, started) = recovery_epoch(&cast, None, None);
+    assert_eq!(started["lost_upper_known"], Value::Bool(false));
+    assert_eq!(started["checkpoint_classification"], Value::Null);
+    let unknown_line: Value = serde_json::from_str(&line).expect("record line");
+    assert_eq!(unknown_line["lost_upper"], Value::Null, "{line}");
+    std::fs::write(
+        &records,
+        format!(
+            "{}{line}\n",
+            std::fs::read_to_string(&records).expect("records")
+        ),
+    )
+    .expect("append");
+    reapply(&cast);
+    let (cp7, cp7_record) = checkpoint(&verifier, &dir, "cp7.json");
+    let after = text(&cp6_record["seq"]);
+    let (unknown, _) = export(
+        &verifier,
+        &dir,
+        "unknown",
+        &[
+            "--operation",
+            "verify",
+            "--seq-after",
+            &after,
+            "--checkpoint",
+            &cp6,
+        ],
+    );
+    let (code, report) = assess(
+        &unknown,
+        &cp7,
+        &["--anchor", &cp6, "--recovery-records", &records_text],
+    );
+    assert_eq!(code, Some(4), "{report}");
+    assert_eq!(report["verdict"], "lost");
+    assert_eq!(report["authenticated_through"], cp7_record["seq"]);
+    assert_eq!(report["epochs_total"], 1);
+    assert_eq!(report["epochs"][0]["recorded"], Value::Bool(true));
+    assert_eq!(report["epochs"][0]["lost_upper_known"], Value::Bool(false));
+    assert_eq!(report["records_before_anchor"], 2);
+    // Without the record the epoch is unverified; a record that claims the
+    // bound is known (lost_upper = restored head) does not match the body.
+    let (code, report) = assess(&unknown, &cp7, &["--anchor", &cp6]);
+    assert_eq!(
+        (code, text(&report["verdict"])),
+        (Some(4), "unverified_recovery".to_owned())
+    );
+    let claimed = dir.join("claimed.jsonl");
+    std::fs::write(
+        &claimed,
+        format!(
+            "{}\n",
+            line.replace(
+                "\"lost_upper\":null",
+                &format!("\"lost_upper\":{}", text(&started["restored_head_seq"]))
+            )
+        ),
+    )
+    .expect("write");
+    let (code, report) = assess(
+        &unknown,
+        &cp7,
+        &["--anchor", &cp6, "--recovery-records", &path_text(&claimed)],
+    );
+    assert_eq!(code, Some(4), "{report}");
+    assert_eq!(report["verdict"], "unverified_recovery");
+    assert_eq!(report["unmatched_records"], 1);
 
     // Inputs that cannot be read are failures, not verdicts.
     let malformed = dir.join("malformed.jsonl");
