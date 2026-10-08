@@ -184,7 +184,8 @@ pub(super) fn handle(
                     let [p0, p1, p2, p3] = segment.as_slice() else {
                         return Err(malformed());
                     };
-                    path.stroke_bounds.extend(cubic_half_hulls([*p0, *p1, *p2, *p3])?);
+                    path.stroke_bounds
+                        .extend(cubic_half_hulls([*p0, *p1, *p2, *p3])?);
                 } else {
                     path.stroke_bounds.push(bounds(&segment));
                 }
@@ -264,9 +265,9 @@ pub(super) fn handle(
                 if stroke {
                     // Entrywise L1 bounds the Euclidean operator norm without
                     // relying on a platform libm's hypot rounding guarantee.
-                    let scale = state.ctm[..4].iter().fold(0.0, |sum, value| {
-                        (sum + value.abs()).next_up()
-                    });
+                    let scale = state.ctm[..4]
+                        .iter()
+                        .fold(0.0, |sum, value| (sum + value.abs()).next_up());
                     let mut join = if state.extended.join == 0 {
                         state.extended.miter
                     } else {
@@ -275,7 +276,9 @@ pub(super) fn handle(
                     if state.extended.cap == 2 {
                         join = join.max(2.0);
                     }
-                    let margin = (((state.extended.width * 0.5).next_up() * join).next_up() * scale).next_up();
+                    let margin = (((state.extended.width * 0.5).next_up() * join).next_up()
+                        * scale)
+                        .next_up();
                     for segment in &path.stroke_bounds {
                         let b = [
                             (segment[0] - margin).next_down(),
@@ -330,10 +333,16 @@ pub(super) fn validate_clip_bounds(
     }
     if let Some(expected) = page_clip {
         // PDFium defines this as inherited MediaBox intersected with CropBox.
-        let native = page.boundaries().bounding().map_err(|_| malformed())?.bounds;
+        let native = page
+            .boundaries()
+            .bounding()
+            .map_err(|_| malformed())?
+            .bounds;
         if rect_bounds(native) != expected {
-            return Err(failure(WorkerFailureCode::ParserDisagreement,
-                "PDF page boundary disagrees between independent parsers"));
+            return Err(failure(
+                WorkerFailureCode::ParserDisagreement,
+                "PDF page boundary disagrees between independent parsers",
+            ));
         }
     }
     let extraction_frame = rect_bounds(page.page_size());
@@ -363,8 +372,10 @@ pub(super) fn validate_clip_bounds(
             // Reject a new input whose text can fall outside that extraction
             // frame, even when the raw effective CropBox contains it.
             if page_clip.is_some() && !contains(extraction_frame, b) {
-                return Err(failure(WorkerFailureCode::UnsupportedSemanticConstruct,
-                    "pdf_text_extraction_frame_unqualified"));
+                return Err(failure(
+                    WorkerFailureCode::UnsupportedSemanticConstruct,
+                    "pdf_text_extraction_frame_unqualified",
+                ));
             }
             for v in vector_bounds {
                 overlap_checks += 1;
@@ -514,32 +525,59 @@ pub(super) fn validate_page_context(
 }
 
 fn rect_bounds(rectangle: PdfRect) -> [f64; 4] {
-    [f64::from(rectangle.left().value), f64::from(rectangle.bottom().value),
-        f64::from(rectangle.right().value), f64::from(rectangle.top().value)]
+    [
+        f64::from(rectangle.left().value),
+        f64::from(rectangle.bottom().value),
+        f64::from(rectangle.right().value),
+        f64::from(rectangle.top().value),
+    ]
 }
 
 fn contains(outer: [f64; 4], inner: [f64; 4]) -> bool {
-    outer.iter().chain(inner.iter()).all(|value| value.is_finite())
-        && inner[0] >= outer[0] && inner[1] >= outer[1]
-        && inner[2] <= outer[2] && inner[3] <= outer[3]
+    outer
+        .iter()
+        .chain(inner.iter())
+        .all(|value| value.is_finite())
+        && inner[0] >= outer[0]
+        && inner[1] >= outer[1]
+        && inner[2] <= outer[2]
+        && inner[3] <= outer[3]
 }
 
-fn inherited_page_clip(context: &PdfPaintContext<'_>, page_id: lopdf::ObjectId) -> Result<[f64; 4], WorkerFailure> {
+fn inherited_page_clip(
+    context: &PdfPaintContext<'_>,
+    page_id: lopdf::ObjectId,
+) -> Result<[f64; 4], WorkerFailure> {
     let mut id = page_id;
     let mut visited = BTreeSet::new();
     let mut media = None;
     let mut crop = None;
     let mut complete = false;
     for _ in 0..MAX_PDF_OBJECT_DEPTH {
-        if !visited.insert(id) { return Err(malformed()); }
-        let node = context.document.get_dictionary(id).map_err(|_| malformed())?;
-        for (name, result) in [(b"MediaBox".as_slice(), &mut media), (b"CropBox".as_slice(), &mut crop)] {
+        if !visited.insert(id) {
+            return Err(malformed());
+        }
+        let node = context
+            .document
+            .get_dictionary(id)
+            .map_err(|_| malformed())?;
+        for (name, result) in [
+            (b"MediaBox".as_slice(), &mut media),
+            (b"CropBox".as_slice(), &mut crop),
+        ] {
             if result.is_none() {
                 match node.get_deref(name, context.document) {
                     Ok(value) => {
                         let n = numeric_array(value, 4, context.page_number, "page boundary")?;
-                        let box_bounds = [n[0].min(n[2]), n[1].min(n[3]), n[0].max(n[2]), n[1].max(n[3])];
-                        if box_bounds[0] >= box_bounds[2] || box_bounds[1] >= box_bounds[3] { return Err(unsupported()); }
+                        let box_bounds = [
+                            n[0].min(n[2]),
+                            n[1].min(n[3]),
+                            n[0].max(n[2]),
+                            n[1].max(n[3]),
+                        ];
+                        if box_bounds[0] >= box_bounds[2] || box_bounds[1] >= box_bounds[3] {
+                            return Err(unsupported());
+                        }
                         *result = Some(box_bounds);
                     }
                     Err(lopdf::Error::DictKey(_)) => {}
@@ -547,21 +585,36 @@ fn inherited_page_clip(context: &PdfPaintContext<'_>, page_id: lopdf::ObjectId) 
                 }
             }
         }
-        if media.is_some() && crop.is_some() { complete = true; break; }
+        if media.is_some() && crop.is_some() {
+            complete = true;
+            break;
+        }
         match node.get(b"Parent") {
             Ok(Object::Reference(parent)) => id = *parent,
-            Err(lopdf::Error::DictKey(_)) => { complete = true; break; }
+            Err(lopdf::Error::DictKey(_)) => {
+                complete = true;
+                break;
+            }
             _ => return Err(malformed()),
         }
     }
     if !complete {
-        return Err(failure(WorkerFailureCode::InspectionResourceLimitExceeded,
-            "PDF page boundary inheritance exceeds the depth limit"));
+        return Err(failure(
+            WorkerFailureCode::InspectionResourceLimitExceeded,
+            "PDF page boundary inheritance exceeds the depth limit",
+        ));
     }
     let media = media.ok_or_else(malformed)?;
     let crop = crop.unwrap_or(media);
-    let effective = [media[0].max(crop[0]), media[1].max(crop[1]), media[2].min(crop[2]), media[3].min(crop[3])];
-    if effective[0] >= effective[2] || effective[1] >= effective[3] { return Err(unsupported()); }
+    let effective = [
+        media[0].max(crop[0]),
+        media[1].max(crop[1]),
+        media[2].min(crop[2]),
+        media[3].min(crop[3]),
+    ];
+    if effective[0] >= effective[2] || effective[1] >= effective[3] {
+        return Err(unsupported());
+    }
     Ok(effective)
 }
 
@@ -576,7 +629,11 @@ fn interval_midpoint(left: [f64; 4], right: [f64; 4]) -> Result<[f64; 4], Worker
             ((left[index] * 0.5).next_up() + (right[index] * 0.5).next_up()).next_up()
         };
     }
-    if midpoint.iter().all(|value| value.is_finite()) { Ok(midpoint) } else { Err(unsupported()) }
+    if midpoint.iter().all(|value| value.is_finite()) {
+        Ok(midpoint)
+    } else {
+        Err(unsupported())
+    }
 }
 
 fn interval_hull(points: &[[f64; 4]; 4]) -> [f64; 4] {
@@ -599,7 +656,10 @@ fn cubic_half_hulls(points: [[f64; 2]; 4]) -> Result<[[f64; 4]; 2], WorkerFailur
     let e = interval_midpoint(b, c)?;
     let middle = interval_midpoint(d, e)?;
     // Exactly two enclosures per cubic: no recursion or tolerance-based accept.
-    Ok([interval_hull(&[p0, a, d, middle]), interval_hull(&[middle, e, c, p3])])
+    Ok([
+        interval_hull(&[p0, a, d, middle]),
+        interval_hull(&[middle, e, c, p3]),
+    ])
 }
 
 #[cfg(test)]

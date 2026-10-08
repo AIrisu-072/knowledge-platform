@@ -1830,5 +1830,4 @@ mod tests {
         let balanced = operations(&["BDC", "BDC", "EMC", "EMC"]);
         assert!(validate_marked_delimiters(&balanced).is_ok());
     }
-
 }
