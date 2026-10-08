@@ -26,9 +26,9 @@ use search_application::search_core::projection::{
 };
 use search_application::search_core::source::{DiscoverableSource, RetentionMode};
 use search_application::search_core::vector::{
-    BoundEmbedding, EmbeddingModelId, VectorActivationPolicy, VectorEntryRef,
-    VectorManifestHeader, VectorManifestUnit, VectorProjectionManifest, VectorSegmentCheck,
-    VectorStorageKind, VectorUnitCoverage, check_segment,
+    BoundEmbedding, EmbeddingModelId, VectorActivationPolicy, VectorEntryRef, VectorManifestHeader,
+    VectorManifestUnit, VectorProjectionManifest, VectorSegmentCheck, VectorStorageKind,
+    VectorUnitCoverage, check_segment,
 };
 use search_application::vector::{
     CurrentSourceUnit, EmbeddingProvider, SourceUnitState, TrustedVectorQuery, VectorActivation,
@@ -36,7 +36,9 @@ use search_application::vector::{
     VectorRetrievalBatch, VectorRetriever, VectorSourceResolverPort,
 };
 use search_extraction_core::{BodyCoverage, ItemOperationState};
-use search_source_document::{BodyItemEntry, DocumentCurrentAccessAdapter, GenerationBundleReceipt};
+use search_source_document::{
+    BodyItemEntry, DocumentCurrentAccessAdapter, GenerationBundleReceipt,
+};
 use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -463,7 +465,11 @@ impl VectorMaintainer {
         Ok(bundle
             .items
             .iter()
-            .map(|item| checks.get(&item.vector_segment).map(|check| (**check).clone()))
+            .map(|item| {
+                checks
+                    .get(&item.vector_segment)
+                    .map(|check| (**check).clone())
+            })
             .collect())
     }
 

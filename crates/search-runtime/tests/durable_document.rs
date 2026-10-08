@@ -28,17 +28,22 @@ mod durable;
 
 use durable::*;
 
+/// The Resources of a READY generation, read through its stored segments.
 async fn graph_nodes(pool: &PgPool, key: ProjectionGenerationKey) -> Vec<ResourceId> {
-    let ids: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT resource_id FROM search_graph.resource WHERE source_id=$1 AND generation_id=$2 \
-         ORDER BY resource_id",
+    let digest: serde_json::Value = sqlx::query_scalar(
+        "SELECT projection_manifest FROM search_generation WHERE source_id=$1 AND generation_id=$2",
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
-    .fetch_all(pool)
+    .fetch_one(pool)
     .await
     .unwrap();
-    ids.into_iter().map(ResourceId::from_uuid).collect()
+    let digest = digest["manifest"]["digest"].as_str().unwrap().to_owned();
+    let (_, resources, _) = PostgresGraphStore::new(pool.clone())
+        .recover_rows(key, &digest)
+        .await
+        .unwrap();
+    resources.iter().map(|record| record.resource_ref).collect()
 }
 
 #[tokio::test]
@@ -131,5 +136,85 @@ async fn document_outbox_rebuild_has_durable_same_key_graph_and_survives_restart
         .await
         .unwrap(),
         Some(next.generation_id.as_uuid())
+    );
+}
+
+async fn segment_list_len(pool: &PgPool, key: ProjectionGenerationKey) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM search_graph.generation_segment \
+         WHERE source_id=$1 AND generation_id=$2",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn graph_generations_share_document_segments_and_fail_closed_on_change() {
+    let durable = Durable::start().await;
+    let indexer = durable.indexer().await;
+    let mut keys = Vec::new();
+    for text in ["東京本社の就業規程", "会議室の予約手順"] {
+        let document = publish(&durable.pool, &durable.storage, text).await;
+        match indexer
+            .handle(discovery_support::event("DocumentVersionPublished", document))
+            .await
+            .unwrap()
+        {
+            IndexingOutcome::Published(key) => keys.push(key),
+            other => panic!("expected a published durable generation: {other:?}"),
+        }
+    }
+    let (first, second) = (keys[0], keys[1]);
+    // One segment per document; the second generation lists the first
+    // document's segment again instead of copying its rows.
+    assert_eq!(segment_list_len(&durable.pool, first).await, 1);
+    assert_eq!(segment_list_len(&durable.pool, second).await, 2);
+    let segments: i64 = sqlx::query_scalar("SELECT count(*) FROM search_graph.segment")
+        .fetch_one(&durable.pool)
+        .await
+        .unwrap();
+    assert_eq!(segments, 2);
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM search_graph.resource")
+        .fetch_one(&durable.pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0, "no Graph rows are copied per generation");
+    assert_eq!(graph_nodes(&durable.pool, second).await.len(), 6);
+
+    // Segments are immutable, and a changed one fails closed in a process
+    // that has not verified it yet.
+    assert!(
+        sqlx::query("UPDATE search_graph.segment SET relation_count = relation_count")
+            .execute(&durable.pool)
+            .await
+            .is_err()
+    );
+    sqlx::raw_sql(
+        "ALTER TABLE search_graph.segment DISABLE TRIGGER graph_guard_segment; \
+         UPDATE search_graph.segment SET payload = jsonb_set(payload, '{resources,0,kind}', \
+         '\"POLICY\"'); \
+         ALTER TABLE search_graph.segment ENABLE TRIGGER graph_guard_segment;",
+    )
+    .execute(&durable.pool)
+    .await
+    .unwrap();
+    search_graph::segments::forget_verified_segments();
+    let digest: serde_json::Value = sqlx::query_scalar(
+        "SELECT projection_manifest FROM search_generation WHERE source_id=$1 AND generation_id=$2",
+    )
+    .bind(second.source_id.as_uuid())
+    .bind(second.generation_id.as_uuid())
+    .fetch_one(&durable.pool)
+    .await
+    .unwrap();
+    let digest = digest["manifest"]["digest"].as_str().unwrap().to_owned();
+    assert!(
+        PostgresGraphStore::new(durable.pool.clone())
+            .recover_rows(second, &digest)
+            .await
+            .is_err()
     );
 }

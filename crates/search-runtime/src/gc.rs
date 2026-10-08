@@ -75,7 +75,7 @@ enum Mode {
 }
 
 /// One child or parent delete of the binding order.
-const DELETE_ORDER: [&str; 12] = [
+const DELETE_ORDER: [&str; 13] = [
     "DELETE FROM search_generation_full_guard WHERE source_id=$1 AND target_generation_id=$2",
     "DELETE FROM search_graph.build_guard WHERE source_id=$1 AND target_generation_id=$2",
     "DELETE FROM search_evaluation_lease WHERE source_id=$1 AND generation_id=$2 \
@@ -83,6 +83,7 @@ const DELETE_ORDER: [&str; 12] = [
     "DELETE FROM search_graph.participant WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_graph.relation WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_graph.resource WHERE source_id=$1 AND generation_id=$2",
+    "DELETE FROM search_graph.generation_segment WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_generation_segment WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_generation_receipt WHERE source_id=$1 AND generation_id=$2",
@@ -153,6 +154,14 @@ impl PgGenerationGc {
         .execute(&self.pool)
         .await?;
         Ok(deleted.rows_affected())
+    }
+
+    /// Deletes Graph segments no list has named for ten minutes. Returns the
+    /// number of deleted segments.
+    pub async fn sweep_unlisted_graph_segments(&self) -> Result<u64, GcError> {
+        search_graph::segments::collect_unlisted(&self.pool)
+            .await
+            .map_err(|_| GcError::Store)
     }
 
     /// Removes a READY key that is not current and has no live pin.
@@ -466,6 +475,7 @@ impl PgGenerationGc {
         // Best effort: a segment a concurrent build has just listed keeps its
         // row (the foreign key refuses the delete) and is swept later.
         let _ = self.sweep_unreferenced_segments().await;
+        let _ = self.sweep_unlisted_graph_segments().await;
         Ok(GcOutcome::Deleted)
     }
 }

@@ -431,8 +431,7 @@ async fn vector_generations_share_segments_and_values() {
         .clone();
     // A restarted worker checks every segment again and keeps the current
     // generation while they still check.
-    let restarted =
-        VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
+    let restarted = VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
     restarted.recover().await.unwrap();
     let kept = services.generations.published().await.unwrap();
     assert!(kept.iter().any(|manifest| manifest.index == current.index));
@@ -450,8 +449,7 @@ async fn vector_generations_share_segments_and_values() {
     .unwrap();
     let tampered = PgVectorIndex::new(durable.pool.clone(), 0.2);
     assert!(tampered.staged_entries(&current.index).await.is_err());
-    let restarted =
-        VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
+    let restarted = VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
     restarted.recover().await.unwrap();
     let kept = services.generations.published().await.unwrap();
     assert!(!kept.iter().any(|manifest| manifest.index == current.index));

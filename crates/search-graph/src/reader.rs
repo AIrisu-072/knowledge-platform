@@ -399,6 +399,20 @@ impl<'r> PostgresGraphReader<'r> {
         if state.as_deref() != Some("READY") {
             return Err(unavailable());
         }
+        // This reader walks the row tables; a segmented generation has none
+        // and is read from its assembled segments instead.
+        let segmented: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM search_graph.generation_segment \
+             WHERE source_id=$1 AND generation_id=$2)",
+        )
+        .bind(request.key.source_id.as_uuid())
+        .bind(request.key.generation_id.as_uuid())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(GraphError::from)?;
+        if segmented {
+            return Err(unavailable());
+        }
         let mut snapshot = Snapshot {
             connection: &mut tx,
             key: request.key,
