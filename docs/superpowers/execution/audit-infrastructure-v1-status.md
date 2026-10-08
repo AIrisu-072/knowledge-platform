@@ -1,5 +1,16 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 単位B 差分の独立review（delta-security-correctness・docs-accuracy）の指摘反映（worktree branch、未push）
+
+- branch `worktree-agent-a07ac0dcd80b1fa0d`（`c398976` の上）。Important 2件は修正前に失敗する試験を書いてから直した。commit：
+  - `07ebdcf` Important（catalog）：main `6a34de3` の `current_read_state.rs` は、ReadHistoryの無い閲覧者が現在でない版の既読状態を取得・変更してForbiddenになると `authorization.denied` を `action_code` `get_current_read_state` / `mutate_read_state` で書くが、catalogのenumに無く、relayが `invalid_field` で終端quarantineにしていた。enumへ2値を加法追加（既存entryの出力は不変、adapter_version 1のまま）、schema再生成、fixture 2件とRust・Store両goldenのsection 1へentryを追記。`catalog_contract.rs` に、producerのsourceから `record_authorization_denied` の全呼出しの第3引数と `ManagementCommand::operation_kind` を集めてcatalogと照合する試験（旧catalogで2値の欠落を検出して失敗）、relayのend-to-end配送試験へ既読状態の拒否3種（旧catalogでは収束せず失敗）。telemetry READMEにenum拡張の規則（adapter_versionを上げない、未知の値は保留でなくquarantineなのでrelayを先に更新しreplayで戻す）とproducer表を追記。
+  - `d248304` Important（docs-accuracy）：`audit-relay health` はStoreへ接続できないとJSONを出さずexit 1だった。`relay::connect_for_health` と `store::UnreachableStore` により、transport・timeout・SQLSTATE class 08/53/57・55000の接続失敗では `stored.available=false`、`stored.gate` に障害code、`store_unavailable` を出す（認証失敗・存在しないdatabase・URL/session検査はexit 1のまま）。CLI試験（Store停止55000・閉じたport・3D000。修正前はexit 1で失敗）と単体試験。運用手順§4.1（DB接続不可での起動拒否、process監視による再起動）、§5.1–5.3、§10.2の `<N>` の取り方を更新。同じcommitでMinor（docs）：§5.4と両READMEのreplication用superuserを `pg_hba.conf` の `replication` 行だけに一致させること、§7の最小化・追加だけの進化（設計§1の5・6）とenum拡張の配備順、§8のverify権限へのcontrol event本文の開示、冒頭のerror出力の説明、§3.1のforecastの時期、§3.2のURLの環境変数への1回だけの注入。
+  - `f122247` Minor（assess）：manifestのwatermarkが最初のintentの `seq_through`（無ければそのwatermark。`seq_through` はintentのwatermark以下）と一致しなければ `broken`。`store_behind` の「切った」判定は `seq_through` だけにした（watermarkの条項は食い違うmanifestでだけ成立し、tamperedをstore_behindへ緩めていた）。単体試験3種（修正前はstore_behindで失敗）。
+- 見送り：なし。replication loginを「宣言して警報だけにする」案は採らず、文書で `pg_hba.conf` の制約を必須にした（posture違反でingest・runを止める挙動は変えない）。
+- ローカル検証（`f122247`）：`cargo test --locked -p audit-core -p audit-relay -p audit-store-postgres` 全PASS（core 154＋doc 2〔unit 34、catalog 24、chain 49、envelope 14、golden 5、legacy 16、schema 7、port 5〕、Store 71、relay 53＋ignored 1）、`cargo clippy --locked -p audit-core -p audit-relay -p audit-store-postgres --all-targets -- -D warnings`・`cargo fmt --all -- --check`・`cargo run --quiet --locked -p architecture-lint -- check` PASS。本番credential・migration・deployは行っていない。
+- 設計からの差分（承認状態：依頼者の修正指示の範囲内で本trackが採用、確認review未実施）：healthがStore接続不可を報告すること（`UnreachableStore`）、`authorization.denied` のenum 2値の加法追加、assessのmanifest watermark照合。
+- 次のexact action：修正確認review（今回の3 commit）→ 指摘反映 → このbranchを `claude/cool-darwin-7xh893` へpushし単位BのDraft PR → exact-head hosted CI → main統合 → main CI確認 → 単位C。
+
 ## 2026-10-08 — 単位B 文書の確定（運用手順・設計改訂4・計画）（worktree branch、未push）
 
 - branch `worktree-agent-a07ac0dcd80b1fa0d`（`a4a3f6f` の上、最新main `6a34de3` を取り込み済み）。commit：`79af4fa` 運用手順 [audit-delivery-store.md](../../operations/audit-delivery-store.md) を新規作成、`9620adb` 設計を改訂4へ更新、本commitで計画・状況・active pointerを更新。codeは `2955a8e` から変えていない。
