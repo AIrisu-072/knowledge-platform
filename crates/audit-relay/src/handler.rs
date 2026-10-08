@@ -45,6 +45,7 @@ use uuid::Uuid;
 
 use crate::breaker::{Breaker, BreakerPermit};
 use crate::ledger::{DeliveryLedger, FailureNote, Note};
+use crate::monitor::{Outcome, Progress};
 use crate::store::outage_of;
 
 /// The projection from a claim row to an envelope (`audit_core::project`
@@ -124,6 +125,7 @@ pub struct AuditDeliveryHandler {
     breaker: Arc<Breaker>,
     projector: Projector,
     config: HandlerConfig,
+    progress: Arc<Progress>,
 }
 
 impl AuditDeliveryHandler {
@@ -141,7 +143,14 @@ impl AuditDeliveryHandler {
             breaker,
             projector: Arc::new(audit_core::project),
             config,
+            progress: Arc::new(Progress::default()),
         }
+    }
+
+    /// Shares the outcome counters the monitor prints (`run`).
+    pub fn with_progress(mut self, progress: Arc<Progress>) -> Self {
+        self.progress = progress;
+        self
     }
 
     /// Replaces the projection (tests: adapter re-projection).
@@ -152,6 +161,7 @@ impl AuditDeliveryHandler {
 
     /// A Store outage (or unknown Store outcome): the attempt is returned.
     fn hold(&self, id: Uuid, token: Uuid, code: &str, countable: bool) -> DeliveryDecision {
+        self.progress.record(Outcome::Outage);
         self.ledger.record(
             id,
             token,
@@ -163,6 +173,7 @@ impl AuditDeliveryHandler {
     /// A relay-side hold: the attempt is returned and the row backs off on
     /// its own hold count.
     fn relay_hold(&self, id: Uuid, token: Uuid, code: &str) -> DeliveryDecision {
+        self.progress.record(Outcome::Held);
         self.ledger
             .record(id, token, Note::Failure(FailureNote::relay_hold(code)));
         DeliveryDecision::Retryable(ErrorCode::DeliveryUnknown)
@@ -175,6 +186,7 @@ impl AuditDeliveryHandler {
         code: &str,
         runner_code: ErrorCode,
     ) -> DeliveryDecision {
+        self.progress.record(Outcome::Quarantined);
         self.ledger
             .record(id, token, Note::Failure(FailureNote::verdict(code)));
         DeliveryDecision::Terminal(runner_code)
@@ -239,8 +251,10 @@ impl AuditDeliveryHandler {
                     },
                 );
                 if receipt.outcome == IngestOutcome::Stored {
+                    self.progress.record(Outcome::Delivered);
                     DeliveryDecision::Applied
                 } else {
+                    self.progress.record(Outcome::Duplicate);
                     DeliveryDecision::KnownNoop
                 }
             }

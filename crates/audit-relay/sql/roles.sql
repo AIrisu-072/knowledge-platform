@@ -47,6 +47,8 @@ GRANT EXECUTE ON FUNCTION
     audit_relay.reap_exhausted(integer),
     audit_relay.mismatch_seq(uuid, uuid, text),
     audit_relay.note_mismatch(uuid, uuid, text, bigint, bigint),
+    -- `run` reports its circuit breaker for health (codes and counts).
+    audit_relay.report_runtime(uuid, text, text, bigint, bigint, boolean),
     -- The health forecast projects staged content (as claim does).
     audit_relay.preview_pending(uuid, integer)
     TO audit_relay_worker;

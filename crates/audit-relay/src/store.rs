@@ -48,7 +48,7 @@ pub fn outage_of(error: &StoreError) -> OutageCode {
 #[cfg(test)]
 mod tests {
     /// Every relay source file, embedded.
-    const SOURCES: [(&str, &str); 13] = [
+    const SOURCES: [(&str, &str); 14] = [
         ("bin/audit_relay.rs", include_str!("bin/audit_relay.rs")),
         ("breaker.rs", include_str!("breaker.rs")),
         ("config.rs", include_str!("config.rs")),
@@ -56,6 +56,7 @@ mod tests {
         ("health.rs", include_str!("health.rs")),
         ("ledger.rs", include_str!("ledger.rs")),
         ("lib.rs", include_str!("lib.rs")),
+        ("monitor.rs", include_str!("monitor.rs")),
         ("reconcile.rs", include_str!("reconcile.rs")),
         ("relay.rs", include_str!("relay.rs")),
         ("replay.rs", include_str!("replay.rs")),

@@ -18,6 +18,15 @@
 //!   stays `violations` until a verification from genesis to its head is
 //!   `ok` again.
 //!
+//! Beside them, `circuit` is the Store availability as the running relay
+//! processes see it (design §12): what each `audit-relay run` reports
+//! ([`crate::monitor`]) — `running` processes (reported within 60 seconds)
+//! and `stale` ones, the worst circuit `state` (`open`, then `half_open`,
+//! then `closed`; `null` when no process runs) with its `gate` code, the
+//! highest `outage_streak` (Store outages since the last structured ingest
+//! verdict) and the `outages` since their start. An open circuit raises
+//! `circuit_open`.
+//!
 //! Labels are fixed codes; no principal, resource or payload appears.
 
 use std::collections::BTreeMap;
@@ -244,6 +253,10 @@ pub async fn health(
     if count(&status, "quarantined_total") > 0 {
         alarms.push("quarantined".into());
     }
+    let circuit = &status["circuit"];
+    if circuit["state"] == "open" {
+        alarms.push("circuit_open".into());
+    }
     let installed = &status["installed"];
     if installed
         .as_object()
@@ -314,6 +327,15 @@ pub async fn health(
             "replayed": count(&status, "replayed"),
         },
         "stored": stored,
+        "circuit": {
+            "state": circuit["state"],
+            "gate": circuit["gate"],
+            "outage_streak": circuit["outage_streak"],
+            "outages": circuit["outages"],
+            "running": count(circuit, "running"),
+            "stale": count(circuit, "stale"),
+            "last_report_age_seconds": circuit["last_report_age_seconds"],
+        },
         "verified": verified,
         "installation": {
             "installed": status["installed"],

@@ -241,6 +241,24 @@ CREATE TABLE audit_relay.delivery_history (
 
 CREATE INDEX ix_history_event ON audit_relay.delivery_history (event_id, history_id);
 
+-- The circuit-breaker state each running `audit-relay run` process reports
+-- (design §12: health shows the Store availability as the relay sees it).
+-- Runtime state, not evidence: fixed codes and counts only, keyed by a
+-- random per-process id. A clean stop deletes its row; rows not reported
+-- for a day are pruned by the next report.
+CREATE TABLE audit_relay.relay_runtime (
+    instance_id UUID PRIMARY KEY,
+    started_at TIMESTAMPTZ NOT NULL,
+    reported_at TIMESTAMPTZ NOT NULL,
+    circuit TEXT NOT NULL,
+    gate TEXT NOT NULL,
+    outage_streak BIGINT NOT NULL,
+    outages BIGINT NOT NULL,
+    CONSTRAINT ck_runtime_circuit CHECK (circuit IN ('closed', 'open', 'half_open')),
+    CONSTRAINT ck_runtime_gate CHECK (gate ~ '^[a-z0-9_]{1,64}$'),
+    CONSTRAINT ck_runtime_counts CHECK (outage_streak >= 0 AND outages >= outage_streak)
+);
+
 -- ---------------------------------------------------------------------------
 -- Source digest and commitment (design §5.2)
 -- ---------------------------------------------------------------------------
@@ -814,12 +832,49 @@ SET search_path = pg_catalog, pg_temp AS $acked_head$
     LIMIT 1
 $acked_head$;
 
+-- A running relay reports its circuit breaker (worker only, design §12):
+-- upserts the row of p_instance, or deletes it when p_stopped (clean stop).
+-- Every report prunes rows not reported for a day (crashed processes).
+CREATE FUNCTION audit_relay.report_runtime(
+    p_instance UUID, p_circuit TEXT, p_gate TEXT, p_outage_streak BIGINT, p_outages BIGINT,
+    p_stopped BOOLEAN)
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $report_runtime$
+DECLARE
+    v_tick TIMESTAMPTZ := clock_timestamp();
+BEGIN
+    IF p_instance IS NULL OR p_stopped IS NULL
+       OR (NOT p_stopped
+           AND (p_circuit IS NULL OR p_circuit NOT IN ('closed', 'open', 'half_open')
+                OR NOT coalesce(audit_relay.is_code(p_gate), FALSE)
+                OR p_outage_streak IS NULL OR p_outages IS NULL
+                OR p_outage_streak < 0 OR p_outages < p_outage_streak)) THEN
+        RAISE EXCEPTION 'audit_relay.report_runtime: invalid input' USING ERRCODE = '22023';
+    END IF;
+    DELETE FROM audit_relay.relay_runtime AS r
+    WHERE r.reported_at < v_tick - interval '1 day'
+       OR (p_stopped AND r.instance_id = p_instance);
+    IF p_stopped THEN
+        RETURN;
+    END IF;
+    INSERT INTO audit_relay.relay_runtime AS r (
+        instance_id, started_at, reported_at, circuit, gate, outage_streak, outages)
+    VALUES (p_instance, v_tick, v_tick, p_circuit, p_gate, p_outage_streak, p_outages)
+    ON CONFLICT (instance_id) DO UPDATE
+    SET reported_at = EXCLUDED.reported_at, circuit = EXCLUDED.circuit, gate = EXCLUDED.gate,
+        outage_streak = EXCLUDED.outage_streak, outages = EXCLUDED.outages;
+END
+$report_runtime$;
+
 -- Content-free counts for health (design §12). max_referenced_store_seq is,
 -- per Store recovery epoch, the highest Store seq the relay references
 -- (receipts, source mismatch records, replay and repair control events,
 -- receipts kept in history): the --relay-max-seq of begin_recovery_epoch
 -- for that epoch (design §11). max_acked_store_seq is the highest receipt
--- of any epoch.
+-- of any epoch. circuit summarizes the relay processes that reported within
+-- the last 60 seconds (running; older rows are stale): the worst circuit
+-- state (open, then half_open, then closed) and its gate, the highest
+-- outage streak and the sum of their outages.
 CREATE FUNCTION audit_relay.status()
 RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $status$
@@ -829,6 +884,7 @@ DECLARE
     v_quarantined JSONB;
     v_registration JSONB;
     v_referenced JSONB;
+    v_circuit JSONB;
 BEGIN
     SELECT coalesce(jsonb_object_agg(r.epoch::text, r.max_seq), '{}'::jsonb) INTO v_referenced
     FROM (SELECT x.epoch, max(x.seq) AS max_seq
@@ -844,6 +900,23 @@ BEGIN
                 SELECT h.store_recovery_epoch, h.store_seq
                 FROM audit_relay.delivery_history AS h WHERE h.store_seq IS NOT NULL) AS x
           GROUP BY x.epoch) AS r;
+    SELECT jsonb_build_object(
+        'running', count(*) FILTER (WHERE r.live),
+        'stale', count(*) FILTER (WHERE NOT r.live),
+        'state', (array_agg(r.circuit ORDER BY r.rank, r.outage_streak DESC)
+                  FILTER (WHERE r.live))[1],
+        'gate', (array_agg(r.gate ORDER BY r.rank, r.outage_streak DESC)
+                 FILTER (WHERE r.live))[1],
+        'outage_streak', max(r.outage_streak) FILTER (WHERE r.live),
+        'outages', sum(r.outages) FILTER (WHERE r.live),
+        'last_report_age_seconds',
+            extract(epoch FROM v_tick - max(r.reported_at) FILTER (WHERE r.live))
+                ::double precision)
+    INTO v_circuit
+    FROM (SELECT x.circuit, x.gate, x.outage_streak, x.outages, x.reported_at,
+                 x.reported_at >= v_tick - interval '60 seconds' AS live,
+                 CASE x.circuit WHEN 'open' THEN 0 WHEN 'half_open' THEN 1 ELSE 2 END AS rank
+          FROM audit_relay.relay_runtime AS x) AS r;
     SELECT coalesce(jsonb_object_agg(q.code, q.n), '{}'::jsonb) INTO v_quarantined
     FROM (SELECT d.quarantine_code AS code, count(*) AS n FROM audit_relay.deliveries AS d
           WHERE d.quarantined_at IS NOT NULL GROUP BY d.quarantine_code) AS q;
@@ -888,6 +961,7 @@ BEGIN
         'max_acked_store_seq', max(d.store_seq),
         'max_referenced_store_seq', v_referenced,
         'replayed', coalesce(sum(d.replay_count), 0),
+        'circuit', v_circuit,
         'policy_revision', (SELECT p.revision FROM audit_relay.delivery_policy AS p
                             WHERE p.singleton),
         'installed', jsonb_build_object(
@@ -1235,6 +1309,7 @@ WITH matrix(signature, rolname) AS (
         'audit_relay.reap_exhausted(integer)',
         'audit_relay.mismatch_seq(uuid,uuid,text)',
         'audit_relay.note_mismatch(uuid,uuid,text,bigint,bigint)',
+        'audit_relay.report_runtime(uuid,text,text,bigint,bigint,boolean)',
         'audit_relay.acked_head(bigint)',
         'audit_relay.status()',
         'audit_relay.policy()',

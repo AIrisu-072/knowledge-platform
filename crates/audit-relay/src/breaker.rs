@@ -9,7 +9,9 @@
 //!
 //! The breaker opens on any Store outage. It closes on any structured ingest
 //! verdict row (stored, duplicate*, conflict, rejected) — proof the Store
-//! works — never on a probe alone. Before admitting, the Store probe runs
+//! works — never on a probe alone. Its outage streak counts the Store
+//! outages since the last verdict ([`BreakerSnapshot`], reported to `health`
+//! by [`crate::monitor`]). Before admitting, the Store probe runs
 //! with the expectation of the catalog (source, adapter_version, types) and
 //! the relay's last acknowledged receipt of the Store's current recovery
 //! epoch; failures are `Ok(None)` (no claim), never another `DeliveryError`.
@@ -86,7 +88,7 @@ impl Mode {
 }
 
 /// The last admission gate result (fixed codes only).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Gate {
     Unknown,
     Ok,
@@ -125,6 +127,19 @@ struct Inner {
     regressed_epoch: Option<i64>,
     gate: Gate,
     outages: u64,
+    /// Outages since the last structured verdict.
+    outage_streak: u64,
+}
+
+/// What the breaker shows outside the process (fixed codes and counts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BreakerSnapshot {
+    pub mode: Mode,
+    pub gate: Gate,
+    /// Store outages since the last structured ingest verdict.
+    pub outage_streak: u64,
+    /// Store outages since the process started.
+    pub outages: u64,
 }
 
 /// Shared breaker state (admission and handler).
@@ -146,6 +161,7 @@ impl Breaker {
                 regressed_epoch: None,
                 gate: Gate::Unknown,
                 outages: 0,
+                outage_streak: 0,
             }),
             permits: AtomicU64::new(1),
         }
@@ -160,11 +176,7 @@ impl Breaker {
     }
 
     pub fn mode(&self) -> Mode {
-        match self.lock().state {
-            State::Closed => Mode::Closed,
-            State::Open { .. } => Mode::Open,
-            State::HalfOpen { .. } => Mode::HalfOpen,
-        }
+        self.snapshot().mode
     }
 
     pub fn gate(&self) -> Gate {
@@ -175,11 +187,31 @@ impl Breaker {
         self.lock().outages
     }
 
+    pub fn outage_streak(&self) -> u64 {
+        self.lock().outage_streak
+    }
+
+    /// Mode, gate and outage counts, read together.
+    pub fn snapshot(&self) -> BreakerSnapshot {
+        let inner = self.lock();
+        BreakerSnapshot {
+            mode: match inner.state {
+                State::Closed => Mode::Closed,
+                State::Open { .. } => Mode::Open,
+                State::HalfOpen { .. } => Mode::HalfOpen,
+            },
+            gate: inner.gate,
+            outage_streak: inner.outage_streak,
+            outages: inner.outages,
+        }
+    }
+
     /// Store outage observed (ingest, probe, control call): open, and double
     /// the cooldown when it was already open or half-open.
     pub fn record_outage(&self) {
         let mut inner = self.lock();
         inner.outages += 1;
+        inner.outage_streak += 1;
         let cooldown = inner.cooldown;
         inner.state = State::Open {
             until: Instant::now() + cooldown,
@@ -192,6 +224,7 @@ impl Breaker {
         let mut inner = self.lock();
         inner.state = State::Closed;
         inner.cooldown = self.config.initial_cooldown;
+        inner.outage_streak = 0;
     }
 
     fn release(&self, permit_id: u64) {
@@ -537,7 +570,19 @@ mod tests {
         breaker.record_outage();
         breaker.record_outage();
         assert_eq!(breaker.lock().cooldown, Duration::from_millis(80), "capped");
+        assert_eq!(
+            breaker.snapshot(),
+            BreakerSnapshot {
+                mode: Mode::Open,
+                gate: Gate::Unknown,
+                outage_streak: 3,
+                outages: 3,
+            }
+        );
         breaker.record_verdict();
         assert_eq!(breaker.lock().cooldown, Duration::from_millis(20), "reset");
+        let snapshot = breaker.snapshot();
+        assert_eq!((snapshot.mode, snapshot.outage_streak), (Mode::Closed, 0));
+        assert_eq!(snapshot.outages, 3, "the total is kept");
     }
 }

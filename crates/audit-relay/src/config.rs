@@ -15,6 +15,7 @@
 //! | `AUDIT_RELAY_INGEST_TIMEOUT_MS` | lease / 3 − 1000 |
 //! | `AUDIT_RELAY_BREAKER_INITIAL_MS` | 1000 |
 //! | `AUDIT_RELAY_BREAKER_MAX_MS` | 60000 |
+//! | `AUDIT_RELAY_PROGRESS_MS` | 10000 (minimum spacing of progress lines) |
 //!
 //! Capacity: the runner claims at most `MAX_IN_FLIGHT` rows per cycle (one
 //! while the breaker is half-open), waits for them, then sleeps the poll
@@ -32,6 +33,7 @@ use outbox_delivery::DeliveryConfig;
 
 use crate::breaker::BreakerConfig;
 use crate::handler::HandlerConfig;
+use crate::monitor::MonitorConfig;
 use crate::session::redact;
 use crate::source::RelayPolicy;
 
@@ -62,6 +64,7 @@ pub struct RunConfig {
     pub handler: HandlerConfig,
     pub breaker: BreakerConfig,
     pub policy: RelayPolicy,
+    pub monitor: MonitorConfig,
 }
 
 impl fmt::Debug for RunConfig {
@@ -73,6 +76,7 @@ impl fmt::Debug for RunConfig {
             .field("handler", &self.handler)
             .field("breaker", &self.breaker)
             .field("policy", &self.policy)
+            .field("monitor", &self.monitor)
             .finish()
     }
 }
@@ -147,6 +151,14 @@ impl RunConfig {
         if breaker.initial_cooldown > breaker.max_cooldown {
             return Err(ConfigError::Breaker);
         }
+        let progress_interval = ms("AUDIT_RELAY_PROGRESS_MS", 10_000)?;
+        let defaults = MonitorConfig::default();
+        let monitor = MonitorConfig {
+            // Sample at least as often as lines may be printed.
+            tick: defaults.tick.min(progress_interval),
+            progress_interval,
+            ..defaults
+        };
         Ok(Self {
             source_url,
             store_url,
@@ -158,6 +170,7 @@ impl RunConfig {
             },
             breaker,
             policy: RelayPolicy::default(),
+            monitor,
         })
     }
 }
@@ -189,6 +202,12 @@ mod tests {
         assert_eq!(config.delivery.poll_interval, Duration::from_millis(250));
         assert!(config.handler.ingest_timeout < config.delivery.lease_duration / 3);
         assert_eq!(config.policy, RelayPolicy::default());
+        assert_eq!(config.monitor, MonitorConfig::default());
+        let mut pairs = URLS.to_vec();
+        pairs.push(("AUDIT_RELAY_PROGRESS_MS", "200"));
+        let quick = RunConfig::from_lookup(&lookup(&pairs)).expect("progress");
+        assert_eq!(quick.monitor.progress_interval, Duration::from_millis(200));
+        assert_eq!(quick.monitor.tick, Duration::from_millis(200));
         let rendered = format!("{config:?}");
         assert!(!rendered.contains("secret"), "{rendered}");
     }

@@ -1,5 +1,7 @@
 //! Assembly of the relay: `outbox_delivery::DeliveryRunner` (unchanged) over
-//! [`RelayOutboxStore`], [`AuditDeliveryHandler`] and [`BreakerAdmission`].
+//! [`RelayOutboxStore`], [`AuditDeliveryHandler`] and [`BreakerAdmission`],
+//! and the [`Monitor`] that `run` keeps beside it (circuit-breaker report for
+//! `health`, progress lines on stderr).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +17,7 @@ use crate::breaker::{Breaker, BreakerAdmission, BreakerConfig};
 use crate::config::RunConfig;
 use crate::handler::{AuditDeliveryHandler, HandlerConfig, Projector};
 use crate::ledger::DeliveryLedger;
+use crate::monitor::{Monitor, Progress, RuntimeReporter};
 use crate::session::{
     Side, StartupError, connect, refuse_privileged_source, refuse_same_database, require_posture,
 };
@@ -22,11 +25,13 @@ use crate::source::{RelayOutboxStore, RelayPolicy};
 
 pub type Runner = DeliveryRunner<RelayOutboxStore, AuditDeliveryHandler, BreakerAdmission>;
 
-/// A ready runner and the breaker it shares with its handler.
+/// A ready runner and the breaker and outcome counters it shares with its
+/// handler.
 pub struct Relay {
     pub runner: Runner,
     pub breaker: Arc<Breaker>,
     pub ledger: Arc<DeliveryLedger>,
+    pub progress: Arc<Progress>,
 }
 
 /// The parts of a relay; tests substitute the Store client. The Store login
@@ -45,6 +50,7 @@ impl Relay {
     pub fn assemble(parts: RelayParts) -> Result<Self, DeliveryError> {
         let ledger = Arc::new(DeliveryLedger::default());
         let breaker = Arc::new(Breaker::new(parts.breaker));
+        let progress = Arc::new(Progress::default());
         let outbox = RelayOutboxStore::new(parts.source.clone(), parts.policy, ledger.clone());
         let mut handler = AuditDeliveryHandler::new(
             parts.store.clone(),
@@ -52,7 +58,8 @@ impl Relay {
             ledger.clone(),
             breaker.clone(),
             parts.handler,
-        );
+        )
+        .with_progress(progress.clone());
         if let Some(projector) = parts.projector {
             handler = handler.with_projector(projector);
         }
@@ -67,6 +74,7 @@ impl Relay {
             runner,
             breaker,
             ledger,
+            progress,
         })
     }
 }
@@ -137,7 +145,9 @@ pub async fn connect_checked(
     })
 }
 
-/// `audit-relay run`: deliver until `shutdown` turns true.
+/// `audit-relay run`: deliver until `shutdown` turns true. The monitor
+/// reports the breaker for `health` and prints progress lines on stderr
+/// while the runner works, then removes its report after the drain.
 pub async fn run(
     config: &RunConfig,
     shutdown: watch::Receiver<bool>,
@@ -149,6 +159,7 @@ pub async fn run(
         true,
     )
     .await?;
+    let source = connections.source.clone();
     let relay = Relay::assemble(RelayParts {
         source: connections.source,
         store: Arc::new(connections.store),
@@ -158,5 +169,16 @@ pub async fn run(
         policy: config.policy,
         projector: None,
     })?;
-    Ok(relay.runner.run_until_shutdown(shutdown).await?)
+    let monitor = Monitor::new(
+        relay.breaker.clone(),
+        relay.progress.clone(),
+        config.monitor,
+    )
+    .with_reporter(RuntimeReporter::new(source));
+    let (stop, stopped) = watch::channel(false);
+    let monitor = tokio::spawn(monitor.run(stopped));
+    let result = relay.runner.run_until_shutdown(shutdown).await;
+    let _ = stop.send(true);
+    let _ = monitor.await;
+    Ok(result?)
 }

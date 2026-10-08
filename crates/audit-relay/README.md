@@ -23,7 +23,7 @@ Audit Infrastructure v1の配送（[設計](../../docs/superpowers/specs/2026-10
 
 | command | `AUDIT_SOURCE_DATABASE_URL`（Document） | `AUDIT_STORE_DATABASE_URL`（Store） |
 |---|---|---|
-| `run` | `audit_relay_worker` を持つservice login | relay service：`audit_store_ingest`＋`audit_store_relay_control`＋`audit_store_reconciler`、`service/audit-relay` に束縛 |
+| `run` | `audit_relay_worker` を持つservice login（circuit状態の報告 `report_runtime` を含む） | relay service：`audit_store_ingest`＋`audit_store_relay_control`＋`audit_store_reconciler`、`service/audit-relay` に束縛 |
 | `health` / `reconcile` | worker（read-only。`health --forecast` はworkerだけ：配送前の内容を投影する `preview_pending` はworkerにだけ与える） | operator：`audit_store_relay_control`＋`audit_store_reconciler`（ingestは持たない）、本人の主体に束縛 |
 | `reconcile --repair` / `replay` | operator本人の `audit_relay_operator` login | 同上（operator本人のStore login）。`audit_store_ingest` を持つStore loginは拒否する（CLIとStoreの両方。特権操作の記録のactorを操作したoperatorにするため） |
 
@@ -37,13 +37,43 @@ Audit Infrastructure v1の配送（[設計](../../docs/superpowers/specs/2026-10
 
 ```text
 audit-relay migrate
-audit-relay run                                  # SIGTERM / Ctrl-C で有界にdrainして停止
-audit-relay health [--forecast] [--reconcile]    # JSON。produced/delivered/stored/verifiedを分ける
+audit-relay run                                  # SIGTERM / Ctrl-C で有界にdrainして停止。stderrに進捗行
+audit-relay health [--forecast] [--reconcile]    # JSON。produced/delivered/stored/verifiedとcircuitを分ける
 audit-relay reconcile [--repair]                 # 1 runにつき audit.reconciliation.completed を1件記録
 audit-relay replay --event-id <uuid>             # Storeへ replay_requested を記録してから戻す
 ```
 
-`run` の設定は環境変数（`AUDIT_RELAY_BATCH_SIZE` 32、`AUDIT_RELAY_MAX_IN_FLIGHT` 4、`AUDIT_RELAY_LEASE_MS` 30000、`AUDIT_RELAY_RENEW_MS` 9000、`AUDIT_RELAY_POLL_MS` 250、`AUDIT_RELAY_INGEST_TIMEOUT_MS` lease/3未満 など。`src/config.rs`）。policyの既定は試行16、lease 1–120秒、backoff 1–300秒、`outage_streak` 上限64。runnerは1 cycleで最大 `MAX_IN_FLIGHT` 件（breakerがhalf-openの間は1件）をclaimし、処理を待ってからpoll間隔だけ休むので、1 processの処理量は約 `MAX_IN_FLIGHT / (poll + Store往復)` 件/秒（既定で約15件/秒）である。継続的にこれを超える場合は `MAX_IN_FLIGHT`（runnerの上限8）を上げるか、pollを短くするか、relay processを増やす。滞留は `health` の `pending`・`oldest_pending_age_seconds` に出る。
+### `health` のcircuit（設計§12）
+
+`health` は別processなので、`run` のcircuit breakerは各 `run` processがDocument DBへ報告した状態で示す（`audit_relay.relay_runtime`、workerだけが実行できる `audit_relay.report_runtime`）。各processは1秒ごとにbreakerを標本化し、変化したとき、および変化が無くても10秒ごとに自分の行（process起動時の乱数id。他には出さない）を更新し、正常停止で削除する。報告できなくても配送は止めない（次の標本で再試行）。行は固定code・件数だけで、1日報告の無い行は次の報告が削除する。
+
+| key | 意味 |
+|---|---|
+| `circuit.running` / `circuit.stale` | 60秒以内に報告したprocess数 / それより古い行の数（強制終了したprocess） |
+| `circuit.state` | runningのうち最も悪い状態（`open` → `half_open` → `closed`）。runningが無ければ `null` |
+| `circuit.gate` | その状態のprocessの最後のgate code（`ok`、`unknown`、Storeのoutage code、`store_regressed`、`source_unavailable`） |
+| `circuit.outage_streak` | 最後の構造化ingest verdict以後のStore障害の連続回数（runningの最大）。行ごとの `outage_streak`（policyの上限64）とは別 |
+| `circuit.outages` | 起動以後のStore障害の回数（runningの合計） |
+| `circuit.last_report_age_seconds` | runningの最新の報告からの秒数 |
+
+`state` が `open` のとき警報 `circuit_open` を出す。
+
+### `run` の進捗行（stderr）
+
+`run` はstderrへ有界な進捗行を出す。値は固定code・件数だけで、payload・subject・actor・resource・event id・event type・reasonは出さない（`tests/runtime.rs` で合成eventの値が出ないことを確かめる）。
+
+```text
+audit-relay: event=circuit circuit=closed gate=ok was_circuit=half_open was_gate=unknown outage_streak=0 delivered=1 duplicate=0 held=0 outage=0 quarantined=0
+audit-relay: event=progress circuit=closed gate=ok outage_streak=0 delivered=32 duplicate=0 held=0 outage=0 quarantined=0
+```
+
+- `event=circuit`：circuit状態かgateが変わったとき（1秒ごとの標本。breakerがgateを評価し直すのはcooldownごとに最大1回）。
+- `event=progress`：前の行以後に処理があったときだけ、`AUDIT_RELAY_PROGRESS_MS`（既定10000）に最大1行。idleのrelayは最初のgate結果の後は何も出さない。
+- `event=final`：停止時に未出力の件数が残っていれば1行。
+- 件数は前の行以後のhandlerの結果：`delivered`（stored）、`duplicate`（duplicate*）、`held`（relay側の保留）、`outage`（Store障害の保留）、`quarantined`。
+- 停止要求がrunnerの処理中に届くと、runner（`outbox-delivery`）は結果を確認できないとして `audit-relay: delivery stopped: outbox store result is unknown` で終了code 1になる（停止の安全性は変わらず、leaseの失効後に再claimされる）。その場合もmonitorは最後の行を出し、circuitの報告を削除してから終わる。
+
+`run` の設定は環境変数（`AUDIT_RELAY_BATCH_SIZE` 32、`AUDIT_RELAY_MAX_IN_FLIGHT` 4、`AUDIT_RELAY_LEASE_MS` 30000、`AUDIT_RELAY_RENEW_MS` 9000、`AUDIT_RELAY_POLL_MS` 250、`AUDIT_RELAY_INGEST_TIMEOUT_MS` lease/3未満、`AUDIT_RELAY_PROGRESS_MS` 10000 など。`src/config.rs`）。policyの既定は試行16、lease 1–120秒、backoff 1–300秒、`outage_streak` 上限64。runnerは1 cycleで最大 `MAX_IN_FLIGHT` 件（breakerがhalf-openの間は1件）をclaimし、処理を待ってからpoll間隔だけ休むので、1 processの処理量は約 `MAX_IN_FLIGHT / (poll + Store往復)` 件/秒（既定で約15件/秒）である。継続的にこれを超える場合は `MAX_IN_FLIGHT`（runnerの上限8）を上げるか、pollを短くするか、relay processを増やす。滞留は `health` の `pending`・`oldest_pending_age_seconds` に出る。
 
 ## 失敗の扱い
 

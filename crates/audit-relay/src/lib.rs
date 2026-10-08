@@ -9,6 +9,8 @@
 //!   [`breaker::BreakerAdmission`] plug into the unchanged
 //!   `outbox_delivery::DeliveryRunner`.
 //! - [`reconcile`], [`replay`] and [`health`] implement the operator paths.
+//! - [`monitor`]: the circuit-breaker state `run` reports for `health` and
+//!   its bounded progress lines on stderr.
 //! - [`store::RelayStore`]: the `audit_core::AuditStore` port plus the Store
 //!   status and lost-range reads.
 #![forbid(unsafe_code)]
@@ -18,6 +20,7 @@ pub mod config;
 pub mod handler;
 pub mod health;
 pub mod ledger;
+pub mod monitor;
 pub mod reconcile;
 pub mod relay;
 pub mod replay;
