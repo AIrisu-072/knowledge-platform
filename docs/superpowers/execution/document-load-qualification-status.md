@@ -132,3 +132,7 @@ gs/page group4件、Diff page残余/新vector5件、native vector2件、派生ca
 actual Crop REDに基づき、新semanticsを使うページだけ、有限な親継承でMediaBox∩CropBoxを解決し、PDFiumのpage boundingとの一致・全paint包含を確認する。無効なCropBoxをnative fallbackで受け入れず、all()抽出frame外のText/Formも拒否する。旧成功入力のbypassは維持。継承/不正type/大きいCropとの交差/非zero原点frameの4回帰を追加。独立静的reviewは次Mac試行GO。
 
 次はpaint25・tags19・graphics-state4・graphics3・structure12・Diff/cache回帰・旧15fullbaseline・原本934維持。focused Clippyと全hosted資格はまだ未実行。harnessには異なる正例原本2件が必要なため、933の負例を保持して比較可能な実際の公式通知を限定探索する。原本切出し/注釈除去/簡易PDFへのすり替えは行わない。
+
+16:39追補：fbdd867eのMacはpaint25/tags19/gs4/workerPDF lib19/Diff lib7/cache4成功。pdf_diffの2正例だけNoneで失敗した。幅2・線開始x12・miter既定10に対する保守的boundsが左−8へ広がり、MediaBox0で拒否されるため、Diffへ到達していない。旧15full baseline一致、934native成功を維持。
+
+9bc3aceのformatter-only3filesを保持。期待Partialは維持し、正例fixtureをx40へ移して両原本の実PdfAdapter成功を比較前にassertする。元のx12は固定clip拒否＋Diff None/変更なし/未検証regionの負例として残す。製品条件の変更ではない。独立reviewはこのtest-only試行へGO。新しい正例候補はMHLW2020-03-30医政発0330第2号（000616197、2頁125872B、sha256 57cfad9114727870f4e58e37f7fa07d572b86d53f0f5ce652c001912fc5ba3b7）で、未加工のnative資格は次試行待ち。

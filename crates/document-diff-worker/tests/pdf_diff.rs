@@ -181,6 +181,8 @@ fn paint_order_pdf(text_before_image: bool) -> Vec<u8> {
 fn bounded_vector_difference_is_partial_visual_at_the_affected_page() {
     let base = bounded_vector_pdf(1, "Stable final page");
     let target = bounded_vector_pdf(2, "Stable final page");
+    assert_supported_vector_fixture(&base);
+    assert_supported_vector_fixture(&target);
     let result = compare(&base, &target);
 
     assert_eq!(result.coverage, DiffCoverage::Partial);
@@ -223,6 +225,8 @@ fn bounded_vector_difference_is_partial_visual_at_the_affected_page() {
 fn bounded_vector_difference_with_another_pages_text_change_never_becomes_full() {
     let base = bounded_vector_pdf(1, "Old final page");
     let target = bounded_vector_pdf(2, "New final page");
+    assert_supported_vector_fixture(&base);
+    assert_supported_vector_fixture(&target);
     let result = compare(&base, &target);
 
     assert_eq!(result.coverage, DiffCoverage::Partial);
@@ -254,8 +258,35 @@ fn bounded_vector_difference_with_another_pages_text_change_never_becomes_full()
 }
 
 fn bounded_vector_pdf(line_width: u8, final_text: &str) -> Vec<u8> {
+    bounded_vector_pdf_with_start(line_width, final_text, 40)
+}
+
+fn assert_supported_vector_fixture(bytes: &[u8]) {
+    document_semantic_inspection_worker::PdfAdapter.inspect_with_projection(
+        bytes, &document_semantic_inspection_worker::AdapterProfile::default(),
+    ).expect("vector fixture must pass real PDF inspection before testing Diff");
+}
+
+#[test]
+fn vector_outside_conservative_page_proof_remains_unverified() {
+    let base = bounded_vector_pdf_with_start(1, "Stable final page", 12);
+    let target = bounded_vector_pdf_with_start(2, "Stable final page", 12);
+    assert_supported_vector_fixture(&base);
+    let error = document_semantic_inspection_worker::PdfAdapter.inspect_with_projection(
+        &target, &document_semantic_inspection_worker::AdapterProfile::default(),
+    ).expect_err("original edge fixture is outside the bounded crop proof");
+    assert_eq!(error.message(), "pdf_clip_does_not_enclose_paint");
+    let result = compare(&base, &target);
+    assert_eq!(result.coverage, DiffCoverage::None);
+    assert!(result.changes.is_empty());
+    assert!(result.unverified_regions.iter().any(|region| {
+        region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+    }));
+}
+
+fn bounded_vector_pdf_with_start(line_width: u8, final_text: &str, start_x: u8) -> Vec<u8> {
     let first = format!(
-        "q {line_width} w 12 80 m 100 80 l S Q \
+        "q {line_width} w {start_x} 80 m 100 80 l S Q \
          BT /F1 12 Tf 12 180 Td (Stable vector page) Tj ET"
     );
     let anchor = "BT /F1 12 Tf 12 180 Td (Unique unchanged anchor) Tj ET";
