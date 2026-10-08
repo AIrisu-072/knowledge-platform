@@ -172,7 +172,9 @@ pub(super) fn handle(
             }
             charge(context, 1)?;
             let points = values
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|p| point(p[0], p[1], state.ctm))
                 .collect::<Result<Vec<_>, _>>()?;
             if op == "m" {

@@ -262,9 +262,12 @@ fn bounded_vector_pdf(line_width: u8, final_text: &str) -> Vec<u8> {
 }
 
 fn assert_supported_vector_fixture(bytes: &[u8]) {
-    document_semantic_inspection_worker::PdfAdapter.inspect_with_projection(
-        bytes, &document_semantic_inspection_worker::AdapterProfile::default(),
-    ).expect("vector fixture must pass real PDF inspection before testing Diff");
+    document_semantic_inspection_worker::PdfAdapter
+        .inspect_with_projection(
+            bytes,
+            &document_semantic_inspection_worker::AdapterProfile::default(),
+        )
+        .expect("vector fixture must pass real PDF inspection before testing Diff");
 }
 
 #[test]
@@ -272,16 +275,22 @@ fn vector_outside_conservative_page_proof_remains_unverified() {
     let base = bounded_vector_pdf_with_start(1, "Stable final page", 12);
     let target = bounded_vector_pdf_with_start(2, "Stable final page", 12);
     assert_supported_vector_fixture(&base);
-    let error = document_semantic_inspection_worker::PdfAdapter.inspect_with_projection(
-        &target, &document_semantic_inspection_worker::AdapterProfile::default(),
-    ).expect_err("original edge fixture is outside the bounded crop proof");
+    let error = document_semantic_inspection_worker::PdfAdapter
+        .inspect_with_projection(
+            &target,
+            &document_semantic_inspection_worker::AdapterProfile::default(),
+        )
+        .expect_err("original edge fixture is outside the bounded crop proof");
     assert_eq!(error.message(), "pdf_clip_does_not_enclose_paint");
     let result = compare(&base, &target);
     assert_eq!(result.coverage, DiffCoverage::None);
     assert!(result.changes.is_empty());
-    assert!(result.unverified_regions.iter().any(|region| {
-        region.reason == UnverifiedReason::UnsupportedSemanticConstruct
-    }));
+    assert!(
+        result
+            .unverified_regions
+            .iter()
+            .any(|region| { region.reason == UnverifiedReason::UnsupportedSemanticConstruct })
+    );
 }
 
 fn bounded_vector_pdf_with_start(line_width: u8, final_text: &str, start_x: u8) -> Vec<u8> {

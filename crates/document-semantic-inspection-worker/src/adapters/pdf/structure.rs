@@ -136,10 +136,10 @@ impl<'a> StructureInspector<'a> {
         match object {
             Object::Null => Ok(Vec::new()),
             Object::Array(children) => {
-                if let Some(id) = id {
-                    if !self.visited.insert(id) {
-                        return Err(malformed("structure has cyclic or duplicate child arrays"));
-                    }
+                if let Some(id) = id
+                    && !self.visited.insert(id)
+                {
+                    return Err(malformed("structure has cyclic or duplicate child arrays"));
                 }
                 let mut result = Vec::new();
                 for child in children {
@@ -499,12 +499,12 @@ impl<'a> StructureInspector<'a> {
                     let mark = marks
                         .pop()
                         .ok_or_else(|| malformed("EMC has no matching marked-content start"))?;
-                    if let Some(actual_text) = mark.actual_text {
-                        if actual_text != native_text[mark.text_start..] {
-                            return Err(unsupported(
-                                "replacement text differs from independently decoded native text",
-                            ));
-                        }
+                    if let Some(actual_text) = mark.actual_text
+                        && actual_text != native_text[mark.text_start..]
+                    {
+                        return Err(unsupported(
+                            "replacement text differs from independently decoded native text",
+                        ));
                     }
                 }
                 "DP" | "MP" => return Err(unsupported("marked-content points are unsupported")),
@@ -1027,10 +1027,10 @@ fn read_number_tree(
         return Err(limit("ParentTree exceeds the node limit"));
     }
     let (id, object) = resolve(document, object)?;
-    if let Some(id) = id {
-        if !visited.insert(id) {
-            return Err(malformed("ParentTree has cyclic or duplicate children"));
-        }
+    if let Some(id) = id
+        && !visited.insert(id)
+    {
+        return Err(malformed("ParentTree has cyclic or duplicate children"));
     }
     let tree = object
         .as_dict()
@@ -1047,7 +1047,7 @@ fn read_number_tree(
                 return Err(malformed("ParentTree Nums is not paired"));
             }
             let mut previous = None;
-            for pair in nums.chunks_exact(2) {
+            for pair in nums.as_chunks::<2>().0 {
                 *nodes = nodes.saturating_add(1);
                 if *nodes > MAX_STRUCTURE_NODES {
                     return Err(limit("ParentTree pairs exceed the node limit"));
@@ -1237,7 +1237,9 @@ fn text_string(object: &Object) -> Result<String, WorkerFailure> {
             return Err(malformed("invalid UTF-16 structure text"));
         }
         let code_units = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
             .collect::<Vec<_>>();
         String::from_utf16(&code_units).map_err(|_| malformed("invalid UTF-16 structure text"))
@@ -1269,7 +1271,7 @@ struct FontDecoder<'a> {
 
 impl FontDecoder<'_> {
     fn preflight(&self, bytes: &[u8], remaining: usize) -> Result<(), WorkerFailure> {
-        if bytes.len() % self.code_bytes != 0 {
+        if !bytes.len().is_multiple_of(self.code_bytes) {
             return Err(malformed("tagged text ends in a partial character code"));
         }
         // Every accepted mapping has exactly one non-surrogate UTF-16 code unit.
@@ -1435,7 +1437,7 @@ fn validate_cmap(bytes: &[u8]) -> Result<(usize, usize), WorkerFailure> {
                 if end.operands.len() != count * 2 {
                     return Err(malformed("tagged bfchar count disagrees with operands"));
                 }
-                for pair in end.operands.chunks_exact(2) {
+                for pair in end.operands.as_chunks::<2>().0 {
                     let code = cmap_source(&pair[0], width)?;
                     cmap_destination(&pair[1])?;
                     insert_cmap_code(&mut mapped, code, lower, upper)?;
@@ -1445,7 +1447,7 @@ fn validate_cmap(bytes: &[u8]) -> Result<(usize, usize), WorkerFailure> {
                 if end.operands.len() != count * 3 {
                     return Err(malformed("tagged bfrange count disagrees with operands"));
                 }
-                for triple in end.operands.chunks_exact(3) {
+                for triple in end.operands.as_chunks::<3>().0 {
                     let start = cmap_source(&triple[0], width)?;
                     let end = cmap_source(&triple[1], width)?;
                     if end < start {
