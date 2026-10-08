@@ -137,18 +137,23 @@ async function verifyHistoryWorkspace(page: Page, context: Awaited<ReturnType<ty
   // These owned fixtures intentionally contain a UTF-8 authoritative original.
   expect(originals.some(file => file.mediaType === 'text/plain')).toBe(true);
   for (const file of originals) {
+    let viewerText: string | null = null;
     if (file.mediaType === 'text/plain') {
       const viewerRead = historyResponse(`/${oldVersion.versionId}/files/${file.contentItemId}/${file.representationId}`);
       await selected.getByRole('button', { name: `${file.displayName}を表示`, exact: true }).click();
       const viewerResult = await viewerRead;
       expect(viewerResult.status()).toBe(200);
       expect(viewerResult.request().headers()['x-knowledge-viewer-max-bytes']).toBe('10485760');
-      const viewerBytes = await viewerResult.body();
-      expect(viewerBytes.byteLength).toBe(file.sizeBytes);
-      expect(hash(viewerBytes)).toBe(oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!.hash);
+      expect(viewerResult.headers()['content-length']).toBe(String(file.sizeBytes));
       const plaintext = selected.getByTestId('original-viewer-text');
       await expect(plaintext).toBeVisible();
-      expect(await plaintext.textContent()).toBe(new TextDecoder('utf-8', { fatal: true }).decode(viewerBytes));
+      // DevTools response.body() can transcode charset-less text/plain; use the
+      // rendered UTF-8 text and the existing raw download as byte/hash oracles.
+      viewerText = await plaintext.textContent();
+      expect(viewerText).not.toBeNull();
+      const renderedBytes = Buffer.from(viewerText!, 'utf8');
+      expect(renderedBytes.byteLength).toBe(file.sizeBytes);
+      expect(hash(renderedBytes)).toBe(oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!.hash);
       await selected.getByRole('button', { name: '原本表示を閉じる', exact: true }).click();
       await expect(plaintext).toHaveCount(0);
       await expect(originalDownloads).toHaveCount(originals.length);
@@ -163,6 +168,10 @@ async function verifyHistoryWorkspace(page: Page, context: Awaited<ReturnType<ty
     expect(saved.suggestedFilename()).toBe(file.displayName);
     expect(bytes.byteLength).toBe(file.sizeBytes);
     expect(hash(bytes)).toBe(oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!.hash);
+    if (viewerText !== null) {
+      expect(viewerText).toBe(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      expect(Buffer.from(viewerText, 'utf8').equals(bytes)).toBe(true);
+    }
   }
   const events = workspace.getByRole('region', { name: '変更履歴', exact: true });
   const eventRestart = events.getByRole('button', { name: '変更履歴を最初から読み直す', exact: true });

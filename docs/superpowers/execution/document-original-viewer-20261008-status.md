@@ -57,3 +57,11 @@ CI run `37742279689` の runtimeで、取下げ後・公開終了後の2試験�
 同じowned text/plain fixtureで、履歴viewerのGET200/purpose=history/10MiBheader/本文size・hash/UTF-8表示完全一致、closeによる表示破棄、続く既存downloadの原本hash一致、両profile既読不変を追加した。記録設定・CI・runnerは変更していない。
 
 ローカル検証: runtime対象2件のcollection成功、frontend型チェックexit0、関連GUI2 suites66件成功、diff検査成功。ログ `/tmp/viewer-lifecycle-collection.log`, `/tmp/viewer-lifecycle-type.log`, `/tmp/viewer-lifecycle-mocks.log`。元CI失敗ログ `/tmp/pr111-runtime-first.log` を診断に使用した。新しい実backend text viewer assertionsの実行は次exact-head CI待ちであり、collection/mock成功をbackend合格とは扱わない。実backend PDF、native WebView/対象PCは未資格のまま。
+
+## PR #111 runtime本文oracleの補正（2026-10-08）
+
+次のCI run `37744353733` / runtime job `113202303648` は追加した履歴viewerのGET200・10MiBheader検査まで成功し、line147の `response.body().byteLength` で2件失敗。`FileList.sizeBytes` はnumberであり、backendは登録MIMEの `text/plain` と原本Content-Lengthを返す。実Chromiumの最小HTTP再現では、charset無し日本語text/plain原本76bytesに対しDevTools経由Playwright `response.body()` は163bytesへ変換され、browser `fetch().arrayBuffer()` は原本76bytesと完全一致した。原本や製品の変換不具合とは扱わない。
+
+DevToolsの文字デコード後bodyをrawbytes oracleに使用する前提を修正。viewer応答のContent-Length、実表示textをUTF-8にencodeしたsize/hash、閉じた後の既存rawdownload size/hash、表示textとrawdownload decode結果・全bytesの完全一致を厳密検証する。GET/history/header/rights/readstate/ledgerの検査は保持し、製品・CI・runner・記録設定は変更しない。
+
+`e2e/response-byte-oracle.spec.ts` に所有する一時loopback server＋実Chromiumで charset-less日本語のDevTools変換とrawbytes一致を再現する回帰試験を追加。画像/trace/videoなし。焦点試験1件成功（786ms）、runtime2件collection成功、型exit0、関連GUI66件成功、diff検査成功。ログ `/tmp/viewer-byte-oracle-final.log`, `/tmp/viewer-lifecycle-second-collection.log`, `/tmp/viewer-lifecycle-second-type.log`, `/tmp/viewer-lifecycle-second-mocks.log`。実backend履歴viewerの最終GREENは次exact-head CI待ち。native proxy26件＋既存bridge6件のCI成功は親確認済みであり、今回のruntime未完了をその成功で代替しない。
