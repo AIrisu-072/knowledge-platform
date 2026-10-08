@@ -198,10 +198,9 @@ impl TaggedPdf {
         let original_content = fixture.content_text();
         let (first, second) = original_content.split_once("EMC\n").unwrap();
         fixture.replace_content(format!("{first}EMC\n"));
-        let second_content = fixture.document.add_object(Stream::new(
-            Dictionary::new(),
-            second.as_bytes().to_vec(),
-        ));
+        let second_content = fixture
+            .document
+            .add_object(Stream::new(Dictionary::new(), second.as_bytes().to_vec()));
         let mut second_page = fixture.dictionary(fixture.page).clone();
         second_page.set("Contents", Object::Reference(second_content));
         second_page.set("StructParents", 1);
@@ -209,7 +208,10 @@ impl TaggedPdf {
         let first_page = fixture.page;
         fixture.dictionary(page_tree).set(
             "Kids",
-            vec![Object::Reference(first_page), Object::Reference(second_page)],
+            vec![
+                Object::Reference(first_page),
+                Object::Reference(second_page),
+            ],
         );
         fixture.dictionary(page_tree).set("Count", 2);
         fixture
@@ -229,10 +231,9 @@ impl TaggedPdf {
             fixture
                 .dictionary(first_paragraph)
                 .set("K", vec![first_mcr, second_mcr]);
-            fixture.dictionary(fixture.document_element).set(
-                "K",
-                vec![Object::Reference(first_paragraph)],
-            );
+            fixture
+                .dictionary(fixture.document_element)
+                .set("K", vec![Object::Reference(first_paragraph)]);
         } else {
             fixture.dictionary(first_paragraph).set("K", first_mcr);
             fixture.dictionary(second_paragraph).set("K", second_mcr);
@@ -635,7 +636,6 @@ fn tables_and_ambiguous_nested_mcid_ownership_are_rejected() {
     );
 }
 
-
 #[test]
 fn one_paragraph_across_pages_differs_from_two_page_local_paragraphs() {
     let shared = TaggedPdf::two_page(true, false).bytes();
@@ -665,8 +665,7 @@ fn one_paragraph_across_pages_differs_from_two_page_local_paragraphs() {
     assert_eq!(split_projection["pages"].as_array().unwrap().len(), 2);
     for page in 0..2 {
         assert_eq!(
-            shared_projection["pages"][page]["text"],
-            split_projection["pages"][page]["text"],
+            shared_projection["pages"][page]["text"], split_projection["pages"][page]["text"],
             "only cross-page paragraph continuity changes"
         );
     }
@@ -707,8 +706,7 @@ fn catalog_language_default_changes_identity_without_local_language_overrides() 
         .inspect_with_projection(&french, &AdapterProfile::default())
         .expect("tagged PDF with a French catalog language must be accepted");
     assert_eq!(
-        english_projection["pages"][0]["text"],
-        french_projection["pages"][0]["text"],
+        english_projection["pages"][0]["text"], french_projection["pages"][0]["text"],
         "only the inherited catalog language changes"
     );
     assert_ne!(
@@ -741,9 +739,7 @@ fn association_marker_spelling_does_not_override_resolved_structure_role() {
 fn excessive_structure_depth_fails_closed_through_the_real_adapter() {
     fingerprint(&TaggedPdf::baseline().bytes());
     let mut deep = TaggedPdf::baseline();
-    let sections: Vec<_> = (0..64)
-        .map(|_| deep.document.new_object_id())
-        .collect();
+    let sections: Vec<_> = (0..64).map(|_| deep.document.new_object_id()).collect();
     for (index, section) in sections.iter().copied().enumerate() {
         let parent = if index == 0 {
             deep.document_element
@@ -753,7 +749,13 @@ fn excessive_structure_depth_fails_closed_through_the_real_adapter() {
         let children = if let Some(next) = sections.get(index + 1) {
             Object::Reference(*next)
         } else {
-            Object::Array(deep.paragraphs.iter().copied().map(Object::Reference).collect())
+            Object::Array(
+                deep.paragraphs
+                    .iter()
+                    .copied()
+                    .map(Object::Reference)
+                    .collect(),
+            )
         };
         deep.document.objects.insert(
             section,
@@ -790,7 +792,10 @@ fn explicit_root_language_shadows_the_catalog_language_default() {
     };
     let english_catalog = bytes("en-US");
     let french_catalog = bytes("fr-FR");
-    assert_eq!(painted_text(&english_catalog), painted_text(&french_catalog));
+    assert_eq!(
+        painted_text(&english_catalog),
+        painted_text(&french_catalog)
+    );
     assert_eq!(fingerprint(&english_catalog), fingerprint(&french_catalog));
 }
 
@@ -826,10 +831,7 @@ fn artifact_language_cannot_be_accepted_without_semantic_representation() {
     let baseline = baseline.bytes();
     fingerprint(&baseline);
     let mut changed = TaggedPdf::baseline();
-    changed.replace_content(content.replace(
-        "/Artifact << >>",
-        "/Artifact << /Lang (fr-FR) >>",
-    ));
+    changed.replace_content(content.replace("/Artifact << >>", "/Artifact << /Lang (fr-FR) >>"));
     let changed = changed.bytes();
     assert_eq!(painted_text(&baseline), painted_text(&changed));
     assert_rejected(&changed, WorkerFailureCode::UnsupportedSemanticConstruct);
@@ -866,7 +868,9 @@ fn catalog_language_on_artifact_text_is_not_shadowed_by_structured_root_language
 fn catalog_language_on_artifact_only_pages_changes_identity_without_a_structure_root() {
     let bytes = |catalog_language| {
         let mut artifact = TaggedPdf::baseline();
-        artifact.dictionary(artifact.catalog).remove(b"StructTreeRoot");
+        artifact
+            .dictionary(artifact.catalog)
+            .remove(b"StructTreeRoot");
         artifact.dictionary(artifact.catalog).remove(b"MarkInfo");
         artifact
             .dictionary(artifact.catalog)

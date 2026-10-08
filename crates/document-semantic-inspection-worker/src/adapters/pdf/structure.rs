@@ -122,10 +122,14 @@ impl<'a> StructureInspector<'a> {
             inspector.roots = inspector.walk_children(children, root_id, None, 0)?;
         }
         inspector.charge_work(inspector.roots.len())?;
-        if inspector.roots.iter().any(|index| {
-            !matches!(inspector.nodes[*index], Node::Element { .. })
-        }) {
-            return Err(malformed("structure root children must be structure elements"));
+        if inspector
+            .roots
+            .iter()
+            .any(|index| !matches!(inspector.nodes[*index], Node::Element { .. }))
+        {
+            return Err(malformed(
+                "structure root children must be structure elements",
+            ));
         }
         inspector.validate_page_order()?;
         inspector.validate_parent_tree(root)?;
@@ -136,7 +140,9 @@ impl<'a> StructureInspector<'a> {
         if depth >= MAX_PDF_OBJECT_DEPTH {
             return Err(limit("structure exceeds the depth limit"));
         }
-        let next = self.nodes_seen.checked_add(1)
+        let next = self
+            .nodes_seen
+            .checked_add(1)
             .filter(|next| *next <= MAX_STRUCTURE_NODES)
             .ok_or_else(|| limit("structure exceeds the node limit"))?;
         self.nodes_seen = next;
@@ -144,7 +150,10 @@ impl<'a> StructureInspector<'a> {
     }
 
     fn charge_work(&self, amount: usize) -> Result<(), WorkerFailure> {
-        let next = self.projection_visits.get().checked_add(amount)
+        let next = self
+            .projection_visits
+            .get()
+            .checked_add(amount)
             .filter(|next| *next <= MAX_PDF_CONTENT_OPERATIONS)
             .ok_or_else(|| limit("structure exceeds the work limit"))?;
         self.projection_visits.set(next);
@@ -153,7 +162,8 @@ impl<'a> StructureInspector<'a> {
 
     fn charge_membership_entries(&self, count: usize) -> Result<(), WorkerFailure> {
         // Each candidate can allocate a set entry and be copied into the result.
-        let work = count.checked_mul(2)
+        let work = count
+            .checked_mul(2)
             .ok_or_else(|| limit("structure page membership size overflow"))?;
         self.charge_work(work)
     }
@@ -165,7 +175,8 @@ impl<'a> StructureInspector<'a> {
                 Node::Element { page_indices, .. } => page_indices.len(),
                 Node::Leaf { .. } => 1,
             };
-            count.checked_add(additional)
+            count
+                .checked_add(additional)
                 .ok_or_else(|| limit("structure page membership size overflow"))
         })?;
         self.charge_membership_entries(candidates)?;
@@ -176,7 +187,9 @@ impl<'a> StructureInspector<'a> {
                     pages.extend(page_indices.iter().copied());
                 }
                 Node::Leaf { key: (page, _), .. } => {
-                    let ordinal = self.page_ordinals.get(page)
+                    let ordinal = self
+                        .page_ordinals
+                        .get(page)
                         .ok_or_else(|| malformed("structure page is outside the page tree"))?;
                     pages.insert(*ordinal);
                 }
@@ -192,7 +205,8 @@ impl<'a> StructureInspector<'a> {
         let catalog = dictionary(self.document, required(&self.document.trailer, b"Root")?)?;
         let language = if let Some(value) = optional(catalog, b"Lang") {
             let value = resolve(self.document, value)?.1;
-            let bytes = value.as_str()
+            let bytes = value
+                .as_str()
                 .map_err(|_| malformed("catalog language is not a string"))?;
             // A supported UTF-16 string needs at most 256 code units plus BOM.
             if bytes.len() > 514 {
@@ -358,7 +372,8 @@ impl<'a> StructureInspector<'a> {
         // Arena leaves were appended during the structure's ordered depth-first walk.
         for node in &self.nodes {
             if let Node::Leaf { key: (page, _), .. } = node {
-                let number = self.page_ordinals
+                let number = self
+                    .page_ordinals
                     .get(page)
                     .ok_or_else(|| malformed("structure page is outside the page tree"))?;
                 if previous.is_some_and(|previous| number < previous) {
@@ -791,7 +806,9 @@ impl<'a> StructureInspector<'a> {
     }
 
     fn charge_text(&mut self, count: usize) -> Result<(), WorkerFailure> {
-        let next = self.text_bytes.checked_add(count)
+        let next = self
+            .text_bytes
+            .checked_add(count)
             .filter(|next| *next <= MAX_STRUCTURE_TEXT_BYTES)
             .ok_or_else(|| limit("structure text exceeds the byte limit"))?;
         self.text_bytes = next;
@@ -1940,11 +1957,17 @@ mod tests {
         let mut inspector = StructureInspector::new(document).unwrap();
         let page = (99, 0);
         inspector.page_ordinals.insert(page, 0);
-        inspector.nodes.push(Node::Leaf { key: (page, 0), owner: (100, 0) });
-        inspector.contents.insert((page, 0), LeafContent {
-            text: "probe".into(),
-            ..Default::default()
+        inspector.nodes.push(Node::Leaf {
+            key: (page, 0),
+            owner: (100, 0),
         });
+        inspector.contents.insert(
+            (page, 0),
+            LeafContent {
+                text: "probe".into(),
+                ..Default::default()
+            },
+        );
         inspector
     }
 
@@ -1955,10 +1978,16 @@ mod tests {
         inspector.nodes_seen = MAX_STRUCTURE_NODES - 1;
         assert!(inspector.charge_node(0).is_ok());
         assert_eq!(inspector.nodes_seen, MAX_STRUCTURE_NODES);
-        assert_eq!(inspector.charge_node(0).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(
+            inspector.charge_node(0).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
         assert_eq!(inspector.nodes_seen, MAX_STRUCTURE_NODES);
         inspector.nodes_seen = usize::MAX;
-        assert_eq!(inspector.charge_node(0).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(
+            inspector.charge_node(0).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
         assert_eq!(inspector.nodes_seen, usize::MAX);
     }
 
@@ -1966,14 +1995,34 @@ mod tests {
     fn projection_and_native_text_copy_share_the_exact_work_limit() {
         let document = empty_structure_document();
         let inspector = one_leaf_inspector(&document);
-        inspector.projection_visits.set(MAX_PDF_CONTENT_OPERATIONS - 1);
-        assert_eq!(inspector.project_node(0, (99, 0)).unwrap().unwrap()["text"], "probe");
-        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS);
-        assert_eq!(inspector.project_node(0, (99, 0)).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        inspector
+            .projection_visits
+            .set(MAX_PDF_CONTENT_OPERATIONS - 1);
+        assert_eq!(
+            inspector.project_node(0, (99, 0)).unwrap().unwrap()["text"],
+            "probe"
+        );
+        assert_eq!(
+            inspector.projection_visits.get(),
+            MAX_PDF_CONTENT_OPERATIONS
+        );
+        assert_eq!(
+            inspector.project_node(0, (99, 0)).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
         let mut text = "unchanged".to_string();
-        assert_eq!(inspector.append_native_text(0, &mut text).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(
+            inspector
+                .append_native_text(0, &mut text)
+                .unwrap_err()
+                .code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
         assert_eq!(text, "unchanged");
-        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS);
+        assert_eq!(
+            inspector.projection_visits.get(),
+            MAX_PDF_CONTENT_OPERATIONS
+        );
     }
 
     #[test]
@@ -1981,15 +2030,37 @@ mod tests {
         let document = empty_structure_document();
         let inspector = one_leaf_inspector(&document);
         // One child visit, one candidate insertion, and one result copy.
-        inspector.projection_visits.set(MAX_PDF_CONTENT_OPERATIONS - 3);
+        inspector
+            .projection_visits
+            .set(MAX_PDF_CONTENT_OPERATIONS - 3);
         assert_eq!(inspector.page_membership(&[0]).unwrap(), vec![0]);
-        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS);
-        inspector.projection_visits.set(MAX_PDF_CONTENT_OPERATIONS - 2);
-        assert_eq!(inspector.page_membership(&[0]).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
-        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS - 1);
+        assert_eq!(
+            inspector.projection_visits.get(),
+            MAX_PDF_CONTENT_OPERATIONS
+        );
+        inspector
+            .projection_visits
+            .set(MAX_PDF_CONTENT_OPERATIONS - 2);
+        assert_eq!(
+            inspector.page_membership(&[0]).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+        assert_eq!(
+            inspector.projection_visits.get(),
+            MAX_PDF_CONTENT_OPERATIONS - 1
+        );
         inspector.projection_visits.set(10);
-        assert_eq!(inspector.charge_membership_entries(usize::MAX).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
-        assert_eq!(inspector.charge_work(usize::MAX).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(
+            inspector
+                .charge_membership_entries(usize::MAX)
+                .unwrap_err()
+                .code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+        assert_eq!(
+            inspector.charge_work(usize::MAX).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
         assert_eq!(inspector.projection_visits.get(), 10);
     }
 
@@ -1998,12 +2069,18 @@ mod tests {
         let document = empty_structure_document();
         let mut inspector = one_leaf_inspector(&document);
         inspector.page_ordinals.insert((101, 0), 1);
-        inspector.nodes.push(Node::Leaf { key: ((101, 0), 0), owner: (102, 0) });
+        inspector.nodes.push(Node::Leaf {
+            key: ((101, 0), 0),
+            owner: (102, 0),
+        });
         let page_indices = inspector.page_membership(&[1, 0, 1]).unwrap();
         assert_eq!(page_indices, vec![0, 1]);
         inspector.nodes.push(Node::Element {
-            role: "P".into(), language: None, actual_text: None,
-            children: vec![0, 1], page_indices,
+            role: "P".into(),
+            language: None,
+            actual_text: None,
+            children: vec![0, 1],
+            page_indices,
         });
         assert_eq!(inspector.page_membership(&[2, 0]).unwrap(), vec![0, 1]);
     }
@@ -2011,8 +2088,16 @@ mod tests {
     #[test]
     fn catalog_language_is_charged_once_and_only_when_requested() {
         let mut document = empty_structure_document();
-        let catalog = document.trailer.get(b"Root").unwrap().as_reference().unwrap();
-        document.get_dictionary_mut(catalog).unwrap().set("Lang", Object::string_literal("en-US"));
+        let catalog = document
+            .trailer
+            .get(b"Root")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        document
+            .get_dictionary_mut(catalog)
+            .unwrap()
+            .set("Lang", Object::string_literal("en-US"));
         let mut inspector = StructureInspector::new(&document).unwrap();
         assert!(!inspector.catalog_language_loaded);
         assert_eq!(inspector.text_bytes, 0);
@@ -2032,9 +2117,14 @@ mod tests {
         inspector.text_bytes = MAX_STRUCTURE_TEXT_BYTES - 1;
         inspector.charge_text(1).unwrap();
         assert_eq!(inspector.text_bytes, MAX_STRUCTURE_TEXT_BYTES);
-        assert_eq!(inspector.charge_text(1).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
-        assert_eq!(inspector.charge_text(usize::MAX).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(
+            inspector.charge_text(1).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
+        assert_eq!(
+            inspector.charge_text(usize::MAX).unwrap_err().code(),
+            WorkerFailureCode::InspectionResourceLimitExceeded
+        );
         assert_eq!(inspector.text_bytes, MAX_STRUCTURE_TEXT_BYTES);
     }
-
 }

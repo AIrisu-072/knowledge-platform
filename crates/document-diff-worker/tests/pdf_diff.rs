@@ -346,8 +346,7 @@ fn cross_page_paragraph_ownership_difference_cannot_report_full_or_unchanged() {
     for page in 0..2 {
         for field in ["text", "images", "paint_order", "links", "vectors"] {
             assert_eq!(
-                base_projection["pages"][page][field],
-                target_projection["pages"][page][field],
+                base_projection["pages"][page][field], target_projection["pages"][page][field],
                 "fixture must change structure only: page {page}, {field}"
             );
         }
@@ -359,9 +358,12 @@ fn cross_page_paragraph_ownership_difference_cannot_report_full_or_unchanged() {
     // valid; Full with no changes is the semantic-loss regression.
     assert_ne!(result.coverage, DiffCoverage::Full);
     assert!(!result.unverified_regions.is_empty());
-    assert!(result.changes.iter().all(|change| {
-        change.facet != "pdf_text" && change.facet != "pdf_visual"
-    }));
+    assert!(
+        result
+            .changes
+            .iter()
+            .all(|change| { change.facet != "pdf_text" && change.facet != "pdf_visual" })
+    );
 }
 
 // Same ownership model as TaggedPdf::two_page in the semantic worker tests,
@@ -369,7 +371,11 @@ fn cross_page_paragraph_ownership_difference_cannot_report_full_or_unchanged() {
 fn two_page_paragraph_pdf(shared_paragraph: bool) -> Vec<u8> {
     let first = b"/P << /MCID 0 >> BDC BT /F1 12 Tf 12 180 Td (FIRST PARAGRAPH) Tj ET EMC";
     let second = b"/P << /MCID 1 >> BDC BT /F1 12 Tf 12 140 Td (SECOND PARAGRAPH) Tj ET EMC";
-    let document_children = if shared_paragraph { "[10 0 R]" } else { "[10 0 R 11 0 R]" };
+    let document_children = if shared_paragraph {
+        "[10 0 R]"
+    } else {
+        "[10 0 R 11 0 R]"
+    };
     let first_children = if shared_paragraph {
         "[<< /Type /MCR /Pg 4 0 R /MCID 0 >> << /Type /MCR /Pg 6 0 R /MCID 1 >>]"
     } else {

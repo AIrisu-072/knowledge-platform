@@ -649,5 +649,8 @@ fn text_vector_overlap_proof_accepts_its_exact_budget_and_rejects_one_extra_obje
         error.code(),
         document_semantic_inspection_worker::WorkerFailureCode::InspectionResourceLimitExceeded
     );
-    assert_eq!(error.message(), "PDF text/vector overlap proof budget exceeded");
+    assert_eq!(
+        error.message(),
+        "PDF text/vector overlap proof budget exceeded"
+    );
 }
