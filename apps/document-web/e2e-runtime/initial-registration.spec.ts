@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import {
-  getDocument, getDocumentHistory, getDocumentVersion, getRootFolder, listDocumentRevisions,
+  BinaryTransportBridge, getDocument, getDocumentHistory, getDocumentVersion, getVersionEditManifest, getRootFolder, listDocumentRevisions,
   listDocumentVersions, listFolderChildren, listVersionFiles, recoverDocumentCreation,
   type CreateDocumentResult,
 } from '@knowledge-platform/document-api-client';
@@ -130,5 +130,68 @@ test('画面で初回登録したWORKINGの原本を確認し、明示公開後�
   expect(apiOrigins).toEqual(new Set([human]));
   completed('gui-initial-published-shared');
   await saveSnapshot(context, 'gui-initial', created.documentId);
+  completed('gui-initial-snapshot-saved');
+});
+
+// Same owned runtime, real multipart API and persistent restart oracle as the legacy test above.
+test('初回原本2件をGUIの単一要求で登録し、全bytes・正式公開・再起動用snapshotを確認する', async ({ page, request }) => {
+  const context = await runtime(), common = options(context.human);
+  const bridge = new BinaryTransportBridge({ baseUrl: context.human });
+  const title = '【合成データ】GUI初回複数原本登録';
+  const originals = [
+    { name: 'initial-A.txt', mimeType: 'text/plain', buffer: Buffer.from('【合成データ】初回複数原本A\n') },
+    { name: 'initial-B.txt', mimeType: 'text/plain', buffer: Buffer.from('【合成データ】初回複数原本B\n') },
+  ];
+  let createRequests = 0;
+  page.on('request', req => { if (new URL(req.url()).pathname === '/v1/documents' && req.method() === 'POST') createRequests++; });
+  await page.goto(`/documents?view=published&folderId=${context.manifest.folders.shared.folderId}`);
+  await page.getByRole('button', { name: '文書を登録', exact: true }).click();
+  const registration = page.getByRole('dialog', { name: '文書を登録', exact: true });
+  await registration.getByLabel('文書名', { exact: true }).fill(title);
+  await registration.getByLabel('原本ファイル', { exact: true }).setInputFiles(originals);
+  await registration.getByLabel('原本パス 1', { exact: true }).fill('chapter/A.txt');
+  await registration.getByLabel('原本パス 2', { exact: true }).fill('appendix/B.txt');
+  await registration.getByRole('button', { name: 'initial-B.txtを上へ', exact: true }).click();
+  const createResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/v1/documents' && response.request().method() === 'POST');
+  await registration.getByRole('button', { name: '下書きとして登録', exact: true }).click();
+  const response = await createResponse; expect(response.status()).toBe(201);
+  const created = await response.json() as CreateDocumentResult;
+  expect(createRequests).toBe(1);
+  expect(created.fileIds).toHaveLength(2); expect(created.fileId).toBe(created.fileIds![0]);
+  expect(new Set(created.fileIds).size).toBe(2);
+  await expect(page).toHaveURL(url => url.pathname === `/documents/${created.documentId}` && url.searchParams.get('view') === 'authoring');
+  const path = { documentId: created.documentId }, versionPath = { ...path, versionId: created.documentVersionId };
+  const detail = (await getDocument({ ...common, path, query: { view: 'authoring' } })).data;
+  expect(detail.currentVersionId).toBeNull(); expect(detail.displayVersion).toMatchObject({ versionNo: 1, lifecycleState: 'WORKING' });
+  const draft = (await getVersionEditManifest({ ...common, path: versionPath, query: { purpose: 'authoring' } })).data;
+  expect(draft.items.map(item => [item.logicalPath, item.ordinal, item.representations.length])).toEqual([['appendix/B.txt', 0, 1], ['chapter/A.txt', 1, 1]]);
+  expect(draft.items.map(item => item.representations[0]!.fileId)).toEqual(created.fileIds);
+  const expected = [originals[1]!, originals[0]!];
+  for (const [index, item] of draft.items.entries()) {
+    const representation = item.representations[0]!;
+    expect(representation).toMatchObject({ originalFilename: expected[index]!.name, mediaType: 'text/plain', sizeBytes: expected[index]!.buffer.length });
+    const bytes = await bridge.downloadVersionFileBlob({ ...versionPath, contentItemId: item.contentItemId, representationId: representation.representationId, purpose: 'authoring' });
+    expect(Buffer.from(await bytes.arrayBuffer())).toEqual(expected[index]!.buffer);
+  }
+  expect((await recoverDocumentCreation({ ...common, path, query: { documentVersionId: created.documentVersionId, fileId: created.fileId, fileIds: created.fileIds!.join(',') } })).data).toEqual(created);
+  const partial = await recoverDocumentCreation({ ...common, throwOnError: false, path, query: { documentVersionId: created.documentVersionId, fileId: created.fileId } });
+  expect(partial.response?.status).toBe(404);
+  expect((await request.get(`${context.agent}/v1/documents/${created.documentId}?view=published`)).status()).toBe(404);
+  expect((await listDocumentRevisions({ ...common, path, query: { pageSize: 100 } })).data.items).toHaveLength(0);
+  completed('gui-initial-working-verified');
+  await page.getByRole('button', { name: '公開する', exact: true }).click();
+  await page.getByRole('checkbox', { name: '公開対象の版とファイルを確認しました。' }).check();
+  await page.getByRole('button', { name: '公開する', exact: true }).click();
+  const publicationResponse = page.waitForResponse(result => new URL(result.url()).pathname === `/v1/documents/${created.documentId}/versions/${created.documentVersionId}:publish` && result.request().method() === 'POST');
+  await page.getByRole('dialog', { name: '公開を確認', exact: true }).getByRole('button', { name: '確定する', exact: true }).click();
+  expect((await publicationResponse).status()).toBe(200);
+  await expect(page.getByRole('status')).toContainText('公開しました');
+  const published = await persistedSnapshot(context.human, created.documentId);
+  expect(published.currentVersionId).toBe(created.documentVersionId);
+  expect(published.versions).toHaveLength(1); expect(published.revisions).toHaveLength(1);
+  expect(published.versions[0]!.files.map(file => file.hash).sort()).toEqual(originals.map(original => hash(original.buffer)).sort());
+  expect(await persistedSnapshot(context.agent, created.documentId)).toEqual(published);
+  expect(createRequests).toBe(1);
+  await saveSnapshot(context, 'gui-initial-multiple', created.documentId);
   completed('gui-initial-snapshot-saved');
 });

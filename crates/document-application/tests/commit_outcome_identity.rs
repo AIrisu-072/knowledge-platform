@@ -142,6 +142,7 @@ async fn ambiguous_commit_exposes_pre_generated_ids_for_safe_lookup() {
             document_id: DocumentId::from_uuid(Uuid::from_u128(1)),
             document_version_id: DocumentVersionId::from_uuid(Uuid::from_u128(2)),
             file_id: FileId::from_uuid(Uuid::from_u128(3)),
+            file_ids: None,
         }
     );
 }

@@ -289,3 +289,30 @@ test('bounded original requests send only a lowering shell hint and ordinary dow
   assert.equal(requests[0].headers?.['x-knowledge-viewer-max-bytes'], '8');
   assert.equal(requests[1].headers?.['x-knowledge-viewer-max-bytes'], undefined);
 });
+
+test('atomic initial items upload binds all binaries once without client FileIDs or partial legacy POST', async () => {
+  const calls = [];
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async (url, init) => {
+    calls.push({ url: String(url), init }); return jsonResponse({ documentId, documentVersionId: versionId, fileId, fileIds: [fileId, renditionId] }, 201);
+  }});
+  const request = { folderId: documentId, title: 'Multiple', documentMetadata: {}, versionMetadata: {}, items: [
+    { logicalPath: 'a', ordinal: 0, partId: 'a', mediaType: 'text/plain', originalFilename: 'a.txt' },
+    { logicalPath: 'b', ordinal: 1, partId: 'b', mediaType: 'text/plain', originalFilename: 'b.txt' },
+  ] };
+  const result = await bridge.createDocumentItems({ request, files: new Map([['a', new Blob(['AAA'])], ['b', new Blob(['BBB'])]]) });
+  assert.deepEqual(result.fileIds, [fileId, renditionId]); assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://documents.test/v1/documents');
+  const wire = await calls[0].init.body.text();
+  assert.match(wire, /X-Part-Id: a/); assert.match(wire, /X-Part-Id: b/); assert.match(wire, /AAA/); assert.match(wire, /BBB/);
+  assert.doesNotMatch(wire, /"fileId"/);
+});
+
+test('atomic initial manifest rejects missing or extra parts before network', async () => {
+  let count = 0;
+  const bridge = new BinaryTransportBridge({ baseUrl: 'https://documents.test', fetch: async () => { count++; return jsonResponse({}); } });
+  const request = { folderId: documentId, title: 'Multiple', documentMetadata: {}, versionMetadata: {}, items: [
+    { logicalPath: 'a', ordinal: 0, partId: 'a', mediaType: 'text/plain', originalFilename: 'a.txt' },
+  ] };
+  await assert.rejects(bridge.createDocumentItems({ request, files: new Map([['b', new Blob(['B'])]]) }), /match/);
+  assert.equal(count, 0);
+});

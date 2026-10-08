@@ -11,10 +11,10 @@ use crate::{
     access_control::guard_document_mutation,
     document_revision::{PublicationRevisionInput, issue_publication_revision},
     error::{map_commit_error, map_statement_error},
-    mapping::to_authoritative,
+    mapping::{to_authoritative, to_authoritative_with_items},
     publication_end,
     publish_rows::PublishOperationRow,
-    rows::AuthoritativeRow,
+    rows::{AuthoritativeRow, CanonicalContentRow},
     versioning_mutation,
 };
 
@@ -136,14 +136,13 @@ pub(crate) async fn get_publish_candidate(
            ON v.document_id = d.document_id AND v.document_version_id = $2 \
          JOIN content_items ci \
            ON ci.document_version_id = v.document_version_id \
-          AND ci.logical_path = 'primary' AND ci.ordinal = 0 \
          JOIN content_representations cr \
            ON cr.content_representation_id = ci.authoritative_representation_id \
           AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
          JOIN file_objects f \
            ON f.file_id = cr.file_id \
          WHERE d.document_id = $1 \
-         LIMIT 1",
+         ORDER BY ci.ordinal, ci.logical_path COLLATE \"C\" LIMIT 1",
     )
     .bind(document_id.as_uuid())
     .bind(target_version_id.as_uuid())
@@ -261,24 +260,27 @@ pub(crate) async fn publish_initial_version(
             _ => return Err(RepositoryError::IntegrityViolation),
         }
 
-        let primary_exists: bool = sqlx::query_scalar(
+        let complete_manifest: bool = sqlx::query_scalar(
             "SELECT EXISTS ( \
-                SELECT 1 \
-                FROM content_items ci \
-                JOIN content_representations cr \
-                  ON cr.content_representation_id = ci.authoritative_representation_id \
-                 AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
-                JOIN file_objects f ON f.file_id = cr.file_id \
-                JOIN document_versions v ON v.document_version_id = ci.document_version_id \
-                WHERE ci.document_version_id = $1 AND ci.logical_path = 'primary' \
-                  AND ci.ordinal = 0 AND NOT v.requires_content_classification \
+                SELECT 1 FROM document_versions v \
+                WHERE v.document_version_id = $1 AND NOT v.requires_content_classification \
+                  AND (SELECT count(*) FROM content_items ci \
+                       WHERE ci.document_version_id = v.document_version_id) > 0 \
+                  AND (SELECT count(*) FROM content_items ci \
+                       WHERE ci.document_version_id = v.document_version_id) = \
+                      (SELECT count(*) FROM content_items ci \
+                       JOIN content_representations cr \
+                         ON cr.content_representation_id = ci.authoritative_representation_id \
+                        AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
+                       JOIN file_objects f ON f.file_id = cr.file_id \
+                       WHERE ci.document_version_id = v.document_version_id) \
              )",
         )
         .bind(identity.target_document_version_id().as_uuid())
         .fetch_one(&mut *tx)
         .await
         .map_err(map_statement_error)?;
-        if !primary_exists {
+        if !complete_manifest {
             return Err(RepositoryError::IntegrityViolation);
         }
         if let Some(due) = &due_schedule {
@@ -302,14 +304,13 @@ pub(crate) async fn publish_initial_version(
             }
         }
 
-        let row = load_authoritative_row_in_tx(
+        let authoritative = load_authoritative_row_in_tx(
             &mut tx,
             identity.document_id(),
             identity.target_document_version_id(),
         )
         .await?
         .ok_or(RepositoryError::IntegrityViolation)?;
-        let authoritative = to_authoritative(row)?;
         let mut document = authoritative.document().clone();
         let mut version = authoritative.version().clone();
         let transition = document
@@ -820,8 +821,8 @@ async fn load_authoritative_row_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     document_id: DocumentId,
     target_version_id: DocumentVersionId,
-) -> Result<Option<AuthoritativeRow>, RepositoryError> {
-    sqlx::query_as::<_, AuthoritativeRow>(
+) -> Result<Option<document_application::AuthoritativeDocument>, RepositoryError> {
+    let row = sqlx::query_as::<_, AuthoritativeRow>(
         "SELECT \
             d.document_id, \
             d.folder_id, \
@@ -861,20 +862,37 @@ async fn load_authoritative_row_in_tx(
            ON v.document_id = d.document_id AND v.document_version_id = $2 \
          JOIN content_items ci \
            ON ci.document_version_id = v.document_version_id \
-          AND ci.logical_path = 'primary' AND ci.ordinal = 0 \
          JOIN content_representations cr \
            ON cr.content_representation_id = ci.authoritative_representation_id \
           AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
          JOIN file_objects f \
            ON f.file_id = cr.file_id \
          WHERE d.document_id = $1 \
-         LIMIT 1",
+         ORDER BY ci.ordinal, ci.logical_path COLLATE \"C\" LIMIT 1",
     )
     .bind(document_id.as_uuid())
     .bind(target_version_id.as_uuid())
     .fetch_optional(&mut **tx)
     .await
-    .map_err(map_statement_error)
+    .map_err(map_statement_error)?;
+    let Some(row) = row else { return Ok(None) };
+    let content_rows = sqlx::query_as::<_, CanonicalContentRow>(
+        "SELECT ci.logical_path, ci.ordinal, f.file_id, f.content_hash, \
+                f.media_type, f.size_bytes, f.storage_locator, \
+                f.created_at AS file_created_at, cr.original_filename \
+         FROM content_items ci \
+         JOIN content_representations cr \
+           ON cr.content_representation_id = ci.authoritative_representation_id \
+          AND cr.content_item_id = ci.content_item_id AND cr.role = 'AUTHORITATIVE' \
+         JOIN file_objects f ON f.file_id = cr.file_id \
+         WHERE ci.document_version_id = $1 \
+         ORDER BY ci.ordinal, ci.logical_path COLLATE \"C\"",
+    )
+    .bind(target_version_id.as_uuid())
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(map_statement_error)?;
+    Ok(Some(to_authoritative_with_items(row, content_rows)?))
 }
 
 fn map_publish_domain_error(error: DomainError) -> RepositoryError {

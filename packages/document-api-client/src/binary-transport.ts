@@ -16,6 +16,8 @@ export type CreateDocumentUpload = Omit<CreateDocumentMultipart, 'file'> & {
   mediaType: string;
 };
 
+export type CreateDocumentItemsUpload = { request: CommandsCreateDocument & { items: NonNullable<CommandsCreateDocument['items']> }; files: ReadonlyMap<string, Blob | File> };
+
 export type VersionUpload = Omit<VersionMultipart, 'files'> & {
   files: ReadonlyMap<string, Blob | File>;
 };
@@ -82,6 +84,18 @@ export class BinaryTransportBridge {
       'POST',
       body,
     );
+  }
+
+  prepareDocumentItemsUpload(input: CreateDocumentItemsUpload): BuiltMultipart {
+    if (!input.request.items.length || input.request.items.some(item => !item.originalFilename.trim() || !item.mediaType.trim())) {
+      throw new BinaryTransportError('Initial originals and their names/media types are required');
+    }
+    return Object.freeze(buildManifestMultipart(input.request, input.request.items.map(item => ({ partId: item.partId })), input.files));
+  }
+
+  async createDocumentItems(input: CreateDocumentItemsUpload, prepared?: BuiltMultipart): Promise<CreateDocumentResponses[201]> {
+    const multipart = prepared ?? this.prepareDocumentItemsUpload(input);
+    return this.requestJson<CreateDocumentResponses[201]>('v1/documents', 'POST', multipart.body, { 'Content-Type': multipart.contentType }, true);
   }
 
   prepareVersionUpload(input: VersionUpload): BuiltMultipart {
@@ -211,6 +225,9 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
       fileId: rendition.fileId,
     })),
   ]);
+  return buildManifestMultipart(request, parts, files);
+}
+function buildManifestMultipart(request: unknown, parts: readonly { partId: string; fileId?: string }[], files: ReadonlyMap<string, Blob | File>): BuiltMultipart {
   if (parts.length > 63) throw new BinaryTransportError('Binary parts must be at most 63 (64 total multipart parts)');
   const json = JSON.stringify(request);
   const jsonBytes = new Blob([json]).size;
@@ -222,8 +239,8 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
       throw new BinaryTransportError('The version manifest has an invalid or duplicate partId');
     }
     expectedIds.add(part.partId);
-    if (fileIds.has(part.fileId)) throw new BinaryTransportError('Shared FileID cannot be uploaded more than once');
-    fileIds.add(part.fileId);
+    if (part.fileId !== undefined && fileIds.has(part.fileId)) throw new BinaryTransportError('Shared FileID cannot be uploaded more than once');
+    if (part.fileId !== undefined) fileIds.add(part.fileId);
   }
 
   if (expectedIds.size !== files.size || [...files.keys()].some((id) => !expectedIds.has(id))) {
