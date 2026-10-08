@@ -420,6 +420,18 @@ impl Platform {
         version: DocumentVersionId,
         correlation: Uuid,
     ) -> Vec<u8> {
+        self.try_open_original(document, version, correlation)
+            .await
+            .expect("open the original")
+    }
+
+    /// [`Self::open_original`], returning a refused access.
+    pub async fn try_open_original(
+        &self,
+        document: DocumentId,
+        version: DocumentVersionId,
+        correlation: Uuid,
+    ) -> Result<Vec<u8>, ApplicationError> {
         let ctx = editor_ctx();
         let request = VersionRequest {
             document_id: document,
@@ -444,15 +456,14 @@ impl Platform {
                     correlation_id: Some(correlation),
                 },
             )
-            .await
-            .expect("open the original");
+            .await?;
         let mut bytes = Vec::new();
         opened
             .content
             .read_to_end(&mut bytes)
             .await
             .expect("read the original");
-        bytes
+        Ok(bytes)
     }
 
     pub async fn update_metadata(
@@ -607,8 +618,9 @@ impl Platform {
 
     /// The manifest of one plain-text original, prepared the way the
     /// versioning endpoint does (preflight over a repository scoped to the
-    /// verified actor).
-    async fn prepare(
+    /// verified actor). The preflight stores the file object and its
+    /// semantic inspection before, and outside, the version mutation.
+    pub async fn prepare(
         &self,
         ctx: &VerifiedActorContext,
         title: &str,
@@ -642,8 +654,18 @@ impl Platform {
         title: &str,
         content: &[u8],
     ) -> Result<DocumentVersionId, ApplicationError> {
+        let prepared = self.prepare(&editor_ctx(), title, content).await?;
+        self.create_version_from(document, prepared).await
+    }
+
+    /// The version mutation of [`Self::create_version`] over a prepared
+    /// manifest.
+    pub async fn create_version_from(
+        &self,
+        document: DocumentId,
+        prepared: PreparedManifest,
+    ) -> Result<DocumentVersionId, ApplicationError> {
         let ctx = editor_ctx();
-        let prepared = self.prepare(&ctx, title, content).await?;
         let target = DocumentVersionId::from_uuid(Uuid::now_v7());
         let revision = self.document_revision(document).await;
         self.docs
@@ -687,18 +709,7 @@ impl Platform {
         &self,
         targets: &[PublishOperationId],
     ) -> BTreeMap<Uuid, DueExecutionOutcome> {
-        let scheduler = DocumentVersionService::new(
-            Arc::new(V7Ids),
-            Arc::new(UtcClock),
-            self.storage.clone(),
-            Arc::new(SyntheticInspection),
-            self.repo.clone(),
-        );
-        let executor = document_publication_scheduler::scheduler_executor();
-        assert_eq!(
-            (executor.identity_provider(), executor.principal_id()),
-            ("service", "scheduler")
-        );
+        let (scheduler, executor) = self.scheduler();
         let deadline = tokio::time::Instant::now() + StdDuration::from_secs(30);
         let mut outcomes = BTreeMap::new();
         loop {
@@ -720,6 +731,59 @@ impl Platform {
             assert!(
                 tokio::time::Instant::now() < deadline,
                 "the schedules did not become due: {outcomes:?}"
+            );
+            tokio::time::sleep(StdDuration::from_millis(200)).await;
+        }
+    }
+
+    /// The scheduler service and its executing identity
+    /// (`document_publication_scheduler::scheduler_executor()`).
+    fn scheduler(
+        &self,
+    ) -> (
+        DocumentVersionService<V7Ids, UtcClock, FileSystemStorage, SyntheticInspection, Repo>,
+        PrincipalRef,
+    ) {
+        let scheduler = DocumentVersionService::new(
+            Arc::new(V7Ids),
+            Arc::new(UtcClock),
+            self.storage.clone(),
+            Arc::new(SyntheticInspection),
+            self.repo.clone(),
+        );
+        let executor = document_publication_scheduler::scheduler_executor();
+        assert_eq!(
+            (executor.identity_provider(), executor.principal_id()),
+            ("service", "scheduler")
+        );
+        (scheduler, executor)
+    }
+
+    /// One scheduler poll that finds every `target` due: each target is
+    /// executed once (database clock, due list, authorized due execution),
+    /// and its result is returned, failures included.
+    pub async fn run_due_once(
+        &self,
+        targets: &[PublishOperationId],
+    ) -> BTreeMap<Uuid, Result<DueExecutionOutcome, ApplicationError>> {
+        let (scheduler, executor) = self.scheduler();
+        let deadline = tokio::time::Instant::now() + StdDuration::from_secs(30);
+        loop {
+            let now = self.repo.database_now().await.expect("database clock");
+            let due = self.repo.list_due(now, 100).await.expect("due schedules");
+            if targets.iter().all(|target| due.contains(target)) {
+                let mut outcomes = BTreeMap::new();
+                for target in targets {
+                    let outcome = scheduler
+                        .execute_due_authorized(*target, &Directory, &executor)
+                        .await;
+                    outcomes.insert(target.as_uuid(), outcome);
+                }
+                return outcomes;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the schedules did not become due: {due:?}"
             );
             tokio::time::sleep(StdDuration::from_millis(200)).await;
         }
@@ -756,8 +820,19 @@ impl Platform {
         title: &str,
         content: &[u8],
     ) -> Result<(), ApplicationError> {
+        let prepared = self.prepare(&editor_ctx(), title, content).await?;
+        self.update_working_from(document, version, prepared).await
+    }
+
+    /// The version mutation of [`Self::update_working`] over a prepared
+    /// manifest.
+    pub async fn update_working_from(
+        &self,
+        document: DocumentId,
+        version: DocumentVersionId,
+        prepared: PreparedManifest,
+    ) -> Result<(), ApplicationError> {
         let ctx = editor_ctx();
-        let prepared = self.prepare(&ctx, title, content).await?;
         let revision = self.document_revision(document).await;
         self.docs
             .update_working_version(
@@ -842,6 +917,18 @@ impl Platform {
         base: DocumentVersionId,
         target: DocumentVersionId,
     ) -> bool {
+        self.try_compare_versions(document, base, target)
+            .await
+            .expect("diff")
+    }
+
+    /// [`Self::compare_versions`], returning a refused comparison.
+    pub async fn try_compare_versions(
+        &self,
+        document: DocumentId,
+        base: DocumentVersionId,
+        target: DocumentVersionId,
+    ) -> Result<bool, ApplicationError> {
         self.diff
             .compare(
                 &editor_ctx(),
@@ -853,8 +940,7 @@ impl Platform {
                 },
             )
             .await
-            .expect("diff")
-            .cache_hit
+            .map(|diff| diff.cache_hit)
     }
 
     /// The revision id of `major.minor`.
@@ -879,11 +965,22 @@ impl Platform {
 
     /// Compares two revisions; `true` when the content was compared too.
     pub async fn compare_revisions(&self, document: DocumentId, base: Uuid, target: Uuid) -> bool {
-        let comparison = RevisionComparisonService::new(self.repo.clone(), self.diff.clone())
+        self.try_compare_revisions(document, base, target)
+            .await
+            .expect("revision comparison")
+    }
+
+    /// [`Self::compare_revisions`], returning a refused comparison.
+    pub async fn try_compare_revisions(
+        &self,
+        document: DocumentId,
+        base: Uuid,
+        target: Uuid,
+    ) -> Result<bool, ApplicationError> {
+        RevisionComparisonService::new(self.repo.clone(), self.diff.clone())
             .compare(&editor_ctx(), document, base, target)
             .await
-            .expect("revision comparison");
-        comparison.content_audit_event_id.is_some()
+            .map(|comparison| comparison.content_audit_event_id.is_some())
     }
 
     pub async fn withdraw(
