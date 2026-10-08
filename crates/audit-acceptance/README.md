@@ -28,7 +28,7 @@ cargo test --locked -p audit-acceptance            # Dockerが要る（postgres:
 cargo nextest run -p audit-acceptance              # CI（mise run test:rust）と同じ
 ```
 
-6試験は並列で約15秒（1試験5–8秒）。各試験は大きなstackの専用threadと専用runtimeで動く（未最適化buildでproductionのfutureが既定のtest threadのstackを超えるため）。
+6試験は並列で約20秒（1試験7–11秒）。test binaryの2並列・5並列（負荷時）でも通る。各試験は大きなstackの専用threadと専用runtimeで動く（未最適化buildでproductionのfutureが既定のtest threadのstackを超えるため）。
 
 ## 含まないもの
 
