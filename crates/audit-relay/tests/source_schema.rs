@@ -828,10 +828,25 @@ async fn a_document_login_with_data_bypass_roles_cannot_forge_a_receipt() {
             "document_elsewhere:pg_write_server_files".to_owned()
         )]
     );
+    // A REPLICATION login reads the whole cluster through the replication
+    // protocol: reported whether or not it can connect.
+    exec(
+        admin,
+        "REVOKE pg_write_server_files FROM document_elsewhere; \
+         ALTER ROLE document_elsewhere REPLICATION",
+    )
+    .await;
+    assert_eq!(
+        posture_pairs(worker).await,
+        vec![(
+            "replication_login".to_owned(),
+            "document_elsewhere".to_owned()
+        )]
+    );
     exec(
         admin,
         &format!(
-            "REVOKE pg_write_server_files FROM document_elsewhere; \
+            "ALTER ROLE document_elsewhere NOREPLICATION; \
              GRANT CONNECT ON DATABASE {DOC_DB} TO document_elsewhere"
         ),
     )

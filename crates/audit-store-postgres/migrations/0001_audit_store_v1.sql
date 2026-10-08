@@ -813,6 +813,14 @@ JOIN pg_roles AS p ON p.rolname IN ('pg_read_server_files', 'pg_write_server_fil
 WHERE l.rolcanlogin AND NOT l.rolsuper
   AND pg_has_role(l.oid, p.oid, 'MEMBER')
 UNION ALL
+-- A REPLICATION login reads the whole cluster through the replication
+-- protocol (base backups, WAL: every body and intent) outside every
+-- privilege, like server file access: reported for every non-superuser
+-- login, whether or not it can connect here (the attribute is not
+-- inherited). Replication is outside this boundary, as superusers are.
+SELECT 'replication_login', l.rolname::text FROM pg_roles AS l
+WHERE l.rolcanlogin AND NOT l.rolsuper AND l.rolreplication
+UNION ALL
 SELECT 'schema_usage', CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE g.rolname::text END
 FROM pg_namespace AS n
 CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) AS a

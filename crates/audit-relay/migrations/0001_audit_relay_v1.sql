@@ -1562,6 +1562,15 @@ JOIN pg_roles AS p ON p.rolname IN ('pg_read_server_files', 'pg_write_server_fil
 WHERE l.rolcanlogin AND NOT l.rolsuper
   AND pg_has_role(l.oid, p.oid, 'MEMBER')
 UNION ALL
+-- A REPLICATION login reads the whole cluster through the replication
+-- protocol (base backups, WAL: staged content, commitment salts, receipts)
+-- outside every privilege, like server file access: reported for every
+-- non-superuser login, whether or not it can connect here (the attribute
+-- is not inherited). Replication is outside this boundary, as superusers
+-- are (as in the Store's posture).
+SELECT 'replication_login', l.rolname::text FROM pg_roles AS l
+WHERE l.rolcanlogin AND NOT l.rolsuper AND l.rolreplication
+UNION ALL
 -- Row security on the staging table hides rows from the definer functions
 -- (audit_relay_owner is NOBYPASSRLS): claim and reconcile would silently
 -- skip them. Forced row security on a relay table does the same.

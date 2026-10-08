@@ -510,6 +510,19 @@ async fn posture_is_clean_and_detects_each_violation() {
             format!("DROP ROLE {files}"),
             "predefined_role_member",
         ),
+        // A REPLICATION login reads the whole cluster through the
+        // replication protocol (base backups, WAL): reported for any
+        // non-superuser login, even one that cannot connect here.
+        (
+            format!("CREATE ROLE {files} LOGIN REPLICATION PASSWORD '{PASSWORD}'"),
+            format!("DROP ROLE {files}"),
+            "replication_login",
+        ),
+        (
+            format!("ALTER ROLE {r} REPLICATION"),
+            format!("ALTER ROLE {r} NOREPLICATION"),
+            "replication_login",
+        ),
         (
             "GRANT SELECT (envelope) ON audit_store.event_bodies TO audit_store_reader".into(),
             "REVOKE SELECT (envelope) ON audit_store.event_bodies FROM audit_store_reader".into(),
