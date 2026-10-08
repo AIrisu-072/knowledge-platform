@@ -44,6 +44,8 @@ CIの親が保存したraw logは `/tmp/pr109-runtime-first.log`。既存の実D
 
 head `957dee473e7532cce0a98f84e52dc4640f45758e` のCI `37744476249` / rust-test job `113202619185` は、新しい `nested_initial_originals_publish_with_full_manifest_and_replay` のSIGABRT / stack overflowでFAIL（595 PASS / 1 FAIL、途中停止）。生logは `/tmp/pr109-final-rust-test.log`。スタック上限は変更しない。新しい試験が複数の登録・公開service futureを直接awaitする構造を原因候補として、試験専用の通常関数でそれらを `Pin<Box<dyn Future>>` にし、test futureが保持するservice状態をヒープへ移す。各awaitで保持するfat pointerは2 machine wordsで、実service/repository/FSと全assertionは維持する。製品変更なし。この原因候補と修正の有効性は新しいexact-headの実試験GREENで確認が必要。
 
+heap化head `47c45cc4d5f3df4c9ef69e54d62a955800d08f28` のCI `37746886978` はstack overflowを越えて、初回公開とreplay比較まで進んだが、同じ試験の厳密等値比較でFAIL。logは `/tmp/pr109-boxed-rust-test.log`。初回の `published_at` は `08:15:37.532162847`、PostgreSQLから読むreplayは `08:15:37.532162` で、マイクロ秒未満の桁のDB保存精度差だけだった。既存repository公開試験と同様、合成fixtureのClockを固定whole-secondに変更し、DBのmicrosecond精度で完全表現できる時刻を使う。厳密等値・製品コードは変更しない。残りのassertionはsourceを追跡し、二原本のordinal/bytes/FileIDs、公開ledger1・formal revision1・create2+publish1のdomain/audit各3、拒否時currentなし/revision0/WORKING/ledger0/revision0/domain2/audit2の期待を維持した。新しいexact-headの全回帰試験GREENは未確認。
+
 ローカルfocused `--no-run` を共有target / jobs2 / debug0 / incremental0で試みたが、空き容量が開始時7.0GiBから4.0GiB reserveへ下がったためSIGINTで停止（exit130）、projectのcompileと試験には到達していない。logは `/tmp/kp-originals-stack-build.log`。ローカルRED/GREENやコンパイル成功とは記録しない。修正後のfmt・diff検査は成功。
 
 修正時の空き容量が約4.1GiBのため、4GiB reserveを維持する親の指示に従い共有target再buildを実行していない。新しいrepository回帰試験はnested二原本の初回公開、全順序付き原本の取得・immutable bytes、OCC、同operation replay・再利用拒否、全domain/audit/formal revision件数、欠落graphと未classificationのfail-closedを追加したが、この修正のRust compile/実DBGREENは未実施。既存CIの `rust-test` と実Document runtimeでexact-head資格化が必要。

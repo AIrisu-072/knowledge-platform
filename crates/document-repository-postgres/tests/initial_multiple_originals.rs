@@ -24,7 +24,9 @@ impl IdGenerator for Ids {
 struct Now;
 impl Clock for Now {
     fn now(&self) -> OffsetDateTime {
-        OffsetDateTime::now_utc()
+        // A deterministic whole-second synthetic clock is exactly representable
+        // by PostgreSQL's microsecond timestamps, including strict replay equality.
+        OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap()
     }
 }
 
