@@ -1,5 +1,17 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 文書詳細表示・未読戻しのevent type 2種をcatalogへ加法登録（worktree branch、未push）
+
+- 対象：main PR #106（migration 0012、`current_read_state.rs`）が必須Auditとして書く `document.version.detail_viewed`（VIEW）と `document.version.marked_unread`（RESET）。既存typeは変えていない（rename・意味変更なし）。commit `5e06e15`（catalog・audit-core・Store登録）と、その後のrelay試験・docsのcommit。
+- catalog：両typeとも `DATA_ACCESS`、resource `Document`、version必須（client指定version）、result `success`、subject `document/{resource.id}`、reason `absent`。detailsはproducerの5 key（`document_version_id` uuid・client_chosen、`operation_id` uuid、`expected_read_state_revision`、`resulting_read_state_revision`、`trigger`）が必須で、VIEWだけ `first_record`（boolean、必須）。triggerはtypeごとの1値enum（`detail_display` / `user_reset`）。`operation_id` を `correlation.operation_id` へ写し、`document_version_id` を `resource.version_id` へ束縛する。
+- 新kind（加法）：`safe_counter`（0..=2^53−1）・`positive_safe_counter`（1..=2^53−1）。0012のCHECK（expected 0..9007199254740991、resulting 1..9007199254740991）に合わせた。schemaは `AUDIT_SCHEMA_BLESS=1` で再生成（追加のみ、削除行0）。
+- adapter_versionの判断：既存fixture 31件のdigestは不変（Rust・Storeの両golden）。新typeの行は追加前のcatalogでは投影されず `relay_catalog_skew` で保留されるだけで、その版の保存済み出力が無い。よって `adapter_version` は1のまま、section 1へ新fixture 3件（`detail_viewed/first_record`、`detail_viewed/after_reset`、`marked_unread`）のentryを追記した。規則は `spec/telemetry/README.md`（adapter_versionの規律）に記載。
+- Store：`registered_types`（migration 0001、未releaseのためその場で編集）へ2行追加。件数の試験は21→23（`store_ingest.rs`、`store_port.rs`）。配備順はStoreの登録が先（relayだけ先に更新するとprobeが `store_unregistered_type` でrelay全体を止める）。
+- 試験：投影の受理（3形、最大revision 2^53−1）と拒否（未知key、型・範囲外revision、他typeのtrigger、RESETの `first_record`、VIEWの `first_record` 欠落、nil／束縛違反のversion、nil・大文字のoperation_id、subject・result・resource・reason列）を `legacy_projection.rs`、catalogの形をproducerと照合する試験を `catalog_contract.rs`、schema関係の拒否5件を `common::envelope_rejections` に追加。relayの `every_producer_shape_reaches_the_store_without_reason_text` は、producerと同じ形の3行（初回VIEW、RESET、RESET後のVIEW）を加えて9行すべてが `stored`、本文のdetailsがstagingの `data` と一致、correlationがoperation_id、healthの警報なし・forecast空を確認する。
+- ローカル検証：`cargo metadata --locked` PASS、`cargo test --locked --no-fail-fast -p audit-core -p audit-store-postgres -p audit-relay` 全PASS（core 152＋doc 2〔unit 34、catalog 22、chain 49、envelope 14、golden 5、legacy 16、schema 7、port 5〕、Store 71、relay 50＋ignored 1）、`cargo clippy --locked … --all-targets -- -D warnings`・`cargo fmt --all -- --check`・`cargo run --quiet --locked -p architecture-lint -- check` PASS。
+- 設計からの差分（承認状態：依頼者の指示の範囲内で本trackが採用、確認review未実施）：新kind 2種、型追加ではadapter_versionを上げない規則の明文化、設計§2・§4.3の件数注記とkind表。
+- 次のexact action：修正確認review（security・correctness、今回のcatalog追加を含む）→ 指摘反映 → 最新mainから作り直したbranchへ移してDraft PR → exact-head CI。
+
 ## 2026-10-08 — 最新main（`6a34de3`）を単位Bへ取り込み（worktree branch、未push）
 
 - `git merge origin/main`（merge commit `a538215`、rebaseなし）。競合なし。`active.md` はAudit節と文書・Desktop側の新しい節を両方保持。`Cargo.toml`・`Cargo.lock` はmain側に変更なし、`dependency-rules.toml` はmainの `desktop_shell` 境界の追加のみ。単位Bはmainに対しDocument・Search・Organization・work・outbox-delivery・appsを変更していない。

@@ -91,7 +91,13 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         Staged::metadata_changed(reasons[1]),
         Staged::folder_renamed(reasons[2]),
         Staged::access_policy_changed(),
+        // 2026-10-07 VIEW/RESET addendum (main PR #106): first VIEW, RESET,
+        // VIEW after the reset.
+        Staged::read_state(true, 0, true),
+        Staged::read_state(false, 1, false),
+        Staged::read_state(true, 2, false),
     ];
+    let produced = json!(rows.len());
     for row in &rows {
         env.insert(row).await;
     }
@@ -169,6 +175,26 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         policy["data"].get("reason").is_none(),
         "no reason, not even provided:false"
     );
+    // Read-state events keep the producer's payload as details and carry its
+    // operation id as correlation.
+    for row in &rows[6..] {
+        let body: Value =
+            serde_json::from_str(&env.store_body(row.event_id).await.expect("body")).expect("json");
+        let data = &body["data"];
+        assert_eq!(body["type"], json!(row.event_type));
+        assert_eq!(data["event_class"], json!("DATA_ACCESS"));
+        assert_eq!(data["details"], row.data, "{}", row.event_type);
+        assert_eq!(
+            data["correlation"],
+            json!({"operation_id": row.data["operation_id"]})
+        );
+        assert_eq!(
+            data["resource"],
+            json!({"type": "Document", "id": row.resource_id,
+                   "version_id": row.resource_version_id})
+        );
+        assert!(data.get("reason").is_none());
+    }
 
     // Health keeps produced / delivered / stored / verified apart.
     let report = health(
@@ -181,10 +207,10 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     )
     .await
     .expect("health");
-    assert_eq!(report["produced"]["staged"], json!(6));
-    assert_eq!(report["produced"]["registered"], json!(6));
+    assert_eq!(report["produced"]["staged"], produced);
+    assert_eq!(report["produced"]["registered"], produced);
     assert_eq!(report["produced"]["unregistered"], json!(0));
-    assert_eq!(report["delivered"]["delivered"], json!(6));
+    assert_eq!(report["delivered"]["delivered"], produced);
     assert_eq!(report["delivered"]["pending"], json!(0));
     // The head also counts the Store's own control events (bootstrap,
     // bindings, grants): stored is not the same number as delivered.
@@ -192,7 +218,7 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
         .fetch_one(&env.store_admin)
         .await
         .expect("head");
-    assert!(head > 6);
+    assert!(head > rows.len() as i64);
     assert_eq!(report["stored"]["gate"], json!("ok"));
     assert_eq!(
         report["stored"]["missing_types"],
@@ -202,7 +228,7 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     assert_eq!(report["stored"]["head_seq"], json!(head));
     assert_eq!(report["verified"]["last_verified_seq"], Value::Null);
     assert_eq!(report["verified"]["unverified_events"], json!(head));
-    assert_eq!(report["reconcile"]["counts"]["ok"], json!(6));
+    assert_eq!(report["reconcile"]["counts"]["ok"], produced);
     assert_eq!(report["forecast"], json!({}));
     assert_eq!(report["alarms"], json!([]), "{report}");
     let verifier = AuditAdmin::connect(env.verifier.pool.clone())
@@ -231,8 +257,7 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     assert_eq!(report["verified"]["unverified_events"], json!(1));
     assert_eq!(report["stored"]["head_seq"], json!(verified.seq));
     assert_eq!(
-        report["delivered"]["delivered"],
-        json!(6),
+        report["delivered"]["delivered"], produced,
         "delivered != stored"
     );
     assert_eq!(report["stored"]["denials_pending"], json!(0));

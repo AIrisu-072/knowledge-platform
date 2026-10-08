@@ -75,6 +75,7 @@ sourceごとに1件。envelopeの `provenance` と `correlation.trace_id` の検
 | `uuid` / `nullable_uuid` | 小文字・hyphen付きのcanonical UUID（nil不可。nilの扱いは下記 `nil_client_id`）。値は約16 byteの不透明な値で、versionやvariantは検査しない |
 | `counter` / `nullable_counter` | 0以上 `i64::MAX` 以下 |
 | `positive_counter` / `nullable_positive_counter` | 1以上 `i64::MAX` 以下（nullable はnullも可） |
+| `safe_counter` / `positive_safe_counter` | 0（positiveは1）以上 2^53−1（`MAX_SAFE_INTEGER` = 9007199254740991。JSONの数値が全readerで正確に保たれる上限）以下。producerがこの範囲に制限するcounter（Documentの既読状態revision、migration 0012のCHECK）に使う |
 | `boolean` | 真偽値 |
 | `enum` / `nullable_enum` | `values` のいずれか（nullable はnullも可） |
 | `enum_list` | `values` の要素を1個以上、重複なし |
@@ -173,6 +174,9 @@ catalogはclientが選ぶIDだけに印を付ける：fieldの `client_chosen: t
 - 投影の出力（adapterのcodeと、出力に影響するcatalog属性：event_class、details allowlistとkind、持ち上げるfield、reason扱い、subject形、correlation写像）を変えたら、`LEGACY_ADAPTER_VERSION` とcatalogのDocument adapterの `adapter_version` を同時に上げ、新しいversion sectionを追加し、1つ前のsectionのdigestを `FROZEN_SECTION_DIGESTS` に加える。
 - 失敗messageは問題のentryだけを示す。新しいkeyはdigest付きで（追加用）、digestの変わったkeyはkeyだけを「projection output changed: bump LEGACY_ADAPTER_VERSION and add a new version section; never edit an existing version's entries」とともに示す（変わったdigestは示さない）。
 - `LEGACY_ADAPTER_VERSION` とcatalogのadapter_versionの一致も試験で確認する。
+- typeの追加は投影の変更ではない。既存typeのentryとその出力（既存entryのdigest）を変えずにcatalogへentryを足す場合、`adapter_version` は上げない。新typeの行は、追加前のcatalogでは投影されず（relayが `relay_catalog_skew` として保留する。quarantineも保存もしない）、その版で保存された出力が存在しないためである。新typeの代表fixtureを追加し、そのentryを現在のsectionへ追記する（Storeの `store-envelope-golden.json` も同じ）。Storeの `registered_types` には (source, 新type, 現在のadapter_version) を加える。既存entryのdigestが1つでも変われば、上の規則どおり版を上げる。
+  - 2026-10-08：`document.version.detail_viewed` と `document.version.marked_unread`（main PR #106、migration 0012）をこの規則で追加した（adapter_version 1のまま、section 1へ3 entryを追記）。
+  - 配備順：Storeの `registered_types` に無いtypeをrelayのcatalogが期待すると、probeが `store_unregistered_type` になりrelay全体が配送を止める。新typeを登録したStoreを先に（または同時に）配備し、その後relayを新catalogへ更新する。新typeを知らないrelayは、そのtypeの行だけを `relay_catalog_skew` として保留し（他の行は配送する）、healthが `catalog_skew_held` / `relay_held` を出し続ける。catalogを更新すれば保留行はそのまま配送できる。
 
 ## schema生成とRust⊂schema
 
@@ -380,7 +384,7 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 
 `envelope_too_large`、`invalid_json`、`duplicate_key`、`invalid_envelope`、`unknown_event_type`、`control_type_forbidden`、`invalid_source`、`invalid_subject`、`invalid_resource`、`nil_client_id`、`invalid_result`、`invalid_actor`、`invalid_service_executor`、`unknown_field`、`missing_field`、`invalid_field`、`invalid_correlation`、`invalid_source_correlation`、`invalid_reason`、`reason_not_string`、`actor_mismatch`、`source_row_too_large`、`source_digest_mismatch`、`invalid_provenance`、`invalid_extensions`。拒否は、codeと、catalogのfield名または固定の位置名（`type`、`source`、`data.resource.type`、`data.resource.id` 等）だけを持つ。payloadの値は含めない。
 
-## producerとの対応（main `d515aa3`）
+## producerとの対応（main `d515aa3`。VIEW/RESETの2種はmain `6a34de3`）
 
 | type | producer |
 |---|---|
@@ -395,6 +399,7 @@ epochの規則：epoch 1から始まり、増加は常に+1で、`audit.recovery
 | `access_policy.changed` | `access_policy.rs`（通常・bootstrap） |
 | `authorization.denied` | `targeted_events.rs`（`access_policy.rs`・`read_state.rs` から） |
 | `document.version.read_confirmed` | `read_state.rs` |
+| `document.version.detail_viewed`、`document.version.marked_unread` | `current_read_state.rs`（実遷移だけ。`resulting = expected + 1`、`first_record` はVIEWだけ） |
 | `document.file.access_granted` | `file_access.rs` |
 | `document.diff.result_access_granted` | `document_diff_access.rs` |
 | `document.revision_comparison.result_access_granted` | `document_revision_read.rs` |

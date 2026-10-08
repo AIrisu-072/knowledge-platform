@@ -699,6 +699,36 @@ impl Staged {
         )
     }
 
+    /// `document.version.detail_viewed` (VIEW, with `first_record`) or
+    /// `document.version.marked_unread` (RESET) as `current_read_state.rs`
+    /// stages a real transition: `document/{id}` subject, the version as
+    /// resource version, no trace id, `resulting = expected + 1`.
+    pub fn read_state(view: bool, expected: i64, first_record: bool) -> Self {
+        let doc = Uuid::now_v7();
+        let ver = Uuid::now_v7();
+        let (event_type, trigger) = if view {
+            ("document.version.detail_viewed", "detail_display")
+        } else {
+            ("document.version.marked_unread", "user_reset")
+        };
+        let mut data = json!({
+            "document_version_id": ver,
+            "operation_id": Uuid::now_v7(),
+            "expected_read_state_revision": expected,
+            "resulting_read_state_revision": expected + 1,
+            "trigger": trigger
+        });
+        if view {
+            data["first_record"] = json!(first_record);
+        }
+        Self::base(
+            event_type,
+            format!("document/{doc}"),
+            ("Document", doc, Some(ver)),
+            data,
+        )
+    }
+
     pub fn with_data(mut self, data: Value) -> Self {
         self.data = data;
         self

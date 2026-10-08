@@ -28,7 +28,7 @@ Status: DESIGN REVISION 3（独立review 1・再review・最終reviewの指摘�
 
 | Capability | main現状 | 根拠 | 本設計 |
 |---|---|---|---|
-| 生成（Document 21種） | 実装・検証済み。ただし一部の試験が欠落 | `document-repository-postgres/src` の13箇所がINSERTする。`authorization.denied` の試験は0件。`version.created/updated/rebased`、schedule系、`withdrawn`、`document.moved`、`folder.renamed`、`revision_comparison` にはaudit失敗の試験が無い | Producerは変更しない。E2E受入で代表operationを実証する |
+| 生成（Document 21種。main `6a34de3` のVIEW/RESET追補で23種。現在の一覧の正本は `spec/telemetry/audit-event-catalog.json`） | 実装・検証済み。ただし一部の試験が欠落 | `document-repository-postgres/src` の13箇所がINSERTする。`authorization.denied` の試験は0件。`version.created/updated/rebased`、schedule系、`withdrawn`、`document.moved`、`folder.renamed`、`revision_comparison` にはaudit失敗の試験が無い | Producerは変更しない。E2E受入で代表operationを実証する |
 | atomic staging | 実装・検証済み。ただし未試験の種別あり | 業務tx内でINSERTし、失敗すればrollbackする。failure trigger試験は8系統 | 配送登録をstagingと同一txで行い（§5）、登録失敗時に業務がrollbackすることを試験する |
 | schema | 実装不完全 | SQL列は固定されているが、`data` のshapeもsizeも検証されない。`spec/telemetry/` は存在しない | catalogからschemaを生成し、runtimeで検証する（§4） |
 | CloudEvents | 仕様のみ | OA §13。SDKはPOC REQUIRED | 自前のstructured JSON envelope（決定記録、§4.1） |
@@ -133,6 +133,7 @@ Status: DESIGN REVISION 3（独立review 1・再review・最終reviewの指摘�
   |---|---|
   | `uuid` / `nullable_uuid` | canonicalな小文字UUID |
   | `counter` / `nullable_counter` / `positive_counter` | i64整数 |
+  | `safe_counter` / `positive_safe_counter` | 0（positiveは1）以上2^53−1以下の整数（Documentの既読状態revision） |
   | `boolean` | 真偽値 |
   | `enum` / `nullable_enum` / `enum_list` | 閉じた値集合 |
   | `digest` / `nullable_digest` | 0–255の整数32個 |

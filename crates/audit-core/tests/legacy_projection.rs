@@ -628,7 +628,11 @@ fn read_state_rows_project_the_producer_shape_and_quarantine_drift() {
         cases.push(("result", row, at(C::InvalidResult, "data.result")));
         let mut row = fixture_named(name).row;
         row.resource_type = "Folder".to_owned();
-        cases.push(("resource type", row, at(C::InvalidResource, "data.resource")));
+        cases.push((
+            "resource type",
+            row,
+            at(C::InvalidResource, "data.resource"),
+        ));
         let mut row = fixture_named(name).row;
         row.reason_kind = Some("string".to_owned());
         row.reason_bytes = Some(4);
