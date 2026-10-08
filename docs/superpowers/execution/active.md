@@ -8,6 +8,8 @@
 - 保存先は同一[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)、製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45`。独立レビューGO、固定Node24.21.0 GUI1740件/Chromium mock機能8件成功、golden比較は未資格。最新保存headとhosted結果はPR Checks/説明を読み直す。main統合はクラウド親が順序を調整する。
 - 文書head `d99d2f54` のCI `37731740750` は実runtimeの移動後read刷新でFAIL。遅い両GETによるREDを確認し、通常版queryのSignal消費を旧契約へ戻しhistory用途の保護を保持する最小修正を準備した。修正headの独立レビュー・全CIを取り直す。詳細は状況文書。
 - 修正の独立レビューGO、独立7case・関連318件・全体1741件・型/build/diff検査成功。親がPR107統合後main `e67aaccc` への追従と、正確head全gate成功後のguard付きmain統合を承認した。次はmain取り込みheadの全CI、その後統合後CI。設計待ち機能は未実装のまま。
+- `196f5e04` は同headruntime再試験後に通常14jobs・DSI・Sandbox成功（16成功/skip3）。初回Organization persistence finding503は根因未確定として保持。統合直前にmainがTauri PR103の `8d4b94a9` へ進んだため競合なく追従し、文書featureを保持して新組合せのreview/全gateを確認する。双方のactive節を保持。最新headと最終結果はPR108説明/Checksへ記録する。
+- Tauri取り込み製品head `82a25431` の独立review GO、GUI74 suites1756件・型/build/diff成功。最後の文書追記はsource不変。次は保存headの全hosted gate、成功後のhead-guard統合、統合後main CI。設計回答は親が確認中で未承認のまま。
 
 ---
 

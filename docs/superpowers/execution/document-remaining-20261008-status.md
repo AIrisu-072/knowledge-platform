@@ -10,6 +10,12 @@ PR作成直後の製品headでは通常CI `37731617010`、DSI PoC `37731617017`�
 
 CI修正は独立レビューGO、独立7境界case成功。関連6 suites318件、全体74 suites **1741件成功 / 0失敗 / 0skip**、TypeScript、production build、diff check成功。新main `e67aaccc87644896ea1a58823dafadb6bf0b12d5` はPR107のDocument検査修正2filesと状況文書だけで、GUIと担当file重複なし。これを同じPR108に取り込んで最終headの全gateを取り直し、全成功と独立レビュー後のexpected-head guard付き統合は親から承認済み。統合後CIまで確認する。
 
+統合head `196f5e04f850c399a171fe7c3b1975b29c82e931` は独立レビューGO。CI `37733569481` 初回はDocument実metadata-editor（移動後刷新を含む）成功、Organization再起動後persistenceのfinding GETが503でruntimeとrequired-checkがFAIL。他12通常jobsはSUCCESS。独立読取調査ではOrganization/backend/harness差分なし、readiness成功後の503でDB/provider依存または5秒の鮮度制約の可能性があるが根因未確定。同時期のmain runtime `37733428177` はSUCCESS。同じheadで失敗job全体を一度再試験し、通常14jobsすべてSUCCESS。DSI `37733569479`、Sandbox `37733569495` もSUCCESS（19checks中16成功・既存skip3）。初回503は解決済みとせず根因未確定の過去失敗として保持する。
+
+統合直前にmainがTauri PR103の `8d4b94a912f9ac2e8079fc1c13b4efa4ce6d7538` へ進んだため、上記成功を新組合せへ転用せず追従した。40 upstream filesを競合なく取り込み、双方のactive pointerを保持。製品の文書履歴/改訂featureは変更しない。新headのreviewとGUI全体/型/buildおよび全hosted gatesを取り直す。最新資格はheadを変えないPR説明/Checksへ記録する。
+
+Tauri取り込み製品head `82a25431b8c1f23908fbbb340823b880d6bdf7d5` の独立review GO。上流39files（active除外）はmainと、PR製品22files（active除外）は旧レビュー済みheadと完全一致。activeは双方の全pointerを保持。固定Node24.21.0でGUI **74 suites1756件成功 / 0失敗 / 0skip**、型、build、diff成功。最後の追記は文書だけでsource/試験を変えず、最新保存headの全hosted結果をPR説明/Checksで確認する。
+
 ## 現在の境界
 
 元checkoutにはactive/statusの未コミット変更があり、そのまま保全した。別コピー `/Users/airisu/Documents/Codex/2026-10-08/task/knowledge-platform` で最新mainを取得した。repositoryに `.agents/skills` は存在しない。ユーザーのsession保存領域は参照していない。
