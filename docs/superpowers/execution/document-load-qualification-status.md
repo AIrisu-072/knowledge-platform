@@ -94,3 +94,7 @@ CIは終端14job中12成功（Rust test/static・両macOS parity等を含む）�
 13:49:25 UTCの「確認待ちの4点は進めてください」により、提示済みA（既存エンジンで文字中心PDFの描画・タグ意味を限定対応、Diffも検証、未知構造は拒否）の承認を受領。main114 `7f5dd26bb96d65f1dd478e644e9480d8666ebb7d` を競合なく保持した。旧成功corpusのfingerprint/evidence不変を互換条件にし、新profile・旧版identity移行が必要なら別判断を求める。
 
 最初の変更はPDF paint契約のtest-only5件（default状態不変、vector形状・色の差、同値数値/default、包含clip）であり、製品codeは未変更。PDFiumの別process rasterでfixture表示差も検証する。cloudにRustがなく、Macの正確sourceによるRED確認待ち。smallの前回FAILと大量未資格は維持する。
+
+14:13追補：Macでtest-only head a7f759feのactual REDを確認。固定Rust1.98.1/PDFiumでcompile成功、既存6成功・追加5失敗（UnsupportedSemanticConstruct）・既存raster子test1 ignore。旧main114の15合成PDFbaselineは10成功full evidence＋5拒否として別保持。これはLinux sandbox資格ではない。
+
+最初のgraphics incrementはfinite opaque path/default state・vector projection・矩形clipの包含証明を追加する。独立レビューでDefaultGray/RGB override、stroke-text状態の欠落、vectorで一部textを隠す順序曖昧性を発見し、限定拒否と回帰fixtureを追加した。文字/Formとvectorの交差は初段拒否。strokeはsegmentの保守的bounds、clipは任意epsilonなし、proof回数にも上限を設ける。固定PDFium151での新fixture実行と旧baseline比較は次Mac試行待ち。タグ15件はtest-onlyで、gs/tag/Diff製品対応は未実装。公式smallは引き続き失敗/未資格である。

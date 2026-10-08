@@ -81,3 +81,11 @@ DSI cacheはfile＋profile、Diff cacheもsnapshot＋profile等がkeyで、worke
 6. smallと再起動保持が成功した後だけ、計測済み資源から次段階のadmissionを判断する。
 
 変更対象はPDF worker内部module/tests、Diff adapter/cache/tests、専用検証harness/docs。GUI、directory、scheduler、生成API model、原本、既存quality gate、sandbox契約を変更しない。cloudがsource/testを所有し、Macは同一commitのRust baseline/RED/GREENを検証する。実Linux資格はhosted既存runnerで行う。
+
+### 初段の明示的な制限
+
+934にも既定のpage-level Transparency group（DeviceRGB）がある。拡張入力ではNormal・完全不透明paintだけを許可する条件と合わせて検査する。Form group/soft mask/未知keyは引き続き拒否する。page groupの存在を検証せず許可しない。
+
+934のclip左端はMediaBoxより約0.000008871pt内側なので、任意epsilonで広げない。変換済み軸平行矩形が実際のnative text/object/path boundsを包含する場合だけ、意味へ影響しないclipと証明する。stroke boundsは保守的に広げ、証明不能・文字/image/pathを切るclipは拒否する。既存Form imageのBBox/CTM projectionは変更しない。
+
+初段は黒textとopaque vector色を対象にする。非黒textの文字範囲対応やTable構造は検証できるまでは拒否し、935全体の成功を約束しない。色spaceのdefault override、未知state、未解釈構造を単にallowlistへ追加しない。

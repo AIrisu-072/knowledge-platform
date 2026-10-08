@@ -19,6 +19,8 @@ use crate::{WorkerFailure, WorkerFailureCode};
 
 use super::{AdapterProfile, SemanticAdapter, SemanticAdapterOutput, canonical_json_bytes};
 
+mod graphics;
+
 const PDFIUM_RELEASE: &str = "151.0.7881.0";
 const MAX_DECOMPRESSED_STREAM: usize = 64 * 1024 * 1024;
 const MAX_PDF_OBJECT_DEPTH: usize = 64;
@@ -45,6 +47,9 @@ struct LopdfFacts {
     form_field_count: usize,
     image_paints: Vec<Vec<Value>>,
     paint_orders: Vec<Vec<&'static str>>,
+    vector_paints: Vec<Vec<Value>>,
+    safety_clips: Vec<Vec<[f64; 4]>>,
+    vector_bounds: Vec<Vec<[f64; 4]>>,
 }
 
 impl PdfAdapter {
@@ -131,9 +136,15 @@ impl PdfAdapter {
         let mut editorial = EditorialProvenance::default();
         let mut any_text = false;
         let mut total_images = 0usize;
+        let mut total_vectors = 0usize;
 
         for (page_index, page) in pages.iter().enumerate() {
             validate_pdfium_read_order(&page, page_index)?;
+            graphics::validate_clip_bounds(
+                &page,
+                &structural.safety_clips[page_index],
+                &structural.vector_bounds[page_index],
+            )?;
 
             let text = page
                 .text()
@@ -260,13 +271,19 @@ impl PdfAdapter {
             let image_paints = structural.image_paints[page_index].clone();
             total_images = total_images.saturating_add(image_paints.len());
 
-            semantic_pages.push(json!({
+            let mut semantic_page = json!({
                 "index": page_index,
                 "text": text,
                 "links": links,
                 "images": image_paints,
                 "paint_order": structural.paint_orders[page_index],
-            }));
+            });
+            let vectors = &structural.vector_paints[page_index];
+            total_vectors = total_vectors.saturating_add(vectors.len());
+            if !vectors.is_empty() {
+                semantic_page["vectors"] = json!(vectors);
+            }
+            semantic_pages.push(semantic_page);
         }
 
         if !any_text && total_images > 0 {
@@ -330,7 +347,7 @@ impl PdfAdapter {
         if !structural.annotation_counts.iter().any(|count| *count > 0) {
             output = output.with_capability_state("annotations", CapabilityState::Absent)?;
         }
-        if total_images == 0 {
+        if total_images == 0 && total_vectors == 0 {
             output = output.with_capability_state("visual_content", CapabilityState::Absent)?;
         }
         output =
@@ -520,6 +537,9 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
     let mut link_counts = Vec::with_capacity(pages.len());
     let mut image_paints = Vec::with_capacity(pages.len());
     let mut paint_orders = Vec::with_capacity(pages.len());
+    let mut vector_paints = Vec::with_capacity(pages.len());
+    let mut safety_clips = Vec::with_capacity(pages.len());
+    let mut vector_bounds = Vec::with_capacity(pages.len());
     let mut form_names = BTreeSet::new();
 
     for (page_number, page_id) in pages {
@@ -535,6 +555,10 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
             paint_order: Vec::new(),
             operations_seen: 0,
             decode_budget,
+            vector_paints: Vec::new(),
+            safety_clips: Vec::new(),
+            vector_bounds: Vec::new(),
+            path_segments: 0,
         };
         collect_content_paints(
             &mut paint_context,
@@ -627,6 +651,9 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         link_counts.push(link_count);
         image_paints.push(paint_context.paint_events);
         paint_orders.push(paint_context.paint_order);
+        vector_paints.push(paint_context.vector_paints);
+        safety_clips.push(paint_context.safety_clips);
+        vector_bounds.push(paint_context.vector_bounds);
     }
 
     Ok(LopdfFacts {
@@ -636,6 +663,9 @@ fn extract_lopdf_facts(document: &Document) -> Result<LopdfFacts, WorkerFailure>
         form_field_count: form_names.len(),
         image_paints,
         paint_orders,
+        vector_paints,
+        safety_clips,
+        vector_bounds,
     })
 }
 
@@ -666,6 +696,7 @@ struct PdfGraphicsState {
     ctm: [f64; 6],
     clips: Vec<PdfClip>,
     text_render_mode: i64,
+    extended: graphics::GraphicsState,
 }
 
 impl Default for PdfGraphicsState {
@@ -674,6 +705,7 @@ impl Default for PdfGraphicsState {
             ctm: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             clips: Vec::new(),
             text_render_mode: 0,
+            extended: graphics::GraphicsState::default(),
         }
     }
 }
@@ -692,6 +724,10 @@ struct PdfPaintContext<'a> {
     paint_order: Vec<&'static str>,
     operations_seen: usize,
     decode_budget: PdfDecodeBudget,
+    vector_paints: Vec<Value>,
+    safety_clips: Vec<[f64; 4]>,
+    vector_bounds: Vec<[f64; 4]>,
+    path_segments: usize,
 }
 
 fn decode_page_content(
@@ -893,6 +929,7 @@ fn collect_content_paints(
     }
 
     let mut saved_states = Vec::new();
+    let mut path = graphics::PathState::default();
     for operation in operations {
         context.operations_seen = context.operations_seen.saturating_add(1);
         enforce_operation_limit(context.operations_seen, page_number, "operation traversal")?;
@@ -923,6 +960,10 @@ fn collect_content_paints(
                 validate_finite_matrix(&state.ctm, page_number)?;
             }
             "Do" => {
+                if !graphics::text_is_supported(state) {
+                    return Err(failure(WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "nondefault color with PDF XObject is not qualified"));
+                }
                 let [Object::Name(name)] = operation.operands.as_slice() else {
                     return Err(failure(
                         WorkerFailureCode::ParserDisagreement,
@@ -938,6 +979,10 @@ fn collect_content_paints(
                 validate_selected_font(context.document, resources, operation, page_number)?;
             }
             "Tj" | "TJ" | "'" | "\"" => {
+                if !graphics::text_is_supported(state) {
+                    return Err(failure(WorkerFailureCode::UnsupportedSemanticConstruct,
+                        "nonblack PDF text is not qualified"));
+                }
                 if text_show_has_bytes(operation, page_number)?
                     && state.text_render_mode != 3
                     && context.paint_order.last().copied() != Some("text")
@@ -947,6 +992,9 @@ fn collect_content_paints(
             }
             "BT" | "ET" | "Tc" | "Tw" | "Tz" | "TL" | "Ts" | "Td" | "TD" | "Tm" | "T*" => {}
             operator => {
+                if graphics::handle(context, operation, state, &mut path, resources)? {
+                    continue;
+                }
                 return Err(failure(
                     WorkerFailureCode::UnsupportedSemanticConstruct,
                     format!("unsupported PDF page {page_number} content operator: {operator}"),
@@ -954,6 +1002,7 @@ fn collect_content_paints(
             }
         }
     }
+    graphics::finish(&path)?;
     if !saved_states.is_empty() {
         return Err(failure(
             WorkerFailureCode::ParserDisagreement,
