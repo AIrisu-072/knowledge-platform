@@ -125,12 +125,25 @@ impl LexicalBuildInput {
     pub(crate) fn body_units(&self) -> Option<Vec<&KnowledgeUnit>> {
         self.body_units.as_ref().map(|units| units.0.units())
     }
+
+    /// The body Units' seal entries their source already holds.
+    pub(crate) fn body_seal_entries(&self) -> Option<Vec<crate::UnitSealEntry>> {
+        self.body_units
+            .as_ref()
+            .and_then(|units| units.0.seal_entries())
+    }
 }
 
 /// Units a lexical build reads without owning them.
 pub trait UnitSource: Send + Sync {
     /// Every Unit, in the caller's order.
     fn units(&self) -> Vec<&KnowledgeUnit>;
+
+    /// Every Unit's ID and `unit_doc_hash`, when the source keeps them for
+    /// Units it has hashed before; `None` makes the build hash every Unit.
+    fn seal_entries(&self) -> Option<Vec<crate::UnitSealEntry>> {
+        None
+    }
 }
 
 impl UnitSource for Vec<KnowledgeUnit> {
@@ -346,7 +359,7 @@ impl TantivyLexicalIndex {
                 .iter()
                 .map(|document| document.resource_ref)
                 .collect();
-            let mut seen = std::collections::BTreeSet::new();
+            let mut seen = std::collections::HashSet::with_capacity(units.len());
             for unit in units.iter() {
                 if unit.version.source_id != key.source_id {
                     return Err(LexicalIndexError::UnitSourceMismatch);
@@ -369,7 +382,11 @@ impl TantivyLexicalIndex {
                     let target = dir.join(crate::persist::UNITS_DIR);
                     let from_base = match &input.base_units_dir {
                         Some(base) => crate::body::build_unit_index_from_base(
-                            units, base, &target, tokenizer,
+                            units,
+                            input.body_seal_entries(),
+                            base,
+                            &target,
+                            tokenizer,
                         )?,
                         None => None,
                     };

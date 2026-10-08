@@ -8,7 +8,7 @@
 //! are cached per process by segment and store-file identity, so an unchanged
 //! segment is read and checked once per process.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -256,6 +256,7 @@ pub(crate) fn build_unit_index_at(
 /// then builds from nothing. Merging is off, so linked segments stay shared.
 pub(crate) fn build_unit_index_from_base(
     units: &[&KnowledgeUnit],
+    entries: Option<Vec<UnitSealEntry>>,
     base: &Path,
     dir: &Path,
     tokenizer: &str,
@@ -288,14 +289,24 @@ pub(crate) fn build_unit_index_from_base(
         std::fs::remove_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
         return Ok(None);
     };
-    let before: BTreeMap<UnitId, [u8; 32]> = previous_units
+    let before: HashMap<UnitId, [u8; 32]> = previous_units
         .iter()
         .map(|entry| (entry.unit_id, entry.hash))
         .collect();
-    let after: BTreeMap<UnitId, [u8; 32]> = units
-        .iter()
-        .map(|unit| Ok((unit.unit_id, unit_doc_hash(unit)?)))
-        .collect::<Result<_, LexicalIndexError>>()?;
+    // The entries the Unit source keeps, else every Unit hashed here.
+    let after: HashMap<UnitId, [u8; 32]> = match entries {
+        Some(entries) if entries.len() == units.len() => entries
+            .into_iter()
+            .map(|entry| (entry.unit_id, entry.hash))
+            .collect(),
+        _ => units
+            .iter()
+            .map(|unit| Ok((unit.unit_id, unit_doc_hash(unit)?)))
+            .collect::<Result<_, LexicalIndexError>>()?,
+    };
+    if after.len() != units.len() {
+        return Err(LexicalIndexError::DuplicateUnit);
+    }
     let mut writer: tantivy::IndexWriter = index.index.writer(15_000_000)?;
     writer.set_merge_policy(Box::new(NoMergePolicy));
     for (unit_id, hash) in &before {
@@ -454,17 +465,20 @@ pub fn lexical_input_digest(
     input: &LexicalBuildInput,
 ) -> Result<LexicalInputDigest, LexicalIndexError> {
     let units = input.body_units();
-    let entries = units
-        .as_deref()
-        .unwrap_or(&[])
-        .iter()
-        .map(|unit| {
-            Ok(UnitSealEntry {
-                unit_id: unit.unit_id,
-                hash: unit_doc_hash(unit)?,
+    let entries = match input.body_seal_entries() {
+        Some(entries) => entries,
+        None => units
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(|unit| {
+                Ok(UnitSealEntry {
+                    unit_id: unit.unit_id,
+                    hash: unit_doc_hash(unit)?,
+                })
             })
-        })
-        .collect::<Result<Vec<_>, LexicalIndexError>>()?;
+            .collect::<Result<Vec<_>, LexicalIndexError>>()?,
+    };
     lexical_digest(
         units.is_some(),
         input.analyzer_version(),
