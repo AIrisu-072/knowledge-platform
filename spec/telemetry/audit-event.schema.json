@@ -3388,6 +3388,258 @@
         }
       }
     },
+    "event.document.version.detail_viewed": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.detail_viewed"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "document_version_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "expected_read_state_revision": {
+                  "$ref": "#/$defs/safe_counter"
+                },
+                "first_record": {
+                  "$ref": "#/$defs/boolean"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resulting_read_state_revision": {
+                  "$ref": "#/$defs/positive_safe_counter"
+                },
+                "trigger": {
+                  "enum": [
+                    "detail_display"
+                  ]
+                }
+              },
+              "required": [
+                "document_version_id",
+                "operation_id",
+                "expected_read_state_revision",
+                "resulting_read_state_revision",
+                "trigger",
+                "first_record"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
+    "event.document.version.marked_unread": {
+      "anyOf": [
+        {
+          "properties": {
+            "subject": {
+              "pattern": "^document/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "document.version.marked_unread"
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "correlation": {
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "source_correlation_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "operation_id"
+              ],
+              "type": "object"
+            },
+            "details": {
+              "additionalProperties": false,
+              "properties": {
+                "document_version_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "expected_read_state_revision": {
+                  "$ref": "#/$defs/safe_counter"
+                },
+                "operation_id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "resulting_read_state_revision": {
+                  "$ref": "#/$defs/positive_safe_counter"
+                },
+                "trigger": {
+                  "enum": [
+                    "user_reset"
+                  ]
+                }
+              },
+              "required": [
+                "document_version_id",
+                "operation_id",
+                "expected_read_state_revision",
+                "resulting_read_state_revision",
+                "trigger"
+              ],
+              "type": "object"
+            },
+            "event_class": {
+              "const": "DATA_ACCESS"
+            },
+            "extensions": {
+              "$ref": "#/$defs/extensions"
+            },
+            "provenance": {
+              "$ref": "#/$defs/provenance.document-audit-outbox-v0"
+            },
+            "resource": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "type": {
+                  "enum": [
+                    "Document"
+                  ]
+                },
+                "version_id": {
+                  "$ref": "#/$defs/uuid"
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "version_id"
+              ],
+              "type": "object"
+            },
+            "result": {
+              "enum": [
+                "success"
+              ]
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "event_class",
+            "action",
+            "actor",
+            "resource",
+            "result",
+            "correlation",
+            "details",
+            "extensions",
+            "provenance"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "const": "urn:knowledge-platform:document-platform"
+        }
+      }
+    },
     "event.document.version.publication.cancelled": {
       "anyOf": [
         {
@@ -4904,6 +5156,11 @@
       "minimum": 1,
       "type": "integer"
     },
+    "positive_safe_counter": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
     "principal": {
       "additionalProperties": false,
       "properties": {
@@ -5023,6 +5280,11 @@
         }
       ],
       "description": "Control events only: a resource id (canonical UUID, nil included, or audit-store)"
+    },
+    "safe_counter": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
     },
     "utc_timestamp": {
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$",
@@ -5307,6 +5569,36 @@
       },
       "then": {
         "$ref": "#/$defs/event.document.version.read_confirmed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.detail_viewed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.detail_viewed"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document.version.marked_unread"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/event.document.version.marked_unread"
       }
     },
     {
@@ -5629,6 +5921,8 @@
         "folder.moved",
         "access_policy.changed",
         "document.version.read_confirmed",
+        "document.version.detail_viewed",
+        "document.version.marked_unread",
         "document.file.access_granted",
         "document.diff.result_access_granted",
         "document.revision_comparison.result_access_granted",

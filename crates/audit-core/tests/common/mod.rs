@@ -531,6 +531,41 @@ pub fn accepted_fixtures() -> Vec<Fixture> {
             ),
             none(),
         ),
+        // current_read_state.rs (2026-10-07 VIEW/RESET addendum): only real
+        // transitions are staged, so resulting = expected + 1.
+        fixture(
+            "document.version.detail_viewed/first_record",
+            row(
+                "document.version.detail_viewed",
+                &ds,
+                version,
+                "success",
+                read_state_data(0, "detail_display", Some(true)),
+            ),
+            op(OP),
+        ),
+        fixture(
+            "document.version.detail_viewed/after_reset",
+            row(
+                "document.version.detail_viewed",
+                &ds,
+                version,
+                "success",
+                read_state_data(2, "detail_display", Some(false)),
+            ),
+            op(OP),
+        ),
+        fixture(
+            "document.version.marked_unread",
+            row(
+                "document.version.marked_unread",
+                &ds,
+                version,
+                "success",
+                read_state_data(1, "user_reset", None),
+            ),
+            op(OP),
+        ),
         fixture(
             "document.file.access_granted/diff_display",
             traced(
@@ -674,6 +709,21 @@ fn denied_row(action: &str) -> DocumentStagingProjection {
     )
 }
 
+/// The `data` of `document.version.detail_viewed` / `marked_unread` as
+/// `current_read_state.rs` builds it: `first_record` only on VIEW.
+pub fn read_state_data(expected: i64, trigger: &str, first_record: Option<bool>) -> Value {
+    let mut data = json!({
+        "document_version_id": VER, "operation_id": OP,
+        "expected_read_state_revision": expected,
+        "resulting_read_state_revision": expected + 1,
+        "trigger": trigger
+    });
+    if let Some(first) = first_record {
+        data["first_record"] = json!(first);
+    }
+    data
+}
+
 fn diff_data(verdict: &str, coverage: &str, cache_hit: bool) -> Value {
     json!({
         "base_version_id": BASE_VER, "target_version_id": VER,
@@ -705,7 +755,9 @@ pub fn kind_sample(field: &audit_core::catalog::FieldSpec) -> Value {
         Kind::Counter
         | Kind::NullableCounter
         | Kind::PositiveCounter
-        | Kind::NullablePositiveCounter => json!(7),
+        | Kind::NullablePositiveCounter
+        | Kind::SafeCounter
+        | Kind::PositiveSafeCounter => json!(7),
         Kind::Boolean => json!(true),
         Kind::Enum | Kind::NullableEnum => json!(field.values[0]),
         Kind::EnumList => json!([field.values[0]]),
@@ -856,6 +908,8 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
     let diff = || envelope_of("document.diff.result_access_granted/compare");
     let doc_created = || envelope_of("document.created");
     let folder_created = || envelope_of("folder.created");
+    let viewed = || envelope_of("document.version.detail_viewed/first_record");
+    let unread = || envelope_of("document.version.marked_unread");
     let case = |name, value: Value, expected, rust_only| EnvelopeCase {
         name,
         input: Input::Value(value),
@@ -999,6 +1053,44 @@ pub fn envelope_rejections() -> Vec<EnvelopeCase> {
                 json!(-1),
             ),
             at(C::InvalidField, "resultingDocumentRevision"),
+            None,
+        ),
+        case(
+            "read_state_revision_over_safe_integer",
+            set(
+                viewed(),
+                "/data/details/resulting_read_state_revision",
+                json!(audit_core::kinds::MAX_SAFE_INTEGER + 1),
+            ),
+            at(C::InvalidField, "resulting_read_state_revision"),
+            None,
+        ),
+        case(
+            "read_state_revision_negative",
+            set(
+                unread(),
+                "/data/details/expected_read_state_revision",
+                json!(-1),
+            ),
+            at(C::InvalidField, "expected_read_state_revision"),
+            None,
+        ),
+        case(
+            "read_state_trigger_of_the_other_type",
+            set(viewed(), "/data/details/trigger", json!("user_reset")),
+            at(C::InvalidField, "trigger"),
+            None,
+        ),
+        case(
+            "read_state_first_record_on_reset",
+            set(unread(), "/data/details/first_record", json!(false)),
+            at(C::UnknownField, details),
+            None,
+        ),
+        case(
+            "read_state_first_record_not_boolean",
+            set(viewed(), "/data/details/first_record", json!("true")),
+            at(C::InvalidField, "first_record"),
             None,
         ),
         case(

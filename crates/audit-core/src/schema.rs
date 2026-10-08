@@ -21,7 +21,7 @@ use crate::envelope::{
 use crate::json::canonicalize;
 use crate::kinds::{
     Kind, MAX_CODE_BYTES, MAX_CONTROL_LIST, MAX_DB_ROLE_BYTES, MAX_EVENT_TYPE_BYTES,
-    MAX_PRINCIPAL_PART_BYTES, MAX_STRING_BYTES, MAX_UUID_LIST, NIL_UUID,
+    MAX_PRINCIPAL_PART_BYTES, MAX_SAFE_INTEGER, MAX_STRING_BYTES, MAX_UUID_LIST, NIL_UUID,
 };
 
 /// Repository path of the generated schema, relative to the workspace root.
@@ -58,6 +58,8 @@ fn shared_definitions() -> Map<String, Value> {
     put("counter", int(0, i64::MAX));
     put("nullable_counter", nullable("counter"));
     put("positive_counter", int(1, i64::MAX));
+    put("safe_counter", int(0, MAX_SAFE_INTEGER));
+    put("positive_safe_counter", int(1, MAX_SAFE_INTEGER));
     put("boolean", json!({"type": "boolean"}));
     put(
         "digest",

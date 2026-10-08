@@ -14,7 +14,10 @@ use audit_core::{Catalog, EventClass, LEGACY_ADAPTER_VERSION, Origin, Requiremen
 use common::accepted_fixtures;
 use serde_json::{Value, json};
 
-const DOCUMENT_TYPES: [&str; 21] = [
+/// The relay types the Document producer stages (main after PR #106: the
+/// 2026-10-07 VIEW/RESET addendum added `detail_viewed` and `marked_unread`).
+/// The catalog is the SSOT; this list pins it against accidental removal.
+const DOCUMENT_TYPES: [&str; 23] = [
     "document.created",
     "document.version.created",
     "document.version.updated",
@@ -32,6 +35,8 @@ const DOCUMENT_TYPES: [&str; 21] = [
     "folder.moved",
     "access_policy.changed",
     "document.version.read_confirmed",
+    "document.version.detail_viewed",
+    "document.version.marked_unread",
     "document.file.access_granted",
     "document.diff.result_access_granted",
     "document.revision_comparison.result_access_granted",
@@ -423,6 +428,8 @@ fn client_chosen_ids_match_the_document_command_api() {
         ("folder.moved", "to_parent_id"),
         ("access_policy.changed", "target_id"),
         ("document.version.read_confirmed", "document_version_id"),
+        ("document.version.detail_viewed", "document_version_id"),
+        ("document.version.marked_unread", "document_version_id"),
         ("document.diff.result_access_granted", "base_version_id"),
         ("document.diff.result_access_granted", "target_version_id"),
     ]
@@ -473,6 +480,8 @@ fn event_classes_follow_the_design_assignment() {
             | "audit.integrity.conflict_detected"
             | "audit.integrity.source_mismatch_detected" => EventClass::Security,
             "document.version.read_confirmed"
+            | "document.version.detail_viewed"
+            | "document.version.marked_unread"
             | "document.file.access_granted"
             | "document.diff.result_access_granted"
             | "document.revision_comparison.result_access_granted"
@@ -545,6 +554,8 @@ fn correlation_mapping_follows_design_4_2() {
         "folder.renamed",
         "folder.moved",
         "access_policy.changed",
+        "document.version.detail_viewed",
+        "document.version.marked_unread",
     ] {
         assert_eq!(op(t).as_deref(), Some("operation_id"), "{t}");
         assert_eq!(publish(t), None, "{t}");
@@ -567,6 +578,87 @@ fn correlation_mapping_follows_design_4_2() {
             .version_required,
         VersionRequirement::Required
     );
+}
+
+/// `document.version.detail_viewed` / `marked_unread` follow the producer
+/// (`current_read_state.rs`, migration 0012) exactly: the five common keys,
+/// `first_record` only on VIEW, the trigger as a one-value enum per type, the
+/// revisions bounded like the 0012 CHECKs (0 / 1 to 2^53 - 1), the
+/// operation id as correlation and the version id bound to the resource.
+#[test]
+fn read_state_entries_mirror_the_producer_payload() {
+    let catalog = Catalog::embedded();
+    for (event_type, trigger, first_record) in [
+        ("document.version.detail_viewed", "detail_display", true),
+        ("document.version.marked_unread", "user_reset", false),
+    ] {
+        let spec = catalog.get(event_type).expect(event_type);
+        assert_eq!(spec.origin, Origin::Relay);
+        assert_eq!(spec.source, DOCUMENT_SOURCE);
+        assert_eq!(spec.event_class, EventClass::DataAccess);
+        assert_eq!(spec.resources, vec![ResourceType::Document]);
+        assert_eq!(spec.version_required, VersionRequirement::Required);
+        assert_eq!(spec.results, vec!["success".to_owned()]);
+        assert_eq!(spec.subjects.len(), 1);
+        assert_eq!(spec.subjects[0].template, "document/{resource.id}");
+        assert_eq!(spec.reason, ReasonPolicy::Absent);
+        assert_eq!(spec.operation_id_field.as_deref(), Some("operation_id"));
+        assert_eq!(spec.publish_operation_id_field, None);
+        assert_eq!(spec.reason_code_field, None);
+        assert_eq!(spec.service_executor_field, None);
+        assert_eq!(spec.duplicated_actor_field, None);
+        assert!(!spec.nil_resource_allowed);
+        assert_eq!(spec.bindings.len(), 1);
+        assert_eq!(spec.bindings[0].field, "document_version_id");
+        assert_eq!(
+            spec.bindings[0].equals,
+            audit_core::catalog::BindingTarget::ResourceVersionId
+        );
+        let mut expected = vec![
+            ("document_version_id", Kind::Uuid),
+            ("operation_id", Kind::Uuid),
+            ("expected_read_state_revision", Kind::SafeCounter),
+            ("resulting_read_state_revision", Kind::PositiveSafeCounter),
+            ("trigger", Kind::Enum),
+        ];
+        if first_record {
+            expected.push(("first_record", Kind::Boolean));
+        }
+        let fields: std::collections::BTreeMap<&str, Kind> = spec
+            .fields
+            .iter()
+            .map(|(name, field)| (name.as_str(), field.kind))
+            .collect();
+        assert_eq!(fields, expected.iter().copied().collect(), "{event_type}");
+        let required: BTreeSet<&str> = spec.required.iter().map(String::as_str).collect();
+        assert_eq!(
+            required,
+            expected.iter().map(|(name, _)| *name).collect(),
+            "{event_type}: every producer key is always written"
+        );
+        assert_eq!(spec.fields["trigger"].values, vec![trigger.to_owned()]);
+        assert!(spec.fields["document_version_id"].client_chosen);
+        assert!(!spec.fields["operation_id"].client_chosen, "UUIDv7-checked");
+    }
+}
+
+#[test]
+fn safe_counter_kinds_load_on_relay_and_control_entries() {
+    for kind in ["safe_counter", "positive_safe_counter"] {
+        edited(|e| e["fields"]["n"] = json!({"kind": kind}))
+            .unwrap_or_else(|e| panic!("{kind} on a relay entry: {e}"));
+        let mut entry = store_entry();
+        entry["fields"]["n"] = json!({"kind": kind});
+        load(vec![minimal_entry(), entry]).unwrap_or_else(|e| panic!("{kind}: {e}"));
+        assert!(
+            edited(|e| e["fields"]["n"] = json!({"kind": kind, "values": ["1"]})).is_err(),
+            "{kind} takes no values"
+        );
+        assert!(
+            edited(|e| e["fields"]["n"] = json!({"kind": kind, "client_chosen": true})).is_err(),
+            "{kind} is not a client-chosen id"
+        );
+    }
 }
 
 #[test]

@@ -346,6 +346,8 @@ FROM unnest(ARRAY[
     'folder.moved',
     'access_policy.changed',
     'document.version.read_confirmed',
+    'document.version.detail_viewed',
+    'document.version.marked_unread',
     'document.file.access_granted',
     'document.diff.result_access_granted',
     'document.revision_comparison.result_access_granted',

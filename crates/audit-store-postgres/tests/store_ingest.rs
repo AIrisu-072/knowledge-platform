@@ -127,7 +127,7 @@ async fn registered_types_equal_the_catalog_registered_types() {
         })
         .collect();
     assert_eq!(stored, expected);
-    assert_eq!(stored.len(), 21);
+    assert_eq!(stored.len(), 23);
     // The seeded source service is the v1 relay principal for that source.
     let services: Vec<(String, String, String)> =
         sqlx::query_as("SELECT issuer, principal_id, source FROM audit_store.source_services")
