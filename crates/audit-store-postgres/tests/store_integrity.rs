@@ -259,6 +259,67 @@ async fn verification_status_is_coverage_and_a_violation_stays_until_covered() {
     db.assert_store_conforms().await;
 }
 
+/// The relay probes on every cycle: probe (and store_status) read the
+/// coverage that record_verified maintains under the head lock instead of
+/// recomputing it (a recursive scan over up to 1000 verification records).
+#[tokio::test]
+async fn probe_reads_the_maintained_coverage_without_recomputing_it() {
+    let (db, cast, _) = populated(2).await;
+    if db.container.is_none() {
+        eprintln!("skipped: the function statistics test changes server settings of its container");
+        return;
+    }
+    let verifier = cast.verifier.admin().await;
+    let relay = relay_store(&cast).await;
+    let verified = verifier.verify(None, None).await.expect("verify");
+    for statement in [
+        "ALTER SYSTEM SET track_functions = 'pl'",
+        "SELECT pg_reload_conf()",
+    ] {
+        db.exec(statement).await;
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    db.exec("SELECT pg_stat_reset()").await;
+    const PROBES: i64 = 5;
+    for _ in 0..PROBES {
+        let probed = relay.probe(&expectation(None)).await.expect("probe");
+        assert_eq!(probed.last_verified_seq, Some(verified.to_seq));
+    }
+    let calls = |name: &'static str| {
+        let pool = db.admin.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT coalesce(sum(calls), 0)::bigint FROM pg_stat_user_functions \
+                 WHERE schemaname = 'audit_store' AND funcname = $1",
+            )
+            .bind(name)
+            .fetch_one(&pool)
+            .await
+            .expect("function statistics")
+        }
+    };
+    // Function statistics reach the shared counters when the session idles.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while calls("probe").await < PROBES {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "probe statistics flushed"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert_eq!(
+        calls("verification_coverage").await,
+        0,
+        "the probe never recomputes the coverage"
+    );
+    for statement in [
+        "ALTER SYSTEM RESET track_functions",
+        "SELECT pg_reload_conf()",
+    ] {
+        db.exec(statement).await;
+    }
+}
+
 #[tokio::test]
 async fn verify_reads_the_watermark_without_the_head_lock() {
     let (db, cast, _) = populated(3).await;

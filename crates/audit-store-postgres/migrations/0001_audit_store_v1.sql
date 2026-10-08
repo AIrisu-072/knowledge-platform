@@ -382,6 +382,25 @@ CREATE TABLE audit_store.denial_streaks (
     CONSTRAINT ck_streak_suppressed CHECK (suppressed >= 0)
 );
 
+-- The verification coverage (verification_coverage) as of the latest
+-- audit.integrity.verified: the only records it depends on are written by
+-- record_verified, which refreshes this row under the head lock, so probe
+-- (every relay cycle) and store_status read one row instead of recomputing
+-- the coverage. Restored together with the events it summarizes.
+-- Operational state, written only by definer functions.
+CREATE TABLE audit_store.verification_state (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE,
+    verified_through BIGINT NULL,
+    verified_at TIMESTAMPTZ NULL,
+    outcome TEXT NULL,
+    record_seq BIGINT NULL,
+    CONSTRAINT ck_verification_state_singleton CHECK (singleton),
+    CONSTRAINT ck_verification_state_outcome CHECK (
+        outcome IS NULL OR outcome IN ('ok', 'violations'))
+);
+
+INSERT INTO audit_store.verification_state (singleton) VALUES (TRUE);
+
 -- ---------------------------------------------------------------------------
 -- Pure helpers
 -- ---------------------------------------------------------------------------
@@ -1654,7 +1673,9 @@ BEGIN
        OR (p_last_seq IS NOT NULL AND (p_last_seq < 1 OR octet_length(p_last_digest) <> 32)) THEN
         RAISE EXCEPTION 'probe: invalid expectation' USING ERRCODE = '22023';
     END IF;
-    SELECT c.verified_through INTO v_verified FROM audit_store.verification_coverage() AS c;
+    -- The coverage record_verified maintains (no recomputation per probe).
+    SELECT v.verified_through INTO v_verified FROM audit_store.verification_state AS v
+    WHERE v.singleton;
     IF current_setting('transaction_read_only') = 'on' OR pg_is_in_recovery() THEN
         h := audit_store.read_head();
         RETURN QUERY SELECT 'ok'::text, 'read_only'::text, h.last_seq, h.recovery_epoch,
@@ -1752,7 +1773,8 @@ $report_regression$;
 -- audited; works in recovery mode. last_verified_seq / _at / _outcome are
 -- the verification coverage (verification_coverage), so that head_seq -
 -- last_verified_seq is the verification lag and a violation stays reported
--- until a later verification from genesis covers it. denials_pending is the
+-- until a later verification from genesis covers it (read from
+-- verification_state, which record_verified maintains). denials_pending is the
 -- number of coalesced denials not chained yet (every one is chained by the
 -- next record of its streak, by flush_denial_streaks within the coalescing
 -- window plus the next append, and before any verify, checkpoint, intent,
@@ -1775,7 +1797,8 @@ BEGIN
            h.recovery_pending, h.pending_reason, h.access_reapply_pending,
            c.verified_through, c.verified_at, c.outcome,
            (SELECT coalesce(sum(d.suppressed), 0)::bigint FROM audit_store.denial_streaks AS d)
-    FROM audit_store.verification_coverage() AS c;
+    FROM audit_store.verification_state AS c
+    WHERE c.singleton;
 END
 $store_status$;
 
@@ -2781,16 +2804,19 @@ $violations_total$;
 
 -- Records audit.integrity.verified for a scan result. Takes the head lock
 -- only now (verify/checkpoint scan without it) and re-checks the gate under
--- the lock.
+-- the lock. Then refreshes verification_state (the coverage including this
+-- record) under the same lock.
 CREATE FUNCTION audit_store.record_verified(
     p_trigger TEXT, p_from BIGINT, p_to BIGINT, p_watermark BIGINT, p_checked BIGINT,
     p_head_seq BIGINT, p_head_epoch BIGINT, p_head_chain BYTEA, p_violations JSONB)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
-SET search_path = pg_catalog, pg_temp AS $record_verified$
+SET search_path = pg_catalog, pg_temp
+SET audit_store.write_context = 'definer' AS $record_verified$
 DECLARE
     h audit_store.publication_head;
     v_total BIGINT := audit_store.violations_total(p_violations);
     v_details JSONB;
+    v_seq BIGINT;
     k TEXT;
 BEGIN
     h := audit_store.lock_head();
@@ -2814,8 +2840,14 @@ BEGIN
         v_details := v_details || jsonb_build_object('violation_' || k,
                                                      audit_store.jint(p_violations -> k));
     END LOOP;
-    RETURN audit_store.append_control('store', 'audit.integrity.verified', 'SYSTEM_AUDIT',
+    v_seq := audit_store.append_control('store', 'audit.integrity.verified', 'SYSTEM_AUDIT',
         CASE WHEN v_total = 0 THEN 'success' ELSE 'failure' END, v_details);
+    UPDATE audit_store.verification_state AS v
+    SET (verified_through, verified_at, outcome, record_seq) = (
+        SELECT c.verified_through, c.verified_at, c.outcome, c.record_seq
+        FROM audit_store.verification_coverage() AS c)
+    WHERE v.singleton;
+    RETURN v_seq;
 END
 $record_verified$;
 
@@ -4011,7 +4043,8 @@ BEGIN
 END
 $guard_registered_types$;
 
--- Operational state (denial_streaks): any row change by definer functions.
+-- Operational state (denial_streaks, verification_state): any row change by
+-- definer functions.
 CREATE FUNCTION audit_store.guard_state()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $guard_state$
@@ -4079,6 +4112,11 @@ CREATE TRIGGER denial_streaks_guard
     BEFORE INSERT OR UPDATE OR DELETE ON audit_store.denial_streaks
     FOR EACH ROW EXECUTE FUNCTION audit_store.guard_state();
 CREATE TRIGGER denial_streaks_no_truncate BEFORE TRUNCATE ON audit_store.denial_streaks
+    FOR EACH STATEMENT EXECUTE FUNCTION audit_store.refuse_mutation();
+CREATE TRIGGER verification_state_guard
+    BEFORE INSERT OR UPDATE OR DELETE ON audit_store.verification_state
+    FOR EACH ROW EXECUTE FUNCTION audit_store.guard_state();
+CREATE TRIGGER verification_state_no_truncate BEFORE TRUNCATE ON audit_store.verification_state
     FOR EACH STATEMENT EXECUTE FUNCTION audit_store.refuse_mutation();
 CREATE TRIGGER legal_holds_guard BEFORE UPDATE OR DELETE ON audit_store.legal_holds
     FOR EACH ROW EXECUTE FUNCTION audit_store.refuse_mutation();
