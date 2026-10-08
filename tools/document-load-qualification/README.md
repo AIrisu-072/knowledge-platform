@@ -45,7 +45,7 @@ small mode は公開対象2件と独立した拒否対象1件、逐次要求、�
 2. 自分のテスト Folder にだけ登録・公開。全ページ一覧を比較し、欠落・重複・cursor loop を拒否
 3. 第 1 文書の metadata を更新して再読取し、古い revision での更新が 409 になることを確認
 4. 異なる原本で WORKING 版を作成。公開までは current pointer が変わらず、公開後は新版へ切り替わることを確認
-5. 既に Agent が読めた末尾文書を human-only に変更。既知 ID の 403 と一覧からの除外を確認
+5. 既に Agent が読めた末尾文書を human-only に変更。既知IDが404かつProblemのstatus=404/code=DOCUMENT_NOT_FOUNDになることと、一覧からの除外を確認（この読取routeの存在秘匿契約）
 6. 原本 SHA-256、detail、全 revision detail、version metadata、policy を保存
 7. 既存 runner が human/agent 実プロセスを停止・再起動。異なる PID と、同じ DB/container/storage/run/head の来歴を確認
 8. 同じ全一覧・拒否結果・snapshotを再照合。負例も作業版のまま、公開版なし、元hash・policy・DSI不在が保持されることを確認

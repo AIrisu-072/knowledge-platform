@@ -169,17 +169,17 @@ test('fake transport: bounded snapshot rejects advertised overflow before downlo
   assert.ok(!h.requests.some(({ url }) => url.pathname.endsWith('/p')));
 });
 
-test('fake transport: agent status is actual 200 or 403, denies via human-only explicit ACL', async () => {
+test('fake transport: agent status is actual 200 or exact masked DOCUMENT_NOT_FOUND, denies via human-only explicit ACL', async () => {
   let status = 200, acl;
   const h = await verified(async (request, url) => {
     if (request.method === 'PUT') { acl = await request.json(); return json({ operationId: acl.operationId, resourceId: 'd', resultingRevision: 2 }); }
     assert.equal(url.origin, agentUrl); assert.equal(url.searchParams.get('view'), 'published');
-    return json(status === 200 ? { documentId: 'd' } : { title: 'Forbidden' }, status);
+    return json(status === 200 ? { documentId: 'd' } : { title: 'Document not found', status, code:'DOCUMENT_NOT_FOUND' }, status);
   });
   assert.deepEqual(await h.probe.agentReadStatus('d'), { status: 200, allowed: true });
   await h.probe.denyAgent('d', 1, 'deny-op');
   assert.deepEqual(acl, { operationId: 'deny-op', expectedPolicyRevision: 1, mode: 'explicit', grants: [grants[0]], reason: 'Bounded Document load qualification' });
-  status = 403; assert.deepEqual(await h.probe.agentReadStatus('d'), { status: 403, allowed: false });
+  status = 404; assert.deepEqual(await h.probe.agentReadStatus('d'), { status: 404, allowed: false });
   status = 500; await assert.rejects(h.probe.agentReadStatus('d'), /500/);
 });
 
@@ -300,4 +300,11 @@ test('fake transport: metadata probe obeys the normative four-key patch boundary
     return json({operationId:body.operationId,resourceId:'d',resultingRevision:8});
   });
   assert.equal((await h.probe.updateMetadata('d',7,'metadata-op')).resultingRevision,8);
+});
+
+
+test('fake transport: denial requires the exact document-not-found Problem and refuses all other errors',async()=>{
+  for(const [status,body] of [[403,{status:403,code:'FORBIDDEN'}],[404,{status:404,code:'FOLDER_NOT_FOUND'}],[404,{status:403,code:'DOCUMENT_NOT_FOUND'}],[404,{title:'Not found'}],[401,{status:401,code:'AUTHENTICATION_REQUIRED'}],[422,{status:422,code:'VALIDATION_FAILED'}],[500,{status:500,code:'INTERNAL_ERROR'}]]){
+    const h=await verified(()=>json(body,status));await assert.rejects(h.probe.agentReadStatus('d'));
+  }
 });

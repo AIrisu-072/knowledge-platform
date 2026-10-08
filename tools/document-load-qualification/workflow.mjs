@@ -38,7 +38,7 @@ export async function exerciseStage({probe,journal,count,assets,checkpoint,runId
  const privateDocumentId=ids.at(-1);
  equal(await probe.agentReadStatus(privateDocumentId),{status:200,allowed:true},'agent positive control');
  await mutate('deny-agent',async()=>({operationId:uuid7(),expectedPolicyRevision:(await probe.snapshot(privateDocumentId)).policy.policyRevision}),request=>probe.denyAgent(privateDocumentId,request.expectedPolicyRevision,request.operationId));
- equal(await probe.agentReadStatus(privateDocumentId),{status:403,allowed:false},'agent known-ID denial');
+ equal(await probe.agentReadStatus(privateDocumentId),{status:404,allowed:false},'agent known-ID masked denial');
  await listCheck(probe,folderId,ids.filter(id=>id!==privateDocumentId),'agent');
  const sampledIndices=count<=20?[...Array(count).keys()]:[0,Math.floor(count/2),count-1];
  const snapshots={};
@@ -52,7 +52,7 @@ export async function exerciseStage({probe,journal,count,assets,checkpoint,runId
 export async function verifyRetained({probe,evidence,checkpoint}){
  await probe.verifySessions();await checkpoint();await listCheck(probe,evidence.folderId,evidence.documentIds);
  await listCheck(probe,evidence.folderId,evidence.documentIds.filter(id=>id!==evidence.privateDocumentId),'agent');
- equal(await probe.agentReadStatus(evidence.privateDocumentId),{status:403,allowed:false},'retained agent denial');
+ equal(await probe.agentReadStatus(evidence.privateDocumentId),{status:404,allowed:false},'retained agent denial');
  for(const id of evidence.sampledDocumentIds){await checkpoint();equal(await probe.snapshot(id),evidence.snapshots[id],'retained state changed across restart');}
  return {status:'SUCCEEDED',verifiedDocuments:evidence.documentIds.length,snapshotCount:evidence.sampledDocumentIds.length};
 }

@@ -160,3 +160,9 @@ actual Crop REDに基づき、新semanticsを使うページだけ、有限な�
 19f6d234のCI37818914619は12job成功/Documentと集約required失敗。別DSI PoC37818914484・Sandbox37818914479は成功。Macで取得した実job113455282091の固定JSONは、正例2登録/2公開成功、負例1登録/期待422拒否/公開0を示す。停止点はupdateMetadataの422 VALIDATION_FAILEDで、PDF検査の失敗ではない。実再起動・最終資格は未完、artifact0件、1000以上へadmitしない。
 
 原因はハーネスがloadQualificationOperationをmetadata直下へ更新したこと。normative logical-data-model-v0 §2.7とtransaction-consistencyの管理v0は、document_type/owning_department/category/extensionsだけを編集可としている。製品は正しく拒否していた。同じ422を契約testで再現し、extensions object配下へ移す最小修正と、そのnested値の読戻し確認を追加。OCC409や品質guardは不変。ハーネス全136件成功、次は独立review後の同PR exact headで実small全工程を再試験する。
+
+## 2026-10-08 19:23 UTC — metadata・公開切替成功、存在秘匿404のoracle修正
+
+a9567374の実job113488408550でmetadata200・stale409、新版作成201・公開200・current切替を通過した。権限変更前Agent200、human-only設定200、変更後Agent404となり、誤った403期待のハーネスが停止。製品の認可拒否は正常で、PDF処理の失敗ではない。
+
+DocumentDetailReadServiceは認可済み一覧をexact IDで検索し、不可視ならDocumentNotFound、HTTP層は404/DOCUMENT_NOT_FOUNDへ写像する。ハーネスを200対象ID一致の正例に続く厳密な404＋同Problem status/codeへ合わせ、403/401/422/500・異なる404code/status・不完全bodyは拒否する。全一覧除外と再起動後の同じ拒否も引き続き必須。製品API/権限判定は変更しない。実RED→GREENを確認し、ハーネス全137件成功。残るhistory snapshot/download/restart/receipt契約は独立reviewで横断確認してから同PR再受入する。

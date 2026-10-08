@@ -220,7 +220,8 @@ export class DocumentProbe {
       const result = await getDocument({ ...c, throwOnError: false, path: { documentId }, query: { view: 'published' } });
       if (!result.response) throw new ProbeSafetyError('Agent read failed before receiving a response', 'network_error');
       const status = result.response.status;
-      if (status !== 200 && status !== 403) throw new ProbeSafetyError(`Unexpected Agent read status ${status}`, status);
+      if (status !== 200 && status !== 404) throw new ProbeSafetyError(`Unexpected Agent read status ${status}`, status);
+      if (status === 404 && (result.error?.status !== 404 || result.error?.code !== 'DOCUMENT_NOT_FOUND')) throw new ProbeSafetyError('Agent denial did not match the document-not-found contract', status);
       if (status === 200 && result.data?.documentId !== documentId) throw new ProbeSafetyError('Agent read returned a different document');
       return { status, allowed: status === 200 };
     });
