@@ -1,5 +1,14 @@
 # Active Execution Pointer
 
+## 2026-10-08 — 最初の画面と主ナビゲーション（案A。Runtime担当）
+
+- 再開先は[状況](work-landing-navigation-status.md)と[計画](../plans/2026-10-08-work-landing-navigation.md)。branch `claude/upbeat-tesla-qcu94x`（main `6a34de3` から作成）、Draft [PR #112](https://github.com/AIrisu-072/knowledge-platform/pull/112)。下の文書管理残タスクのPointerは変更していない。
+- 承認済みの設計（主ナビゲーションはタスク・文書・検索、最初の画面はタスク）に共通画面を合わせる。Work APIのあるserverでは設計どおり、文書だけのserverは今のまま（依頼者の指示、案A）。デスクトップ版（PR #103、main `8d4b94a`）でタスク・検索へメニューから移れなかった件の対応。
+- 実装 `ced8ed6`：画面試験16件を先に追加、全1772件・型検査・本番build成功。デスクトップの実GUIは26シナリオ・226項目が連続2回 `qualifying: true`。実serverのE2E（organization-server・document-server）はCIで確認する。新しい判断3点（判定の規則、3秒の上限、「編集作業」「文書履歴」を残す）は承認済みとして扱わない。Windows実機は依頼者の指示で後回し。
+- 次のexact action：PR #112のCIと独立reviewの結果を確認して修正 → CI成功 → 統合 → 統合後のmain CI → 依頼者へ報告。
+
+---
+
 ## 2026-10-08 — 文書管理残タスク（Mac側、クラウド親と分担）
 
 - 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。
