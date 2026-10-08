@@ -7,11 +7,14 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use document_application::{
-    ApplicationError, AuthorizationScope, Clock, CreateDocumentCommand, CreateDocumentResult,
-    CreateOutcomeProbe, CreateOutcomeRecoveryService, CreateOutcomeRepository, DocumentRepository,
-    DocumentService, FileStorage, IdGenerator, VerifiedActorContext,
+    ApplicationError, AuthorizationScope, Clock, CreateDocumentCommand, CreateDocumentItem,
+    CreateDocumentItemsCommand, CreateDocumentResult, CreateOutcomeProbe,
+    CreateOutcomeRecoveryService, CreateOutcomeRepository, DocumentRepository, DocumentService,
+    FileStorage, IdGenerator, VerifiedActorContext,
 };
-use document_domain::{DocumentId, DocumentVersionId, FileId, FolderId, MediaType, Metadata};
+use document_domain::{
+    DocumentId, DocumentVersionId, FileId, FolderId, LogicalPath, MediaType, Metadata,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use uuid::Uuid;
@@ -125,6 +128,24 @@ struct CreateDocumentRequest {
     title: String,
     document_metadata: Map<String, serde_json::Value>,
     version_metadata: Map<String, serde_json::Value>,
+    #[serde(default, deserialize_with = "deserialize_initial_items")]
+    items: Option<Vec<CreateItemRequest>>,
+}
+
+fn deserialize_initial_items<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<CreateItemRequest>>, D::Error> {
+    Vec::<CreateItemRequest>::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CreateItemRequest {
+    logical_path: String,
+    ordinal: u32,
+    part_id: String,
+    media_type: String,
+    original_filename: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +153,8 @@ struct CreateDocumentRequest {
 struct CreateOutcomeQuery {
     document_version_id: Uuid,
     file_id: Uuid,
+    #[serde(default)]
+    file_ids: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,6 +163,8 @@ struct CreateDocumentResultDto {
     document_id: Uuid,
     document_version_id: Uuid,
     file_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_ids: Option<Vec<Uuid>>,
 }
 
 async fn create_document<I, C, F, R>(
@@ -170,7 +195,7 @@ where
             &trace,
         )
     })?;
-    let upload = parse_initial_upload(multipart, state.limits)
+    let mut upload = parse_initial_upload(multipart, state.limits)
         .await
         .map_err(|failure| multipart_problem(failure, PATH, &trace))?;
     let request: CreateDocumentRequest =
@@ -181,22 +206,109 @@ where
                 &trace,
             )
         })?;
-    let media_type = MediaType::new(upload.media_type)
-        .map_err(|_| ApiProblem::new(ErrorCode::UnsupportedMediaType, PATH, &trace.trace_id))?;
     let scoped = Arc::new(state.repository.with_verified_actor(ctx.clone()));
-    let result = DocumentService::new(state.ids, state.clock, state.storage, scoped)
-        .create_document(CreateDocumentCommand {
-            folder_id: FolderId::from_uuid(request.folder_id),
-            title: request.title,
-            document_metadata: Metadata::from_map(request.document_metadata),
-            version_metadata: Metadata::from_map(request.version_metadata),
-            principal: ctx.principal().clone(),
-            original_filename: upload.original_filename,
-            media_type,
-            content: upload.content,
-        })
-        .await
-        .map_err(|error| problem(error, PATH, &trace))?;
+    let service = DocumentService::new(state.ids, state.clock, state.storage, scoped);
+    let result = if let Some(manifest) = request.items {
+        if upload.legacy_file.is_some()
+            || manifest.is_empty()
+            || manifest.len() >= state.limits.parts
+        {
+            return Err(problem(
+                ApplicationError::Validation("invalid initial manifest".into()),
+                PATH,
+                &trace,
+            ));
+        }
+        let mut items = Vec::with_capacity(manifest.len());
+        for item in manifest {
+            if item.part_id.trim() != item.part_id
+                || item.part_id.is_empty()
+                || item.part_id.len() > state.limits.filename_bytes
+                || item.original_filename.trim().is_empty()
+                || item.original_filename.len() > state.limits.filename_bytes
+            {
+                return Err(problem(
+                    ApplicationError::Validation("invalid initial item".into()),
+                    PATH,
+                    &trace,
+                ));
+            }
+            if !crate::multipart::valid_media_type(&item.media_type) {
+                return Err(ApiProblem::new(
+                    ErrorCode::UnsupportedMediaType,
+                    PATH,
+                    &trace.trace_id,
+                )
+                .into());
+            }
+            let media_type = MediaType::new(item.media_type).map_err(|_| {
+                ApiProblem::new(ErrorCode::UnsupportedMediaType, PATH, &trace.trace_id)
+            })?;
+            let logical_path = LogicalPath::new(&item.logical_path)
+                .map_err(|error| problem(error.into(), PATH, &trace))?;
+            let content = upload.files.remove(&item.part_id).ok_or_else(|| {
+                problem(
+                    ApplicationError::Validation("missing or duplicated initial part".into()),
+                    PATH,
+                    &trace,
+                )
+            })?;
+            items.push(CreateDocumentItem {
+                logical_path,
+                ordinal: item.ordinal,
+                original_filename: item.original_filename,
+                media_type,
+                content,
+            });
+        }
+        if !upload.files.is_empty() {
+            return Err(problem(
+                ApplicationError::Validation("unreferenced initial parts".into()),
+                PATH,
+                &trace,
+            ));
+        }
+        service
+            .create_document_items(CreateDocumentItemsCommand {
+                folder_id: FolderId::from_uuid(request.folder_id),
+                title: request.title,
+                document_metadata: Metadata::from_map(request.document_metadata),
+                version_metadata: Metadata::from_map(request.version_metadata),
+                principal: ctx.principal().clone(),
+                items,
+            })
+            .await
+    } else {
+        if !upload.files.is_empty() {
+            return Err(problem(
+                ApplicationError::Validation("manifest is required for files".into()),
+                PATH,
+                &trace,
+            ));
+        }
+        let (original_filename, media_type, content) = upload.legacy_file.ok_or_else(|| {
+            problem(
+                ApplicationError::Validation("initial file is required".into()),
+                PATH,
+                &trace,
+            )
+        })?;
+        let media_type = MediaType::new(media_type)
+            .map_err(|_| ApiProblem::new(ErrorCode::UnsupportedMediaType, PATH, &trace.trace_id))?;
+        service
+            .create_document(CreateDocumentCommand {
+                folder_id: FolderId::from_uuid(request.folder_id),
+                title: request.title,
+                document_metadata: Metadata::from_map(request.document_metadata),
+                version_metadata: Metadata::from_map(request.version_metadata),
+                principal: ctx.principal().clone(),
+                original_filename,
+                media_type,
+                content,
+            })
+            .await
+    }
+    .map_err(|error| problem(error, PATH, &trace))?;
     Ok((StatusCode::CREATED, Json(result_dto(result))))
 }
 
@@ -230,10 +342,40 @@ where
             &trace,
         )
     })?;
+    let file_ids = query
+        .file_ids
+        .map(|value| {
+            let ids = value
+                .split(',')
+                .map(|part| Uuid::parse_str(part).map(FileId::from_uuid))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| {
+                    problem(
+                        ApplicationError::Validation("invalid fileIds".into()),
+                        &path,
+                        &trace,
+                    )
+                })?;
+            let unique: std::collections::HashSet<_> = ids.iter().collect();
+            if ids.is_empty()
+                || ids.len() >= state.limits.parts
+                || unique.len() != ids.len()
+                || ids[0].as_uuid() != query.file_id
+            {
+                return Err(problem(
+                    ApplicationError::Validation("invalid fileIds".into()),
+                    &path,
+                    &trace,
+                ));
+            }
+            Ok(ids)
+        })
+        .transpose()?;
     let probe = CreateOutcomeProbe {
         document_id,
         document_version_id: DocumentVersionId::from_uuid(query.document_version_id),
         file_id: FileId::from_uuid(query.file_id),
+        file_ids,
     };
     match CreateOutcomeRecoveryService::new(state.repository)
         .recover(&ctx, probe)
@@ -270,5 +412,8 @@ fn result_dto(result: CreateDocumentResult) -> CreateDocumentResultDto {
         document_id: result.document_id().as_uuid(),
         document_version_id: result.document_version_id().as_uuid(),
         file_id: result.file_id().as_uuid(),
+        file_ids: result
+            .file_ids()
+            .map(|ids| ids.iter().map(|id| id.as_uuid()).collect()),
     }
 }

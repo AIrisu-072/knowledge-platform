@@ -504,3 +504,18 @@ test('成功receiptはnonnull初回日時とr1以上だけを許しGETの仮想r
   assert.equal(accepts({ ...receipt, resultingReadState: { ...receipt.resultingReadState, firstReadAt: null } }), false, '成功receiptにnull日時を許さない');
   assert.equal(accepts({ ...receipt, resultingReadState: { ...receipt.resultingReadState, readStateRevision: 0 } }), false, '成功receiptにr0を許さない');
 });
+
+
+test('initial multipart contract requires exactly legacy file or atomic items+files', async () => {
+  const { default: Ajv } = await import('../../apps/document-web/node_modules/ajv/dist/ajv.js');
+  const ajv = new Ajv({ strict: false, validateFormats: false });
+  const root = contract.components.requestBodies.CreateDocumentMultipart.content['multipart/form-data'].schema;
+  const schema = { ...root, properties: { ...root.properties, request: { type: 'object', properties: { items: { type: 'array', minItems: 1 } } } } };
+  const validate = ajv.compile(schema);
+  assert.equal(validate({ request: {}, file: 'bytes' }), true);
+  assert.equal(validate({ request: { items: [{}] }, files: ['a','b'] }), true);
+  for (const value of [{ request: {} }, { request: {}, files: ['a'] }, { request: { items: [{}] }, file: 'bytes' }, { request: { items: [{}] }, files: ['a'], file: 'bytes' }]) {
+    assert.equal(validate(value), false, JSON.stringify(value));
+  }
+  assert.ok(contract.components.schemas.CreateRecovery.properties.fileIds);
+});
