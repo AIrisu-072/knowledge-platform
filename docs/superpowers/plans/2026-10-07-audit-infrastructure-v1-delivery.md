@@ -39,7 +39,7 @@
 4. 日本語運用手順 `docs/operations/audit-delivery-store.md`。
    - 実施：作成済み（未検証事項の一覧を含む）。
 5. branch `claude/cool-darwin-7xh893` へのpushとDraft PR → exact-head hosted CI → main統合 → main CI確認。統合後、単位Cへ進む。
-   - 実施：main統合まで済み。main `dba8168` のpush CIは状況文書で確認中。
+   - 実施：main統合まで済み。main `dba8168` のpush CIは、Organization受入の既知の断続的な503でFAILURE（単位Bの起因ではない。状況文書を参照）。
 
 ## 単位C：Document受入・handoff
 
