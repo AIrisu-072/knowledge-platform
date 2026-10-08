@@ -91,16 +91,23 @@ type SegmentEntries = Arc<Vec<UnitSealEntry>>;
 
 /// Segments read in this process: segment ID and the identity of its store
 /// file (device, inode, size, modification time; linking changes the change
-/// time, so it is not part of the identity) to their entries.
-type SegmentCache = Mutex<HashMap<(String, [u64; 5]), SegmentEntries>>;
+/// time, so it is not part of the identity) to their entries and the last
+/// read pass that used them.
+#[derive(Default)]
+struct SegmentCache {
+    pass: u64,
+    segments: HashMap<(String, [u64; 5]), (u64, SegmentEntries)>,
+}
 
-fn segment_cache() -> &'static SegmentCache {
-    static CACHE: OnceLock<SegmentCache> = OnceLock::new();
+fn segment_cache() -> &'static Mutex<SegmentCache> {
+    static CACHE: OnceLock<Mutex<SegmentCache>> = OnceLock::new();
     CACHE.get_or_init(Default::default)
 }
 
-/// Entries kept per process before the cache is emptied (about 50 bytes each).
-const CACHED_ENTRIES: usize = 20_000_000;
+/// Read passes a cached segment stays unused before it is dropped: the
+/// segments of the index read last and of the one read before it (a build's
+/// base and its result) stay, those a merge replaced do not.
+const KEPT_PASSES: u64 = 2;
 
 #[cfg(unix)]
 fn file_identity(path: &Path) -> Option<[u64; 5]> {
@@ -124,18 +131,21 @@ fn segment_entries(
     units: &UnitIndex,
     segment_ord: usize,
     segment: &SegmentReader,
+    pass: u64,
 ) -> Result<SegmentEntries, LexicalIndexError> {
     let id = segment.segment_id().uuid_string();
     let key = units.dir.as_ref().and_then(|dir| {
         file_identity(&dir.join(format!("{id}.store"))).map(|identity| (id.clone(), identity))
     });
     if let Some(key) = &key
-        && let Some(hit) = segment_cache()
+        && let Some((used, hit)) = segment_cache()
             .lock()
             .map_err(|_| LexicalIndexError::LockPoisoned)?
-            .get(key)
+            .segments
+            .get_mut(key)
         && hit.len() == segment.max_doc() as usize
     {
+        *used = pass;
         return Ok(hit.clone());
     }
     let searcher = units.reader.searcher();
@@ -151,25 +161,28 @@ fn segment_entries(
     }
     let entries = Arc::new(entries);
     if let Some(key) = key {
-        let mut cache = segment_cache()
+        segment_cache()
             .lock()
-            .map_err(|_| LexicalIndexError::LockPoisoned)?;
-        if cache.values().map(|entries| entries.len()).sum::<usize>() + entries.len()
-            > CACHED_ENTRIES
-        {
-            cache.clear();
-        }
-        cache.insert(key, entries.clone());
+            .map_err(|_| LexicalIndexError::LockPoisoned)?
+            .segments
+            .insert(key, (pass, entries.clone()));
     }
     Ok(entries)
 }
 
 /// The entry of every live Unit document, read one document at a time.
 pub(crate) fn unit_entries(units: &UnitIndex) -> Result<Vec<UnitSealEntry>, LexicalIndexError> {
+    let pass = {
+        let mut cache = segment_cache()
+            .lock()
+            .map_err(|_| LexicalIndexError::LockPoisoned)?;
+        cache.pass += 1;
+        cache.pass
+    };
     let searcher = units.reader.searcher();
     let mut out = Vec::new();
     for (segment_ord, segment) in searcher.segment_readers().iter().enumerate() {
-        let entries = segment_entries(units, segment_ord, segment)?;
+        let entries = segment_entries(units, segment_ord, segment, pass)?;
         let alive = segment.alive_bitset();
         for (doc_id, entry) in entries.iter().enumerate() {
             let doc_id = u32::try_from(doc_id).map_err(|_| LexicalIndexError::UnitEncoding)?;
@@ -179,6 +192,11 @@ pub(crate) fn unit_entries(units: &UnitIndex) -> Result<Vec<UnitSealEntry>, Lexi
             out.push(*entry);
         }
     }
+    segment_cache()
+        .lock()
+        .map_err(|_| LexicalIndexError::LockPoisoned)?
+        .segments
+        .retain(|_, (used, _)| *used + KEPT_PASSES > pass);
     Ok(out)
 }
 

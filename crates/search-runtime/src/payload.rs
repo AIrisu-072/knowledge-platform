@@ -31,7 +31,7 @@ use search_tantivy::{UnitSealEntry, unit_doc_hash};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
-use sqlx::{PgPool, Row};
+use sqlx::{Connection as _, PgConnection, PgPool, Row};
 
 pub const PAYLOAD_DTO_VERSION: &str = "v1";
 /// Upper bound of one restored payload document, in bytes of its JSON text.
@@ -272,6 +272,9 @@ async fn read_payloads(
     pool: &PgPool,
     key: ProjectionGenerationKey,
 ) -> Result<Vec<PayloadText>, BundleError> {
+    // Payload rows of tens of MiB grow the connection's buffers, which the
+    // pool would otherwise keep for the connection's lifetime.
+    let mut conn = pool.acquire().await?;
     let rows = sqlx::query(
         "SELECT kind, chunk, dto_version, payload::text AS payload, payload ? 'chunk' AS chunked, \
          payload ->> 'chunk' AS chunk_text, logical_digest, logical_count \
@@ -280,8 +283,10 @@ async fn read_payloads(
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
-    .fetch_all(pool)
-    .await?;
+    .fetch_all(&mut *conn)
+    .await;
+    conn.shrink_buffers();
+    let rows = rows?;
     let mut out: Vec<PayloadText> = Vec::new();
     let mut chunks_of_last = 0i32;
     for row in rows {
@@ -706,6 +711,19 @@ impl PgPayloadStore {
 
     /// Validates the bundle, then writes its three payload rows in one commit.
     pub async fn store(&self, bundle: &StoredBundleV1) -> Result<(), BundleError> {
+        // Payload rows of tens of MiB grow the connection's buffers, which the
+        // pool would otherwise keep for the connection's lifetime.
+        let mut conn = self.pool.acquire().await?;
+        let stored = self.store_on(&mut conn, bundle).await;
+        conn.shrink_buffers();
+        stored
+    }
+
+    async fn store_on(
+        &self,
+        conn: &mut PgConnection,
+        bundle: &StoredBundleV1,
+    ) -> Result<(), BundleError> {
         let validated = validate_stored_bundle_v1(bundle)?;
         let receipt = &validated.receipt;
         let rows = [
@@ -742,7 +760,7 @@ impl PgPayloadStore {
                     .map_err(|_| BundleError::Digest)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut tx = self.pool.begin().await?;
+        let mut tx = conn.begin().await?;
         let present: std::collections::BTreeSet<String> = sqlx::query_scalar(
             "SELECT segment_digest FROM search_unit_segment WHERE segment_digest = ANY($1)",
         )
