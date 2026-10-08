@@ -2,6 +2,9 @@
 
 ## 2026-10-08 根因追跡の継続
 
+- 最新保存head `a99b7ad1ba12e32306fa7e98c241dc137630e092` の[CI37769757831](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37769757831)はattempt1の必須14項目すべて成功。実runtimeはDocument22段階・Organization23段階成功、head一致・gitDirty=falseを確認。rust-staticの配置lintも成功した。
+- 同headのruntimeだけを一度追加実行したattempt2も成功し、Organization23段階・head一致・gitDirty=falseを実ログ確認。Finding503は再現せず、根因は未確定。これは原因修正や障害解消の証拠ではない。全Rust試験を再実行するためのrerunはしていない。
+- 次の限定観測は同じDB・文書fixtureの取得専用比較。元のpersistence受入を一度保持し、その後、取得のみの再起動前後比較を最大2回行う。最初の失敗で停止し、HTTP再送・sleep・再seedは追加しない。実行前の計画であり、まだ追加実験の成功や原因確定とは記録しない。
 - 文書head `6108bc004a4583666fac9f9671ffb2fcb9f81832` の[CI37764453723](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37764453723)は終了し、12項目成功、document-poc-runtimeとrequired-checkが失敗。Document受入22段階は成功し、OrganizationのpersistenceでFinding一覧503が再現した。
 - 失敗段階内の単一観測は `finding_list / agent / agent / dependency_unavailable / sql_class=none / elapsed_ms=11`。要求ID相関はない。5秒超過とは整合せず、Document内部の失敗分類はまだ不明。mainへは統合していない。
 - 親は同じPR114でDocumentAgentSource内部のrequester/providerとidentity/改訂取得/原本一覧の閉じた段階・ApplicationError分類を追加し、根因追跡を継続することを承認。本文・ID・URL・生error・秘密情報は出さず、認可・応答・時間制限・元assertionを保持する。次は追加診断の安全性試験・独立レビュー、そのheadでの実runtime観測。診断一段だけで完了とは扱わない。
