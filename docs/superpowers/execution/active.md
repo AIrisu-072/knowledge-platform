@@ -1627,3 +1627,4 @@ Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed ex
 ## End-of-session rule
 
 Before intentional session switch/context exhaustion, record exact branch/head, CI evidence, Plan approval state, blockers, and next exact action.
+- 2026-10-08 05:30追補：最終（5回目）の独立reviewの指摘を修正（閉じる前の確認をshellで出し答えるまで閉じない、ローカルWorkspaceの未確定の操作の離脱確認）。commit `86f187b` で実GUI 26シナリオ・220項目が固定版Node 24.21.0で連続2回 `qualifying: true`。次はpush→exact-head CI→統合→統合後CI

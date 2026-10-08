@@ -1,5 +1,18 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-08 05:30 UTC — 最終（5回目）の独立reviewの修正（`86f187b`）
+
+- 5回目のreview（閉じる処理、画面・harness・文書）で5件が成立（2件は反証）。
+- **確認中に閉じる要求を重ねると、答えを待たずに閉じていた。** 4回目の方式は閉じる要求のたびに `try_close` を呼び、WebKitは呼ばれるたびに50msの時間切れを再始動するため、確認中に×やAlt+F4を重ねると約50ms後に閉じる（WebKitGTK 2.52.6のsourceからの判断。再現は未実施）。離脱確認をWebKitの `script-dialog` で受け取り、shellの日本語の確認（「閉じる前の確認」、既定は「このページに留まる」）で尋ねて答えを返し、答えるまで重ねての閉じる要求を無視するよう修正（`gtk` 0.18.2を直接依存に追加。依存の木には既存）。WebDriverの操作中はWebKit標準の確認のまま。
+- ローカルWorkspaceの処理中・結果未確認の操作には離脱確認が無かったため、操作IDを保持している間は `beforeunload` で確認するよう修正（画面試験を先に追加）。
+- 文書が「離れるを選んだときだけ閉じる」と言い過ぎていたため、ページが応答しない・processが無いときはWebKitが確認なしで閉じることを明記。
+- 実GUI：閉じる操作の場面を、WebDriverを使わずに起動したアプリで、何も無ければ確認なしに終了／処理中なら確認が出る／確認中に閉じる要求を重ねても閉じない／Escapeで残る／「閉じる」で終了、の順に確認。processの終了の判定は「プロセス：」に分類。既読の確認は表示が「既読」と一致するまで待つよう修正。
+- 検証（ローカル、Linux）：
+  - 実GUI：`run-kSJXXO`・`run-JAkXJd`（commit `86f187b`、Node 24.21.0、連続2回）で26シナリオ・220項目がすべて成功、`qualifying: true`（画面104、WebDriver 2、プロセス2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8）。
+  - shell：単体28件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`。architecture-lint成功。
+  - 画面：全73 suites／1737件、型検査、本番build（Node 24.21.0）。
+- 次のexact action：push → exact-head CI → Draft解除と統合 → 統合後のmain CIを確認 → 最終報告。
+
 ## 2026-10-08 — 4回目の独立reviewの修正（`fbe962a`、`6504778`）
 
 - 4回目のreview（修正の確認、mainの機能がshellの制限で壊れていないかの全件調査、completeness critic）。「修正の確認」の担当がCPU負荷試験のコマンド内で止まったため、負荷試験を禁じて再実行した。成立した指摘を修正。
