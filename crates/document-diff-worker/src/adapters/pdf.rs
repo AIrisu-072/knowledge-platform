@@ -13,8 +13,7 @@ use crate::WorkerError;
 
 const MAX_COMBINED_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PAGES: usize = 4_096;
-const PARSER_PROVENANCE: &str =
-    "document-diff-pdf-v0;dsi-pdf-v0;pdfium-render=0.9.4;pdfium=151.0.7881.0;lopdf=0.45.0";
+const PARSER_PROVENANCE: &str = "document-diff-pdf-v0;bounded-graphics-structure=1;dsi-pdf-v0;pdfium-render=0.9.4;pdfium=151.0.7881.0;lopdf=0.45.0";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PdfComparator;
@@ -167,6 +166,11 @@ impl PdfComparator {
                 Err(reason) => regions.push(unverified_region(reason)),
             }
         }
+        if residual_semantics_differ(&old_projection, &new_projection, &["pages", "form_values"]) {
+            regions.push(unverified_region(
+                UnverifiedReason::UnsupportedSemanticConstruct,
+            ));
+        }
         if changes.is_empty() && regions.is_empty() {
             regions.push(unverified_region(
                 UnverifiedReason::UnsupportedSemanticConstruct,
@@ -301,6 +305,8 @@ fn compare_page(
         ("links", "pdf_link", "page_link_changed"),
         ("images", "pdf_visual", "image_region_changed"),
         ("paint_order", "pdf_visual", "paint_order_changed"),
+        ("vectors", "pdf_visual", "vector_content_changed"),
+        ("structure", "pdf_structure", "reading_structure_changed"),
     ] {
         if base[field] != target[field] {
             push(
@@ -315,17 +321,44 @@ fn compare_page(
             )?;
         }
     }
-    if base["images"] != target["images"] || base["paint_order"] != target["paint_order"] {
+    if base["images"] != target["images"]
+        || base["paint_order"] != target["paint_order"]
+        || base["vectors"] != target["vectors"]
+        || base["structure"] != target["structure"]
+        || residual_semantics_differ(
+            base,
+            target,
+            &[
+                "index",
+                "text",
+                "links",
+                "images",
+                "paint_order",
+                "vectors",
+                "structure",
+            ],
+        )
+    {
         regions.push(WorkerUnverifiedRegion {
             base: Some(page(old_index)),
             target: Some(page(new_index)),
             reason: UnverifiedReason::UnsupportedSemanticConstruct,
             navigation_hint: Some(
-                "視覚差の矩形範囲は未確定です。両原本の該当ページを確認してください".to_owned(),
+                "描画・構造の差または未対応情報があります。両原本の該当ページを確認してください"
+                    .to_owned(),
             ),
         });
     }
     Ok(())
+}
+
+fn residual_semantics_differ(base: &Value, target: &Value, known_fields: &[&str]) -> bool {
+    let (Some(base), Some(target)) = (base.as_object(), target.as_object()) else {
+        return true;
+    };
+    base.keys()
+        .chain(target.keys())
+        .any(|key| !known_fields.contains(&key.as_str()) && base.get(key) != target.get(key))
 }
 
 fn page(index: usize) -> SourceLocator {
@@ -429,5 +462,299 @@ fn response(
         unverified_regions,
         ancillary_changes,
         parser_provenance: PARSER_PROVENANCE.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn top_level_residual_semantics_are_not_hidden_by_known_page_changes() {
+        let base = json!({"pages": [{"text": "old"}], "form_values": {}, "future": {"order": 1}});
+        let changed =
+            json!({"pages": [{"text": "new"}], "form_values": {}, "future": {"order": 2}});
+        assert!(residual_semantics_differ(
+            &base,
+            &changed,
+            &["pages", "form_values"]
+        ));
+        assert!(residual_semantics_differ(
+            &changed,
+            &json!({"pages": [], "form_values": {}}),
+            &["pages", "form_values"]
+        ));
+        assert!(!residual_semantics_differ(
+            &base,
+            &base,
+            &["pages", "form_values"]
+        ));
+        assert!(!residual_semantics_differ(
+            &json!({"pages": [1], "form_values": {}}),
+            &json!({"pages": [2], "form_values": {}}),
+            &["pages", "form_values"]
+        ));
+    }
+
+    #[test]
+    fn structure_difference_has_a_page_change_and_partial_region() {
+        let mut base = native_page("Stable text");
+        base["structure"] = json!({"sequence": ["first", "second"]});
+        let mut target = base.clone();
+        target["structure"] = json!({"sequence": ["second", "first"]});
+        let mut budget = ComparisonBudget::new(100, 100);
+        let mut changes = vec![];
+        let mut regions = vec![];
+        compare_page(
+            &base,
+            &target,
+            0,
+            0,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
+        assert!(changes.iter().any(|change| change.facet == "pdf_structure"));
+        assert_unverified_page(&regions, 0, 0);
+    }
+
+    fn native_page(text: &str) -> Value {
+        json!({
+            "index": 0,
+            "text": text,
+            "links": [],
+            "images": [],
+            "paint_order": []
+        })
+    }
+
+    fn assert_unverified_page(
+        regions: &[WorkerUnverifiedRegion],
+        old_index: usize,
+        new_index: usize,
+    ) {
+        assert!(
+            regions.iter().any(|region| {
+                region.base == Some(page(old_index))
+                    && region.target == Some(page(new_index))
+                    && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+            }),
+            "uncompared page semantics must retain both page locations: {regions:?}"
+        );
+    }
+
+    #[test]
+    fn residual_page_field_addition_change_and_removal_remain_unverified() {
+        let plain = native_page("Stable text");
+        let mut first = plain.clone();
+        first["future_semantics"] = json!({"reading_sequence": ["first", "second"]});
+        let mut second = first.clone();
+        second["future_semantics"] = json!({"reading_sequence": ["second", "first"]});
+
+        for (base, target) in [(&plain, &first), (&first, &second), (&first, &plain)] {
+            let mut budget = ComparisonBudget::new(100, 100);
+            let mut changes = vec![];
+            let mut regions = vec![];
+            compare_page(base, target, 0, 3, &mut budget, &mut changes, &mut regions).unwrap();
+
+            assert!(
+                changes.is_empty(),
+                "unknown semantics are not a known facet"
+            );
+            assert_unverified_page(&regions, 0, 3);
+        }
+    }
+
+    #[test]
+    fn residual_page_difference_is_not_hidden_by_text_change_on_another_page() {
+        let first_base = native_page("First page");
+        let mut first_target = first_base.clone();
+        first_target["future_semantics"] = json!({"meaning": "new"});
+        let mut budget = ComparisonBudget::new(100, 100);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        compare_page(
+            &first_base,
+            &first_target,
+            0,
+            0,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
+        compare_page(
+            &native_page("Old second page text"),
+            &native_page("New second page text"),
+            1,
+            1,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
+
+        assert!(changes.iter().any(|change| {
+            change.facet == "pdf_text"
+                && change.operation == Some(ChangeOperation::Modified)
+                && change.base == Some(page(1))
+                && change.target == Some(page(1))
+        }));
+        // The aggregate cannot claim Full while this first page is unverified.
+        assert_unverified_page(&regions, 0, 0);
+    }
+
+    #[test]
+    fn vector_only_difference_is_modified_visual_with_unresolved_page_region() {
+        let mut base = native_page("Stable text");
+        base["vectors"] = json!([{"path": [[10, 20], [100, 20]], "width": 1}]);
+        let mut target = base.clone();
+        target["vectors"][0]["width"] = json!(2);
+        let mut budget = ComparisonBudget::new(100, 100);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        compare_page(
+            &base,
+            &target,
+            0,
+            0,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
+
+        assert!(
+            changes.iter().any(|change| {
+                change.facet == "pdf_visual"
+                    && change.operation == Some(ChangeOperation::Modified)
+                    && change.base == Some(page(0))
+                    && change.target == Some(page(0))
+            }),
+            "vector semantics must produce a located visual change: {changes:?}"
+        );
+        assert_unverified_page(&regions, 0, 0);
+    }
+
+    #[test]
+    fn optional_vector_addition_and_removal_are_visual_changes() {
+        let plain = native_page("Stable text");
+        let mut painted = plain.clone();
+        painted["vectors"] = json!([{"path": [[10, 20], [100, 20]], "width": 1}]);
+
+        for (base, target) in [(&plain, &painted), (&painted, &plain)] {
+            let mut budget = ComparisonBudget::new(100, 100);
+            let mut changes = vec![];
+            let mut regions = vec![];
+            compare_page(base, target, 0, 0, &mut budget, &mut changes, &mut regions).unwrap();
+
+            assert!(changes.iter().any(|change| {
+                change.facet == "pdf_visual"
+                    && change.operation == Some(ChangeOperation::Modified)
+                    && change.base == Some(page(0))
+                    && change.target == Some(page(0))
+            }));
+            assert_unverified_page(&regions, 0, 0);
+        }
+    }
+
+    #[test]
+    fn unchanged_optional_semantics_and_page_index_do_not_invent_differences() {
+        let mut base = native_page("Stable text");
+        base["vectors"] = json!([{"path": [[10, 20], [100, 20]], "width": 1}]);
+        base["future_semantics"] = json!({"meaning": "stable"});
+        let mut target = base.clone();
+        target["index"] = json!(3);
+        let mut budget = ComparisonBudget::new(100, 100);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        compare_page(
+            &base,
+            &target,
+            0,
+            3,
+            &mut budget,
+            &mut changes,
+            &mut regions,
+        )
+        .unwrap();
+
+        assert!(changes.is_empty());
+        assert!(regions.is_empty());
+    }
+
+    #[test]
+    fn duplicate_pages_with_a_new_semantic_field_do_not_invent_alignment() {
+        let repeated = native_page("Repeated paragraph");
+        let mut changed = repeated.clone();
+        changed["future_semantics"] = json!({"reading_order": ["second", "first"]});
+        let base = vec![repeated.clone(), repeated.clone()];
+        let target = vec![changed, repeated];
+
+        for (base, target) in [(&base, &target), (&target, &base)] {
+            let mut budget = ComparisonBudget::new(100, 100);
+            let alignment = align_pages(base, target, &mut budget).unwrap();
+            assert!(alignment.ambiguous);
+            assert!(alignment.pairs.is_empty());
+            assert!(alignment.additions.is_empty());
+            assert!(alignment.removals.is_empty());
+        }
+    }
+
+    #[test]
+    fn zero_change_budget_does_not_emit_an_unbudgeted_vector_change() {
+        let base = native_page("Stable text");
+        let mut target = base.clone();
+        target["vectors"] = json!([{"path": [[40, 80], [100, 80]], "width": 1}]);
+        let mut budget = ComparisonBudget::new(100, 0);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        assert_eq!(
+            compare_page(
+                &base,
+                &target,
+                0,
+                0,
+                &mut budget,
+                &mut changes,
+                &mut regions,
+            ),
+            Err(UnverifiedReason::ResourceLimit)
+        );
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn exhausted_page_budget_preserves_the_preceding_text_change() {
+        let base = native_page("Old text");
+        let mut target = native_page("New text");
+        target["vectors"] = json!([{"path": [[40, 80], [100, 80]], "width": 1}]);
+        let mut budget = ComparisonBudget::new(100, 1);
+        let mut changes = vec![];
+        let mut regions = vec![];
+
+        assert_eq!(
+            compare_page(
+                &base,
+                &target,
+                0,
+                0,
+                &mut budget,
+                &mut changes,
+                &mut regions,
+            ),
+            Err(UnverifiedReason::ResourceLimit)
+        );
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].facet, "pdf_text");
+        assert_eq!(changes[0].operation, Some(ChangeOperation::Modified));
+        assert_eq!(changes[0].base, Some(page(0)));
+        assert_eq!(changes[0].target, Some(page(0)));
     }
 }

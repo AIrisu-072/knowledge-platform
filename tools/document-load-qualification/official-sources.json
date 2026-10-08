@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "id": "mhlw-001472933",
+      "path": "001472933.pdf",
+      "url": "https://www.mhlw.go.jp/content/10800000/001472933.pdf",
+      "landingUrl": "https://www.mhlw.go.jp/stf/newpage_56768.html",
+      "title": "医療法施行規則及び地域医療連携推進法人会計基準の一部を改正する省令の公布について（通知）",
+      "publicationDate": "2025-03-31",
+      "retrievedAt": "2026-10-08T06:32:55.123446Z",
+      "license": "PDL-1.0",
+      "licenseUrl": "https://www.mhlw.go.jp/chosakuken/",
+      "rightsReview": "official-notice-no-third-party-material",
+      "sha256": "e5a123087d108d066c775417049935ceb6ff9b807461e5439c36dda0987a3706",
+      "bytes": 182988,
+      "expectedOutcome": "reject-unsupported"
+    },
+    {
+      "id": "mhlw-001472934",
+      "path": "001472934.pdf",
+      "url": "https://www.mhlw.go.jp/content/10800000/001472934.pdf",
+      "landingUrl": "https://www.mhlw.go.jp/stf/newpage_56768.html",
+      "title": "「医療法施行規則の一部を改正する省令」の公布等について",
+      "publicationDate": "2025-03-31",
+      "retrievedAt": "2026-10-08T06:32:59.426132Z",
+      "license": "PDL-1.0",
+      "licenseUrl": "https://www.mhlw.go.jp/chosakuken/",
+      "rightsReview": "official-notice-no-third-party-material",
+      "sha256": "23481a476a1d89b6e6a3b0ad4da5004d1a2b82bc35910788cf5e2a80178fafcb",
+      "bytes": 95621,
+      "expectedOutcome": "publish"
+    },
+    {
+      "id": "mhlw-000616197",
+      "path": "000616197.pdf",
+      "url": "https://www.mhlw.go.jp/content/10800000/000616197.pdf",
+      "landingUrl": "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000205166_00029.html",
+      "title": "「医療法施行規則の一部を改正する省令」の公布について（通知）",
+      "publicationDate": "2020-03-30",
+      "retrievedAt": "2026-10-08T16:17:39.594674Z",
+      "license": "PDL-1.0",
+      "licenseUrl": "https://www.mhlw.go.jp/chosakuken/",
+      "rightsReview": "official-notice-no-third-party-material",
+      "sha256": "57cfad9114727870f4e58e37f7fa07d572b86d53f0f5ce652c001912fc5ba3b7",
+      "bytes": 125872,
+      "expectedOutcome": "publish"
+    }
+  ]
+}

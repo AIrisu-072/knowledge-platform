@@ -16,9 +16,12 @@ import { DatabaseDiagnostics } from './database-diagnostics.mjs';
 import { assertSameRuntime, observeOwnedRuntime, privateProvenanceProbe } from './runtime-provenance.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
+import { loadEnabled, runDocumentLoad } from '../document-load-qualification/hosted.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/document-poc-runtime/run.mjs [--prebuilt]');
+const documentLoadEnabled = loadEnabled(process.env, args.includes('--prebuilt'));
 const visualEnabled = process.env.KP_POC_CAPTURE_VISUAL === 'true';
 if (process.env.KP_POC_CAPTURE_VISUAL !== undefined && !visualEnabled) throw Error('KP_POC_CAPTURE_VISUAL must be absent or true');
 if (visualEnabled && args.includes('--prebuilt')) throw Error('Visual evidence requires built-in-this-run source provenance');
@@ -27,7 +30,7 @@ const base = resolve(process.env.KP_POC_EVIDENCE_DIR ?? join(root, 'tools/docume
 await mkdir(base, { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join(base, 'run-'));
 const runId = randomUUID();
-const stages = RUNTIME_STAGES;
+const stages = documentLoadEnabled ? [...RUNTIME_STAGES.slice(0, -1), 'document-load-qualification', RUNTIME_STAGES.at(-1)] : RUNTIME_STAGES;
 const report = new EvidenceReport(directory, stages);
 const databaseDiagnostics = new DatabaseDiagnostics(report, Boolean(process.env.TEST_DATABASE_URL));
 report.data.runId = runId;
@@ -60,6 +63,10 @@ try {
     await run('build-rust', 'cargo', ['build', '--locked', '-p', 'document-server', '-p', 'document-semantic-inspection-worker', '-p', 'document-diff-worker']);
     await run('build-web', 'pnpm', ['--filter', '@knowledge-platform/document-web', 'build']);
     await run('build-mcp', 'pnpm', ['--filter', '@knowledge-platform/document-mcp', 'build']);
+    if (documentLoadEnabled) {
+      await run('document-load-inspection-tests', 'cargo', ['test', '--locked', '-p', 'document-semantic-inspection-runner', '--example', 'document-load-inspection']);
+      await run('document-load-inspection-build', 'cargo', ['build', '--locked', '-p', 'document-semantic-inspection-runner', '--example', 'document-load-inspection']);
+    }
   });
   const binary = join(binaryDir, 'document-server');
   const storage = join(directory, 'storage');
@@ -84,6 +91,7 @@ try {
       mcp: await sha256File(join(root, 'apps/document-mcp/dist/main.cjs')),
       mcpConsistency: await sha256File(join(root, 'apps/document-mcp/dist/consistency.cjs')),
       mcpRuntime: await sha256File(join(root, 'apps/document-mcp/dist/runtime.cjs')), web: {} };
+    if (documentLoadEnabled) report.data.artifacts.inspectionProbe = await sha256File(join(binaryDir, 'examples', 'document-load-inspection'));
     async function recordAssets(path, prefix = '') {
       for (const entry of await readdir(path, { withFileTypes: true })) {
         if (entry.isDirectory()) await recordAssets(join(path, entry.name), `${prefix}${entry.name}/`);
@@ -316,6 +324,20 @@ try {
     humanProcess = await start('poc-human', 3); agentProcess = await start('poc-agent', 2);
   });
   await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
+  if (documentLoadEnabled) await report.stage('document-load-qualification', async () => {
+    report.data.documentLoadQualification = await runDocumentLoad({ root, directory, runId,
+      sourceHead: report.data.gitHead, artifacts: report.data.artifacts, storage, cid, password, human, agent, run, worker: dsi, pdfium,
+      getPids: () => [humanProcess.child.pid, agentProcess.child.pid],
+      identity: async () => { await recordRuntime('documentLoadCheckpoint'); return {
+        ...report.data.runtimeProvenance.documentLoadCheckpoint,
+        humanPid: humanProcess.child.pid, agentPid: agentProcess.child.pid,
+      }; },
+      restart: async () => {
+        await stopProcess(humanProcess); await stopProcess(agentProcess);
+        humanProcess = await start('poc-human', 4); agentProcess = await start('poc-agent', 3);
+      },
+    });
+  });
   await report.stage('final-shutdown', async () => { await stopProcess(humanProcess); await stopProcess(agentProcess); });
 } catch (error) {
   failed = true;
