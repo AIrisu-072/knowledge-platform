@@ -266,3 +266,249 @@ async fn isolated_fixture() -> IsolatedFixture {
         ),
     }
 }
+
+fn publication_record(
+    created: &document_application::CreateDocumentResult,
+    operation_id: document_application::PublishOperationId,
+    expected_revision: i64,
+) -> document_application::PublishInitialVersionRecord {
+    use document_application::{
+        AuditEventRecord, DomainEventRecord, PublishCommandIdentity, PublishDocumentCommand,
+        PublishDocumentResult, PublishInitialVersionRecord, PublishOperationRecord,
+    };
+    let at = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+    let command = PublishDocumentCommand::new(
+        operation_id,
+        created.document_id(),
+        created.document_version_id(),
+        expected_revision,
+        support::actor(),
+    )
+    .unwrap();
+    let result = PublishDocumentResult::from_persisted(
+        operation_id,
+        created.document_id(),
+        created.document_version_id(),
+        expected_revision + 1,
+        at,
+    );
+    PublishInitialVersionRecord::new(
+        PublishOperationRecord::new(PublishCommandIdentity::from_command(&command), result),
+        DomainEventRecord::new(
+            document_domain::EventId::from_uuid(Uuid::now_v7()),
+            document_application::DOCUMENT_VERSION_PUBLISHED,
+            created.document_id(),
+            serde_json::json!({"synthetic": true}),
+            at,
+        ),
+        AuditEventRecord::new(
+            document_domain::AuditEventId::from_uuid(Uuid::now_v7()),
+            document_application::AUDIT_DOCUMENT_VERSION_PUBLISHED,
+            support::actor(),
+            created.document_id(),
+            Some(created.document_version_id()),
+            serde_json::json!({"synthetic": true}),
+            at,
+        ),
+    )
+}
+
+#[tokio::test]
+async fn nested_initial_originals_publish_with_full_manifest_and_replay() {
+    use document_application::{DocumentPublishRepository, PublishOperationId, RepositoryError};
+    let fixture = isolated_fixture().await;
+    fixture
+        .repository
+        .initialize_root_policy(
+            &support::context(),
+            vec![
+                PolicyGrant::new(
+                    PolicySubject::new(PolicySubjectKind::Principal, "test-idp", "policy-admin")
+                        .unwrap(),
+                    [
+                        Action::Read,
+                        Action::Write,
+                        Action::Publish,
+                        Action::Administer,
+                    ],
+                )
+                .unwrap(),
+            ],
+        )
+        .await
+        .unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let storage = Arc::new(FileSystemStorage::new(directory.path()));
+    let scoped = Arc::new(fixture.repository.with_verified_actor(support::context()));
+    let service = DocumentService::new(
+        Arc::new(Ids),
+        Arc::new(Now),
+        storage.clone(),
+        scoped.clone(),
+    );
+    let mut manifest = command(fixture.root_id);
+    manifest.items[0].logical_path = LogicalPath::new("chapter/A.txt").unwrap();
+    manifest.items[1].logical_path = LogicalPath::new("appendix/B.txt").unwrap();
+    let created = service.create_document_items(manifest).await.unwrap();
+    let candidate = scoped
+        .get_publish_candidate(created.document_id(), created.document_version_id())
+        .await;
+    let stale_id = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
+    assert!(matches!(
+        scoped
+            .publish_initial_version(publication_record(&created, stale_id, 1))
+            .await,
+        Err(RepositoryError::Conflict)
+    ));
+    let operation_id = PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap();
+    let published = scoped
+        .publish_initial_version(publication_record(&created, operation_id, 0))
+        .await
+        .expect(
+            "initial publish must accept the complete nested manifest without a primary/0 anchor",
+        );
+    assert_eq!(candidate.unwrap().file().file_id(), created.file_id());
+    assert_eq!(
+        scoped
+            .publish_initial_version(publication_record(&created, operation_id, 0))
+            .await
+            .unwrap(),
+        published
+    );
+    assert!(matches!(
+        scoped
+            .publish_initial_version(publication_record(&created, operation_id, 1))
+            .await,
+        Err(RepositoryError::Conflict)
+    ));
+    assert_eq!(published.resulting_document_revision(), 1);
+    let current = scoped
+        .get_current_published_document(created.document_id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        current.document().current_version_id(),
+        Some(created.document_version_id())
+    );
+    assert_eq!(
+        current.version().lifecycle_state(),
+        document_domain::LifecycleState::Published
+    );
+    assert_eq!(
+        current
+            .content_items()
+            .iter()
+            .map(|item| (item.logical_path().as_str(), item.ordinal()))
+            .collect::<Vec<_>>(),
+        [("appendix/B.txt", 0), ("chapter/A.txt", 1)]
+    );
+    assert_eq!(
+        current
+            .content_items()
+            .iter()
+            .map(|item| item.file().file_id())
+            .collect::<Vec<_>>(),
+        created.file_ids().unwrap()
+    );
+    for (item, expected) in current
+        .content_items()
+        .iter()
+        .zip([b"first".as_slice(), b"second".as_slice()])
+    {
+        let mut bytes = Vec::new();
+        storage
+            .open(item.file().storage_key())
+            .await
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .await
+            .unwrap();
+        assert_eq!(bytes, expected);
+    }
+    let counts: (i64,i64,i64,i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM content_items WHERE document_version_id=$1), (SELECT count(*) FROM document_publish_operations WHERE document_id=$2), (SELECT count(*) FROM document_revisions WHERE document_id=$2), (SELECT count(*) FROM outbox_events WHERE aggregate_id=$2), (SELECT count(*) FROM audit_outbox_events WHERE resource_id=$2)")
+        .bind(created.document_version_id().as_uuid()).bind(created.document_id().as_uuid()).fetch_one(&fixture.pool).await.unwrap();
+    assert_eq!(counts, (2, 1, 1, 3, 3));
+    let unclassified = service
+        .create_document_items(command(fixture.root_id))
+        .await
+        .unwrap();
+    sqlx::query("UPDATE document_versions SET requires_content_classification=TRUE WHERE document_version_id=$1")
+        .bind(unclassified.document_version_id().as_uuid()).execute(&fixture.pool).await.unwrap();
+    assert!(matches!(
+        scoped
+            .publish_initial_version(publication_record(
+                &unclassified,
+                PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+                0
+            ))
+            .await,
+        Err(RepositoryError::IntegrityViolation)
+    ));
+    let empty = service
+        .create_document_items(command(fixture.root_id))
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM content_items WHERE document_version_id=$1")
+        .bind(empty.document_version_id().as_uuid())
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_rejected_publication(&scoped, &fixture.pool, &empty).await;
+    // These corruption cases change constraints only in this disposable fixture.
+    // Normal schema constraints prohibit missing authoritative representations/files.
+    sqlx::query(
+        "ALTER TABLE content_items DROP CONSTRAINT fk_content_items_authoritative_representation",
+    )
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    let missing_rep = service
+        .create_document_items(command(fixture.root_id))
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM content_representations WHERE file_id=$1")
+        .bind(missing_rep.file_ids().unwrap()[1].as_uuid())
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_rejected_publication(&scoped, &fixture.pool, &missing_rep).await;
+    sqlx::query(
+        "ALTER TABLE content_representations DROP CONSTRAINT content_representations_file_id_fkey",
+    )
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    let missing_file = service
+        .create_document_items(command(fixture.root_id))
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM file_objects WHERE file_id=$1")
+        .bind(missing_file.file_ids().unwrap()[1].as_uuid())
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_rejected_publication(&scoped, &fixture.pool, &missing_file).await;
+}
+
+async fn assert_rejected_publication(
+    repository: &document_repository_postgres::PostgresDocumentRepository,
+    pool: &sqlx::PgPool,
+    created: &document_application::CreateDocumentResult,
+) {
+    use document_application::{DocumentPublishRepository, PublishOperationId, RepositoryError};
+    let result = repository
+        .publish_initial_version(publication_record(
+            created,
+            PublishOperationId::try_from_uuid(Uuid::now_v7()).unwrap(),
+            0,
+        ))
+        .await;
+    assert!(
+        matches!(result, Err(RepositoryError::IntegrityViolation)),
+        "invalid complete-manifest state must fail closed: {result:?}"
+    );
+    let state: (Option<Uuid>, i64, String, i64, i64, i64, i64) = sqlx::query_as("SELECT d.current_version_id,d.revision,v.lifecycle_state,(SELECT count(*) FROM document_publish_operations WHERE document_id=d.document_id),(SELECT count(*) FROM document_revisions WHERE document_id=d.document_id),(SELECT count(*) FROM outbox_events WHERE aggregate_id=d.document_id),(SELECT count(*) FROM audit_outbox_events WHERE resource_id=d.document_id) FROM documents d JOIN document_versions v ON v.document_id=d.document_id WHERE d.document_id=$1")
+        .bind(created.document_id().as_uuid()).fetch_one(pool).await.unwrap();
+    assert_eq!(state, (None, 0, "WORKING".to_owned(), 0, 0, 2, 2));
+}

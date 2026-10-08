@@ -30,6 +30,18 @@ DBは所有する使い捨てcontainerだけを使用。最終container `18c4393
 
 ## 次のexact actionと未実施
 
+### PR109 初回複数原本の公開500
+
+Draft [PR109](https://github.com/AIrisu-072/knowledge-platform/pull/109)、保存head `39873ee47f2f2398b6d72b9fa5fa5218a82c18b9` のCI `37740624194` は新しい初回複数原本の実runtimeでFAIL。`initial-registration.spec.ts:187` の公開応答はexpected200 / actual500。登録・全原本取得・全IDs回復・WORKING確認までは成功し、既存の初回単原本と新しい作業版構成変更は成功した。これは合格やflaky再試行として扱わない。
+
+原因調査で初回公開repositoryの `publish.rs` に `logical_path = 'primary' AND ordinal = 0` を要求する旧単原本前提が残っていた。新fixtureの正しい `appendix/B.txt` / 0 と `chapter/A.txt` / 1 ではtransactionのprimary存在検査が必ずfalseとなり、`IntegrityViolation` がHTTP500へ変換される。その後のtransaction loaderにも同じ固定anchorがあり、一箇所だけ除去しても解決しない。公開認可・OCC・replay・公開transactionを維持した上で、全canonical原本を検証し表示順の先頭を代表fileとして読む修正を行う。実runtimeの500をREDとし、新しいRust回帰試験とLinux実runtimeのGREENは修正exact-headのCIで確認する。
+
+CIの親が保存したraw logは `/tmp/pr109-runtime-first.log`。既存の実DB独立再確認logは `/tmp/document-originals-independent-db-recheck.log`。この500の修正headのLinux資格と統合後資格はこれから。
+
+根因の最小SQL再現を実PostgreSQL `18.6-bookworm`（image `sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650`）で実施した。失敗headのproduction SQLを抽出し、二原本の完全な合成graphでも旧固定guardがfalseとなることを確認。修正sourceのproduction guardは同じ二原本と旧primary/0でtrue、先頭以外のfile欠落・representation欠落・空manifest・未classificationでfalseとなった。生logは `/tmp/kp-originals-publish-sql-red.log` と `/tmp/kp-originals-publish-sql-patch.log`、SQLは `/tmp/kp-originals-publish-repro.sql` と `/tmp/kp-originals-publish-sql-patch.sql`。SQL guardだけの検証であり、新しいRust試験・HTTP公開transaction・実browserのGREENとは扱わない。所有container `kp-originals-sql-20261008` / `976cf323…` のportは127.0.0.1限定をinspectし、検証後に削除した。既存DBを使用していない。
+
+修正時の空き容量が約4.1GiBのため、4GiB reserveを維持する親の指示に従い共有target再buildを実行していない。新しいrepository回帰試験はnested二原本の初回公開、全順序付き原本の取得・immutable bytes、OCC、同operation replay・再利用拒否、全domain/audit/formal revision件数、欠落graphと未classificationのfail-closedを追加したが、この修正のRust compile/実DBGREENは未実施。既存CIの `rust-test` と実Document runtimeでexact-head資格化が必要。
+
 共有Cargo cacheが増えディスクが4 GiB reserveを下回ったため、新しいheavy buildとbrowser harnessを止め、全Cargo終了を親へ通知した。親が所有する `target/debug/incremental` だけを整理し、5.2 GiBへ回復した。PR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82` を通常mergeし、組合せhead `664847658c2b3d3413aa342ee3ec214e70257f7e` / tree `6254deb2fe3aee894c8e27125e0b9affd137154f` を保持した。製品treeは統合前と変わらない。
 
 実browser harnessは `run.mjs` がqualified Linux sandboxとPDFium `libpdfium.so`を必須とするため、このMacではproduction実受入を資格化できない。無駄なbuildや確認の無効化をせず親へ通知した。次は独立Rustレビューと、Linux hosted exact-headで実Document browser journey・再起動persistenceを実行する。tools/document-poc-runtime/run.mjsとCIは別担当所有なのでこのbranchでは変更しない。
