@@ -171,8 +171,16 @@ async fn store_outage() {
         "folder, lifecycle, rename, policy, denial"
     );
     // The breaker alternates between open and half-open probes while the
-    // Store stays down; the running relay reports it every second.
-    let report = health_when(&env, |report| report["circuit"]["state"] == json!("open")).await;
+    // Store stays down; the running relay reports it every second (right
+    // after the failed ingest the circuit is open with the last probe's
+    // `ok` gate, until the next probe classifies the outage).
+    let report = health_when(&env, |report| {
+        report["circuit"]["state"] == json!("open")
+            && report["circuit"]["gate"]
+                .as_str()
+                .is_some_and(|gate| gate.starts_with("store_"))
+    })
+    .await;
     assert_eq!(report["stored"]["available"], json!(false), "{report}");
     let gate = report["stored"]["gate"].as_str().expect("gate");
     assert!(gate.starts_with("store_"), "{report}");
@@ -189,12 +197,6 @@ async fn store_outage() {
     assert_eq!(report["delivered"]["outage_held"], json!(1));
     assert_eq!(report["delivered"]["quarantined_total"], json!(0));
     assert_eq!(report["circuit"]["running"], json!(1));
-    assert!(
-        report["circuit"]["gate"]
-            .as_str()
-            .expect("gate")
-            .starts_with("store_")
-    );
     let ledger = deliveries(&env).await;
     for row in &staged[delivered_before..] {
         let delivery = &ledger[&row.event_id];

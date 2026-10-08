@@ -5,6 +5,7 @@
 mod document;
 mod support;
 
+mod document_migration;
 mod journey;
 mod relay_crash;
 mod staging_failure;

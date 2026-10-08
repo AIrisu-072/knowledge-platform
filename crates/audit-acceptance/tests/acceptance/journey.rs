@@ -203,9 +203,12 @@ async fn journey() {
     // Drain, then stop the relay as an operator would.
     // ------------------------------------------------------------------
     wait_until("the relay drains", CONVERGE, || drained(&env)).await;
-    let running = env.health(false).await;
-    assert_eq!(running["circuit"]["running"], json!(1), "{running}");
-    assert_eq!(running["circuit"]["state"], json!("closed"), "{running}");
+    // The running relay reports its closed circuit for health (sampled
+    // every second).
+    health_when(&env, |report| {
+        report["circuit"]["running"] == json!(1) && report["circuit"]["state"] == json!("closed")
+    })
+    .await;
     let summary = relay.stop().await;
     if let Some(summary) = summary {
         assert!(summary.claimed >= summary.settled);
