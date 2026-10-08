@@ -146,3 +146,7 @@ actual Crop REDに基づき、新semanticsを使うページだけ、有限な�
 次は全体独立review、保存exact headのLinux既存runtimeで正例2/負例1のAPI・再起動・資源実測、全CIを確認する。1000以上は未admissionで、native/契約試験を容量根拠に使わない。
 
 17:10追補：全体独立reviewで、新規tag投影のページ横断段落ownershipとcatalog既定言語の省略、BDC関連付けtag名の過剰なidentity寄与、Artifact言語scopeの未表現を検出した。旧15互換性は維持し、まず現sourceの差分/不変/拒否テストを追加してMacのactual REDを確認する。製品修正前。これらが解決するまでnative88成功だけで最終資格にしない。
+
+17:25追補：8dac8af9/tree c5018391のMac実試験は全4target compile成功。tags23成功/新規9 behavioral RED、paint29成功/子1ignore、pdf_diff12成功/跨頁段落差分1 RED（誤ってFull）、Diff lib10成功。期待した意味欠落を確認してから、structure.rsのみの限定修正に着手した。fmtは次headで機械的にまとめる。cloudの同headはharness119＋既存runtime177＋生成SDK/binary19＝315件成功、skip0。いずれもLinux API/容量資格ではない。
+
+17:31追補：既存の実RED9件に対し、structure.rsへ有限ページmembership・lazy catalog Lang・非MCID文字の既定言語・関連付けtagのidentity除外を実装し、6つの小さな実helper budget境界試験を追加。独立reviewは設計一致を確認したが、不正なStructTreeRoot直下MCRがParentTree owner=rootで通る別経路を指摘した。ISO32000-1 Table322ではroot子はStructElemに限る。次headはこの不正rootのdirect/array回帰だけを新しい期待REDとして残し、他のtag修正GREEN・旧15全field・公式2件を同時検証する。rootのguardはそのRED確認後に追加する。graphicsの100万overlap照合ちょうど/超過の小型fixtureも追加した。

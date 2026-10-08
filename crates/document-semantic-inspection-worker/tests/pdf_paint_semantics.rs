@@ -609,3 +609,45 @@ fn discarded_paths_still_consume_the_bounded_page_segment_budget() {
     );
     assert_eq!(error.message(), "PDF path segment budget exceeded");
 }
+
+#[test]
+fn text_vector_overlap_proof_accepts_its_exact_budget_and_rejects_one_extra_object() {
+    const VECTOR_COUNT: usize = 1_000;
+    const TEXT_COUNT: usize = 1_000;
+    let fixture = |text_count: usize| {
+        let mut content = String::with_capacity(80_000);
+        content.push_str("0.1 w 1 j\n");
+        // Each separate stroke has one segment envelope. The lower grid and
+        // upper text grid are disjoint, with every bound inside the page.
+        for index in 0..VECTOR_COUNT {
+            let x = 10 + (index % 50) * 3;
+            let y = 10 + (index / 50) * 3;
+            content.push_str(&format!("{x} {y} m {} {y} l S\n", x + 1));
+        }
+        for index in 0..text_count {
+            let x = 10 + (index % 50) * 3;
+            let y = 110 + (index / 50) * 3;
+            content.push_str(&format!("BT /F1 1 Tf {x} {y} Td (x) Tj ET\n"));
+        }
+        // Do not use native_text_pdf: its extra text object would consume
+        // another 1,000 comparisons and invalidate the exact-limit control.
+        native_text_pdf_content(&content, UNUSED_PIXEL)
+    };
+
+    let at_limit = fixture(TEXT_COUNT);
+    assert!(at_limit.len() < 100 * 1024);
+    PdfAdapter
+        .inspect(&at_limit, &AdapterProfile::default())
+        .expect("1,000 vectors times 1,000 text objects fits the 1,000,000-check budget");
+
+    let over_limit = fixture(TEXT_COUNT + 1);
+    assert!(over_limit.len() < 100 * 1024);
+    let error = PdfAdapter
+        .inspect(&over_limit, &AdapterProfile::default())
+        .expect_err("the next text object must exceed the cumulative overlap-proof budget");
+    assert_eq!(
+        error.code(),
+        document_semantic_inspection_worker::WorkerFailureCode::InspectionResourceLimitExceeded
+    );
+    assert_eq!(error.message(), "PDF text/vector overlap proof budget exceeded");
+}

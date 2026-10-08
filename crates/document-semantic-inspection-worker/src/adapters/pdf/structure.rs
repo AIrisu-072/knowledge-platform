@@ -31,6 +31,7 @@ enum Node {
         language: Option<String>,
         actual_text: Option<String>,
         children: Vec<usize>,
+        page_indices: Vec<usize>,
     },
     Leaf {
         key: LeafKey,
@@ -41,7 +42,6 @@ enum Node {
 #[derive(Debug, Default)]
 struct LeafContent {
     text: String,
-    tag: String,
     language: Option<String>,
     paints: Vec<Value>,
 }
@@ -49,6 +49,9 @@ struct LeafContent {
 pub(super) struct StructureInspector<'a> {
     document: &'a Document,
     role_map: Option<&'a Dictionary>,
+    page_ordinals: BTreeMap<ObjectId, usize>,
+    catalog_language: Option<String>,
+    catalog_language_loaded: bool,
     nodes: Vec<Node>,
     roots: Vec<usize>,
     leaves: BTreeMap<LeafKey, usize>,
@@ -65,6 +68,9 @@ impl<'a> StructureInspector<'a> {
         let mut inspector = Self {
             document,
             role_map: None,
+            page_ordinals: BTreeMap::new(),
+            catalog_language: None,
+            catalog_language_loaded: false,
             nodes: Vec::new(),
             roots: Vec::new(),
             leaves: BTreeMap::new(),
@@ -82,6 +88,13 @@ impl<'a> StructureInspector<'a> {
         let Some(root_object) = optional(catalog, b"StructTreeRoot") else {
             return Ok(inspector);
         };
+        let physical_pages = document.get_pages();
+        inspector.charge_work(physical_pages.len())?;
+        inspector.page_ordinals = physical_pages
+            .into_values()
+            .enumerate()
+            .map(|(ordinal, id)| (id, ordinal))
+            .collect();
         let (root_id, root_object) = resolve(document, root_object)?;
         let root = root_object
             .as_dict()
@@ -117,10 +130,79 @@ impl<'a> StructureInspector<'a> {
         if depth >= MAX_PDF_OBJECT_DEPTH {
             return Err(limit("structure exceeds the depth limit"));
         }
-        self.nodes_seen = self.nodes_seen.saturating_add(1);
-        if self.nodes_seen > MAX_STRUCTURE_NODES {
-            return Err(limit("structure exceeds the node limit"));
+        let next = self.nodes_seen.checked_add(1)
+            .filter(|next| *next <= MAX_STRUCTURE_NODES)
+            .ok_or_else(|| limit("structure exceeds the node limit"))?;
+        self.nodes_seen = next;
+        Ok(())
+    }
+
+    fn charge_work(&self, amount: usize) -> Result<(), WorkerFailure> {
+        let next = self.projection_visits.get().checked_add(amount)
+            .filter(|next| *next <= MAX_PDF_CONTENT_OPERATIONS)
+            .ok_or_else(|| limit("structure exceeds the work limit"))?;
+        self.projection_visits.set(next);
+        Ok(())
+    }
+
+    fn charge_membership_entries(&self, count: usize) -> Result<(), WorkerFailure> {
+        // Each candidate can allocate a set entry and be copied into the result.
+        let work = count.checked_mul(2)
+            .ok_or_else(|| limit("structure page membership size overflow"))?;
+        self.charge_work(work)
+    }
+
+    fn page_membership(&self, children: &[usize]) -> Result<Vec<usize>, WorkerFailure> {
+        self.charge_work(children.len())?;
+        let candidates = children.iter().try_fold(0usize, |count, index| {
+            let additional = match &self.nodes[*index] {
+                Node::Element { page_indices, .. } => page_indices.len(),
+                Node::Leaf { .. } => 1,
+            };
+            count.checked_add(additional)
+                .ok_or_else(|| limit("structure page membership size overflow"))
+        })?;
+        self.charge_membership_entries(candidates)?;
+        let mut pages = BTreeSet::new();
+        for &index in children {
+            match &self.nodes[index] {
+                Node::Element { page_indices, .. } => {
+                    pages.extend(page_indices.iter().copied());
+                }
+                Node::Leaf { key: (page, _), .. } => {
+                    let ordinal = self.page_ordinals.get(page)
+                        .ok_or_else(|| malformed("structure page is outside the page tree"))?;
+                    pages.insert(*ordinal);
+                }
+            }
         }
+        Ok(pages.into_iter().collect())
+    }
+
+    fn load_catalog_language(&mut self) -> Result<(), WorkerFailure> {
+        if self.catalog_language_loaded {
+            return Ok(());
+        }
+        let catalog = dictionary(self.document, required(&self.document.trailer, b"Root")?)?;
+        let language = if let Some(value) = optional(catalog, b"Lang") {
+            let value = resolve(self.document, value)?.1;
+            let bytes = value.as_str()
+                .map_err(|_| malformed("catalog language is not a string"))?;
+            // A supported UTF-16 string needs at most 256 code units plus BOM.
+            if bytes.len() > 514 {
+                return Err(unsupported("catalog language tag is unsupported"));
+            }
+            let language = text_string(value)?;
+            if language.len() > 256 {
+                return Err(unsupported("catalog language tag is unsupported"));
+            }
+            self.charge_text(language.len())?;
+            Some(language)
+        } else {
+            None
+        };
+        self.catalog_language = language;
+        self.catalog_language_loaded = true;
         Ok(())
     }
 
@@ -198,12 +280,14 @@ impl<'a> StructureInspector<'a> {
                     Some(children) => self.walk_children(children, id, page, depth + 1)?,
                     None => Vec::new(),
                 };
+                let page_indices = self.page_membership(&children)?;
                 let index = self.nodes.len();
                 self.nodes.push(Node::Element {
                     role,
                     language,
                     actual_text,
                     children,
+                    page_indices,
                 });
                 Ok(vec![index])
             }
@@ -264,17 +348,11 @@ impl<'a> StructureInspector<'a> {
     }
 
     fn validate_page_order(&self) -> Result<(), WorkerFailure> {
-        let page_order: BTreeMap<_, _> = self
-            .document
-            .get_pages()
-            .into_iter()
-            .map(|(number, id)| (id, number))
-            .collect();
         let mut previous = None;
         // Arena leaves were appended during the structure's ordered depth-first walk.
         for node in &self.nodes {
             if let Node::Leaf { key: (page, _), .. } = node {
-                let number = page_order
+                let number = self.page_ordinals
                     .get(page)
                     .ok_or_else(|| malformed("structure page is outside the page tree"))?;
                 if previous.is_some_and(|previous| number < previous) {
@@ -388,11 +466,13 @@ impl<'a> StructureInspector<'a> {
         if self.roots.is_empty() && !has_marks {
             return Ok(PageStructure::default());
         }
+        self.load_catalog_language()?;
         let mut font_cache = BTreeMap::new();
         let mut current_font: Option<Vec<u8>> = None;
         let mut font_stack = Vec::new();
         let mut marks: Vec<Mark> = Vec::new();
         let mut native_text = String::new();
+        let mut has_unowned_text = false;
         let mut vector_index = 0usize;
         let mut path_segments = 0usize;
         let mut image_index = 0usize;
@@ -459,12 +539,12 @@ impl<'a> StructureInspector<'a> {
                         if !self.leaves.contains_key(&key) {
                             return Err(malformed("marked MCID has no structure leaf"));
                         }
+                        self.role(tag)?;
                         if self
                             .contents
                             .insert(
                                 key,
                                 LeafContent {
-                                    tag: self.role(tag)?,
                                     language: language.clone(),
                                     ..Default::default()
                                 },
@@ -560,6 +640,8 @@ impl<'a> StructureInspector<'a> {
                                 .ok_or_else(|| malformed("missing marked-content owner"))?
                                 .text
                                 .push_str(&text);
+                        } else if !text.is_empty() {
+                            has_unowned_text = true;
                         }
                     }
                 }
@@ -610,9 +692,19 @@ impl<'a> StructureInspector<'a> {
         }
         let mut projection = Vec::new();
         for &index in &self.roots {
-            if let Some(value) = self.project_node(index, page_id)? {
+            if let Some(mut value) = self.project_node(index, page_id)? {
+                if let Node::Element { language: None, .. } = &self.nodes[index]
+                    && let Some(language) = &self.catalog_language
+                {
+                    self.charge_work(language.len())?;
+                    value["language"] = json!(language);
+                }
                 projection.push(value);
             }
+        }
+        if has_unowned_text && let Some(language) = &self.catalog_language {
+            self.charge_work(language.len().saturating_add(1))?;
+            projection.push(json!({ "unowned_text_language": language }));
         }
         Ok(PageStructure {
             projection: if projection.is_empty() {
@@ -644,11 +736,7 @@ impl<'a> StructureInspector<'a> {
     }
 
     fn project_node(&self, index: usize, page: ObjectId) -> Result<Option<Value>, WorkerFailure> {
-        let visits = self.projection_visits.get().saturating_add(1);
-        self.projection_visits.set(visits);
-        if visits > MAX_PDF_CONTENT_OPERATIONS {
-            return Err(limit("structure projection exceeds the work limit"));
-        }
+        self.charge_work(1)?;
         match &self.nodes[index] {
             Node::Leaf { key, .. } => {
                 if key.0 != page {
@@ -658,7 +746,7 @@ impl<'a> StructureInspector<'a> {
                     .contents
                     .get(key)
                     .ok_or_else(|| malformed("structure leaf has no marked content"))?;
-                let mut result = json!({ "text": content.text, "tag": content.tag });
+                let mut result = json!({ "text": content.text });
                 if let Some(language) = &content.language {
                     result["language"] = json!(language);
                 }
@@ -671,6 +759,7 @@ impl<'a> StructureInspector<'a> {
                 role,
                 language,
                 children,
+                page_indices,
                 ..
             } => {
                 let mut projected = Vec::new();
@@ -683,6 +772,10 @@ impl<'a> StructureInspector<'a> {
                     return Ok(None);
                 }
                 let mut result = json!({ "role": role, "children": projected });
+                if page_indices.len() > 1 {
+                    self.charge_work(page_indices.len())?;
+                    result["page_indices"] = json!(page_indices);
+                }
                 if let Some(language) = language {
                     result["language"] = json!(language);
                 }
@@ -692,10 +785,10 @@ impl<'a> StructureInspector<'a> {
     }
 
     fn charge_text(&mut self, count: usize) -> Result<(), WorkerFailure> {
-        self.text_bytes = self.text_bytes.saturating_add(count);
-        if self.text_bytes > MAX_STRUCTURE_TEXT_BYTES {
-            return Err(limit("structure text exceeds the byte limit"));
-        }
+        let next = self.text_bytes.checked_add(count)
+            .filter(|next| *next <= MAX_STRUCTURE_TEXT_BYTES)
+            .ok_or_else(|| limit("structure text exceeds the byte limit"))?;
+        self.text_bytes = next;
         Ok(())
     }
 
@@ -725,13 +818,7 @@ impl<'a> StructureInspector<'a> {
     }
 
     fn append_native_text(&self, index: usize, text: &mut String) -> Result<(), WorkerFailure> {
-        let visits = self.projection_visits.get().saturating_add(1);
-        self.projection_visits.set(visits);
-        if visits > MAX_PDF_CONTENT_OPERATIONS {
-            return Err(limit(
-                "structure replacement validation exceeds the work limit",
-            ));
-        }
+        self.charge_work(1)?;
         match &self.nodes[index] {
             Node::Leaf { key, .. } => {
                 let content = self
@@ -941,6 +1028,9 @@ fn property_dictionary<'a>(
 }
 
 fn validate_artifact_properties(properties: &Dictionary) -> Result<(), WorkerFailure> {
+    if properties.has(b"Lang") {
+        return Err(unsupported("artifact language override is unsupported"));
+    }
     check_keys(
         properties,
         &[
@@ -1832,4 +1922,113 @@ mod tests {
         let balanced = operations(&["BDC", "BDC", "EMC", "EMC"]);
         assert!(validate_marked_delimiters(&balanced).is_ok());
     }
+
+    fn empty_structure_document() -> Document {
+        let mut document = Document::with_version("1.7");
+        let catalog = document.add_object(dictionary! { "Type" => "Catalog" });
+        document.trailer.set("Root", Object::Reference(catalog));
+        document
+    }
+
+    fn one_leaf_inspector(document: &Document) -> StructureInspector<'_> {
+        let mut inspector = StructureInspector::new(document).unwrap();
+        let page = (99, 0);
+        inspector.page_ordinals.insert(page, 0);
+        inspector.nodes.push(Node::Leaf { key: (page, 0), owner: (100, 0) });
+        inspector.contents.insert((page, 0), LeafContent {
+            text: "probe".into(),
+            ..Default::default()
+        });
+        inspector
+    }
+
+    #[test]
+    fn node_budget_accepts_exact_limit_and_rejects_before_incrementing_past_it() {
+        let document = empty_structure_document();
+        let mut inspector = StructureInspector::new(&document).unwrap();
+        inspector.nodes_seen = MAX_STRUCTURE_NODES - 1;
+        assert!(inspector.charge_node(0).is_ok());
+        assert_eq!(inspector.nodes_seen, MAX_STRUCTURE_NODES);
+        assert_eq!(inspector.charge_node(0).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.nodes_seen, MAX_STRUCTURE_NODES);
+        inspector.nodes_seen = usize::MAX;
+        assert_eq!(inspector.charge_node(0).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.nodes_seen, usize::MAX);
+    }
+
+    #[test]
+    fn projection_and_native_text_copy_share_the_exact_work_limit() {
+        let document = empty_structure_document();
+        let inspector = one_leaf_inspector(&document);
+        inspector.projection_visits.set(MAX_PDF_CONTENT_OPERATIONS - 1);
+        assert_eq!(inspector.project_node(0, (99, 0)).unwrap().unwrap()["text"], "probe");
+        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS);
+        assert_eq!(inspector.project_node(0, (99, 0)).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        let mut text = "unchanged".to_string();
+        assert_eq!(inspector.append_native_text(0, &mut text).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(text, "unchanged");
+        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS);
+    }
+
+    #[test]
+    fn membership_precharges_construction_and_copy_at_the_work_boundary() {
+        let document = empty_structure_document();
+        let inspector = one_leaf_inspector(&document);
+        // One child visit, one candidate insertion, and one result copy.
+        inspector.projection_visits.set(MAX_PDF_CONTENT_OPERATIONS - 3);
+        assert_eq!(inspector.page_membership(&[0]).unwrap(), vec![0]);
+        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS);
+        inspector.projection_visits.set(MAX_PDF_CONTENT_OPERATIONS - 2);
+        assert_eq!(inspector.page_membership(&[0]).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.projection_visits.get(), MAX_PDF_CONTENT_OPERATIONS - 1);
+        inspector.projection_visits.set(10);
+        assert_eq!(inspector.charge_membership_entries(usize::MAX).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.charge_work(usize::MAX).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.projection_visits.get(), 10);
+    }
+
+    #[test]
+    fn membership_uses_sorted_unique_ordinals_from_postorder_children() {
+        let document = empty_structure_document();
+        let mut inspector = one_leaf_inspector(&document);
+        inspector.page_ordinals.insert((101, 0), 1);
+        inspector.nodes.push(Node::Leaf { key: ((101, 0), 0), owner: (102, 0) });
+        let page_indices = inspector.page_membership(&[1, 0, 1]).unwrap();
+        assert_eq!(page_indices, vec![0, 1]);
+        inspector.nodes.push(Node::Element {
+            role: "P".into(), language: None, actual_text: None,
+            children: vec![0, 1], page_indices,
+        });
+        assert_eq!(inspector.page_membership(&[2, 0]).unwrap(), vec![0, 1]);
+    }
+
+    #[test]
+    fn catalog_language_is_charged_once_and_only_when_requested() {
+        let mut document = empty_structure_document();
+        let catalog = document.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        document.get_dictionary_mut(catalog).unwrap().set("Lang", Object::string_literal("en-US"));
+        let mut inspector = StructureInspector::new(&document).unwrap();
+        assert!(!inspector.catalog_language_loaded);
+        assert_eq!(inspector.text_bytes, 0);
+        inspector.load_catalog_language().unwrap();
+        assert_eq!(inspector.catalog_language.as_deref(), Some("en-US"));
+        assert_eq!(inspector.text_bytes, 5);
+        inspector.load_catalog_language().unwrap();
+        assert_eq!(inspector.text_bytes, 5);
+    }
+
+    #[test]
+    fn text_budget_checks_normal_exact_limit_and_overflow_without_mutating_on_failure() {
+        let document = empty_structure_document();
+        let mut inspector = StructureInspector::new(&document).unwrap();
+        inspector.charge_text(5).unwrap();
+        assert_eq!(inspector.text_bytes, 5);
+        inspector.text_bytes = MAX_STRUCTURE_TEXT_BYTES - 1;
+        inspector.charge_text(1).unwrap();
+        assert_eq!(inspector.text_bytes, MAX_STRUCTURE_TEXT_BYTES);
+        assert_eq!(inspector.charge_text(1).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.charge_text(usize::MAX).unwrap_err().code(), WorkerFailureCode::InspectionResourceLimitExceeded);
+        assert_eq!(inspector.text_bytes, MAX_STRUCTURE_TEXT_BYTES);
+    }
+
 }
