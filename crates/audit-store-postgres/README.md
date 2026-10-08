@@ -35,9 +35,10 @@ Audit Infrastructure v1の監査Store（[設計](../../docs/superpowers/specs/20
 LOGIN roleの割当（設計§10.1）：relay serviceはingest + relay_control + reconciler、relay operatorはrelay_control + reconcilerだけ（ingestを持たない）。ingest roleのmemberはsource serviceとして束縛されていなければならず（`posture_check` の `ingest_member_not_source_service`）、ownerのmemberはcapability roleを持てない。
 
 - 実行には、DB層のcapability roleと、束縛された主体のAudit権限の両方が要る。主体は `session_user` から解決し、引数では受け取らない。未束縛・権限不足・入力不正は `audit.access.denied` に記録される（入力値は記録しない）。未束縛sessionと所有者操作のactorは issuer `db_role`、principal_id = session roleで、issuer `db_role` への束縛・登録は拒否する。
-- ingest経路の拒否（未束縛、source serviceでない）は `denied`（outage）で、連続する拒否はsession roleごとに1分1件へ集約して記録する（`denial_streaks`）。
-- `audit-admin` は migrate・bootstrap-admin・bind・unbind・register-source-service 以外で、superuserと `audit_store_owner` のmemberのsessionを拒否する。`options` を含むURLは接続前に拒否し、接続後に `SHOW synchronous_commit` が `on` でなければ拒否する。URLはDebug・errorに出さない。
-- 表への直接DMLはどのroleにも与えない。guard triggerは事故防止で、境界は権限である（ownerとsuperuserは迂回できる。DB外のcheckpoint照合で検出する）。
+- ingest経路の拒否（未束縛、source serviceでない）は `denied`（outage）で、連続する同じcodeの拒否はsession roleごとに1分1件へまとめて記録する（`denial_streaks`）。間引きはしない：まとめた件数は次の記録の `suppressed_since_last` としてchainに残り、codeが変わるときと、そのloginの成功で連続が終わるときにも、未記録の件数を1件の記録（件数はその記録自身を除いた数）として先に書く。各記録は自身と `suppressed_since_last` 件の拒否を表す。
+- replay（`audit.delivery.replay_requested`）とrepair mode の `audit.reconciliation.completed` は、`audit_store_ingest` を持つlogin（relay service）からは記録しない（`insufficient_capability` で拒否し記録する）。operator自身のlogin（relay_control + reconciler）だけが記録でき、特権操作のactorは操作したoperatorになる（設計§6.4、§10.1）。
+- `audit-admin` は migrate・bootstrap-admin・bind・unbind・register-source-service 以外で、superuserと `audit_store_owner` のmemberのsessionを拒否する。`options` または `options[<設定>]` を含むURLと、空でない環境変数 `PGOPTIONS` は接続前に拒否し（session設定でtimeoutやsynchronous_commitを変えられるため）、接続後に `SHOW synchronous_commit` が `on` でなければ拒否する。URLはDebug・errorに出さない。
+- 表への直接DMLはどのroleにも与えない。guard triggerは事故防止で、境界は権限である（ownerとsuperuserは迂回できる。DB外のcheckpoint照合で検出する）。表の権限を迂回する定義済みrole（`pg_read_all_data`：全本文・intentを読める、`pg_write_all_data`：definer GUCを設定して権限表を書ける、`pg_maintain`）をこのDBへ接続できる非superuserのloginが持つと、postureは `predefined_role_member` を報告する。列単位の権限も `column_privilege` で報告する。capability loginのtimeoutは設定済みで0でないこと（DB単位の設定がrole全体の設定に優先する）を確認する。**backup（`pg_dump`）はownerのmemberかsuperuserで実行する**（`pg_read_all_data` のbackup loginは使わない）。
 
 ## 実装上の判断
 
@@ -46,19 +47,23 @@ LOGIN roleの割当（設計§10.1）：relay serviceはingest + relay_control +
 - `retention` の拒否（stale_revision / not_expirable / held）は `audit.retention.expire_refused` として記録する。`audit.retention.expired` は `expired_set_digest`（`sha256('kp-audit-expired-set-v1' || int8send(seq)…)`、audit-coreと照合）を持つ。
 - fingerprintは `pg_control_system().system_identifier`、DB oid、`pg_walfile_name(pg_current_wal_lsn())` の先頭8桁（timeline）を、それぞれint8の10進表記（`audit.recovery.epoch_started` の `int8_text` kind）で持つ。standbyではtimelineを `standby` とし、publicationは閉じたままになる（epochも開始できない）。
 - `ingest` の結果は構造化行 `(status, seq, envelope_digest, adapter_version, code)`。順序は head lock → recovery（`recovery_required`）→ source service（`denied`）→ posture（`outage`/`posture_invalid`）→ 構造検査（`rejected`）→ `registered_types`（source・type・adapter_version・source_formatの一致、無ければ `outage`/`unregistered_type`）→ source別のservice確認 → 重複/衝突/保存。recovery中は拒否も記録しない。
-- `probe(source, adapter_version, types, last_ack)` はstate（operational / recovery_mode / posture_invalid / read_only）、未登録type、last_ackが解決しないこと（regression）、最後の `integrity.verified` のseqを返す。read_onlyはlockを取らずに判定する。
+- `probe(source, adapter_version, types, last_ack)` はstate（operational / recovery_mode / posture_invalid / read_only）、未登録type、last_ackが解決しないこと（regression）、検証の被覆（`last_verified_seq`、下記）を返す。read_onlyはlockを取らずに判定する。
+- `store_status` / `probe` の検証状態は最新の記録ではなく被覆である（`verification_coverage`）。`last_verified_seq` は、最後の違反以後の `ok` の検証のうちgenesisから連続して（重なりを含めて）つながる範囲の最大seq、`last_verified_outcome` は、違反の後にgenesisからその走査のheadまで（`from_seq` 1、`to_seq` = watermark）の `ok` の検証が1件記録されるまで `violations` のままである。部分範囲の検証は、つなげてheadへ届いても違反を解除しない。`head_seq - last_verified_seq` が検証の遅れになる。
 - `report_regression` は解決しないreceiptだけを `recovery_pending`（reason `regression`、報告されたseq・event_id・digest・報告者・時刻・当時のhead）にする。`declare_recovery_pending(incident_code)` はmaintainerが既知の事故で同じ状態にする（reason `declared`）。どちらもrecovery中に使え、解除は `begin_recovery_epoch` だけである。
 - 権限確認を伴う関数は `denied` を例外ではなく結果行で返す（拒否記録をrollbackさせないため）。`read_page` の拒否は例外（42501、messageはcode）で、記録しない。
 - `synchronous_commit=on` は関数レベルのSETではcommit前に戻るため、関数定義には付けず（posture違反 `function_synchronous_commit`）、全writerが最初に呼ぶ `lock_head()` でtransaction-localに設定する。DBとLOGIN roleの既定値もpostureで確認する。
 - `read_page` はintentの記録がWALでflushされるまで開示しない。最初の呼出しで `pg_current_wal_insert_lsn()` を一度だけ取り、flush位置がそれ以上になるまで最大約2秒待ち、間に合わなければ再試行可能な `intent_not_durable`（40001）を返す（`AuditAdmin::read_page` は再試行する）。
 - tokenは `gen_random_uuid()` 2個（CSPRNG由来244 bit）を連結した32 byteのhexで、Storeにはsha256だけを保存する。filter・範囲・page sizeはchainされたintent本体から読み直し、`access_intents` の行と照合する。
 - filterは設計§10.3のallowlistに `seq_after`（排他の下限）と `seq_through`（包含の上限、watermark以下）を加えた。verify/identity_chainは連続chainを読むためこの2つだけを許す。値は閉じた文法（event_type、source urn、resource_ref、主体文字集合、event type listは1–16件）以外を `invalid_input` で拒否し、記録に任意文字列を残さない。event typeは、文法に合っても登録済みrelay type（`registered_types`）かcatalogのcontrol type（`is_control_type`、catalogとの一致を試験）でなければ拒否する（設計§10.2）。retention selectorのevent typeは登録済みrelay typeだけを許す。issuer `db_role` への権限付与（`change_access`）も拒否する。
-- `verify(from, to)` は範囲（最大10,000,000行）をhead lockなしで単一snapshotで走査し、記録するときだけlockを取る。head照合は範囲の終端がheadのときだけ行う。
+- `verify(from, to)` は範囲（最大10,000,000行）をhead lockなしで単一snapshotで走査し、記録するときだけlockを取る。head照合は範囲の終端がheadのときだけ行う。範囲は `1 ≤ from ≤ to ≤ head` でなければならず、headを越える `to`・headより後の `from`・空の範囲は `invalid_input` で拒否する（存在しない行を欠落として `violations` を記録しないため）。記録する `head_seq` / `head_epoch` / `head_chain` は範囲内で実在する最後の行のものである（終端の行が欠けていれば、その前の行）。
+- `audit-admin verify` / `verify --recovery` は結果を出力した後、`outcome` が `ok` でなければ終了code 3で終わる（`posture` と同じ。定期実行の失敗検知用）。
 - export行は10 key（`expired_by_seq` を含む）。`audit-admin export --identity-chain` は最初のintentでwatermarkを固定し、以降 `{seq_after, seq_through: W}` で残りを読み、manifestに全intentを列挙する。
 - recovery mode（fingerprint不一致または `recovery_pending`）で通るのは `probe`、`store_status`、`posture_check`、`lookup_receipts`、`list_source_receipts`、`lookup_control_receipts`、`lookup_lost_ranges`、`verify_recovery`、`identity_chain_recovery_page`、`report_regression`、`declare_recovery_pending`、`begin_recovery_epoch` だけで、他はすべて `store_recovery_required`（KA001）になる（`tests/store_recovery.rs` で全関数を確認）。recovery用の関数はrecovery外では `not_in_recovery` で拒否する。
 - `begin_recovery_epoch(checkpoint?, relay_max_seq?, expected)` は復元chainを再検証し、classification（`regression` / 計画的移動 `planned_move` / `restore`）、checkpointの分類（match / ahead / mismatch / epoch_mismatch / store_behind。chainが一致してepochだけ異なる場合が `epoch_mismatch`）、identity範囲digest、消失範囲 `(restored_head, max(checkpoint seq, relay最大seq, 報告seq, restored_head)]`、regressionの証拠、旧/新fingerprintを記録する。旧 `rebind_fingerprint` は廃止し、計画的移動も同じepochとして扱う。
 - `expected` は帯域外のrecovery記録（旧epoch、復元headのseqとchain、消失範囲の上限）である。Storeが計算した実際の値と4つとも一致した場合だけepochを開始し、食い違えば `refused`/`expectation_mismatch` で何も変えない。期待値なしの呼出しはpreview（`refused`/`expectation_required`）で、実際の値だけを返す（`AuditAdmin::preview_recovery_epoch`、`audit-admin begin-recovery-epoch --preview`）。recovery中の拒否は記録しない。
-- epoch後は `access_reapply_pending` になり、investigate/exportは `access_reapply_pending`（55000）で拒否する（verify/identity_chainは可）。administratorの `record_access_reapplied` と、retentionの再適用（有効なpolicyそれぞれの現行revisionで `expire` を再実行するか、有効なpolicyが無いことを `confirm_retention_reapplied` で記録する）の両方で解除される。
+- epoch後は `access_reapply_pending` になり、本文を開示する操作（investigate、export、本文を返すverify）は `open_access` でも開いている tokenの `read_page` でも `access_reapply_pending`（55000）で拒否する。開くのは本文を含まないidentity chainと、DB内の `verify` だけである。administratorの `record_access_reapplied` と、retentionの再適用の両方で解除される。retentionの再適用は、有効なpolicyそれぞれについて、epoch後に現行revisionで、policyのcutoff（`tx_time - retain_days`。要求cutoffで狭めない）まで期限切れの本文を残さず失効させた `expire`（`count < limit`）が記録されたときに満たされる（有効なholdによる `held` の拒否も満たす。restoreで戻った失効済み本文が残っている間は開示しない）。有効なpolicyが無いことは `confirm_retention_reapplied` で記録する。
+- `resolve_intent` はtokenの操作のcapabilityに加え、control eventを可視にしたintent（`include_control`）では `administer` も読取りごとに確認する（取消しは開いているtokenにも効く。設計§10.3）。
+- `expire` のcutoffは、記録の `utc_timestamp`（年0001–9999）で表せる範囲だけを受け付ける（範囲外は `invalid_input`）。
 - `registered_types` の変更は後続migrationで `SET LOCAL audit_store.write_context = 'migration'` を設定して行う。
 - `legal_holds` はv1の予約で、追加する関数は無い。有効なholdが1件でもあれば `expire` は `held` になる。
 
@@ -67,8 +72,8 @@ LOGIN roleの割当（設計§10.1）：relay serviceはingest + relay_control +
 1. globals（`roles.sql`、LOGIN role）を先に用意し、`pg_restore --exit-on-error --single-transaction` で新しいDBへ復元する（`--no-owner` 等は使わない）。
 2. `sql/privileges.sql` を再適用する。違反がある間、`begin_recovery_epoch` は `store_posture_invalid` で拒否する。
 3. `audit-admin verify --recovery`、`audit-admin export --identity-chain --recovery --dir D --checkpoint <最新の帯域外checkpoint>` でDB外照合する。
-4. `audit-admin begin-recovery-epoch --checkpoint <file> --relay-max-seq <N> --preview` で復元head・消失範囲を確認し、その値を帯域外の記録へepoch遷移として追記してから、`--expect-old-epoch` `--expect-head-seq` `--expect-head-chain` `--expect-lost-upper` に記録の値を渡して `begin-recovery-epoch` を実行する（食い違えば `expectation_mismatch` で拒否される）。
-5. `audit-admin record-access-reapplied`（administrator）と、retentionの再実行または `audit-admin confirm-retention-reapplied`（maintainer）。
+4. `audit-admin begin-recovery-epoch --checkpoint <file> --relay-max-seq <N> --preview` で復元head・消失範囲を確認し（`N` は `audit-relay health` の `stored.relay_max_seq`：復元したepochでrelayが参照する最大のStore seq。ackだけでなくreplay・repair・source mismatchの記録を含む）、その値を帯域外の記録へepoch遷移として追記してから、`--expect-old-epoch` `--expect-head-seq` `--expect-head-chain` `--expect-lost-upper` に記録の値を渡して `begin-recovery-epoch` を実行する（食い違えば `expectation_mismatch` で拒否される）。
+5. `audit-admin record-access-reapplied`（administrator）と、retentionの再実行（期限切れの本文が残らなくなるまで `audit-admin expire` を繰り返す）または `audit-admin confirm-retention-reapplied`（maintainer）。
 
 同じDBでのregression・既知の事故は、`report_regression`（relay）または `audit-admin declare-recovery-pending --incident-code CODE`（maintainer）から手順3以降を行う。
 

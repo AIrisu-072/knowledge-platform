@@ -318,6 +318,7 @@ async fn posture_is_clean_and_detects_each_violation() {
         return;
     }
     let (r, dba) = (&cast.reader.role, &cast.dba.role);
+    let backup = db.role_name("backup");
     let d = &db.database;
     let scenarios: Vec<(String, String, &str)> = vec![
         (
@@ -445,6 +446,42 @@ async fn posture_is_clean_and_detects_each_violation() {
             ),
             "DROP ROLE \"Bad-Login\"".into(),
             "login_name_invalid",
+        ),
+        // Predefined roles bypass the table ACLs (pg_read_all_data reads every
+        // body; pg_write_all_data can forge grants under the definer GUC).
+        (
+            format!("GRANT pg_read_all_data TO {r}"),
+            format!("REVOKE pg_read_all_data FROM {r}"),
+            "predefined_role_member",
+        ),
+        (
+            format!("GRANT pg_write_all_data TO {r}"),
+            format!("REVOKE pg_write_all_data FROM {r}"),
+            "predefined_role_member",
+        ),
+        (
+            format!("GRANT pg_maintain TO {r}"),
+            format!("REVOKE pg_maintain FROM {r}"),
+            "predefined_role_member",
+        ),
+        (
+            format!(
+                "CREATE ROLE {backup} LOGIN PASSWORD '{PASSWORD}'; \
+                 GRANT pg_read_all_data TO {backup}; GRANT CONNECT ON DATABASE {d} TO {backup}"
+            ),
+            format!("REVOKE CONNECT ON DATABASE {d} FROM {backup}; DROP ROLE {backup}"),
+            "predefined_role_member",
+        ),
+        (
+            "GRANT SELECT (envelope) ON audit_store.event_bodies TO audit_store_reader".into(),
+            "REVOKE SELECT (envelope) ON audit_store.event_bodies FROM audit_store_reader".into(),
+            "column_privilege",
+        ),
+        // A zero timeout is no timeout.
+        (
+            format!("ALTER ROLE {r} IN DATABASE {d} SET statement_timeout = 0"),
+            format!("ALTER ROLE {r} IN DATABASE {d} SET statement_timeout = '60s'"),
+            "login_timeouts_missing",
         ),
     ];
     for (break_sql, repair_sql, violation) in &scenarios {
@@ -1304,6 +1341,21 @@ async fn control_events_are_visible_only_with_administer_and_close_is_recorded()
             .await
             .expect_err("not the reader's intent"),
         denied("invalid_input")
+    );
+    // Control visibility rests on `administer`: revoking it stops the open
+    // token (design §10.3: revocation applies to open tokens).
+    cast.admin2
+        .admin()
+        .await
+        .change_access(ISSUER, "admin-1", "administer", AccessChange::Revoke)
+        .await
+        .expect("revoke administer");
+    assert_eq!(
+        admin
+            .read_page(privileged.secret(), 0)
+            .await
+            .expect_err("control visibility revoked"),
+        rejected("access_revoked")
     );
     db.assert_store_conforms().await;
 }

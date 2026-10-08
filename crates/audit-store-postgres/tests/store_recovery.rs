@@ -1048,3 +1048,132 @@ async fn declared_recovery_mode_allows_exactly_the_recovery_allowlist() {
         .expect("grant");
     db.assert_store_conforms().await;
 }
+
+/// After a recovery epoch, content disclosure (verify included: it returns
+/// every body) stays closed until access and retention were re-applied, and
+/// retention counts as re-applied only after a run that drained the
+/// policy's due bodies under the policy cutoff (design §11: a restore can
+/// bring back bodies that had expired).
+#[tokio::test]
+async fn reapply_needs_a_drained_retention_run_and_verify_disclosure_stays_closed() {
+    let db = TestDb::start().await;
+    let cast = Cast::new(&db).await;
+    let store = cast.relay.store().await;
+    ingest(&store, 5).await;
+    let admin = cast.admin.admin().await;
+    let maintainer = cast.maintainer.admin().await;
+    let verifier = cast.verifier.admin().await;
+    let reader = cast.reader.admin().await;
+    let policy = admin
+        .set_retention_policy(
+            "documents",
+            &json!({"event_types": ["document.created"]}),
+            Some(1),
+        )
+        .await
+        .expect("policy");
+    // A verify intent opened before the incident.
+    let early = verifier
+        .open_access(AccessOperation::Verify, &json!({}), 100, 1)
+        .await
+        .expect("verify intent");
+    maintainer
+        .declare_recovery_pending("synthetic_incident")
+        .await
+        .expect("declared");
+    start_recovery_epoch(&maintainer, None, None)
+        .await
+        .expect("epoch");
+    assert!(reapply_pending(&verifier).await);
+
+    // Bodies stay closed for verify too (new intents and open tokens); the
+    // identity chain and the in-database verification stay open.
+    assert_eq!(
+        verifier
+            .open_access(AccessOperation::Verify, &json!({}), 100, 1)
+            .await
+            .expect_err("verify discloses bodies"),
+        rejected("access_reapply_pending")
+    );
+    assert_eq!(
+        verifier
+            .read_page(early.secret(), 0)
+            .await
+            .expect_err("an open verify token discloses bodies"),
+        rejected("access_reapply_pending")
+    );
+    let chain = verifier
+        .open_access(AccessOperation::IdentityChain, &json!({}), 100, 1)
+        .await
+        .expect("identity chain");
+    let lines = verifier.read_page(chain.secret(), 0).await.expect("page");
+    assert!(lines.iter().all(|l| l.line.ends_with("\"envelope\":null}")));
+    assert_eq!(
+        verifier.verify(None, None).await.expect("verify").outcome,
+        "ok"
+    );
+    admin
+        .record_access_reapplied()
+        .await
+        .expect("access re-applied");
+
+    // A bounded batch that leaves due bodies behind does not count.
+    let far = parse_utc_text("2100-01-01T00:00:00.000000Z").expect("far");
+    let partial = maintainer
+        .expire("documents", policy.revision, far, 2)
+        .await
+        .expect("partial");
+    assert_eq!(
+        (partial.status.as_str(), partial.expired_count),
+        ("expired", 2)
+    );
+    assert!(reapply_pending(&verifier).await, "three due bodies remain");
+    assert_eq!(
+        reader
+            .open_access(AccessOperation::Export, &json!({}), 10, 1)
+            .await
+            .expect_err("still closed"),
+        rejected("access_reapply_pending")
+    );
+    // Neither does a run whose cutoff is older than the policy cutoff.
+    let old = parse_utc_text("2000-01-01T00:00:00.000000Z").expect("old");
+    let narrow = maintainer
+        .expire("documents", policy.revision, old, 1000)
+        .await
+        .expect("narrow");
+    assert_eq!(narrow.expired_count, 0);
+    assert!(
+        reapply_pending(&verifier).await,
+        "the cutoff did not reach the policy cutoff"
+    );
+    assert_eq!(
+        maintainer.confirm_retention_reapplied().await,
+        Err(AdminError::Denied {
+            code: "retention_not_reapplied".into()
+        })
+    );
+    // A run that drains the due set under the policy cutoff settles it.
+    let drained = maintainer
+        .expire("documents", policy.revision, far, 1000)
+        .await
+        .expect("drained");
+    assert_eq!(drained.expired_count, 3);
+    assert!(!reapply_pending(&verifier).await);
+    reader
+        .open_access(AccessOperation::Export, &json!({}), 10, 1)
+        .await
+        .expect("export open again");
+    verifier
+        .open_access(AccessOperation::Verify, &json!({}), 100, 1)
+        .await
+        .expect("verify open again");
+    db.assert_store_conforms().await;
+}
+
+async fn reapply_pending(admin: &AuditAdmin) -> bool {
+    admin
+        .store_status()
+        .await
+        .expect("status")
+        .access_reapply_pending
+}

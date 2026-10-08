@@ -391,6 +391,9 @@
                 },
                 "session_role": {
                   "$ref": "#/$defs/db_role"
+                },
+                "suppressed_since_last": {
+                  "$ref": "#/$defs/positive_counter"
                 }
               },
               "required": [

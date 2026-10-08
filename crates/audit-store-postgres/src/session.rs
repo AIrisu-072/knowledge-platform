@@ -4,9 +4,12 @@
 //!   `register-source-service` refuses a session that is a superuser or a
 //!   member of `audit_store_owner` (those owner-only commands require an
 //!   owner member instead).
-//! - A connection URL carrying `options` is refused (it could, e.g., turn off
-//!   synchronous_commit or change search_path), and the session must report
-//!   `SHOW synchronous_commit = on` after connecting.
+//! - A connection URL carrying `options` (or any `options[<setting>]` key,
+//!   which the driver also turns into startup options) is refused, as is a
+//!   non-empty `PGOPTIONS` environment variable (they could, e.g., turn off
+//!   synchronous_commit, zero the role timeouts or change search_path), and
+//!   the session must report `SHOW synchronous_commit = on` after
+//!   connecting.
 //!
 //! Errors carry codes only, never a URL or credential.
 
@@ -33,6 +36,8 @@ pub enum SessionError {
     NotOwnerMember,
     #[error("connection URL must not carry `options`")]
     UrlOptions,
+    #[error("PGOPTIONS must not be set (it sets session options on every connection)")]
+    EnvironmentOptions,
     #[error("connection URL is not a postgres URL")]
     UrlInvalid,
     #[error("session does not run with synchronous_commit = on")]
@@ -42,7 +47,8 @@ pub enum SessionError {
 }
 
 /// Refuses a URL that is not `postgres[ql]://` or whose query string sets
-/// `options` (any case, percent-encoded or not).
+/// `options` or an `options[<setting>]` key (any case, percent-encoded or
+/// not).
 pub fn check_url(url: &str) -> Result<(), SessionError> {
     if !(url.starts_with("postgres://") || url.starts_with("postgresql://")) {
         return Err(SessionError::UrlInvalid);
@@ -54,11 +60,29 @@ pub fn check_url(url: &str) -> Result<(), SessionError> {
     for pair in query.split('&') {
         let key = pair.split('=').next().unwrap_or_default();
         let decoded = percent_decode(key).ok_or(SessionError::UrlInvalid)?;
-        if decoded.trim().eq_ignore_ascii_case("options") {
+        if decoded
+            .trim()
+            .get(..7)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("options"))
+        {
             return Err(SessionError::UrlOptions);
         }
     }
     Ok(())
+}
+
+/// Refuses a non-empty `PGOPTIONS` value: the driver applies it as startup
+/// options to every connection.
+pub fn check_pgoptions(value: Option<&std::ffi::OsStr>) -> Result<(), SessionError> {
+    match value {
+        Some(value) if !value.is_empty() => Err(SessionError::EnvironmentOptions),
+        _ => Ok(()),
+    }
+}
+
+/// [`check_pgoptions`] on this process's environment.
+pub fn check_environment() -> Result<(), SessionError> {
+    check_pgoptions(std::env::var_os("PGOPTIONS").as_deref())
 }
 
 fn percent_decode(text: &str) -> Option<String> {
@@ -143,12 +167,21 @@ mod tests {
             "postgres://u:p@h/db?sslmode=disable&OPTIONS=x",
             "postgres://u:p@h/db?%6Fptions=x",
             "postgresql://u:p@h/db?options",
+            "postgres://u:p@h/db?options[statement_timeout]=0",
+            "postgres://u:p@h/db?sslmode=disable&Options%5Block_timeout%5D=0",
+            "postgres://u:p@h/db?%6Fptions[search_path]=x",
         ] {
             assert!(
                 matches!(check_url(bad), Err(SessionError::UrlOptions)),
                 "{bad}"
             );
         }
+        assert!(check_pgoptions(None).is_ok());
+        assert!(check_pgoptions(Some(std::ffi::OsStr::new(""))).is_ok());
+        assert!(matches!(
+            check_pgoptions(Some(std::ffi::OsStr::new("-c statement_timeout=0"))),
+            Err(SessionError::EnvironmentOptions)
+        ));
         assert!(matches!(
             check_url("mysql://x"),
             Err(SessionError::UrlInvalid)

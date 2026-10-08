@@ -188,6 +188,8 @@ async fn operator_commands_write_private_files_and_refuse_privileged_sessions() 
     for query in [
         "?options=-c%20synchronous_commit%3Doff",
         "?sslmode=disable&%6Fptions=-c%20x%3Dy",
+        "?options[statement_timeout]=0",
+        "?sslmode=disable&options%5Block_timeout%5D=0",
     ] {
         let output = audit_admin(Some(&format!("{verifier}{query}")), &["status"]);
         assert_eq!(output.status.code(), Some(1));
@@ -195,6 +197,15 @@ async fn operator_commands_write_private_files_and_refuse_privileged_sessions() 
         assert!(stderr.contains("options"), "{stderr}");
         assert!(!stderr.contains(PASSWORD), "{stderr}");
     }
+    // PGOPTIONS would set the same session options from the environment.
+    let output = Command::new(env!("CARGO_BIN_EXE_audit-admin"))
+        .arg("status")
+        .env("AUDIT_STORE_DATABASE_URL", &verifier)
+        .env("PGOPTIONS", "-c statement_timeout=0")
+        .output()
+        .expect("run audit-admin");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("PGOPTIONS"));
     // A login whose session runs without synchronous_commit is refused.
     let lazy = db.login("lazy", &["audit_store_verifier"]).await;
     db.exec(&format!(
@@ -226,6 +237,37 @@ async fn operator_commands_write_private_files_and_refuse_privileged_sessions() 
             .status
             .code(),
         Some(2)
+    );
+
+    // A verification that finds violations prints its report and exits 3
+    // (like `posture`), so a scheduled check alerts on the exit status.
+    let (seq, original): (i64, String) = sqlx::query_as(
+        "SELECT seq, envelope::text FROM audit_store.event_bodies ORDER BY seq LIMIT 1",
+    )
+    .fetch_one(&db.admin)
+    .await
+    .expect("a body");
+    db.exec(&format!(
+        "SET session_replication_role = replica; \
+         UPDATE audit_store.event_bodies \
+            SET envelope = jsonb_set(envelope, '{{subject}}', '\"forged\"') WHERE seq = {seq}; \
+         RESET session_replication_role;"
+    ))
+    .await;
+    let output = audit_admin(Some(&verifier), &["verify"]);
+    assert_eq!(output.status.code(), Some(3));
+    let report: Value = serde_json::from_slice(&output.stdout).expect("report");
+    assert_eq!(report["outcome"], "violations");
+    db.exec(&format!(
+        "SET session_replication_role = replica; \
+         UPDATE audit_store.event_bodies SET envelope = '{}'::jsonb WHERE seq = {seq}; \
+         RESET session_replication_role;",
+        original.replace('\'', "''")
+    ))
+    .await;
+    assert_eq!(
+        json_lines(&audit_admin(Some(&verifier), &["verify"]))[0]["outcome"],
+        "ok"
     );
     db.assert_store_conforms().await;
 }

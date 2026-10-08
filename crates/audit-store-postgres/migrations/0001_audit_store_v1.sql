@@ -354,16 +354,24 @@ FROM unnest(ARRAY[
 
 -- Coalescing state for repeated identity denials of the same login
 -- (not_source_service / unbound on ingest, probe and report_regression): at
--- most one audit.access.denied per streak and minute. Operational state, not
--- evidence; written only by definer functions.
+-- most one audit.access.denied per streak and minute. Nothing is sampled:
+-- the denials coalesced since the last record are counted here and chained
+-- as `suppressed_since_last` by the next record of the streak, by a flush
+-- record when the denial code changes, or by a flush record when the streak
+-- ends with a success (record_denied_coalesced, clear_denial_streak). Each
+-- record stands for itself plus its suppressed_since_last denials of the
+-- same login and code. Operational state, not evidence; written only by
+-- definer functions.
 CREATE TABLE audit_store.denial_streaks (
     session_role TEXT PRIMARY KEY,
     denial_code TEXT NOT NULL,
+    last_operation TEXT NOT NULL,
     last_recorded_seq BIGINT NOT NULL,
     last_recorded_at TIMESTAMPTZ NOT NULL,
     suppressed BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT ck_streak_role CHECK (octet_length(session_role) BETWEEN 1 AND 63),
     CONSTRAINT ck_streak_code CHECK (denial_code ~ '^[a-z0-9_]{1,64}$'),
+    CONSTRAINT ck_streak_operation CHECK (last_operation ~ '^[a-z0-9_]{1,64}$'),
     CONSTRAINT ck_streak_suppressed CHECK (suppressed >= 0)
 );
 
@@ -407,6 +415,15 @@ RETURNS TEXT LANGUAGE sql IMMUTABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $utc_text$
     SELECT to_char(p_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
 $utc_text$;
+
+-- The retention floor of a policy at p_at: p_at minus p_days whole UTC days
+-- (independent of the session TimeZone, so that expire and the re-apply
+-- check compute the same instant).
+CREATE FUNCTION audit_store.retention_floor(p_at TIMESTAMPTZ, p_days INTEGER)
+RETURNS TIMESTAMPTZ LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $retention_floor$
+    SELECT ((p_at AT TIME ZONE 'UTC') - make_interval(days => p_days)) AT TIME ZONE 'UTC'
+$retention_floor$;
 
 -- {key: value} or {} when value is NULL (optional control details).
 CREATE FUNCTION audit_store.opt(p_key TEXT, p_value JSONB)
@@ -739,6 +756,25 @@ SELECT 'relation_privilege', r.relname FROM rels AS r,
          CASE WHEN r.relkind = 'S' THEN 's' ELSE 'r' END::"char", r.relowner))) AS a
 WHERE a.grantee <> r.relowner
 UNION ALL
+-- Column privileges are not in relacl.
+SELECT DISTINCT 'column_privilege', r.relname || '.' || att.attname::text
+FROM rels AS r
+JOIN pg_attribute AS att ON att.attrelid = r.oid AND att.attnum > 0 AND NOT att.attisdropped
+CROSS JOIN LATERAL aclexplode(att.attacl) AS a
+WHERE att.attacl IS NOT NULL AND a.grantee <> r.relowner
+UNION ALL
+-- Predefined roles that bypass the table ACLs (design §7.3: only the owner
+-- and superusers may bypass the boundary): pg_read_all_data reads every
+-- body and intent, pg_write_all_data can write the tables under the
+-- definer GUC (forging grants), pg_maintain can lock them. Reported for
+-- every non-superuser login that can connect to this database.
+SELECT 'predefined_role_member', l.rolname::text || ':' || p.rolname::text
+FROM pg_roles AS l
+JOIN pg_roles AS p ON p.rolname IN ('pg_read_all_data', 'pg_write_all_data', 'pg_maintain')
+WHERE l.rolcanlogin AND NOT l.rolsuper
+  AND pg_has_role(l.oid, p.oid, 'MEMBER')
+  AND has_database_privilege(l.oid, (SELECT d.oid FROM this_db AS d), 'CONNECT')
+UNION ALL
 SELECT 'schema_usage', CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE g.rolname::text END
 FROM pg_namespace AS n
 CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) AS a
@@ -777,13 +813,19 @@ SELECT 'capability_role_privileged', r.rolname::text FROM pg_roles AS r
 WHERE r.rolname IN (SELECT c.rolname FROM capability AS c)
   AND (r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreaterole)
 UNION ALL
+-- Each timeout must be set and non-zero (0 disables it); a per-database
+-- setting overrides the role-wide one.
 SELECT 'login_timeouts_missing', m.rolname FROM capability_logins AS m
 WHERE EXISTS (
     SELECT 1 FROM unnest(ARRAY['statement_timeout', 'lock_timeout',
                                'idle_in_transaction_session_timeout']) AS setting(name)
     WHERE NOT EXISTS (
-        SELECT 1 FROM role_settings AS s
-        WHERE s.setrole = m.oid AND s.cfg LIKE setting.name || '=%'))
+        SELECT 1 FROM (
+            SELECT s.cfg FROM role_settings AS s
+            WHERE s.setrole = m.oid AND s.cfg LIKE setting.name || '=%'
+            ORDER BY s.setdatabase = 0
+            LIMIT 1) AS effective
+        WHERE effective.cfg ~ ('^' || setting.name || '=0*[1-9]')))
 UNION ALL
 -- synchronous_commit=on as a database default and on every capability login;
 -- any weaker database or role default is a violation (sessions can still
@@ -1065,7 +1107,7 @@ $append_control$;
 -- Nothing is appended in recovery mode (the head must not move); the caller
 -- still refuses.
 CREATE FUNCTION audit_store.record_denied(
-    p_operation TEXT, p_denial_code TEXT, p_capability TEXT)
+    p_operation TEXT, p_denial_code TEXT, p_capability TEXT, p_suppressed BIGINT DEFAULT NULL)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $record_denied$
 DECLARE
@@ -1076,19 +1118,27 @@ BEGIN
     END IF;
     RETURN audit_store.append_control('store', 'audit.access.denied', 'SECURITY', 'denied',
         jsonb_build_object('operation', p_operation, 'denial_code', p_denial_code)
-        || audit_store.opt('required_capability', to_jsonb(p_capability)));
+        || audit_store.opt('required_capability', to_jsonb(p_capability))
+        || audit_store.opt('suppressed_since_last',
+                           CASE WHEN p_suppressed > 0 THEN to_jsonb(p_suppressed) END));
 END
 $record_denied$;
 
 -- Identity denials of the service paths (ingest, probe, report_regression)
 -- repeat on every relay cycle: record at most one per streak and minute per
--- login. A success of that login ends the streak (clear_denial_streak).
+-- login, and chain how many were coalesced (no sampling): the next record
+-- of the same code carries `suppressed_since_last`; a change of code first
+-- flushes the pending count as a record of the old code (standing for one
+-- of the coalesced denials, so it carries count - 1). A success of that
+-- login ends the streak (clear_denial_streak flushes the same way). In
+-- recovery mode nothing is recorded and the streak is left as it is.
 CREATE FUNCTION audit_store.record_denied_coalesced(p_operation TEXT, p_denial_code TEXT)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET audit_store.write_context = 'definer' AS $record_denied_coalesced$
 DECLARE
     s audit_store.denial_streaks;
+    v_carried BIGINT := 0;
     v_seq BIGINT;
 BEGIN
     PERFORM audit_store.lock_head();
@@ -1096,30 +1146,56 @@ BEGIN
     WHERE d.session_role = session_user::text FOR UPDATE;
     IF FOUND AND s.denial_code = p_denial_code
        AND s.last_recorded_at > clock_timestamp() - interval '1 minute' THEN
-        UPDATE audit_store.denial_streaks AS d SET suppressed = d.suppressed + 1
+        UPDATE audit_store.denial_streaks AS d
+        SET suppressed = d.suppressed + 1, last_operation = p_operation
         WHERE d.session_role = s.session_role;
         RETURN NULL;
     END IF;
-    v_seq := audit_store.record_denied(p_operation, p_denial_code, NULL);
+    IF FOUND AND s.suppressed > 0 THEN
+        IF s.denial_code = p_denial_code THEN
+            v_carried := s.suppressed;
+        ELSIF audit_store.record_denied(s.last_operation, s.denial_code, NULL,
+                                        s.suppressed - 1) IS NULL THEN
+            RETURN NULL;
+        END IF;
+    END IF;
+    v_seq := audit_store.record_denied(p_operation, p_denial_code, NULL, v_carried);
     IF v_seq IS NULL THEN
         RETURN NULL;
     END IF;
     INSERT INTO audit_store.denial_streaks AS d (
-        session_role, denial_code, last_recorded_seq, last_recorded_at, suppressed)
-    VALUES (session_user::text, p_denial_code, v_seq, clock_timestamp(), 0)
+        session_role, denial_code, last_operation, last_recorded_seq, last_recorded_at,
+        suppressed)
+    VALUES (session_user::text, p_denial_code, p_operation, v_seq, clock_timestamp(), 0)
     ON CONFLICT (session_role) DO UPDATE
-    SET denial_code = excluded.denial_code, last_recorded_seq = excluded.last_recorded_seq,
+    SET denial_code = excluded.denial_code, last_operation = excluded.last_operation,
+        last_recorded_seq = excluded.last_recorded_seq,
         last_recorded_at = excluded.last_recorded_at, suppressed = 0;
     RETURN v_seq;
 END
 $record_denied_coalesced$;
 
+-- A success of the login ends its streak. A pending count is flushed first
+-- as one record of the streak's code (carrying count - 1); the operational
+-- row is deleted only once its count is chained.
 CREATE FUNCTION audit_store.clear_denial_streak()
 RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET audit_store.write_context = 'definer' AS $clear_denial_streak$
+DECLARE
+    s audit_store.denial_streaks;
 BEGIN
-    DELETE FROM audit_store.denial_streaks AS d WHERE d.session_role = session_user::text;
+    SELECT * INTO s FROM audit_store.denial_streaks AS d
+    WHERE d.session_role = session_user::text FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+    IF s.suppressed > 0
+       AND audit_store.record_denied(s.last_operation, s.denial_code, NULL,
+                                     s.suppressed - 1) IS NULL THEN
+        RETURN;
+    END IF;
+    DELETE FROM audit_store.denial_streaks AS d WHERE d.session_role = s.session_role;
 END
 $clear_denial_streak$;
 
@@ -1358,6 +1434,80 @@ BEGIN
 END
 $ingest$;
 
+-- What the recorded verifications cover (design §8, §12 verification lag),
+-- never just the newest record:
+--   - violated: the latest origin=store audit.integrity.verified that found
+--     violations (result 'failure');
+--   - covered: the 'ok' verifications recorded after that violation that
+--     chain from genesis (one starting at from_seq 1, each next one starting
+--     at most one past the coverage so far and reaching further); the
+--     latest 1000 such records are considered (an underestimate is the safe
+--     side). verified_through is the highest seq they reach;
+--   - outcome: 'violations' until one 'ok' verification after it covered
+--     the whole range up to the head of its own scan (from_seq 1, to_seq =
+--     watermark), else 'ok' (NULL when nothing is covered). Partial ranges,
+--     even ones that chain to the head, never clear a violation.
+-- verified_at and record_seq belong to the record that decides the outcome.
+CREATE FUNCTION audit_store.verification_coverage(
+    OUT verified_through BIGINT, OUT verified_at TIMESTAMPTZ, OUT outcome TEXT,
+    OUT record_seq BIGINT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $verification_coverage$
+DECLARE
+    v_bad_seq BIGINT;
+    v_bad_at TIMESTAMPTZ;
+    v_ok_to BIGINT;
+    v_ok_seq BIGINT;
+    v_ok_at TIMESTAMPTZ;
+    v_full BOOLEAN;
+BEGIN
+    SELECT e.seq, e.stored_at INTO v_bad_seq, v_bad_at
+    FROM audit_store.events AS e
+    WHERE e.origin = 'store' AND e.event_type = 'audit.integrity.verified'
+      AND e.result = 'failure'
+    ORDER BY e.seq DESC LIMIT 1;
+    WITH RECURSIVE ok AS (
+        SELECT e.seq, e.stored_at,
+               audit_store.jint(b.envelope -> 'data' -> 'details' -> 'from_seq') AS f,
+               audit_store.jint(b.envelope -> 'data' -> 'details' -> 'to_seq') AS t
+        FROM audit_store.events AS e
+        JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+        WHERE e.origin = 'store' AND e.event_type = 'audit.integrity.verified'
+          AND e.result = 'success' AND e.seq > coalesce(v_bad_seq, 0)
+          AND b.envelope -> 'data' -> 'details' ->> 'outcome' = 'ok'
+        ORDER BY e.seq DESC LIMIT 1000
+    ),
+    chained(t, seq, stored_at) AS (
+        SELECT ok.t, ok.seq, ok.stored_at FROM ok WHERE ok.f = 1 AND ok.t >= 0
+        UNION
+        SELECT ok.t, ok.seq, ok.stored_at FROM ok
+        JOIN chained AS c ON ok.f <= c.t + 1 AND ok.t > c.t
+    )
+    SELECT c.t, c.seq, c.stored_at INTO v_ok_to, v_ok_seq, v_ok_at
+    FROM chained AS c ORDER BY c.t DESC, c.seq DESC LIMIT 1;
+    SELECT EXISTS (
+        SELECT 1 FROM audit_store.events AS e
+        JOIN audit_store.event_bodies AS b ON b.seq = e.seq
+        WHERE e.origin = 'store' AND e.event_type = 'audit.integrity.verified'
+          AND e.result = 'success' AND e.seq > coalesce(v_bad_seq, 0)
+          AND b.envelope -> 'data' -> 'details' ->> 'outcome' = 'ok'
+          AND audit_store.jint(b.envelope -> 'data' -> 'details' -> 'from_seq') = 1
+          AND audit_store.jint(b.envelope -> 'data' -> 'details' -> 'to_seq')
+              >= audit_store.jint(b.envelope -> 'data' -> 'details' -> 'watermark'))
+    INTO v_full;
+    verified_through := v_ok_to;
+    IF v_bad_seq IS NOT NULL AND NOT coalesce(v_full, FALSE) THEN
+        outcome := 'violations';
+        verified_at := v_bad_at;
+        record_seq := v_bad_seq;
+    ELSIF v_ok_to IS NOT NULL THEN
+        outcome := 'ok';
+        verified_at := v_ok_at;
+        record_seq := v_ok_seq;
+    END IF;
+END
+$verification_coverage$;
+
 -- Admission probe for the relay circuit breaker (design §6.2): the ingest
 -- gate without storing anything, the registration of the expected types and
 -- the identity check of the relay's last acknowledged receipt.
@@ -1391,8 +1541,7 @@ BEGIN
        OR (p_last_seq IS NOT NULL AND (p_last_seq < 1 OR octet_length(p_last_digest) <> 32)) THEN
         RAISE EXCEPTION 'probe: invalid expectation' USING ERRCODE = '22023';
     END IF;
-    SELECT max(e.seq) INTO v_verified FROM audit_store.events AS e
-    WHERE e.event_type = 'audit.integrity.verified' AND e.origin = 'store';
+    SELECT c.verified_through INTO v_verified FROM audit_store.verification_coverage() AS c;
     IF current_setting('transaction_read_only') = 'on' OR pg_is_in_recovery() THEN
         h := audit_store.read_head();
         RETURN QUERY SELECT 'ok'::text, 'read_only'::text, h.last_seq, h.recovery_epoch,
@@ -1483,7 +1632,10 @@ END
 $report_regression$;
 
 -- Content-free status for health and operators (design §10.4, §12). Not
--- audited; works in recovery mode.
+-- audited; works in recovery mode. last_verified_seq / _at / _outcome are
+-- the verification coverage (verification_coverage), so that head_seq -
+-- last_verified_seq is the verification lag and a violation stays reported
+-- until a later verification from genesis covers it.
 CREATE FUNCTION audit_store.store_status()
 RETURNS TABLE (head_seq BIGINT, recovery_epoch BIGINT, recovery_mode BOOLEAN,
                posture_ok BOOLEAN, recovery_pending BOOLEAN, recovery_pending_reason TEXT,
@@ -1499,17 +1651,8 @@ BEGIN
     SELECT h.last_seq, h.recovery_epoch, audit_store.in_recovery(h),
            NOT EXISTS (SELECT 1 FROM audit_store.posture_check()),
            h.recovery_pending, h.pending_reason, h.access_reapply_pending,
-           v.seq, v.stored_at, v.outcome
-    FROM (SELECT NULL::bigint AS seq, NULL::timestamptz AS stored_at, NULL::text AS outcome
-          WHERE NOT EXISTS (
-              SELECT 1 FROM audit_store.events AS e
-              WHERE e.origin = 'store' AND e.event_type = 'audit.integrity.verified')
-          UNION ALL
-          (SELECT e.seq, e.stored_at, b.envelope -> 'data' -> 'details' ->> 'outcome'
-           FROM audit_store.events AS e
-           LEFT JOIN audit_store.event_bodies AS b ON b.seq = e.seq
-           WHERE e.origin = 'store' AND e.event_type = 'audit.integrity.verified'
-           ORDER BY e.seq DESC LIMIT 1)) AS v;
+           c.verified_through, c.verified_at, c.outcome
+    FROM audit_store.verification_coverage() AS c;
 END
 $store_status$;
 
@@ -1714,6 +1857,18 @@ BEGIN
     IF v_details IS NULL THEN
         PERFORM audit_store.record_denied('record_relay_control', 'invalid_input', NULL);
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, 'invalid_input'::text;
+        RETURN;
+    END IF;
+    -- A replay and a repair run are operator decisions (design §6.4, §10.1):
+    -- never recorded under an ingest-capable (source service) login, so the
+    -- privileged control event names the operator who acted.
+    IF (p_type = 'audit.delivery.replay_requested'
+        OR (p_type = 'audit.reconciliation.completed' AND v_details ->> 'mode' = 'repair'))
+       AND pg_has_role(session_user, 'audit_store_ingest', 'MEMBER') THEN
+        PERFORM audit_store.record_denied('record_relay_control', 'insufficient_capability',
+                                          NULL);
+        RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint,
+                            'insufficient_capability'::text;
         RETURN;
     END IF;
     IF p_type = 'audit.integrity.source_mismatch_detected' THEN
@@ -1946,8 +2101,10 @@ BEGIN
         RETURN;
     END IF;
     -- After a recovery epoch, content disclosure stays closed until access
-    -- and retention were re-applied (design §11).
-    IF v_capability IN ('investigate', 'export') AND h.access_reapply_pending THEN
+    -- and retention were re-applied (design §11): investigate, export and
+    -- verify (which returns every body). Only the content-free identity
+    -- chain stays open.
+    IF p_operation IN ('investigate', 'export', 'verify') AND h.access_reapply_pending THEN
         RAISE EXCEPTION 'access_reapply_pending' USING ERRCODE = '55000';
     END IF;
     SELECT * INTO v_auth FROM audit_store.authorize(p_operation, v_role, v_capability);
@@ -2082,10 +2239,14 @@ BEGIN
     v_capability := CASE WHEN operation IN ('investigate', 'export') THEN operation
                          ELSE 'verify' END;
     SELECT * INTO v_actor FROM audit_store.session_actor();
+    -- Revocation applies to open tokens, including the `administer` that
+    -- made control events visible to an investigate/export intent.
     IF NOT v_actor.bound
        OR v_actor.issuer <> ai.issuer OR v_actor.principal_id <> ai.principal_id
        OR NOT pg_has_role(session_user, v_role, 'MEMBER')
-       OR NOT audit_store.has_grant(ai.issuer, ai.principal_id, v_capability) THEN
+       OR NOT audit_store.has_grant(ai.issuer, ai.principal_id, v_capability)
+       OR (include_control AND operation IN ('investigate', 'export')
+           AND NOT audit_store.has_grant(ai.issuer, ai.principal_id, 'administer')) THEN
         RAISE EXCEPTION 'access_revoked' USING ERRCODE = '42501';
     END IF;
 END
@@ -2145,7 +2306,7 @@ BEGIN
     h := audit_store.read_head();
     PERFORM audit_store.require_gate(h);
     SELECT * INTO ai FROM audit_store.resolve_intent(p_token);
-    IF ai.operation IN ('investigate', 'export') AND h.access_reapply_pending THEN
+    IF ai.operation <> 'identity_chain' AND h.access_reapply_pending THEN
         RAISE EXCEPTION 'access_reapply_pending' USING ERRCODE = '55000';
     END IF;
     PERFORM audit_store.await_durable();
@@ -2247,14 +2408,17 @@ $close_access$;
 -- Integrity (design §8)
 -- ---------------------------------------------------------------------------
 
--- Scans seq p_from..min(p_to, W) in ONE snapshot (STABLE: every query here
--- uses the calling statement's snapshot), where W is the head as seen by that
+-- Scans seq p_from..p_to in ONE snapshot (STABLE: every query here uses the
+-- calling statement's snapshot), where W is the head as seen by that
 -- snapshot. Publication is in commit order, so the set seq <= W is stable.
 -- p_head_check compares the head row when the range ends at W. p_to NULL
--- means W; for recovery scans the caller passes max(seq).
+-- means W; verify refuses a p_to past W; for recovery scans the caller
+-- passes max(seq). head_seq/head_epoch/head_chain describe the last row
+-- that exists in the range (the row before the range when none does), so a
+-- missing range end is reported as a gap, never as a chain it does not have.
 CREATE FUNCTION audit_store.integrity_scan(p_from BIGINT, p_to BIGINT, p_head_check BOOLEAN)
 RETURNS TABLE (from_seq BIGINT, to_seq BIGINT, watermark BIGINT, checked BIGINT,
-               head_epoch BIGINT, head_chain BYTEA, violations JSONB)
+               head_seq BIGINT, head_epoch BIGINT, head_chain BYTEA, violations JSONB)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $integrity_scan$
 #variable_conflict use_column
@@ -2266,6 +2430,7 @@ DECLARE
     v_base_epoch BIGINT;
     v_checked BIGINT;
     v_max BIGINT;
+    v_head_seq BIGINT;
     v_head_chain BYTEA;
     v_head_epoch BIGINT;
     v JSONB;
@@ -2362,10 +2527,12 @@ BEGIN
                       ELSE v_to - v_max END;
     v := jsonb_set(v, '{seq_gap}', to_jsonb(audit_store.jint(v -> 'seq_gap') + v_missing));
 
-    IF v_to >= v_from THEN
+    IF v_max IS NOT NULL THEN
         SELECT e.chain, e.recovery_epoch INTO v_head_chain, v_head_epoch
-        FROM audit_store.events AS e WHERE e.seq = v_to;
+        FROM audit_store.events AS e WHERE e.seq = v_max;
+        v_head_seq := v_max;
     ELSE
+        v_head_seq := v_from - 1;
         v_head_chain := v_base_chain;
         v_head_epoch := v_base_epoch;
     END IF;
@@ -2455,7 +2622,7 @@ BEGIN
         'retention_evidence_mismatch', v_retention_mismatch,
         'purge_evidence_mismatch', v_purge_mismatch,
         'head_mismatch', v_head_mismatch);
-    RETURN QUERY SELECT v_from, v_to, h.last_seq, v_checked,
+    RETURN QUERY SELECT v_from, v_to, h.last_seq, v_checked, v_head_seq,
                         coalesce(v_head_epoch, v_base_epoch, 1::bigint),
                         coalesce(v_head_chain, v_base_chain, audit_store.genesis()), v;
 END
@@ -2474,7 +2641,7 @@ $violations_total$;
 -- the lock.
 CREATE FUNCTION audit_store.record_verified(
     p_trigger TEXT, p_from BIGINT, p_to BIGINT, p_watermark BIGINT, p_checked BIGINT,
-    p_head_epoch BIGINT, p_head_chain BYTEA, p_violations JSONB)
+    p_head_seq BIGINT, p_head_epoch BIGINT, p_head_chain BYTEA, p_violations JSONB)
 RETURNS BIGINT LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $record_verified$
 DECLARE
@@ -2485,14 +2652,15 @@ DECLARE
 BEGIN
     h := audit_store.lock_head();
     PERFORM audit_store.require_gate(h);
-    -- The head (head_seq, head_epoch, head_chain) is the last scanned row.
+    -- The head (head_seq, head_epoch, head_chain) is the last scanned row
+    -- that exists (integrity_scan).
     v_details := jsonb_build_object(
         'trigger', p_trigger,
         'from_seq', p_from,
         'to_seq', p_to,
         'watermark', p_watermark,
         'checked', p_checked,
-        'head_seq', p_to,
+        'head_seq', p_head_seq,
         'head_epoch', p_head_epoch,
         'head_chain', encode(p_head_chain, 'hex'),
         'outcome', CASE WHEN v_total = 0 THEN 'ok' ELSE 'violations' END,
@@ -2535,8 +2703,14 @@ BEGIN
                             v_auth.denial;
         RETURN;
     END IF;
+    -- The range must lie within the head W: rows past W do not exist yet,
+    -- and a range that verifies nothing (from past W) is not a result. h is
+    -- read before the scan's snapshot; outside recovery W only grows, so a
+    -- bound that holds here holds for the scan.
     IF (p_from IS NOT NULL AND p_from < 1)
-       OR (p_to IS NOT NULL AND p_to < coalesce(p_from, 1) - 1)
+       OR (p_to IS NOT NULL AND p_to < coalesce(p_from, 1))
+       OR (p_to IS NOT NULL AND p_to > h.last_seq)
+       OR coalesce(p_from, 1) > greatest(h.last_seq, 1)
        OR coalesce(p_to, h.last_seq) - coalesce(p_from, 1) + 1 > 10000000 THEN
         PERFORM audit_store.record_denied('integrity_verify', 'invalid_input', 'verify');
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::text, NULL::bigint, NULL::jsonb,
@@ -2547,7 +2721,7 @@ BEGIN
     -- One statement, one snapshot: W, the range and the head check agree.
     SELECT * INTO s FROM audit_store.integrity_scan(coalesce(p_from, 1), p_to, TRUE);
     v_seq := audit_store.record_verified('verify', s.from_seq, s.to_seq, s.watermark, s.checked,
-                                         s.head_epoch, s.head_chain, s.violations);
+                                         s.head_seq, s.head_epoch, s.head_chain, s.violations);
     RETURN QUERY SELECT 'verified'::text, v_seq,
                         CASE WHEN audit_store.violations_total(s.violations) = 0 THEN 'ok'
                              ELSE 'violations' END,
@@ -2588,7 +2762,8 @@ BEGIN
     SELECT * INTO s FROM audit_store.integrity_scan(1, NULL, TRUE);
     v_ok := audit_store.violations_total(s.violations) = 0;
     v_seq := audit_store.record_verified('checkpoint', s.from_seq, s.to_seq, s.watermark,
-                                         s.checked, s.head_epoch, s.head_chain, s.violations);
+                                         s.checked, s.head_seq, s.head_epoch, s.head_chain,
+                                         s.violations);
     SELECT * INTO STRICT r FROM audit_store.events AS x WHERE x.seq = v_seq;
     RETURN QUERY SELECT CASE WHEN v_ok THEN 'checkpoint' ELSE 'violations' END::text,
                         r.recovery_epoch, r.seq, encode(r.chain, 'hex'), s.to_seq,
@@ -2900,7 +3075,13 @@ END
 $register_source_service$;
 
 -- Clears access_reapply_pending once both duties are recorded and every
--- active retention policy was re-run after the epoch (design §11).
+-- active retention policy was re-run after the epoch (design §11). A run
+-- counts only when it drained the policy's due set under the policy cutoff
+-- (a restore can bring back bodies that had expired): an
+-- audit.retention.expired of the latest revision whose count stayed below
+-- its limit and whose effective cutoff is the policy floor
+-- (tx_time - retain_days, i.e. the requested cutoff did not narrow it), or
+-- an expire_refused 'held' (an active hold blocks every expiry).
 CREATE FUNCTION audit_store.retention_reapply_satisfied(h audit_store.publication_head)
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $retention_reapply_satisfied$
@@ -2920,6 +3101,13 @@ SET search_path = pg_catalog, pg_temp AS $retention_reapply_satisfied$
                         WHEN 'audit.retention.expired'
                         THEN audit_store.jint(b.envelope -> 'data' -> 'details' -> 'revision')
                              = latest.revision
+                             AND audit_store.jint(b.envelope -> 'data' -> 'details' -> 'count')
+                                 < audit_store.jint(b.envelope -> 'data' -> 'details' -> 'limit')
+                             AND audit_store.jts(
+                                     b.envelope -> 'data' -> 'details' -> 'effective_cutoff')
+                                 = audit_store.retention_floor(
+                                     audit_store.jts(b.envelope -> 'data' -> 'details' -> 'tx_time'),
+                                     latest.retain_days)
                         ELSE b.envelope -> 'data' -> 'details' ->> 'refusal' = 'held'
                              AND audit_store.jint(
                                  b.envelope -> 'data' -> 'details' -> 'current_revision')
@@ -3164,8 +3352,11 @@ BEGIN
                             v_auth.denial;
         RETURN;
     END IF;
+    -- The cutoff is recorded as a utc_timestamp: years 0001-9999 AD only.
     IF NOT audit_store.is_code(p_policy_id) OR p_expected_revision IS NULL
        OR p_expected_revision < 1 OR p_cutoff IS NULL OR NOT isfinite(p_cutoff)
+       OR p_cutoff < '0001-01-01 00:00:00+00'::timestamptz
+       OR p_cutoff >= '10000-01-01 00:00:00+00'::timestamptz
        OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
         PERFORM audit_store.record_denied('expire', 'invalid_input', 'maintain');
         RETURN QUERY SELECT 'denied'::text, NULL::bigint, NULL::bigint, NULL::timestamptz,
@@ -3202,7 +3393,7 @@ BEGIN
         RETURN;
     END IF;
     v_effective := least(p_cutoff,
-                         transaction_timestamp() - make_interval(days => p.retain_days));
+                         audit_store.retention_floor(transaction_timestamp(), p.retain_days));
     SELECT coalesce(array_agg(t.seq ORDER BY t.seq), ARRAY[]::bigint[]) INTO v_targets
     FROM (
         SELECT e.seq FROM audit_store.events AS e

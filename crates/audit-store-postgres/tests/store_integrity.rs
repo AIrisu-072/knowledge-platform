@@ -83,8 +83,10 @@ async fn verify_records_once_and_never_recurses() {
     assert_eq!(recorded.len(), 3);
     assert_eq!(recorded[0].1["trigger"], json!("verify"));
     assert_eq!(recorded[0].1["violations_total"], json!(0));
+    // The status is the verification coverage (contiguous from genesis),
+    // not the newest record: the partial range does not extend it.
     let status = verifier.store_status().await.expect("status");
-    assert_eq!(status.last_verified_seq, Some(partial.seq));
+    assert_eq!(status.last_verified_seq, Some(second.to_seq));
     assert_eq!(status.last_verified_outcome.as_deref(), Some("ok"));
     assert!(!status.recovery_mode && status.posture_ok);
 
@@ -111,6 +113,148 @@ async fn verify_records_once_and_never_recurses() {
         Err(AdminError::Denied {
             code: "invalid_input".into()
         })
+    );
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn verify_refuses_ranges_beyond_the_head() {
+    let (db, cast, _) = populated(3).await;
+    let verifier = cast.verifier.admin().await;
+    // Each refusal is recorded (audit.access.denied), so the head moves:
+    // every range is taken relative to the head before that call.
+    type Range = fn(i64) -> (Option<i64>, Option<i64>);
+    let cases: [(&str, Range); 4] = [
+        ("to past the head", |w| (Some(1), Some(w + 5))),
+        ("to just past the head", |w| (None, Some(w + 1))),
+        ("empty tail", |w| (Some(w + 1), None)),
+        ("from past the head", |w| (Some(w + 2), Some(w + 3))),
+    ];
+    for (name, range) in cases {
+        let (w, _, _) = head(&db.admin).await;
+        let (from, to) = range(w);
+        assert_eq!(
+            verifier.verify(from, to).await,
+            Err(AdminError::Denied {
+                code: "invalid_input".into()
+            }),
+            "{name}"
+        );
+    }
+    assert!(
+        control_events(&db.admin, "audit.integrity.verified")
+            .await
+            .is_empty(),
+        "no verification result was recorded for a range past the head"
+    );
+    let status = verifier.store_status().await.expect("status");
+    assert_eq!(
+        (status.last_verified_seq, status.last_verified_outcome),
+        (None, None)
+    );
+    // A range ending exactly at the head is verified and recorded.
+    let (w, _, _) = head(&db.admin).await;
+    let report = verifier.verify(Some(1), Some(w)).await.expect("verify");
+    assert_eq!(
+        (report.outcome.as_str(), report.to_seq, report.checked),
+        ("ok", w, w)
+    );
+    let recorded = control_events(&db.admin, "audit.integrity.verified").await;
+    assert_eq!(recorded[0].1["head_seq"], json!(w));
+    assert_eq!(recorded[0].1["to_seq"], json!(w));
+    db.assert_store_conforms().await;
+}
+
+#[tokio::test]
+async fn verification_status_is_coverage_and_a_violation_stays_until_covered() {
+    let (db, cast, seqs) = populated(6).await;
+    let verifier = cast.verifier.admin().await;
+    let relay = relay_store(&cast).await;
+    let full = verifier.verify(None, None).await.expect("verify");
+    let status = verifier.store_status().await.expect("status");
+    assert_eq!(
+        (
+            status.last_verified_seq,
+            status.last_verified_outcome.as_deref()
+        ),
+        (Some(full.to_seq), Some("ok"))
+    );
+    let probed = relay.probe(&expectation(None)).await.expect("probe");
+    assert_eq!(probed.last_verified_seq, Some(full.to_seq));
+
+    // A forged body is found by a full verification.
+    let target = seqs[3];
+    let original: String =
+        sqlx::query_scalar("SELECT envelope::text FROM audit_store.event_bodies WHERE seq = $1")
+            .bind(target)
+            .fetch_one(&db.admin)
+            .await
+            .expect("body");
+    db.exec(&format!(
+        "SET session_replication_role = replica; \
+         UPDATE audit_store.event_bodies \
+            SET envelope = jsonb_set(envelope, '{{subject}}', '\"document/forged\"') \
+            WHERE seq = {target}; \
+         RESET session_replication_role;"
+    ))
+    .await;
+    let failed = verifier.verify(None, None).await.expect("verify");
+    assert_eq!(failed.outcome, "violations");
+
+    // Neither a partial range before the forged row nor one after it
+    // clears the alarm or claims coverage past what was verified since.
+    let early = verifier.verify(Some(1), Some(2)).await.expect("early");
+    assert_eq!(early.outcome, "ok");
+    let late = verifier.verify(Some(target + 1), None).await.expect("late");
+    assert_eq!(late.outcome, "ok");
+    let status = verifier.store_status().await.expect("status");
+    assert_eq!(status.last_verified_outcome.as_deref(), Some("violations"));
+    assert_eq!(
+        status.last_verified_seq,
+        Some(2),
+        "covered from genesis since the violation"
+    );
+    let probed = relay.probe(&expectation(None)).await.expect("probe");
+    assert_eq!(probed.last_verified_seq, Some(2));
+
+    // Repaired, a full verification covers the violated range again.
+    db.exec(&format!(
+        "SET session_replication_role = replica; \
+         UPDATE audit_store.event_bodies SET envelope = '{}'::jsonb WHERE seq = {target}; \
+         RESET session_replication_role;",
+        original.replace('\'', "''")
+    ))
+    .await;
+    // Re-verifying the violated range alone (short of the head) does not
+    // clear it: only one verification from genesis to its head does, even
+    // when partial ranges chain up to the head between them.
+    let short = verifier
+        .verify(Some(1), Some(failed.to_seq))
+        .await
+        .expect("short");
+    assert_eq!(short.outcome, "ok");
+    let status = verifier.store_status().await.expect("status");
+    assert_eq!(
+        (
+            status.last_verified_seq,
+            status.last_verified_outcome.as_deref()
+        ),
+        (Some(late.to_seq), Some("violations"))
+    );
+    let repaired = verifier.verify(None, None).await.expect("verify");
+    assert_eq!(repaired.outcome, "ok");
+    let status = verifier.store_status().await.expect("status");
+    assert_eq!(
+        (
+            status.last_verified_seq,
+            status.last_verified_outcome.as_deref()
+        ),
+        (Some(repaired.to_seq), Some("ok"))
+    );
+    assert_eq!(
+        status.head_seq - repaired.to_seq,
+        1,
+        "only the verification record itself is unverified"
     );
     db.assert_store_conforms().await;
 }
@@ -208,6 +352,46 @@ async fn deleted_row_is_detected() {
     .await;
     assert_eq!(count(&v, "seq_gap"), 1);
     assert_eq!(count(&v, "prev_chain_mismatch"), 1);
+}
+
+/// A range whose last row is missing is a gap; the recorded head is the
+/// last row that exists, never a chain the range does not have.
+#[tokio::test]
+async fn a_missing_range_end_reports_the_last_existing_row() {
+    let (db, cast, seqs) = populated(4).await;
+    let end = seqs[2];
+    let kept: Vec<u8> = sqlx::query_scalar("SELECT chain FROM audit_store.events WHERE seq = $1")
+        .bind(end - 1)
+        .fetch_one(&db.admin)
+        .await
+        .expect("chain");
+    db.exec(&format!(
+        "SET session_replication_role = replica; \
+         DELETE FROM audit_store.event_bodies WHERE seq = {end}; \
+         DELETE FROM audit_store.events WHERE seq = {end}; \
+         RESET session_replication_role;"
+    ))
+    .await;
+    let report = cast
+        .verifier
+        .admin()
+        .await
+        .verify(Some(1), Some(end))
+        .await
+        .expect("verify");
+    assert_eq!(report.outcome, "violations");
+    assert_eq!(count(&report.violations, "seq_gap"), 1);
+    assert_eq!(report.head_chain, hex(&kept));
+    let recorded = control_events(&db.admin, "audit.integrity.verified").await;
+    let details = &recorded.last().expect("recorded").1;
+    assert_eq!(
+        (
+            &details["to_seq"],
+            &details["head_seq"],
+            &details["head_chain"]
+        ),
+        (&json!(end), &json!(end - 1), &json!(hex(&kept)))
+    );
 }
 
 #[tokio::test]
@@ -509,6 +693,34 @@ async fn retention_follows_policy_revisions_cutoffs_holds_and_keeps_tombstones()
             .await
             .is_empty(),
         "nothing expired yet"
+    );
+    // Cutoffs outside what the control timestamp kind can represent
+    // (years 0001–9999 AD) are refused before anything is recorded.
+    for cutoff in ["10000-01-01 00:00:00+00", "0044-03-15 00:00:00+00 BC"] {
+        let row = sqlx::query(
+            "SELECT status, code FROM audit_store.expire('documents', 2, $1::text::timestamptz, 10)",
+        )
+        .bind(cutoff)
+        .fetch_one(maintainer.pool())
+        .await
+        .expect("expire");
+        assert_eq!(
+            (
+                row.get::<String, _>("status"),
+                row.get::<Option<String>, _>("code")
+            ),
+            ("denied".to_owned(), Some("invalid_input".to_owned())),
+            "{cutoff}"
+        );
+    }
+    assert!(
+        control_events(&db.admin, "audit.retention.expire_refused")
+            .await
+            .len()
+            == 3
+            && control_events(&db.admin, "audit.retention.expired")
+                .await
+                .is_empty()
     );
 
     // The effective cutoff is the earlier of the request and now - retain_days.

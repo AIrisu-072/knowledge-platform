@@ -509,6 +509,25 @@ impl Cast {
     }
 }
 
+/// A relay operator's Store login (design §10.1): relay_control and
+/// reconciler, bound to its own principal, never ingest. Replays and repair
+/// runs are recorded only under such a login.
+pub async fn relay_operator(db: &TestDb, cast: &Cast) -> Login {
+    let login = db
+        .login(
+            "relay_operator",
+            &["audit_store_relay_control", "audit_store_reconciler"],
+        )
+        .await;
+    cast.dba
+        .owner()
+        .await
+        .bind_principal(&login.role, ISSUER, "relay-operator-1")
+        .await
+        .expect("bind relay operator");
+    login
+}
+
 /// Ingests through the SQL function directly (bypassing the Rust
 /// validation) and returns `(status, seq, code)`.
 pub async fn sql_ingest(pool: &PgPool, envelope: &Value) -> (String, Option<i64>, Option<String>) {

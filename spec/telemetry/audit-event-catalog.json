@@ -757,7 +757,8 @@
           "kind": "enum",
           "values": ["unbound", "insufficient_capability", "invalid_input", "self_grant", "not_source_service"]
         },
-        "required_capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]}
+        "required_capability": {"kind": "enum", "values": ["investigate", "export", "verify", "administer", "maintain"]},
+        "suppressed_since_last": {"kind": "positive_counter"}
       },
       "required": ["session_role", "operation", "denial_code"],
       "reason": "absent"

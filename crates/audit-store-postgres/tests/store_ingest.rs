@@ -563,7 +563,7 @@ async fn append_only_for_every_role_including_the_owner_path() {
         "DELETE FROM audit_store.principal_bindings",
         "INSERT INTO audit_store.source_services VALUES ('a', 'b', 'c', NULL)",
         "DELETE FROM audit_store.source_services",
-        "INSERT INTO audit_store.denial_streaks VALUES ('x', 'unbound', 1, now(), 0)",
+        "INSERT INTO audit_store.denial_streaks VALUES ('x', 'unbound', 'ingest', 1, now(), 0)",
         "TRUNCATE audit_store.access_intents",
         "TRUNCATE audit_store.retention_policies",
         "TRUNCATE audit_store.principal_bindings CASCADE",
@@ -952,12 +952,39 @@ async fn relay_receipts_and_relay_control_events() {
         Err(outage(OutageCode::Other))
     );
 
-    let replay = store
-        .record_relay_control(&RelayControl::from(RelayControlKind::ReplayRequested {
-            event_id: ids[0],
-            previous_code: audit_core::port::BoundedCode::new("delivery_unknown_at_limit")
-                .expect("code"),
-        }))
+    // A replay or a repair run is an operator decision: the relay service
+    // (ingest-capable) login cannot record one, so the privileged control
+    // event always names the operator who acted (design §6.4, §10.1).
+    let replay_control = RelayControl::from(RelayControlKind::ReplayRequested {
+        event_id: ids[0],
+        previous_code: audit_core::port::BoundedCode::new("delivery_unknown_at_limit")
+            .expect("code"),
+    });
+    let repair_control = RelayControl::from(RelayControlKind::ReconciliationCompleted {
+        run_id: Uuid::now_v7(),
+        mode: audit_core::ReconcileMode::Repair,
+        watermark: 3,
+        id_set_digest: [0xab; 32],
+        counts: audit_core::ReconcileCounts::default(),
+    });
+    for control in [&replay_control, &repair_control] {
+        assert_eq!(
+            store.record_relay_control(control).await,
+            Err(outage(OutageCode::Denied))
+        );
+    }
+    let denied = control_events(&db.admin, "audit.access.denied").await;
+    assert_eq!(
+        denied
+            .iter()
+            .filter(|(_, d)| d["operation"] == json!("record_relay_control")
+                && d["denial_code"] == json!("insufficient_capability"))
+            .count(),
+        2
+    );
+    let operator = relay_operator(&db, &cast).await.store().await;
+    let replay = operator
+        .record_relay_control(&replay_control)
         .await
         .expect("replay recorded");
     let mismatch_control = RelayControl::from(RelayControlKind::SourceMismatchDetected {
@@ -1076,7 +1103,14 @@ async fn relay_receipts_and_relay_control_events() {
             .iter()
             .map(|(_, d)| d["denial_code"].as_str().expect("code"))
             .collect::<Vec<_>>(),
-        vec!["invalid_input", "invalid_input", "invalid_input", "unbound"]
+        vec![
+            "insufficient_capability",
+            "insufficient_capability",
+            "invalid_input",
+            "invalid_input",
+            "invalid_input",
+            "unbound"
+        ]
     );
     db.assert_store_conforms().await;
 }
@@ -1136,6 +1170,7 @@ async fn non_service_ingest_is_denied_coalesced_and_breaks_the_posture() {
     assert_eq!(denials[0].1["operation"], json!("ingest"));
     assert_eq!(denials[0].1["denial_code"], json!("not_source_service"));
     assert_eq!(denials[0].1["session_role"], json!(intruder.role));
+    assert_eq!(denials[0].1.get("suppressed_since_last"), None);
     let suppressed: i64 = sqlx::query_scalar(
         "SELECT suppressed FROM audit_store.denial_streaks WHERE session_role = $1",
     )
@@ -1144,21 +1179,62 @@ async fn non_service_ingest_is_denied_coalesced_and_breaks_the_posture() {
     .await
     .expect("streak");
     assert_eq!(suppressed, 4);
-    // A minute later the streak is recorded again.
-    db.exec(
-        "SET session_replication_role = replica; \
+    // A minute later the streak is recorded again, carrying the count of
+    // the denials coalesced since the previous record: nothing is sampled.
+    let a_minute_later = "SET session_replication_role = replica; \
          UPDATE audit_store.denial_streaks SET last_recorded_at = now() - interval '2 minutes'; \
-         RESET session_replication_role;",
-    )
-    .await;
+         RESET session_replication_role;";
+    db.exec(a_minute_later).await;
     assert_eq!(
         store.ingest(&envelope).await,
         Err(outage(OutageCode::Denied))
     );
+    let denials = control_events(&db.admin, "audit.access.denied").await;
+    assert_eq!(denials.len(), 2);
+    assert_eq!(denials[1].1["denial_code"], json!("not_source_service"));
+    assert_eq!(denials[1].1["suppressed_since_last"], json!(4));
+    // A change of denial code flushes the pending count first, as its own
+    // record (that record stands for one of the coalesced denials).
+    for _ in 0..2 {
+        assert_eq!(
+            store.ingest(&envelope).await,
+            Err(outage(OutageCode::Denied))
+        );
+    }
+    cast.dba
+        .owner()
+        .await
+        .unbind_principal(&intruder.role)
+        .await
+        .expect("unbind");
     assert_eq!(
-        control_events(&db.admin, "audit.access.denied").await.len(),
-        2
+        store.ingest(&envelope).await,
+        Err(outage(OutageCode::Denied))
     );
+    let denials = control_events(&db.admin, "audit.access.denied").await;
+    let tail: Vec<(Value, Option<Value>)> = denials[2..]
+        .iter()
+        .map(|(_, d)| {
+            (
+                d["denial_code"].clone(),
+                d.get("suppressed_since_last").cloned(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        tail,
+        vec![
+            (json!("not_source_service"), Some(json!(1))),
+            (json!("unbound"), None),
+        ]
+    );
+    // Every denial is accounted for: records + their suppressed counts.
+    let accounted: i64 = denials
+        .iter()
+        .filter(|(_, d)| d["session_role"] == json!(intruder.role))
+        .map(|(_, d)| 1 + d["suppressed_since_last"].as_i64().unwrap_or(0))
+        .sum();
+    assert_eq!(accounted, 3 + 1 + 1 + 1 + 2 + 1);
     // Meanwhile the real relay is held by the posture violation.
     assert_eq!(
         relay.ingest(&envelope).await,
@@ -1177,6 +1253,49 @@ async fn non_service_ingest_is_denied_coalesced_and_breaks_the_posture() {
         last.last().expect("denial").1["denial_code"],
         json!("unbound")
     );
+    // The streak ends with a success: its pending count is flushed as a
+    // record, never dropped with the operational state.
+    for _ in 0..2 {
+        assert_eq!(
+            unbound.store().await.ingest(&envelope).await,
+            Err(outage(OutageCode::Denied))
+        );
+    }
+    cast.dba
+        .owner()
+        .await
+        .bind_principal(&unbound.role, "service", "audit-relay")
+        .await
+        .expect("bind as the source service");
+    let other = document_created(Uuid::now_v7(), Uuid::now_v7(), OCCURRED, 2);
+    assert_eq!(
+        unbound
+            .store()
+            .await
+            .ingest(&other)
+            .await
+            .expect("stored")
+            .outcome,
+        IngestOutcome::Stored
+    );
+    let flushed = control_events(&db.admin, "audit.access.denied").await;
+    let flushed = &flushed.last().expect("flush").1;
+    assert_eq!(
+        (
+            &flushed["session_role"],
+            &flushed["denial_code"],
+            &flushed["suppressed_since_last"]
+        ),
+        (&json!(unbound.role), &json!("unbound"), &json!(1))
+    );
+    let streaks: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_store.denial_streaks WHERE session_role = $1",
+    )
+    .bind(&unbound.role)
+    .fetch_one(&db.admin)
+    .await
+    .expect("streaks");
+    assert_eq!(streaks, 0);
     db.exec(&format!("REVOKE audit_store_ingest FROM {}", unbound.role))
         .await;
     // Posture clean again: the relay ingests, nothing was stored before.

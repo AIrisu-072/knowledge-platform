@@ -218,14 +218,14 @@ envelope全体の32 KiB（jsonb text）上限もRustだけが検査する。
 | type | origin | class | 主なdetails |
 |---|---|---|---|
 | `audit.access.intent_opened` | store | DATA_ACCESS | operation、型付きfilter（`filter_seq_after` / `filter_seq_through` を含む）、filter_digest、watermark、page_size、max_pages、include_control、期限、token digest |
-| `audit.access.denied` | store | SECURITY | operation（`ingest`、`report_regression`、`declare_recovery_pending` を含む）、denial_code（unbound / insufficient_capability / invalid_input / self_grant / not_source_service）、required_capability |
+| `audit.access.denied` | store | SECURITY | operation（`ingest`、`report_regression`、`declare_recovery_pending` を含む）、denial_code（unbound / insufficient_capability / invalid_input / self_grant / not_source_service）、required_capability、suppressed_since_last（任意。同じloginの同じcodeの拒否を1分単位でまとめた場合に、前回の記録以後にまとめた件数。間引きはしない） |
 | `audit.access.closed` | store | DATA_ACCESS | intent seq、返した件数、page数、page digestのdigest |
 | `audit.access_policy.changed` | store | ACCESS_POLICY | change（granted / revoked / bound / unbound / bootstrap / reapplied）、対象主体、capability、db_role |
 | `audit.retention.policy_changed` | store | CONFIGURATION | policy_id、revision、selector（event type・sourceは各16件まで）、selector_digest、retain_days（NULLまたは1以上） |
 | `audit.retention.expired` | store | PRIVILEGED_OPERATION | policy_id、revision、selector snapshot、retain_days、cutoff、effective_cutoff、tx_time、limit、count、first_seq / last_seq（count=0ならnull）、expired_set_digest |
 | `audit.retention.expire_refused` | store | PRIVILEGED_OPERATION | policy_id、expected_revision、current_revision、refusal（stale_revision / not_expirable / held）、retain_days（NULLまたは1以上）、cutoff、tx_time |
 | `audit.body.purged` | store | PRIVILEGED_OPERATION | target_seq、target_event_id、purge_reason_code |
-| `audit.integrity.verified` | store | SYSTEM_AUDIT | trigger（verify / checkpoint）、from/to seq、watermark、checked、head（`head_seq`、`head_epoch`、`head_chain`）、outcome、違反code別件数 |
+| `audit.integrity.verified` | store | SYSTEM_AUDIT | trigger（verify / checkpoint）、from/to seq（to ≤ watermark）、watermark、checked、head（範囲内で実在する最後の行の `head_seq`、`head_epoch`、`head_chain`）、outcome、違反code別件数 |
 | `audit.integrity.conflict_detected` | store | SECURITY | event_id、既存seq・origin、conflict_kind、commitment一致の有無、adapter_version |
 | `audit.recovery.epoch_started` | store | SYSTEM_AUDIT | old_epoch、new_epoch、restored_head_seq、restored_head_chain、照合checkpoint（epoch/seq/chain、nullable）と分類（match / ahead / store_behind / mismatch / epoch_mismatch）、classification（restore / planned_move / regression）、identity_range_digest、lost_from_seq、lost_upper_seq、lost_upper_known、regressionの証拠（報告seq・event_id・digest・報告者のdb role・時刻・報告時head。nullable）、旧/新fingerprint（system identifier、database oid、timeline。`int8_text`） |
 | `audit.delivery.replay_requested` | relay_control | PRIVILEGED_OPERATION | event_id、quarantine_code（replayで解除する旧quarantine code） |

@@ -86,6 +86,7 @@ fn store_session(error: SessionError) -> StartupError {
             StartupError::Privileged(Side::Store)
         }
         SessionError::UrlOptions => StartupError::UrlOptions { side: Side::Store },
+        SessionError::EnvironmentOptions => StartupError::EnvironmentOptions,
         SessionError::UrlInvalid => StartupError::UrlInvalid { side: Side::Store },
         SessionError::SynchronousCommitOff => {
             StartupError::SynchronousCommitOff { side: Side::Store }

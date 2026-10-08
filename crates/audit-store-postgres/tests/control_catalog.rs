@@ -167,8 +167,9 @@ async fn every_sql_built_control_event_conforms_to_the_catalog() {
         .expect("checkpoint")
         .checkpoint()
         .expect("value");
-    // relay control events
-    store
+    // relay control events (replay and repair: the operator's own login)
+    let operator = relay_operator(&db, &cast).await.store().await;
+    operator
         .record_relay_control(&RelayControl::from(RelayControlKind::ReplayRequested {
             event_id: id,
             previous_code: BoundedCode::new("delivery_unknown_at_limit").expect("code"),
@@ -184,7 +185,7 @@ async fn every_sql_built_control_event_conforms_to_the_catalog() {
         ))
         .await
         .expect("mismatch");
-    store
+    operator
         .record_relay_control(&RelayControl::from(
             RelayControlKind::ReconciliationCompleted {
                 run_id: Uuid::now_v7(),

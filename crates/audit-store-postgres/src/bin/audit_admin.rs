@@ -22,7 +22,7 @@ use audit_store_postgres::files::{
     export_to_dir, write_checkpoint,
 };
 use audit_store_postgres::migrate;
-use audit_store_postgres::session::{check_url, require_synchronous_commit};
+use audit_store_postgres::session::{check_environment, check_url, require_synchronous_commit};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -51,7 +51,8 @@ commands:
   declare-recovery-pending --incident-code CODE
   begin-recovery-epoch [--checkpoint FILE] [--relay-max-seq N]
          (--preview | --expect-old-epoch N --expect-head-seq N
-          --expect-head-chain HEX --expect-lost-upper N)";
+          --expect-head-chain HEX --expect-lost-upper N)
+exit status: 0 ok, 1 failed, 2 usage, 3 posture or verification violations";
 
 /// Flags that take no value.
 const SWITCHES: [&str; 3] = ["identity-chain", "recovery", "preview"];
@@ -175,6 +176,16 @@ fn print(value: &impl Serialize) -> Result<(), CliError> {
     Ok(())
 }
 
+/// A verification outcome other than `ok` exits 3 (after its report was
+/// printed), like posture violations.
+fn outcome(outcome: &str) -> Result<(), CliError> {
+    if outcome == "ok" {
+        Ok(())
+    } else {
+        Err(CliError::Violations)
+    }
+}
+
 /// Prints the manifest of a written export (its `chain_integrity` is
 /// `intact` or `unanchored`). A chain that fails offline verification writes
 /// no files: the verdict `broken` and the first offending line are printed
@@ -195,11 +206,12 @@ fn exported(result: Result<ExportOutcome, FileError>) -> Result<(), CliError> {
     }
 }
 
-/// Connects after refusing a URL with `options`, then requires
-/// `synchronous_commit = on` for the session.
+/// Connects after refusing a URL with `options` and a set `PGOPTIONS`, then
+/// requires `synchronous_commit = on` for the session.
 async fn pool(url: Option<&SecretUrl>, name: &str) -> Result<PgPool, CliError> {
     let url = url.ok_or_else(|| CliError::Usage(format!("{name} is not set")))?;
     check_url(&url.0)?;
+    check_environment()?;
     let pool = PgPoolOptions::new()
         .max_connections(2)
         .connect(&url.0)
@@ -422,14 +434,22 @@ async fn run(args: Args, config: Config) -> Result<(), CliError> {
             exported(export_to_dir(&admin, &request, &dir).await)
         }
         "verify" if args.switch("recovery") => {
-            print(&operator(&config).await?.verify_recovery().await?)
+            let report = operator(&config).await?.verify_recovery().await?;
+            print(&report)?;
+            outcome(&report.outcome)
         }
         "verify" => {
             let from = args.optional_number("from")?;
             let to = args.optional_number("to")?;
-            print(&operator(&config).await?.verify(from, to).await?)
+            let report = operator(&config).await?.verify(from, to).await?;
+            print(&report)?;
+            outcome(&report.outcome)
         }
-        "verify-recovery" => print(&operator(&config).await?.verify_recovery().await?),
+        "verify-recovery" => {
+            let report = operator(&config).await?.verify_recovery().await?;
+            print(&report)?;
+            outcome(&report.outcome)
+        }
         "checkpoint" => {
             let record = operator(&config).await?.checkpoint().await?;
             let file = write_checkpoint(&record, &PathBuf::from(args.get("out")?))?;
@@ -539,7 +559,7 @@ async fn main() -> ExitCode {
             ExitCode::from(2)
         }
         Err(CliError::Violations) => {
-            eprintln!("posture violations found");
+            eprintln!("violations found");
             ExitCode::from(3)
         }
         Err(CliError::Failed(message)) => {
