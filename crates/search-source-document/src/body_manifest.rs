@@ -100,6 +100,12 @@ pub struct BodyUnitManifest {
     pub entries: Vec<BodyItemEntry>,
 }
 
+impl search_tantivy::UnitSource for BodyUnitManifest {
+    fn units(&self) -> Vec<&search_core::knowledge_unit::KnowledgeUnit> {
+        self.entries.iter().flat_map(|entry| &entry.units).collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BodyCoverageItem {
@@ -222,6 +228,17 @@ pub fn validate_manifest(
 pub fn validate_restored_manifest(
     manifest: &BodyUnitManifest,
 ) -> Result<BodyCoverageArtifact, BodyBuildError> {
+    validate_restored_manifest_skipping(manifest, |_| false)
+}
+
+/// `validate_restored_manifest` that skips the per-item checks of entries for
+/// which `verified(index)` is true: items this process already validated in
+/// the same content (by segment digest). Order and Source binding are always
+/// checked and the coverage artifact is always derived from every entry.
+pub fn validate_restored_manifest_skipping(
+    manifest: &BodyUnitManifest,
+    verified: impl Fn(usize) -> bool,
+) -> Result<BodyCoverageArtifact, BodyBuildError> {
     if manifest
         .entries
         .windows(2)
@@ -230,11 +247,13 @@ pub fn validate_restored_manifest(
         return Err(integrity("manifest order"));
     }
     let mut items = Vec::with_capacity(manifest.entries.len());
-    for entry in &manifest.entries {
+    for (index, entry) in manifest.entries.iter().enumerate() {
         if entry.version.source_id != manifest.key.source_id {
             return Err(integrity("manifest source"));
         }
-        validate_entry(entry, &manifest.source_snapshot)?;
+        if !verified(index) {
+            validate_entry(entry, &manifest.source_snapshot)?;
+        }
         items.push(BodyCoverageItem {
             version: entry.version.clone(),
             part: entry.part.clone(),
@@ -454,60 +473,85 @@ const fn permanent_tag(code: PermanentFailureCode) -> u8 {
     }
 }
 
-/// `body-unit-manifest:v1`: item identity, raw, profile/format, outcome and each
-/// Unit's ID, parent, kind, locator and text digest. Text bodies are excluded.
+/// `body-unit-segment:v1`: one item's identity, raw, profile/format, parser
+/// build, outcome and each Unit's ID, parent, kind, locator and text digest.
+/// Text bodies and the Source snapshot are excluded, so an unchanged item has
+/// the same digest in every generation.
+pub fn segment_digest(entry: &BodyItemEntry) -> Result<[u8; 32], BodyBuildError> {
+    let mut out = Canonical::default();
+    out.text(&entry.parser_build_id)?;
+    out.version(&entry.version)?;
+    out.part(&entry.part)?;
+    out.text(&entry.authoritative_representation_ref)?;
+    out.raw(&entry.raw)?;
+    match &entry.profile {
+        None => out.tag(0),
+        Some(profile) => {
+            out.tag(1);
+            out.text(profile.as_str())?;
+        }
+    }
+    match entry.detected_format {
+        None => out.tag(0),
+        Some(format) => {
+            out.tag(1);
+            out.tag(format_tag(format));
+        }
+    }
+    out.operation(entry.operation)?;
+    out.coverage(&entry.coverage)?;
+    out.count(entry.units.len())?;
+    for unit in &entry.units {
+        out.text(&unit.unit_id.to_string())?;
+        match unit.parent_unit_id {
+            None => out.tag(0),
+            Some(parent) => {
+                out.tag(1);
+                out.text(&parent.to_string())?;
+            }
+        }
+        out.u32(unit.ordinal);
+        out.tag(kind_tag(unit.kind));
+        out.frame(
+            &unit
+                .locator
+                .encode()
+                .map_err(|_| integrity("unit locator"))?,
+        )?;
+        out.frame(&unit.text_sha256)?;
+    }
+    Ok(out.digest(b"body-unit-segment:v1\0"))
+}
+
+/// `body-unit-manifest:v2`: the item count and each item's segment digest in
+/// manifest order; `count` is the number of Units. A generation restored from
+/// stored segments recomputes the same receipt from their digests alone.
 pub fn unit_manifest_receipt(
     manifest: &BodyUnitManifest,
 ) -> Result<ArtifactReceipt, BodyBuildError> {
+    let segments = manifest
+        .entries
+        .iter()
+        .map(|entry| Ok((segment_digest(entry)?, entry.units.len() as u64)))
+        .collect::<Result<Vec<_>, BodyBuildError>>()?;
+    unit_manifest_receipt_from_segments(manifest.key, &segments)
+}
+
+/// The `body-unit-manifest:v2` receipt of ordered `(segment digest, Unit count)`.
+pub fn unit_manifest_receipt_from_segments(
+    key: ProjectionGenerationKey,
+    segments: &[([u8; 32], u64)],
+) -> Result<ArtifactReceipt, BodyBuildError> {
     let mut out = Canonical::default();
-    out.count(manifest.entries.len())?;
+    out.count(segments.len())?;
     let mut units = 0u64;
-    for entry in &manifest.entries {
-        out.version(&entry.version)?;
-        out.part(&entry.part)?;
-        out.text(&entry.authoritative_representation_ref)?;
-        out.raw(&entry.raw)?;
-        match &entry.profile {
-            None => out.tag(0),
-            Some(profile) => {
-                out.tag(1);
-                out.text(profile.as_str())?;
-            }
-        }
-        match entry.detected_format {
-            None => out.tag(0),
-            Some(format) => {
-                out.tag(1);
-                out.tag(format_tag(format));
-            }
-        }
-        out.operation(entry.operation)?;
-        out.coverage(&entry.coverage)?;
-        out.count(entry.units.len())?;
-        for unit in &entry.units {
-            out.text(&unit.unit_id.to_string())?;
-            match unit.parent_unit_id {
-                None => out.tag(0),
-                Some(parent) => {
-                    out.tag(1);
-                    out.text(&parent.to_string())?;
-                }
-            }
-            out.u32(unit.ordinal);
-            out.tag(kind_tag(unit.kind));
-            out.frame(
-                &unit
-                    .locator
-                    .encode()
-                    .map_err(|_| integrity("unit locator"))?,
-            )?;
-            out.frame(&unit.text_sha256)?;
-            units += 1;
-        }
+    for (digest, count) in segments {
+        out.frame(digest)?;
+        units = units.checked_add(*count).ok_or(integrity("unit count"))?;
     }
     Ok(ArtifactReceipt {
-        key: manifest.key,
-        digest: out.digest(b"body-unit-manifest:v1\0"),
+        key,
+        digest: out.digest(b"body-unit-manifest:v2\0"),
         count: units,
     })
 }
@@ -535,16 +579,19 @@ pub fn coverage_receipt(
 
 /// `body-profile-set:v1`: distinct `(profile ID, parser build)` pairs, ascending.
 pub fn profile_set_digest(manifest: &BodyUnitManifest) -> Result<[u8; 32], BodyBuildError> {
-    let set: BTreeSet<(&str, &str)> = manifest
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            entry
-                .profile
-                .as_ref()
-                .map(|profile| (profile.as_str(), entry.parser_build_id.as_str()))
-        })
-        .collect();
+    profile_set_digest_from(manifest.entries.iter().filter_map(|entry| {
+        entry
+            .profile
+            .as_ref()
+            .map(|profile| (profile.as_str(), entry.parser_build_id.as_str()))
+    }))
+}
+
+/// [`profile_set_digest`] from each profiled item's profile and parser build.
+pub fn profile_set_digest_from<'a>(
+    pairs: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Result<[u8; 32], BodyBuildError> {
+    let set: BTreeSet<(&str, &str)> = pairs.into_iter().collect();
     let mut out = Canonical::default();
     out.count(set.len())?;
     for (profile, build) in set {
@@ -591,15 +638,43 @@ pub fn compute_bundle_receipt(
     {
         return Err(integrity("bundle key"));
     }
-    let unit_manifest = unit_manifest_receipt(manifest)?;
+    compute_bundle_receipt_from(
+        key,
+        source_snapshot,
+        projection_manifest_digest,
+        unit_manifest_receipt(manifest)?,
+        manifest.entries.len(),
+        profile_set_digest(manifest)?,
+        coverage,
+        lexical,
+        graph,
+    )
+}
+
+/// `compute_bundle_receipt` from an already computed Unit manifest receipt
+/// (e.g. from stored segment digests), its item count and profile set digest.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_bundle_receipt_from(
+    key: ProjectionGenerationKey,
+    source_snapshot: &str,
+    projection_manifest_digest: &str,
+    unit_manifest: ArtifactReceipt,
+    items: usize,
+    profile_set_digest: [u8; 32],
+    coverage: &BodyCoverageArtifact,
+    lexical: ArtifactReceipt,
+    graph: ArtifactReceipt,
+) -> Result<GenerationBundleReceipt, BodyBuildError> {
+    if unit_manifest.key != key || coverage.key != key || lexical.key != key || graph.key != key {
+        return Err(integrity("bundle key"));
+    }
     let body_coverage = coverage_receipt(coverage)?;
-    if body_coverage.count != manifest.entries.len() as u64 {
+    if body_coverage.count != items as u64 {
         return Err(integrity("coverage item count"));
     }
     let projection_digest = projection_digest(projection_manifest_digest)?;
-    let profile_set_digest = profile_set_digest(manifest)?;
     let mut hasher = Sha256::new();
-    hasher.update(b"document-generation-bundle:v1\0");
+    hasher.update(b"document-generation-bundle:v2\0");
     hasher.update(key.source_id.as_uuid().as_bytes());
     hasher.update(projection_digest);
     hasher.update(unit_manifest.digest);

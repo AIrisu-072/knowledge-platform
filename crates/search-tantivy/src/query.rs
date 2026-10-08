@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use search_application::body_ports::{KnowledgeUnitHitRef, LexicalHit, LexicalRetrievalBatch};
 use search_application::error::SearchError;
@@ -10,7 +11,7 @@ use search_core::knowledge_unit::{KnowledgeUnit, TextSpan, normalize_unit_text};
 use search_core::projection::ProjectionGenerationKey;
 use tantivy::Term;
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{BooleanQuery, Query, QueryParser, TermQuery, TermSetQuery};
+use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery, TermSetQuery};
 use tantivy::schema::{IndexRecordOption, TantivyDocument, Value};
 use tantivy::tokenizer::TokenStream;
 
@@ -236,9 +237,42 @@ fn retrieve_units(
         });
     }
     let phrase = format!("\"{}\"", literal.replace('\\', "\\\\").replace('"', "\\\""));
-    let parsed = QueryParser::for_index(&units.index, vec![units.fields.body])
+    let mut parsed = QueryParser::for_index(&units.index, vec![units.fields.body])
         .parse_query(&phrase)
         .map_err(|error| SearchError::InvalidRequest(error.to_string()))?;
+    let terms_tier = segment.tokenizer == crate::analyzer::CJK_BIGRAM_TOKENIZER;
+    if terms_tier {
+        // Bigram generations also match Units holding most of the query's
+        // tokens. The literal phrase still ranks first (Representative), and
+        // a hit's span is the longest part of the query its Unit contains.
+        let mut tokens = BTreeSet::new();
+        let mut stream = tokenizer.token_stream(&literal);
+        while stream.advance() {
+            tokens.insert(stream.token().text.clone());
+        }
+        if tokens.len() > 1 {
+            let required = if tokens.len() <= 2 {
+                tokens.len()
+            } else {
+                (tokens.len() * 3).div_ceil(5)
+            };
+            let clauses: Vec<(Occur, Box<dyn Query>)> = tokens
+                .iter()
+                .map(|token| {
+                    (
+                        Occur::Should,
+                        Box::new(TermQuery::new(
+                            Term::from_field_text(units.fields.body, token),
+                            IndexRecordOption::WithFreqs,
+                        )) as Box<dyn Query>,
+                    )
+                })
+                .collect();
+            parsed = Box::new(BooleanQuery::with_minimum_required_clauses(
+                clauses, required,
+            ));
+        }
+    }
     let searcher = units.reader.searcher();
     let initial = query.limit * OVERSAMPLE_FACTOR;
     let max_window = (initial * MAX_REFILL_FACTOR).clamp(initial, MAX_BODY_WINDOW.max(initial));
@@ -305,7 +339,10 @@ fn retrieve_units(
         let truncated = ranked.len() > query.limit;
         ranked.truncate(query.limit);
         let mut hits = Vec::with_capacity(ranked.len());
-        for representative in ranked {
+        for mut representative in ranked {
+            if terms_tier && representative.span.is_none() {
+                representative.span = longest_query_part(&representative.unit.text, &literal);
+            }
             hits.push(body_hit(generation, &segment, representative)?);
         }
         return Ok(LexicalRetrievalBatch {
@@ -313,6 +350,28 @@ fn retrieve_units(
             exhausted_matching_units: examined_all && !truncated && !skipped,
         });
     }
+}
+
+/// The longest part of `query` (at least two characters, at most 64) that
+/// occurs literally in `text`, as a span of `text`.
+fn longest_query_part(text: &str, query: &str) -> Option<TextSpan> {
+    let chars: Vec<(usize, char)> = query.char_indices().collect();
+    let end_of = |i: usize| chars.get(i).map_or(query.len(), |(offset, _)| *offset);
+    let longest = chars.len().min(64);
+    for length in (2..=longest).rev() {
+        for start in 0..=chars.len() - length {
+            let part = &query[chars[start].0..end_of(start + length)];
+            if part.trim().chars().count() < 2 {
+                continue;
+            }
+            if let Some(at) = text.find(part) {
+                let from = u32::try_from(at).ok()?;
+                let to = from.checked_add(u32::try_from(part.len()).ok()?)?;
+                return TextSpan::new(text, from, to).ok();
+            }
+        }
+    }
+    None
 }
 
 fn body_hit(
@@ -347,12 +406,16 @@ fn body_hit(
             Some(KnowledgeUnitHitRef {
                 generation,
                 parent_resource: parent,
-                authoritative_representation_ref: unit.provenance.authoritative_representation_ref,
-                raw: unit.provenance.raw,
-                profile: unit.provenance.profile,
-                version: unit.version,
-                part: unit.part,
+                authoritative_representation_ref: unit
+                    .provenance
+                    .authoritative_representation_ref
+                    .clone(),
+                raw: unit.provenance.raw.clone(),
+                profile: unit.provenance.profile.clone(),
+                version: Arc::unwrap_or_clone(unit.version),
+                part: Arc::unwrap_or_clone(unit.part),
                 unit_id: unit.unit_id,
+                excerpt: search_application::body_ports::excerpt_around(&unit.text, &span),
                 span,
                 text_sha256: unit.text_sha256,
                 opaque_locator: locator.iter().map(|byte| format!("{byte:02x}")).collect(),

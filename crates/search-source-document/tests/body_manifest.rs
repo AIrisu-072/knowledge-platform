@@ -1,4 +1,5 @@
 //! P1-B01 canonical body manifest, coverage artifact and bundle receipt.
+use std::sync::Arc;
 
 #[path = "support/body.rs"]
 mod body_support;
@@ -14,7 +15,7 @@ use search_extraction_core::{
 use search_source_document::{
     ArtifactReceipt, AuthoritativeItemBinding, BodyBuildError, BodyItemEntry, BodyUnitManifest,
     DocumentBodyExtractor, DocumentOutboxSnapshot, compute_bundle_receipt, coverage_receipt,
-    unit_manifest_receipt, validate_manifest,
+    segment_digest, unit_manifest_receipt, unit_manifest_receipt_from_segments, validate_manifest,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -265,13 +266,45 @@ async fn rebuild_equivalence_ignores_generation_and_snapshot_identity() {
     rebuilt.source_snapshot = "document-snapshot-rebuilt".into();
     for entry in &mut rebuilt.entries {
         for unit in &mut entry.units {
-            unit.provenance.source_snapshot = "document-snapshot-rebuilt".into();
+            Arc::make_mut(&mut unit.provenance).source_snapshot =
+                "document-snapshot-rebuilt".into();
         }
     }
     let first = unit_manifest_receipt(&manifest).unwrap();
     let second = unit_manifest_receipt(&rebuilt).unwrap();
     assert_eq!(first.digest, second.digest);
     assert_ne!(first.key, second.key);
+}
+
+#[tokio::test]
+async fn segment_digests_reproduce_the_manifest_receipt_and_isolate_one_item() {
+    let (_, manifest) = fixture("東京").await;
+    let segments: Vec<([u8; 32], u64)> = manifest
+        .entries
+        .iter()
+        .map(|entry| (segment_digest(entry).unwrap(), entry.units.len() as u64))
+        .collect();
+    assert_eq!(
+        unit_manifest_receipt(&manifest).unwrap(),
+        unit_manifest_receipt_from_segments(manifest.key, &segments).unwrap()
+    );
+
+    let mut changed = manifest.clone();
+    let unit = &mut changed.entries[0].units[0];
+    unit.text.push('。');
+    unit.text_sha256 = Sha256::digest(unit.text.as_bytes()).into();
+    assert_ne!(segment_digest(&changed.entries[0]).unwrap(), segments[0].0);
+    for (entry, (digest, _)) in changed.entries.iter().zip(&segments).skip(1) {
+        assert_eq!(&segment_digest(entry).unwrap(), digest);
+    }
+    assert_ne!(
+        unit_manifest_receipt(&changed).unwrap().digest,
+        unit_manifest_receipt(&manifest).unwrap().digest
+    );
+
+    let mut rebuilt = manifest.clone();
+    rebuilt.entries[1].parser_build_id = "sha256:other-build".into();
+    assert_ne!(segment_digest(&rebuilt.entries[1]).unwrap(), segments[1].0);
 }
 
 #[tokio::test]

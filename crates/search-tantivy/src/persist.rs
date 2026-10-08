@@ -15,14 +15,14 @@ use tantivy::schema::{TantivyDocument, Value};
 use tantivy::{Index, IndexReader};
 
 use crate::body::{
-    BODY_LEXICAL_SCHEMA_VERSION, IndexedUnitDoc, LexicalInputDigest, UnitIndex, enumerate,
-    lexical_input_digest, open_unit_index, stored_units,
+    BODY_LEXICAL_SCHEMA_VERSION, LexicalInputDigest, UnitIndex, UnitSealEntry, lexical_digest,
+    open_unit_index, unit_entries,
 };
 use crate::index::{
     DocumentMetadata, GenerationIndex, LexicalBuildInput, LexicalDocument, LexicalIndexError,
     TantivyLexicalIndex,
 };
-use crate::schema::{ANALYZER_VERSION, LEXICAL_SCHEMA_VERSION, LexicalFields, lexical_schema};
+use crate::schema::{LEXICAL_SCHEMA_VERSION, LexicalFields, lexical_schema};
 
 pub(crate) const RESOURCES_DIR: &str = "resources";
 pub(crate) const UNITS_DIR: &str = "units";
@@ -58,7 +58,7 @@ pub(crate) fn write_sidecar(
         source_snapshot: manifest.source_snapshot.clone(),
         projection_schema_version: manifest.projection_schema_version.clone(),
         lens_version: manifest.lens_version,
-        analyzer_version: ANALYZER_VERSION.into(),
+        analyzer_version: input.analyzer_version().into(),
         provenance: source.provenance.clone(),
         documents: input.documents().to_vec(),
         body_ready: input.body_units().is_some(),
@@ -75,14 +75,16 @@ pub struct PersistedLexical {
     pub schema_version: &'static str,
     pub analyzer_version: &'static str,
     pub resource_docs: u64,
-    /// Searchable Unit documents read back from the committed Unit index.
-    pub units: Vec<IndexedUnitDoc>,
+    /// Each searchable Unit document of the committed Unit index, reduced to
+    /// its ID and the digest of its stored fields and text.
+    pub units: Vec<UnitSealEntry>,
 }
 
 struct Opened {
     persisted: PersistedLexical,
     index: Index,
     reader: IndexReader,
+    tokenizer: &'static str,
     fields: LexicalFields,
     documents: BTreeMap<String, DocumentMetadata>,
     units: Option<UnitIndex>,
@@ -106,14 +108,18 @@ fn open(
         || sidecar.source_snapshot != manifest.source_snapshot
         || sidecar.projection_schema_version != manifest.projection_schema_version
         || sidecar.lens_version != manifest.lens_version
-        || sidecar.analyzer_version != ANALYZER_VERSION
-        || manifest.analyzer_version.as_deref() != Some(ANALYZER_VERSION)
+        || manifest.analyzer_version.as_deref() != Some(sidecar.analyzer_version.as_str())
         || sidecar.provenance != source.provenance
     {
         return Err(mismatch());
     }
+    // Generations built with an earlier supported analyzer stay readable.
+    let analyzer_version =
+        crate::analyzer::supported(&sidecar.analyzer_version).ok_or_else(mismatch)?;
+    let tokenizer = crate::analyzer::tokenizer_name(analyzer_version).ok_or_else(mismatch)?;
     let index = Index::open_in_dir(dir.join(RESOURCES_DIR))?;
-    let (schema, fields) = lexical_schema();
+    crate::analyzer::register(&index);
+    let (schema, fields) = lexical_schema(tokenizer);
     if index.schema() != schema {
         return Err(mismatch());
     }
@@ -150,27 +156,17 @@ fn open(
     }
     let units_dir = dir.join(UNITS_DIR);
     let units = if sidecar.body_ready {
-        Some(open_unit_index(&units_dir)?)
+        Some(open_unit_index(&units_dir, tokenizer)?)
     } else if units_dir.exists() {
         return Err(mismatch());
     } else {
         None
     };
-    let mut input = LexicalBuildInput::new(
-        manifest.source_id,
-        manifest.source_snapshot.clone(),
-        manifest.projection_schema_version.clone(),
-        manifest.lens_version,
-        documents.clone(),
-    );
     let unit_docs = match &units {
-        Some(units) => {
-            input = input.with_body_units(stored_units(units)?);
-            enumerate(manifest.key(), units)?
-        }
+        Some(units) => unit_entries(units)?,
         None => Vec::new(),
     };
-    let logical = lexical_input_digest(&input)?;
+    let logical = lexical_digest(sidecar.body_ready, analyzer_version, &documents, &unit_docs)?;
     let metadata = documents
         .iter()
         .map(|document| {
@@ -193,12 +189,13 @@ fn open(
             } else {
                 LEXICAL_SCHEMA_VERSION
             },
-            analyzer_version: ANALYZER_VERSION,
+            analyzer_version,
             resource_docs: u64::try_from(documents.len()).map_err(|_| mismatch())?,
             units: unit_docs,
         },
         index,
         reader,
+        tokenizer,
         fields,
         documents: metadata,
         units,
@@ -230,6 +227,7 @@ impl TantivyLexicalIndex {
             fields: opened.fields,
             documents: opened.documents,
             units: opened.units,
+            tokenizer: opened.tokenizer,
         });
         let mut generations = self
             .generations

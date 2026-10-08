@@ -24,14 +24,15 @@ use search_application::search_core::relation::TypedRelationInstance;
 use search_application::search_core::source::DiscoverableSource;
 use search_graph::{GRAPH_SCHEMA_VERSION, canonical_relation};
 use search_source_document::{
-    ArtifactReceipt, GenerationBundleReceipt, compute_bundle_receipt, graph_receipt,
+    ArtifactReceipt, BodyBuildError, BodyCoverageArtifact, GenerationBundleReceipt,
+    compute_bundle_receipt_from, graph_receipt,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::full_guard::{EventCandidateHandle, ManualBuildHandle};
 use crate::lexical_artifact::{LexicalArtifactError, LexicalArtifactStore, LexicalSealV1};
-use crate::payload::{BundleError, PgPayloadStore, RestoredPayloadV1};
+use crate::payload::{BundleError, PgPayloadStore, RestoredSummaryV1, UnitManifestSummaryV1};
 
 pub const GRAPH_BACKEND: &str = "postgresql";
 
@@ -71,6 +72,32 @@ impl From<search_graph::GraphError> for ReadyError {
 
 /// Proof that one READY commit happened for these exact receipts. Private
 /// fields; it never grants publication or a pin.
+/// `compute_bundle_receipt` over a Unit manifest summary.
+fn summary_bundle_receipt(
+    key: ProjectionGenerationKey,
+    source_snapshot: &str,
+    projection_manifest_digest: &str,
+    units: &UnitManifestSummaryV1,
+    coverage: &BodyCoverageArtifact,
+    lexical: ArtifactReceipt,
+    graph: ArtifactReceipt,
+) -> Result<GenerationBundleReceipt, BodyBuildError> {
+    if units.key != key || units.source_snapshot != source_snapshot {
+        return Err(BodyBuildError::Integrity("bundle key"));
+    }
+    compute_bundle_receipt_from(
+        key,
+        source_snapshot,
+        projection_manifest_digest,
+        units.receipt,
+        units.items,
+        units.profile_set_digest,
+        coverage,
+        lexical,
+        graph,
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedBundle {
     key: ProjectionGenerationKey,
@@ -234,18 +261,19 @@ impl ReadyCoordinator {
             return Err(ReadyError::Fence);
         }
         let manifest = self.manifest(key).await?;
-        let RestoredPayloadV1 {
+        // T12: checked from per-segment summaries; no Unit text is held.
+        let RestoredSummaryV1 {
             projection,
-            unit_manifest,
+            units,
             coverage,
         } = self
             .payloads
-            .restore(&manifest)
+            .restore_without_units(&manifest)
             .await
             .map_err(ReadyError::Payload)?;
         let seal = self
             .lexical
-            .reopen_and_validate(&manifest, &self.source, &unit_manifest)
+            .reopen_and_validate_summary(&manifest, &self.source, &units)
             .await
             .map_err(ReadyError::Lexical)?;
         let (graph, resources, relations) =
@@ -270,11 +298,11 @@ impl ReadyCoordinator {
         let p1_graph = graph_receipt(key, &projection.resources, &owners(&resources))
             .map_err(|_| ReadyError::Mapping)?;
         GraphReceiptMappingV1::validate(&manifest, &p1_graph, &p1_relations, &report, &relations)?;
-        let receipt = compute_bundle_receipt(
+        let receipt = summary_bundle_receipt(
             key,
             &manifest.source_snapshot,
             &manifest.digest,
-            &unit_manifest,
+            &units,
             &coverage,
             ArtifactReceipt {
                 key,
@@ -315,18 +343,19 @@ impl ReadyCoordinator {
         // Prevalidation outside every lock: payload DTOs, the lexical files and
         // the Graph rows, each recomputed from what is stored.
         let manifest = self.manifest(key).await?;
-        let RestoredPayloadV1 {
+        // T12: checked from per-segment summaries; no Unit text is held.
+        let RestoredSummaryV1 {
             projection,
-            unit_manifest,
+            units,
             coverage,
         } = self
             .payloads
-            .restore(&manifest)
+            .restore_without_units(&manifest)
             .await
             .map_err(ReadyError::Payload)?;
         let seal: LexicalSealV1 = self
             .lexical
-            .reopen_and_validate(&manifest, &self.source, &unit_manifest)
+            .reopen_and_validate_summary(&manifest, &self.source, &units)
             .await
             .map_err(ReadyError::Lexical)?;
         let mut connection = self.pool.acquire().await?;
@@ -352,11 +381,11 @@ impl ReadyCoordinator {
             digest: seal.logical_digest,
             count: seal.logical_count,
         };
-        let receipt = compute_bundle_receipt(
+        let receipt = summary_bundle_receipt(
             key,
             &manifest.source_snapshot,
             &manifest.digest,
-            &unit_manifest,
+            &units,
             &coverage,
             lexical,
             p1_graph,

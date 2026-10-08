@@ -113,9 +113,10 @@ async fn missing_bytes_payload_drift_or_index_keeps_the_runtime_from_serving() {
         .await
         .unwrap();
     sqlx::query(
-        "UPDATE search_generation_payload \
-         SET payload = jsonb_set(payload, '{body,entries,0,units,0,text}', '\"大阪の本文\"') \
-         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest'",
+        "UPDATE search_unit_segment \
+         SET payload = jsonb_set(payload, '{body,units,0,text}', '\"大阪の本文\"') \
+         WHERE segment_digest = (SELECT segment_digest FROM search_generation_segment \
+         WHERE source_id=$1 AND generation_id=$2 AND ordinal=0)",
     )
     .bind(current.source_id.as_uuid())
     .bind(current.generation_id.as_uuid())
@@ -123,6 +124,8 @@ async fn missing_bytes_payload_drift_or_index_keeps_the_runtime_from_serving() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    // Segments are verified once per process; a restarted process re-reads it.
+    search_runtime::payload::forget_verified_segments();
     assert!(matches!(
         recovery.verify_current().await.unwrap(),
         CurrentState::Unusable(key, ReadyError::Payload(_)) if key == current

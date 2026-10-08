@@ -1295,3 +1295,13 @@ The owner directed that Vector be made usable and enabled by default when a meas
 | Similarity floor | **0.890** (`DEFAULT_SIMILARITY_FLOOR`) | Calibrated on 40 MIRACL ja dev calibration queries only. |
 | Default activation | **Enabled by default for Document Sources** (worker `vector.enabled`, default true; opt-out per deployment) | G1–G6 all passed: synthetic nDCG@10 LGD 0.9706 = LG at 32/256/1024 with equal visible false positives and no unauthorized disclosure; MIRACL ja dev evaluation (100 untouched queries) nDCG@10 L 0.035 → LD 0.552 (+0.518, paired bootstrap 95% [0.433, 0.603]); against a character-bigram BM25 sensitivity baseline +0.311 [0.235, 0.393]; no-answer FP@10 0.43 → 1.15. The production lexical arm does not segment Japanese, which inflates the gain against L; Lindera stays POC REQUIRED. |
 | Fusion | S1 priority concatenation unchanged; only the Exploratory route order changed so Vector follows HyperGraph | RRF stays unselected. |
+
+## 13.5 Japanese lexical segmentation (2026-10-06)
+
+The validation corpus run (`docs/superpowers/programs/search-validation-corpus/plan.md`) showed that the default Tantivy tokenizer keeps an unspaced Japanese run between punctuation as one token, so a word inside a sentence is not found. The owner chose character bigrams over Lindera for now.
+
+| Item | Decision | Evidence boundary |
+|---|---|---|
+| Japanese lexical analyzer | **SELECTED**: analyzer version `tantivy-0.26.2-cjk-bigram-v1` (`search-tantivy::analyzer`): CJK runs become overlapping character bigrams, other alphanumeric runs one lowercased word; Tantivy built-ins only, no new dependency | Unit and generation tests in `search-tantivy`. The literal-phrase query becomes a substring match inside CJK runs. Accuracy on the validation corpus is measured separately; the E report's character-bigram BM25 sensitivity baseline is the earlier evidence. |
+| Analyzer selection per generation | The manifest `analyzer_version` (worker `analyzer_version`) selects the analyzer when a generation is built and when it is reopened; `tantivy-default-0.26.2` stays supported, so generations built before the change remain readable | A deployment switches by setting `analyzer_version` to the bigram version; the next generation is built with it. |
+| Lindera 6.2.0 IPADIC / lindera-tantivy | **POC REQUIRED unchanged** | Dictionary rights and Tantivy 0.26 compatibility are still unresolved. |

@@ -207,6 +207,60 @@ async fn stored_bundle_restores_on_a_new_connection_with_the_same_digests() {
             .composite_digest,
         stored.receipt.composite_digest
     );
+
+    // T12: the same checks without holding the Units, from cold and from the
+    // per-process summaries.
+    for _ in 0..2 {
+        let summary = PgPayloadStore::new(pool.clone())
+            .restore_without_units(&stored.manifest)
+            .await
+            .unwrap();
+        assert_eq!(summary.projection, stored.projection);
+        assert_eq!(summary.coverage, stored.coverage);
+    }
+}
+
+/// A payload larger than one JSONB value is stored as ordered text chunks
+/// and restored to the same digests; a missing chunk fails closed.
+#[tokio::test]
+async fn chunked_payload_restores_and_a_missing_chunk_fails_closed() {
+    let (_guard, pool, _options, registrar) = fixture().await;
+    let key = register(&registrar, 7_425).await;
+    let stored = bundle(7_425, &["東京の本文", "大阪の補足"]);
+    PgPayloadStore::new(pool.clone())
+        .with_chunk_bytes(64)
+        .store(&stored)
+        .await
+        .unwrap();
+    let chunks: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM search_generation_payload \
+         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest'",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(chunks > 2, "{chunks}");
+    let store = PgPayloadStore::new(pool.clone());
+    assert_eq!(
+        store.load(&stored.manifest, &stored.receipt).await.unwrap(),
+        stored
+    );
+    // A gap in the chunk sequence (here: chunk 1 renumbered) fails closed.
+    sqlx::query(
+        "UPDATE search_generation_payload SET chunk=1000 \
+         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest' AND chunk=1",
+    )
+    .bind(key.source_id.as_uuid())
+    .bind(key.generation_id.as_uuid())
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        store.load(&stored.manifest, &stored.receipt).await,
+        Err(BundleError::Shape)
+    );
 }
 
 #[tokio::test]
@@ -240,22 +294,121 @@ async fn tampered_unknown_or_unguarded_payload_fails_closed() {
     .unwrap();
     assert!(restore().await.is_ok());
 
-    // Unit text changed behind an unchanged digest column.
+    // A segment row is immutable; an update fails even for its owner.
+    assert!(
+        sqlx::query(
+            "UPDATE search_unit_segment \
+         SET payload = jsonb_set(payload, '{body,units,0,text}', '\"大阪の本文\"') \
+         WHERE segment_digest = (SELECT segment_digest FROM search_generation_segment \
+         WHERE source_id=$1 AND generation_id=$2 AND ordinal=0)",
+        )
+        .bind(key.source_id.as_uuid())
+        .bind(key.generation_id.as_uuid())
+        .execute(&pool)
+        .await
+        .is_err()
+    );
+    // Unit text changed below the triggers is found when a process first reads it.
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     sqlx::query(
-        "UPDATE search_generation_payload \
-         SET payload = jsonb_set(payload, '{body,entries,0,units,0,text}', '\"大阪の本文\"') \
-         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest'",
+        "UPDATE search_unit_segment \
+         SET payload = jsonb_set(payload, '{body,units,0,text}', '\"大阪の本文\"') \
+         WHERE segment_digest = (SELECT segment_digest FROM search_generation_segment \
+         WHERE source_id=$1 AND generation_id=$2 AND ordinal=0)",
     )
     .bind(key.source_id.as_uuid())
     .bind(key.generation_id.as_uuid())
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .unwrap();
+    tx.commit().await.unwrap();
+    search_runtime::payload::forget_verified_segments();
     assert_eq!(restore().await, Err(BundleError::Digest));
+    assert_eq!(
+        store.restore_without_units(&stored.manifest).await,
+        Err(BundleError::Digest)
+    );
 
     // A key without a registered BUILDING parent and live guard cannot be written.
     let unregistered = bundle(7_431, &["東京の本文"]);
     assert_eq!(store.store(&unregistered).await, Err(BundleError::Rejected));
     // A second write of the same kinds conflicts instead of replacing.
     assert_eq!(store.store(&stored).await, Err(BundleError::Rejected));
+}
+
+async fn segment_rows(pool: &PgPool) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM search_unit_segment")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// An unchanged item is stored once and listed by every generation that has
+/// it; GC deletes only the segments no generation lists.
+#[tokio::test]
+async fn unchanged_items_share_one_segment_and_gc_keeps_listed_segments() {
+    let (_guard, pool, options, registrar) = fixture().await;
+    let store = PgPayloadStore::new(pool.clone());
+    register(&registrar, 7_440).await;
+    let first = bundle(7_440, &["東京の本文", "共有の補足"]);
+    store.store(&first).await.unwrap();
+    assert_eq!(segment_rows(&pool).await, 1);
+
+    register(&registrar, 7_441).await;
+    let same = bundle(7_441, &["東京の本文", "共有の補足"]);
+    store.store(&same).await.unwrap();
+    assert_eq!(segment_rows(&pool).await, 1);
+
+    let changed_key = register(&registrar, 7_442).await;
+    let changed = bundle(7_442, &["大阪の本文", "共有の補足"]);
+    store.store(&changed).await.unwrap();
+    assert_eq!(segment_rows(&pool).await, 2);
+
+    // Every generation restores its own snapshot binding from shared rows.
+    search_runtime::payload::forget_verified_segments();
+    let other = PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let reader = PgPayloadStore::new(other);
+    assert_eq!(
+        reader.load(&same.manifest, &same.receipt).await.unwrap(),
+        same
+    );
+    assert_eq!(
+        reader
+            .load(&changed.manifest, &changed.receipt)
+            .await
+            .unwrap(),
+        changed
+    );
+
+    // The changed generation's list goes away; its own segment is swept and
+    // the shared one stays because the first two generations still list it.
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM search_generation_segment WHERE source_id=$1 AND generation_id=$2")
+        .bind(changed_key.source_id.as_uuid())
+        .bind(changed_key.generation_id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let root = std::env::temp_dir().join(format!("segments-gc-{}", Uuid::new_v4()));
+    let gc = search_runtime::gc::PgGenerationGc::new(pool.clone(), &root);
+    assert_eq!(gc.sweep_unreferenced_segments().await.unwrap(), 1);
+    assert_eq!(segment_rows(&pool).await, 1);
+    assert_eq!(gc.sweep_unreferenced_segments().await.unwrap(), 0);
+    assert_eq!(
+        reader.load(&first.manifest, &first.receipt).await.unwrap(),
+        first
+    );
 }

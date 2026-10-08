@@ -10,8 +10,9 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
 use crate::knowledge_unit::{
-    EmbeddingCacheKey, ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator, UnitCodecError,
-    UnitId, UnitKind, VectorAuthorityInput, VectorHitRef, cache_key_matches_authority,
+    ContentPartRef, EmbeddingCacheKey, ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator, UnitCodecError,
+    ResourceVersionRef, UnitId, UnitKind, VectorAuthorityInput, VectorHitRef,
+    cache_key_matches_authority,
     compatible_kind, matches_pinned_unit, normalize_unit_text, text_sha256,
 };
 use crate::projection::ProjectionGenerationKey;
@@ -19,8 +20,12 @@ use crate::source::RetentionMode;
 
 const MODEL_DOMAIN: &[u8] = b"embedding-model:v1\0";
 const VECTOR_DOMAIN: &[u8] = b"bound-vector:v1\0";
-const UNIT_SET_DOMAIN: &[u8] = b"vector-unit-bindings:v1\0";
-const ENTRY_SET_DOMAIN: &[u8] = b"vector-index-entries:v1\0";
+const UNIT_SET_DOMAIN: &[u8] = b"vector-unit-bindings:v2\0";
+const ENTRY_SET_DOMAIN: &[u8] = b"vector-index-entries:v2\0";
+const SEGMENT_UNIT_DOMAIN: &[u8] = b"vector-segment-units:v1\0";
+const SEGMENT_ENTRY_DOMAIN: &[u8] = b"vector-segment-entries:v1\0";
+/// v2: the set digests are composed from per-segment digests (SD-T11 5).
+const MANIFEST_SCHEMA_VERSION: u32 = 2;
 const MANIFEST_DOMAIN: &[u8] = b"vector-projection-manifest:v1\0";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -315,8 +320,8 @@ fn hit_for(unit: &KnowledgeUnit, pinned: &VectorAuthorityInput) -> VectorHitRef 
     VectorHitRef {
         generation: pinned.generation,
         unit_id: unit.unit_id,
-        version: unit.version.clone(),
-        part: unit.part.clone(),
+        version: (*unit.version).clone(),
+        part: (*unit.part).clone(),
         authoritative_representation_ref: unit.provenance.authoritative_representation_ref.clone(),
         raw: unit.provenance.raw.clone(),
         profile: unit.provenance.profile.clone(),
@@ -567,6 +572,55 @@ pub struct VectorManifestInput {
     pub graph_schema_revision: String,
 }
 
+/// A manifest input without its Units: the fields every segment binds to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VectorManifestHeader {
+    pub bundle_key: ProjectionGenerationKey,
+    pub body_receipt_digest: String,
+    pub source_snapshot: String,
+    pub authority_scope_key: String,
+    pub retention_lease_id: String,
+    pub lease_expires_at: Option<OffsetDateTime>,
+    pub source_declares_persistent_embedding_permission: bool,
+    pub nonindexed_retention_unit_ids: Vec<UnitId>,
+    pub lexical_analyzer_revision: String,
+    pub graph_schema_revision: String,
+}
+
+impl VectorManifestInput {
+    pub fn header(&self) -> VectorManifestHeader {
+        VectorManifestHeader {
+            bundle_key: self.bundle_key,
+            body_receipt_digest: self.body_receipt_digest.clone(),
+            source_snapshot: self.source_snapshot.clone(),
+            authority_scope_key: self.authority_scope_key.clone(),
+            retention_lease_id: self.retention_lease_id.clone(),
+            lease_expires_at: self.lease_expires_at,
+            source_declares_persistent_embedding_permission: self
+                .source_declares_persistent_embedding_permission,
+            nonindexed_retention_unit_ids: self.nonindexed_retention_unit_ids.clone(),
+            lexical_analyzer_revision: self.lexical_analyzer_revision.clone(),
+            graph_schema_revision: self.graph_schema_revision.clone(),
+        }
+    }
+}
+
+/// One checked segment of a manifest input: the consecutive Units of one
+/// Version × Part and their entries. Its digests name no generation and no
+/// Source snapshot, so an unchanged segment keeps them in every generation;
+/// the manifest binds both when it composes the segments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VectorSegmentCheck {
+    pub version: ResourceVersionRef,
+    pub part: ContentPartRef,
+    pub unit_count: u64,
+    pub indexed_count: u64,
+    pub profiles: Vec<ExtractionProfileId>,
+    pub nonindexed: Vec<UnitId>,
+    pub bindings_digest: [u8; 32],
+    pub entries_digest: [u8; 32],
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VectorEntryRef {
     pub hit: VectorHitRef,
@@ -664,13 +718,7 @@ pub struct VectorStageReceipt {
     pub manifest_digest: String,
 }
 
-struct ValidatedInput<'a> {
-    units: BTreeMap<UnitId, &'a VectorManifestUnit>,
-    profiles: Vec<ExtractionProfileId>,
-    nonindexed: Vec<UnitId>,
-    bindings_digest: String,
-}
-
+/// A Unit's bindings without its generation and Source snapshot.
 fn hash_unit(hash: &mut FrameHash, item: &VectorManifestUnit) -> Result<()> {
     let unit = &item.unit;
     let authority = &item.authority;
@@ -690,7 +738,6 @@ fn hash_unit(hash: &mut FrameHash, item: &VectorManifestUnit) -> Result<()> {
     }
     hash.u32(unit.ordinal)?;
     hash.bytes(&[unit_kind_tag(unit.kind)])?;
-    hash.string(&unit.provenance.source_snapshot)?;
     hash.string(&unit.provenance.authoritative_representation_ref)?;
     hash.bytes(&unit.provenance.raw.sha256)?;
     hash.u64(unit.provenance.raw.size_bytes)?;
@@ -705,8 +752,6 @@ fn hash_unit(hash: &mut FrameHash, item: &VectorManifestUnit) -> Result<()> {
     hash.bytes(&unit.text_sha256)?;
     hash.string(&unit.text)?;
     hash.bytes(&unit.locator.encode()?)?;
-    hash.bytes(authority.generation.source_id.as_uuid().as_bytes())?;
-    hash.bytes(authority.generation.generation_id.as_uuid().as_bytes())?;
     hash.string(&authority.authority_scope_key)?;
     hash.string(&authority.retention_lease_id)?;
     hash.string(&authority.lifetime_scope_id)?;
@@ -722,117 +767,87 @@ fn hash_unit(hash: &mut FrameHash, item: &VectorManifestUnit) -> Result<()> {
     Ok(())
 }
 
-fn validate_input(
-    input: &VectorManifestInput,
-    storage: VectorStorageKind,
-    created_at: OffsetDateTime,
-) -> Result<ValidatedInput<'_>> {
-    if !valid_digest(&input.body_receipt_digest)
-        || !present(&input.source_snapshot)
-        || !present(&input.authority_scope_key)
-        || !present(&input.retention_lease_id)
-        || !pinned_revision(&input.lexical_analyzer_revision)
-        || !pinned_revision(&input.graph_schema_revision)
-        || input
+fn validate_header(header: &VectorManifestHeader, created_at: OffsetDateTime) -> Result<()> {
+    if !valid_digest(&header.body_receipt_digest)
+        || !present(&header.source_snapshot)
+        || !present(&header.authority_scope_key)
+        || !present(&header.retention_lease_id)
+        || !pinned_revision(&header.lexical_analyzer_revision)
+        || !pinned_revision(&header.graph_schema_revision)
+        || header
             .lease_expires_at
             .is_some_and(|expiry| expiry <= created_at)
     {
         return Err(VectorContractError::Invalid("P1 bundle comparison input"));
     }
-    let mut units = BTreeMap::new();
+    Ok(())
+}
+
+/// Checks one segment's Units against `header` and its entries against its
+/// Units, and digests both. Every Unit must share one Version × Part.
+pub fn check_segment(
+    model_id: &EmbeddingModelId,
+    header: &VectorManifestHeader,
+    storage: VectorStorageKind,
+    units: &[VectorManifestUnit],
+    entries: &[VectorEntryRef],
+) -> Result<VectorSegmentCheck> {
+    let first = units
+        .first()
+        .ok_or(VectorContractError::Invalid("empty Vector segment"))?;
+    let (version, part) = (&*first.unit.version, &*first.unit.part);
+    let mut by_id = BTreeMap::new();
     let mut locators = BTreeSet::new();
     let mut profiles = BTreeSet::new();
-    let mut expected_nonindexed = BTreeSet::new();
-    for item in &input.units {
+    let mut nonindexed = BTreeSet::new();
+    for item in units {
         let unit = &item.unit;
         let authority = &item.authority;
         validate_unit(unit, authority)?;
-        if authority.generation != input.bundle_key
-            || unit.provenance.source_snapshot != input.source_snapshot
-            || authority.authority_scope_key != input.authority_scope_key
-            || authority.retention_lease_id != input.retention_lease_id
-            || authority.lease_expires_at != input.lease_expires_at
+        if *unit.version != *version || *unit.part != *part {
+            return Err(VectorContractError::Invalid("Vector segment Version or Part"));
+        }
+        if authority.generation != header.bundle_key
+            || unit.provenance.source_snapshot != header.source_snapshot
+            || authority.authority_scope_key != header.authority_scope_key
+            || authority.retention_lease_id != header.retention_lease_id
+            || authority.lease_expires_at != header.lease_expires_at
         {
             return Err(VectorContractError::Invalid(
                 "Vector input authority binding",
             ));
         }
-        let locator_key = (
-            unit.version.source_id,
-            unit.version.resource_id,
-            unit.version.source_native_version.clone(),
-            unit.part.source_native_part_id.clone(),
-            unit.part.logical_path.clone(),
-            unit.part.ordinal,
-            unit.locator.encode()?,
-        );
-        if !locators.insert(locator_key) || units.insert(unit.unit_id, item).is_some() {
+        if !locators.insert(unit.locator.encode()?) || by_id.insert(unit.unit_id, item).is_some() {
             return Err(VectorContractError::Invalid("duplicate Unit or locator"));
         }
         let prohibited = match storage {
             VectorStorageKind::Persistent => {
                 authority.retention_mode != RetentionMode::PersistentResource
-                    || !input.source_declares_persistent_embedding_permission
+                    || !header.source_declares_persistent_embedding_permission
             }
             VectorStorageKind::Volatile => {
                 authority.retention_mode == RetentionMode::PersistentDiscoveryMetadata
             }
         };
         if prohibited {
-            expected_nonindexed.insert(unit.unit_id);
+            nonindexed.insert(unit.unit_id);
         }
         profiles.insert(unit.provenance.profile.clone());
     }
-    for item in units.values() {
+    for item in by_id.values() {
         if let Some(parent_id) = item.unit.parent_unit_id {
-            let parent = units
+            let parent = by_id
                 .get(&parent_id)
                 .ok_or(VectorContractError::Invalid("missing parent Unit"))?;
-            if parent.unit.version != item.unit.version
-                || parent.unit.part != item.unit.part
-                || parent.unit.ordinal >= item.unit.ordinal
-            {
+            if parent.unit.ordinal >= item.unit.ordinal {
                 return Err(VectorContractError::Invalid("parent Unit binding"));
             }
         }
     }
-    let mut nonindexed_set = BTreeSet::new();
-    for id in &input.nonindexed_retention_unit_ids {
-        if !units.contains_key(id) || !nonindexed_set.insert(*id) {
-            return Err(VectorContractError::Invalid("nonindexed retention Unit"));
-        }
-    }
-    if nonindexed_set != expected_nonindexed {
-        return Err(VectorContractError::Invalid("retention prohibition set"));
-    }
-    let mut hash = FrameHash::new(UNIT_SET_DOMAIN);
-    hash.u64(units.len() as u64)?;
-    for item in units.values() {
-        hash_unit(&mut hash, item)?;
-    }
-    hash.u64(nonindexed_set.len() as u64)?;
-    for id in &nonindexed_set {
-        hash.string(&id.to_string())?;
-    }
-    Ok(ValidatedInput {
-        units,
-        profiles: profiles.into_iter().collect(),
-        nonindexed: nonindexed_set.into_iter().collect(),
-        bindings_digest: digest_string(&hash.finish()),
-    })
-}
-
-fn validate_entries(
-    model_id: &EmbeddingModelId,
-    input: &ValidatedInput<'_>,
-    entries: &[VectorEntryRef],
-) -> Result<String> {
     let mut indexed = BTreeMap::new();
-    let nonindexed: BTreeSet<_> = input.nonindexed.iter().copied().collect();
     for entry in entries {
         let unit_id = entry.hit.unit_id;
-        let item = input
-            .units
+        let item = by_id
             .get(&unit_id)
             .ok_or(VectorContractError::Invalid("extra Vector entry"))?;
         if nonindexed.contains(&unit_id)
@@ -845,20 +860,161 @@ fn validate_entries(
             return Err(VectorContractError::Invalid("Vector entry binding"));
         }
     }
-    if indexed.len() + nonindexed.len() != input.units.len() {
+    if indexed.len() + nonindexed.len() != by_id.len() {
         return Err(VectorContractError::Invalid("missing Vector entry"));
     }
-    let mut hash = FrameHash::new(ENTRY_SET_DOMAIN);
-    hash.u64(indexed.len() as u64)?;
-    for (id, entry) in indexed {
-        hash.string(&id.to_string())?;
-        hash.bytes(&entry.vector_digest)?;
-        hash.string(&entry.model_id.to_string())?;
-        hash.string(&entry.cache_key.authority_scope_key)?;
-        hash.string(&entry.cache_key.retention_lease_id)?;
-        hash.string(&entry.cache_key.lifetime_scope_id)?;
+    let mut bindings = FrameHash::new(SEGMENT_UNIT_DOMAIN);
+    bindings.u64(units.len() as u64)?;
+    for item in units {
+        hash_unit(&mut bindings, item)?;
     }
-    Ok(digest_string(&hash.finish()))
+    let mut hashed = FrameHash::new(SEGMENT_ENTRY_DOMAIN);
+    hashed.u64(indexed.len() as u64)?;
+    for item in units {
+        if let Some(entry) = indexed.get(&item.unit.unit_id) {
+            hashed.string(&item.unit.unit_id.to_string())?;
+            hashed.bytes(&entry.vector_digest)?;
+            hashed.string(entry.model_id.as_str())?;
+            hashed.string(&entry.cache_key.authority_scope_key)?;
+            hashed.string(&entry.cache_key.retention_lease_id)?;
+            hashed.string(&entry.cache_key.lifetime_scope_id)?;
+        }
+    }
+    Ok(VectorSegmentCheck {
+        version: version.clone(),
+        part: part.clone(),
+        unit_count: units.len() as u64,
+        indexed_count: indexed.len() as u64,
+        profiles: profiles.into_iter().collect(),
+        nonindexed: nonindexed.into_iter().collect(),
+        bindings_digest: bindings.finish(),
+        entries_digest: hashed.finish(),
+    })
+}
+
+/// Checks a whole input by its segments: maximal runs of consecutive Units
+/// that share one Version × Part.
+fn check_input(
+    model_id: &EmbeddingModelId,
+    input: &VectorManifestInput,
+    storage: VectorStorageKind,
+    entries: &[VectorEntryRef],
+) -> Result<Vec<VectorSegmentCheck>> {
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    for at in 1..=input.units.len() {
+        let split = at == input.units.len() || {
+            let (a, b) = (&input.units[at - 1].unit, &input.units[at].unit);
+            a.version != b.version || a.part != b.part
+        };
+        if split {
+            ranges.push(start..at);
+            start = at;
+        }
+    }
+    let mut owner = BTreeMap::new();
+    for (segment, range) in ranges.iter().enumerate() {
+        for item in &input.units[range.clone()] {
+            if owner.insert(item.unit.unit_id, segment).is_some() {
+                return Err(VectorContractError::Invalid("duplicate Unit or locator"));
+            }
+        }
+    }
+    let mut grouped = vec![Vec::new(); ranges.len()];
+    for entry in entries {
+        let segment = owner
+            .get(&entry.hit.unit_id)
+            .ok_or(VectorContractError::Invalid("extra Vector entry"))?;
+        grouped[*segment].push(entry.clone());
+    }
+    let header = input.header();
+    ranges
+        .into_iter()
+        .zip(grouped)
+        .map(|(range, entries)| {
+            check_segment(model_id, &header, storage, &input.units[range], &entries)
+        })
+        .collect()
+}
+
+struct ComposedSegments {
+    profiles: Vec<ExtractionProfileId>,
+    nonindexed: Vec<UnitId>,
+    bindings_digest: String,
+    entries_digest: String,
+    indexed_count: u64,
+}
+
+/// The manifest's set digests from its segments, bound to `header`'s
+/// generation and Source snapshot.
+fn compose_segments(
+    header: &VectorManifestHeader,
+    created_at: OffsetDateTime,
+    segments: &[VectorSegmentCheck],
+) -> Result<ComposedSegments> {
+    validate_header(header, created_at)?;
+    let mut parts = BTreeSet::new();
+    let mut profiles = BTreeSet::new();
+    let mut nonindexed = BTreeSet::new();
+    let mut indexed_count = 0u64;
+    for segment in segments {
+        if !parts.insert((
+            segment.version.source_id,
+            segment.version.resource_id,
+            segment.version.source_native_version.as_str(),
+            segment.part.source_native_part_id.as_str(),
+            segment.part.logical_path.as_str(),
+            segment.part.ordinal,
+        )) {
+            return Err(VectorContractError::Invalid("duplicate Vector segment"));
+        }
+        profiles.extend(segment.profiles.iter().cloned());
+        for id in &segment.nonindexed {
+            if !nonindexed.insert(*id) {
+                return Err(VectorContractError::Invalid("duplicate Unit or locator"));
+            }
+        }
+        indexed_count = indexed_count
+            .checked_add(segment.indexed_count)
+            .ok_or(VectorContractError::Invalid("Vector entry count"))?;
+    }
+    let mut declared = BTreeSet::new();
+    for id in &header.nonindexed_retention_unit_ids {
+        if !declared.insert(*id) {
+            return Err(VectorContractError::Invalid("nonindexed retention Unit"));
+        }
+    }
+    if declared != nonindexed {
+        return Err(VectorContractError::Invalid("retention prohibition set"));
+    }
+    let mut bindings = FrameHash::new(UNIT_SET_DOMAIN);
+    bindings.bytes(header.bundle_key.source_id.as_uuid().as_bytes())?;
+    bindings.bytes(header.bundle_key.generation_id.as_uuid().as_bytes())?;
+    bindings.string(&header.source_snapshot)?;
+    bindings.u64(segments.len() as u64)?;
+    for segment in segments {
+        bindings.bytes(&segment.bindings_digest)?;
+        bindings.u64(segment.unit_count)?;
+    }
+    bindings.u64(nonindexed.len() as u64)?;
+    for id in &nonindexed {
+        bindings.string(&id.to_string())?;
+    }
+    let mut entries = FrameHash::new(ENTRY_SET_DOMAIN);
+    entries.bytes(header.bundle_key.source_id.as_uuid().as_bytes())?;
+    entries.bytes(header.bundle_key.generation_id.as_uuid().as_bytes())?;
+    entries.u64(segments.len() as u64)?;
+    for segment in segments {
+        entries.bytes(&segment.entries_digest)?;
+        entries.u64(segment.indexed_count)?;
+    }
+    Ok(ComposedSegments {
+        profiles: profiles.into_iter().collect(),
+        nonindexed: nonindexed.into_iter().collect(),
+        bindings_digest: digest_string(&bindings.finish()),
+        entries_digest: digest_string(&entries.finish()),
+        indexed_count,
+    })
 }
 
 impl VectorProjectionManifest {
@@ -871,22 +1027,34 @@ impl VectorProjectionManifest {
         created_at: OffsetDateTime,
     ) -> Result<Self> {
         let model_id = spec.validate_and_id()?;
+        let segments = check_input(&model_id, input, storage, entries)?;
+        Self::stage_segments(spec, &input.header(), index, &segments, storage, created_at)
+    }
+
+    /// [`Self::stage`] from checked segments, so a builder never holds every
+    /// Unit at once.
+    pub fn stage_segments(
+        spec: &EmbeddingModelSpec,
+        header: &VectorManifestHeader,
+        index: VectorIndexDescriptor,
+        segments: &[VectorSegmentCheck],
+        storage: VectorStorageKind,
+        created_at: OffsetDateTime,
+    ) -> Result<Self> {
+        let model_id = spec.validate_and_id()?;
         index.validate()?;
-        let checked = validate_input(input, storage, created_at)?;
-        let entries_digest = validate_entries(&model_id, &checked, entries)?;
-        let indexed_unit_count = u64::try_from(entries.len())
-            .map_err(|_| VectorContractError::Invalid("Vector entry count"))?;
+        let composed = compose_segments(header, created_at, segments)?;
         let vector_dimension = u32::try_from(spec.dimension)
             .map_err(|_| VectorContractError::Invalid("model dimension"))?;
         let mut manifest = Self {
-            schema_version: 1,
-            bundle_key: input.bundle_key,
-            body_receipt_digest: input.body_receipt_digest.clone(),
-            source_snapshot: input.source_snapshot.clone(),
-            authority_scope_key: input.authority_scope_key.clone(),
-            retention_lease_id: input.retention_lease_id.clone(),
-            lease_expires_at: input.lease_expires_at,
-            persistence_declared: input.source_declares_persistent_embedding_permission,
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            bundle_key: header.bundle_key,
+            body_receipt_digest: header.body_receipt_digest.clone(),
+            source_snapshot: header.source_snapshot.clone(),
+            authority_scope_key: header.authority_scope_key.clone(),
+            retention_lease_id: header.retention_lease_id.clone(),
+            lease_expires_at: header.lease_expires_at,
+            persistence_declared: header.source_declares_persistent_embedding_permission,
             model_id,
             vector_dimension,
             metric: spec.metric,
@@ -894,19 +1062,19 @@ impl VectorProjectionManifest {
             normalization: spec.normalization,
             storage,
             index,
-            extraction_profiles: checked.profiles,
-            lexical_analyzer_revision: input.lexical_analyzer_revision.clone(),
-            graph_schema_revision: input.graph_schema_revision.clone(),
-            unit_bindings_digest: checked.bindings_digest,
-            indexed_entries_digest: entries_digest,
-            indexed_unit_count,
-            nonindexed_retention_unit_ids: checked.nonindexed,
+            extraction_profiles: composed.profiles,
+            lexical_analyzer_revision: header.lexical_analyzer_revision.clone(),
+            graph_schema_revision: header.graph_schema_revision.clone(),
+            unit_bindings_digest: composed.bindings_digest,
+            indexed_entries_digest: composed.entries_digest,
+            indexed_unit_count: composed.indexed_count,
+            nonindexed_retention_unit_ids: composed.nonindexed,
             created_at,
             readiness: VectorReadiness::Ready,
             manifest_digest: String::new(),
         };
         manifest.manifest_digest = manifest.recompute_digest()?;
-        manifest.validate_against(input, entries)?;
+        manifest.validate_segments(header, segments)?;
         Ok(manifest)
     }
 
@@ -917,30 +1085,39 @@ impl VectorProjectionManifest {
         input: &VectorManifestInput,
         entries: &[VectorEntryRef],
     ) -> Result<VectorStageReceipt> {
+        let segments = check_input(&self.model_id, input, self.storage, entries)?;
+        self.validate_segments(&input.header(), &segments)
+    }
+
+    /// [`Self::validate_against`] from checked segments.
+    pub fn validate_segments(
+        &self,
+        header: &VectorManifestHeader,
+        segments: &[VectorSegmentCheck],
+    ) -> Result<VectorStageReceipt> {
         self.index.validate()?;
-        if self.schema_version != 1
+        if self.schema_version != MANIFEST_SCHEMA_VERSION
             || self.readiness != VectorReadiness::Ready
             || !valid_digest(self.model_id.as_str())
             || self.vector_dimension == 0
-            || self.bundle_key != input.bundle_key
-            || self.body_receipt_digest != input.body_receipt_digest
-            || self.source_snapshot != input.source_snapshot
-            || self.authority_scope_key != input.authority_scope_key
-            || self.retention_lease_id != input.retention_lease_id
-            || self.lease_expires_at != input.lease_expires_at
-            || self.persistence_declared != input.source_declares_persistent_embedding_permission
-            || self.lexical_analyzer_revision != input.lexical_analyzer_revision
-            || self.graph_schema_revision != input.graph_schema_revision
+            || self.bundle_key != header.bundle_key
+            || self.body_receipt_digest != header.body_receipt_digest
+            || self.source_snapshot != header.source_snapshot
+            || self.authority_scope_key != header.authority_scope_key
+            || self.retention_lease_id != header.retention_lease_id
+            || self.lease_expires_at != header.lease_expires_at
+            || self.persistence_declared != header.source_declares_persistent_embedding_permission
+            || self.lexical_analyzer_revision != header.lexical_analyzer_revision
+            || self.graph_schema_revision != header.graph_schema_revision
         {
             return Err(VectorContractError::Invalid("Vector manifest input"));
         }
-        let checked = validate_input(input, self.storage, self.created_at)?;
-        let entries_digest = validate_entries(&self.model_id, &checked, entries)?;
-        if self.extraction_profiles != checked.profiles
-            || self.nonindexed_retention_unit_ids != checked.nonindexed
-            || self.unit_bindings_digest != checked.bindings_digest
-            || self.indexed_entries_digest != entries_digest
-            || self.indexed_unit_count != entries.len() as u64
+        let composed = compose_segments(header, self.created_at, segments)?;
+        if self.extraction_profiles != composed.profiles
+            || self.nonindexed_retention_unit_ids != composed.nonindexed
+            || self.unit_bindings_digest != composed.bindings_digest
+            || self.indexed_entries_digest != composed.entries_digest
+            || self.indexed_unit_count != composed.indexed_count
             || self.manifest_digest != self.recompute_digest()?
         {
             return Err(VectorContractError::Invalid("Vector manifest seal"));
@@ -954,7 +1131,7 @@ impl VectorProjectionManifest {
             retention_lease_id: self.retention_lease_id.clone(),
             model_id: self.model_id.clone(),
             indexed_count: self.indexed_unit_count,
-            nonindexed_retention_count: checked.nonindexed.len() as u64,
+            nonindexed_retention_count: composed.nonindexed.len() as u64,
             index_digest: self.index.index_digest.clone(),
             manifest_digest: self.manifest_digest.clone(),
         })

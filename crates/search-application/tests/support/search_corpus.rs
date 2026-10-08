@@ -256,6 +256,7 @@ fn unit_hit(key: ProjectionGenerationKey, parent: ResourceId, text: &str) -> Kno
         },
         profile,
         opaque_locator: "00".into(),
+        excerpt: None,
     }
 }
 

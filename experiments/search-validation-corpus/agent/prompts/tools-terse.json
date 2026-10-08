@@ -1,0 +1,6 @@
+[
+ {"type":"function","function":{"name":"search_keyword","description":"語の一致で文書を検索する","parameters":{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}}},
+ {"type":"function","function":{"name":"search_semantic","description":"意味の近さで文書を検索する","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}},
+ {"type":"function","function":{"name":"read_document","description":"文書の本文を読む","parameters":{"type":"object","properties":{"id":{"type":"string"},"query":{"type":"string"},"page":{"type":"integer"}},"required":["id"]}}},
+ {"type":"function","function":{"name":"note","description":"メモを残す","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}}
+]

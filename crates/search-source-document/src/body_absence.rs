@@ -165,8 +165,8 @@ impl DocumentExactTextEvidenceCatalog {
                 {
                     return unknown(BUDGET, GapReason::Availability);
                 }
-                if unit.version != parent
-                    || unit.part != item.part
+                if *unit.version != parent
+                    || *unit.part != item.part
                     || unit.provenance.authoritative_representation_ref
                         != entry.authoritative_representation_ref
                     || unit.provenance.raw != item.raw

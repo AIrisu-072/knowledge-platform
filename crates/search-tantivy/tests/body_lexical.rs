@@ -129,8 +129,8 @@ fn unit(source: SourceId, parent: u128, ordinal: u32, text: &str) -> KnowledgeUn
     let profile = profile();
     KnowledgeUnit {
         unit_id: UnitId::derive(&version, &part, &profile, &locator, ordinal).unwrap(),
-        version,
-        part,
+        version: version.into(),
+        part: part.into(),
         parent_unit_id: None,
         ordinal,
         kind: UnitKind::PlainText,
@@ -149,7 +149,8 @@ fn unit(source: SourceId, parent: u128, ordinal: u32, text: &str) -> KnowledgeUn
             archive_inner_format: None,
             profile,
             parser_build_id: "search-extraction-worker-test".into(),
-        },
+        }
+        .into(),
     }
 }
 
@@ -217,7 +218,7 @@ async fn schema2_resource_and_unit_fields() {
         assert_eq!(doc.text, unit.text);
         assert_eq!(doc.text_sha256, unit.text_sha256);
         assert_eq!(doc.locator, unit.locator);
-        assert_eq!(doc.part, unit.part);
+        assert_eq!(doc.part, *unit.part);
         assert_eq!(doc.raw, unit.provenance.raw);
         assert_eq!(doc.profile, unit.provenance.profile);
         assert_eq!(doc.kind, UnitKind::PlainText);

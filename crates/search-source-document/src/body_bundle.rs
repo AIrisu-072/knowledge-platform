@@ -11,7 +11,7 @@ use search_application::SearchError;
 use search_core::id::ResourceId;
 use search_core::knowledge_unit::{KnowledgeUnit, UnitId, text_sha256};
 use search_core::projection::{CompiledResourceProjection, ProjectionGenerationKey};
-use search_tantivy::IndexedUnitDoc;
+use search_tantivy::{IndexedUnitDoc, UnitSealEntry, unit_doc_hash};
 use sha2::{Digest, Sha256};
 
 use crate::body_manifest::{
@@ -272,6 +272,56 @@ pub(crate) fn derive_coverage(
     })
 }
 
+/// The same bijective seal from each searchable document's ID and the digest
+/// of its stored fields and text (`unit_doc_hash`): every Unit of the manifest
+/// has exactly one document with the same digest and no other document exists.
+pub fn seal_lexical_entries(
+    manifest: &BodyUnitManifest,
+    documents: &[UnitSealEntry],
+) -> Result<(), SearchError> {
+    let mut expected = Vec::new();
+    for unit in manifest.entries.iter().flat_map(|entry| &entry.units) {
+        if text_sha256(&unit.text) != unit.text_sha256 {
+            return Err(failed("lexical seal: Unit text differs from its digest"));
+        }
+        let hash = unit_doc_hash(unit).map_err(|_| failed("lexical seal: Unit encoding"))?;
+        expected.push(UnitSealEntry {
+            unit_id: unit.unit_id,
+            hash,
+        });
+    }
+    seal_lexical_hashes(&expected, documents)
+}
+
+/// [`seal_lexical_entries`] from the manifest's Unit entries (each Unit's ID
+/// and `unit_doc_hash`, every text already checked against its digest).
+pub fn seal_lexical_hashes(
+    units: &[UnitSealEntry],
+    documents: &[UnitSealEntry],
+) -> Result<(), SearchError> {
+    let mut expected: BTreeMap<UnitId, [u8; 32]> = BTreeMap::new();
+    for unit in units {
+        if expected.insert(unit.unit_id, unit.hash).is_some() {
+            return Err(failed("duplicate Unit in manifest"));
+        }
+    }
+    if documents.len() != expected.len() {
+        return Err(failed("lexical seal: document count differs from Units"));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for document in documents {
+        if !seen.insert(document.unit_id) {
+            return Err(failed("lexical seal: duplicate document"));
+        }
+        match expected.get(&document.unit_id) {
+            Some(hash) if *hash == document.hash => {}
+            Some(_) => return Err(failed("lexical seal: document differs from Unit")),
+            None => return Err(failed("lexical seal: unknown document")),
+        }
+    }
+    Ok(())
+}
+
 /// Bijective seal: every Supported/Partial Unit has exactly one searchable
 /// document with the same identity, binding and text, and no other document
 /// exists. Unsupported and failed items therefore contribute zero documents.
@@ -300,8 +350,8 @@ pub fn seal_lexical(
             return Err(failed("lexical seal: duplicate document"));
         }
         let matches = document.parent_resource == unit.version.resource_id
-            && document.version == unit.version
-            && document.part == unit.part
+            && document.version == *unit.version
+            && document.part == *unit.part
             && document.authoritative_representation_ref
                 == unit.provenance.authoritative_representation_ref
             && document.raw == unit.provenance.raw
@@ -399,8 +449,8 @@ mod tests {
         };
         KnowledgeUnit {
             unit_id: UnitId::derive(&version, &part, &profile(), &locator, ordinal).unwrap(),
-            version,
-            part,
+            version: version.into(),
+            part: part.into(),
             parent_unit_id: None,
             ordinal,
             kind: UnitKind::PlainText,
@@ -419,7 +469,8 @@ mod tests {
                 archive_inner_format: None,
                 profile: profile(),
                 parser_build_id: "build".into(),
-            },
+            }
+            .into(),
         }
     }
 
@@ -429,8 +480,8 @@ mod tests {
             key: key(),
             source_snapshot: "snapshot".into(),
             entries: vec![BodyItemEntry {
-                version: first.version.clone(),
-                part: first.part.clone(),
+                version: (*first.version).clone(),
+                part: (*first.part).clone(),
                 authoritative_representation_ref: "representation".into(),
                 raw: first.provenance.raw.clone(),
                 detected_format: Some(FormatId::Text),
@@ -448,8 +499,8 @@ mod tests {
         IndexedUnitDoc {
             generation: key(),
             parent_resource: unit.version.resource_id,
-            version: unit.version.clone(),
-            part: unit.part.clone(),
+            version: (*unit.version).clone(),
+            part: (*unit.part).clone(),
             authoritative_representation_ref: unit
                 .provenance
                 .authoritative_representation_ref

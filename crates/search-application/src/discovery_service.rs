@@ -152,6 +152,8 @@ pub struct SearchHit {
     pub resource_version: Option<ResourceVersionId>,
     pub title: Option<String>,
     pub matched: Vec<MatchedField>,
+    /// The body window of the representative Unit, for a body match only.
+    pub snippet: Option<String>,
 }
 
 /// A Search retrieval pass: ranked hits, pinned generations and gaps.
@@ -1134,13 +1136,18 @@ impl<'a> DiscoveryService<'a> {
             if !seen.insert((generation, resource_id)) {
                 continue;
             }
-            let projection = records
-                .iter()
-                .find(|record| {
-                    record.raw.generation == generation
-                        && record.raw.candidate.resource_ref == Some(resource_id)
-                })
-                .and_then(|record| record.projection.as_ref());
+            let record = records.iter().find(|record| {
+                record.raw.generation == generation
+                    && record.raw.candidate.resource_ref == Some(resource_id)
+            });
+            let projection = record.and_then(|record| record.projection.as_ref());
+            let snippet = if body {
+                record
+                    .and_then(|record| record.raw.unit_hit.as_ref())
+                    .and_then(|hit| hit.excerpt.clone())
+            } else {
+                None
+            };
             hits.push(SearchHit {
                 source_id,
                 resource_id,
@@ -1149,6 +1156,7 @@ impl<'a> DiscoveryService<'a> {
                 resource_version: projection.and_then(|detail| detail.directory.resource_version),
                 title: projection.and_then(|detail| detail.directory.title.clone()),
                 matched: matched.into_iter().collect(),
+                snippet,
             });
         }
         Ok(SearchOutcome {

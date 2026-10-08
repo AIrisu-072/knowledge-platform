@@ -97,7 +97,7 @@ async fn ownership_migration_preserves_independent_ledgers_and_namespaces() {
             .iter()
             .map(|(version, _)| *version)
             .collect::<Vec<_>>(),
-        vec![1, 2, 3, 4, 5, 6, 7, 8, 9]
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     );
     assert_eq!(search_after[0], first_search);
     assert!(

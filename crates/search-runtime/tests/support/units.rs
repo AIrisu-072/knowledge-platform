@@ -73,8 +73,8 @@ pub fn entry(source: SourceId, lines: &[&str]) -> BodyItemEntry {
             };
             KnowledgeUnit {
                 unit_id: UnitId::derive(&version, &part, &profile(), &locator, ordinal).unwrap(),
-                version: version.clone(),
-                part: part.clone(),
+                version: version.clone().into(),
+                part: part.clone().into(),
                 parent_unit_id: None,
                 ordinal,
                 kind: UnitKind::PlainText,
@@ -89,7 +89,8 @@ pub fn entry(source: SourceId, lines: &[&str]) -> BodyItemEntry {
                     archive_inner_format: None,
                     profile: profile(),
                     parser_build_id: "search-extraction-worker-test".into(),
-                },
+                }
+                .into(),
             }
         })
         .collect();

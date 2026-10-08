@@ -92,6 +92,9 @@ struct Pending {
     delivery: Option<(DocumentSourceEvent, SearchDeliveryFence)>,
     handle: Option<Registered>,
     verified: Option<VerifiedBundle>,
+    /// The READY bundle's Unit manifest, kept for the next build once this
+    /// key is published.
+    built_units: Option<BodyUnitManifest>,
 }
 
 /// The P7 target: MANUAL for a rebuild, EVENT for a fenced delivery.
@@ -256,6 +259,9 @@ struct GraphPlan {
     owners: Vec<(ResourceId, DocumentId)>,
 }
 
+/// READY generations kept behind the current one for in-flight readers.
+const RETAINED_PREVIOUS_GENERATIONS: usize = 1;
+
 pub struct PgDocumentIndexRuntime {
     pool: PgPool,
     lexical_root: PathBuf,
@@ -265,6 +271,10 @@ pub struct PgDocumentIndexRuntime {
     pending: Mutex<BTreeMap<ProjectionGenerationKey, Pending>>,
     /// Set after an incremental target failed: the next build is full.
     next_full: AtomicBool,
+    /// The Unit manifest of the last generation this process published. The
+    /// next build of the same current generation takes its entries instead
+    /// of restoring every segment (T12).
+    published_units: std::sync::Mutex<Option<BodyUnitManifest>>,
 }
 
 impl PgDocumentIndexRuntime {
@@ -283,6 +293,20 @@ impl PgDocumentIndexRuntime {
             guard_ttl,
             pending: Mutex::new(BTreeMap::new()),
             next_full: AtomicBool::new(false),
+            published_units: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// `key` was published: its pending build ends and its Units are kept.
+    fn published(&self, key: ProjectionGenerationKey) {
+        let built = self
+            .pending
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(&key))
+            .and_then(|pending| pending.built_units);
+        if let (Some(units), Ok(mut published)) = (built, self.published_units.lock()) {
+            *published = Some(units);
         }
     }
 
@@ -342,6 +366,14 @@ impl PgDocumentIndexRuntime {
             source_id,
             generation_id: ProjectionGenerationId::from_uuid(generation),
         }))
+    }
+
+    /// Best effort after a publication: superseded READY generations would
+    /// otherwise stay on disk forever; a pinned one is retried next time.
+    async fn retire_superseded(&self, key: ProjectionGenerationKey) {
+        let _ = PgGenerationGc::new(self.pool.clone(), &self.lexical_root)
+            .retire_superseded(key.source_id, RETAINED_PREVIOUS_GENERATIONS)
+            .await;
     }
 
     /// The guard holder gives up a build; the files and rows go with it.
@@ -408,7 +440,7 @@ impl PgDocumentIndexRuntime {
         graph: &GraphPlan,
         unit_manifest: BodyUnitManifest,
         coverage: BodyCoverageArtifact,
-    ) -> Result<VerifiedBundle, SearchError> {
+    ) -> Result<(VerifiedBundle, BodyUnitManifest), SearchError> {
         let key = manifest.key();
         let store = PostgresGraphStore::new(self.pool.clone());
         let mut position = GraphBatchCursor {
@@ -469,19 +501,21 @@ impl PgDocumentIndexRuntime {
             graph_receipt(key, &resources, &graph.owners)?,
         )
         .map_err(|error| failed("bundle receipt", error))?;
+        let bundle = StoredBundleV1 {
+            manifest: manifest.clone(),
+            projection: ProjectionPayloadV1 {
+                resources,
+                registry,
+            },
+            unit_manifest,
+            coverage,
+            receipt: receipt.clone(),
+        };
         PgPayloadStore::new(self.pool.clone())
-            .store(&StoredBundleV1 {
-                manifest: manifest.clone(),
-                projection: ProjectionPayloadV1 {
-                    resources,
-                    registry,
-                },
-                unit_manifest,
-                coverage,
-                receipt: receipt.clone(),
-            })
+            .store(&bundle)
             .await
             .map_err(|error| failed("payload", error))?;
+        let unit_manifest = bundle.unit_manifest;
         let verified =
             ReadyCoordinator::new(self.pool.clone(), &self.lexical_root, self.source.clone())
                 .ready_incremental(&handle)
@@ -490,7 +524,7 @@ impl PgDocumentIndexRuntime {
         if verified.receipt() != &receipt {
             return Err(failed("READY receipt", key));
         }
-        Ok(verified)
+        Ok((verified, unit_manifest))
     }
 
     async fn settle(&self, key: ProjectionGenerationKey) -> Result<VerifiedBundle, SearchError> {
@@ -502,7 +536,8 @@ impl PgDocumentIndexRuntime {
                     pending.resources.clone(),
                     pending.lexical,
                     pending.graph.clone(),
-                    pending.unit_manifest.clone(),
+                    // Moved, not copied: settling runs once per key.
+                    pending.unit_manifest.take(),
                     pending.coverage.clone(),
                     pending.delivery.clone(),
                 ))
@@ -562,7 +597,7 @@ impl PgDocumentIndexRuntime {
                         pending.handle = Some(Registered::Incremental(handle));
                         Ok(())
                     })?;
-                    let verified = match self
+                    let (verified, unit_manifest) = match self
                         .finish_incremental(
                             handle,
                             &manifest,
@@ -584,6 +619,7 @@ impl PgDocumentIndexRuntime {
                     };
                     self.with(key, |pending| {
                         pending.verified = Some(verified.clone());
+                        pending.built_units = Some(unit_manifest);
                         Ok(())
                     })?;
                     return Ok(verified);
@@ -638,19 +674,21 @@ impl PgDocumentIndexRuntime {
             graph_receipt(key, &resources, &graph.owners)?,
         )
         .map_err(|error| failed("bundle receipt", error))?;
+        let bundle = StoredBundleV1 {
+            manifest: manifest.clone(),
+            projection: ProjectionPayloadV1 {
+                resources,
+                registry,
+            },
+            unit_manifest,
+            coverage,
+            receipt: receipt.clone(),
+        };
         PgPayloadStore::new(self.pool.clone())
-            .store(&StoredBundleV1 {
-                manifest: manifest.clone(),
-                projection: ProjectionPayloadV1 {
-                    resources,
-                    registry,
-                },
-                unit_manifest,
-                coverage,
-                receipt: receipt.clone(),
-            })
+            .store(&bundle)
             .await
             .map_err(|error| failed("payload", error))?;
+        let unit_manifest = bundle.unit_manifest;
         let target = handle
             .graph_target()
             .ok_or_else(|| failed("graph target", key))?;
@@ -671,6 +709,7 @@ impl PgDocumentIndexRuntime {
         }
         self.with(key, |pending| {
             pending.verified = Some(verified.clone());
+            pending.built_units = Some(unit_manifest);
             Ok(())
         })?;
         Ok(verified)
@@ -732,9 +771,9 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
 
     fn settled<'a>(&'a self, key: ProjectionGenerationKey) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            if let Ok(mut pending) = self.pending.lock() {
-                pending.remove(&key);
-            }
+            self.published(key);
+            // An event publication settles here; retire what it superseded.
+            self.retire_superseded(key).await;
             Ok(())
         })
     }
@@ -836,9 +875,8 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             if outcome != SearchCompletionOutcome::Published(key) {
                 return Ok(false);
             }
-            if let Ok(mut pending) = self.pending.lock() {
-                pending.remove(&key);
-            }
+            self.published(key);
+            self.retire_superseded(key).await;
             Ok(true)
         })
     }
@@ -863,6 +901,10 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
         let key = manifest.key();
         let logical = search_tantivy::lexical_input_digest(&input)?;
         let dir = self.lexical().staging_dir(key);
+        let input = match self.lexical().latest_units_dir(key.source_id) {
+            Some(base) => input.with_base_units_dir(base),
+            None => input,
+        };
         TantivyLexicalIndex::new().build_generation_at(manifest, source, input, &dir)?;
         self.with(key, |pending| {
             pending.lexical = Some(ArtifactReceipt {
@@ -961,6 +1003,36 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
                 return Err(failed("projection digest", key));
             }
             Ok(self.settle(key).await?.receipt().clone())
+        })
+    }
+
+    fn current_body_entries<'a>(
+        &'a self,
+        source_id: SourceId,
+    ) -> BoxFuture<'a, Option<Vec<search_source_document::BodyItemEntry>>> {
+        Box::pin(async move {
+            let Some(key) = self.current_key(source_id).await? else {
+                return Ok(None);
+            };
+            // This process built and published the current generation: its
+            // READY-verified Units move into the next build without a restore.
+            let published = self
+                .published_units
+                .lock()
+                .ok()
+                .and_then(|mut published| published.take());
+            if let Some(units) = published.filter(|units| units.key == key) {
+                return Ok(Some(units.entries));
+            }
+            let manifest = self.stored_manifest(key).await?;
+            // The restore recomputes every digest before an entry is reused.
+            match PgPayloadStore::new(self.pool.clone())
+                .restore(&manifest)
+                .await
+            {
+                Ok(restored) => Ok(Some(restored.unit_manifest.entries)),
+                Err(_) => Ok(None),
+            }
         })
     }
 

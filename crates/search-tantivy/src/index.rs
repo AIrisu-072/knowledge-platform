@@ -10,8 +10,7 @@ use tantivy::{Index, IndexReader, doc};
 
 use crate::body::{IndexedUnitDoc, UnitIndex, build_unit_index, enumerate};
 use crate::schema::{
-    ANALYZER_VERSION, LEXICAL_SCHEMA_VERSION, LexicalFields, kind_token, lexical_schema,
-    normalize_exact,
+    LEXICAL_SCHEMA_VERSION, LexicalFields, kind_token, lexical_schema, normalize_exact,
 };
 
 /// Content explicitly furnished by the owning Source for indexing. There is
@@ -61,7 +60,11 @@ pub struct LexicalBuildInput {
     projection_schema_version: String,
     lens_version: u32,
     documents: Vec<LexicalDocument>,
-    body_units: Option<Vec<KnowledgeUnit>>,
+    body_units: Option<BodyUnits>,
+    /// The analyzer this input is indexed with; it must equal the manifest's.
+    analyzer_version: String,
+    /// A committed Unit index of an earlier generation to start from.
+    base_units_dir: Option<std::path::PathBuf>,
 }
 
 impl LexicalBuildInput {
@@ -79,13 +82,39 @@ impl LexicalBuildInput {
             lens_version,
             documents,
             body_units: None,
+            analyzer_version: crate::analyzer::LEGACY_ANALYZER_VERSION.into(),
+            base_units_dir: None,
         }
+    }
+
+    /// Build the Unit index from this earlier generation's committed Unit
+    /// index when it can serve as a base; the result is the same Units.
+    pub fn with_base_units_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.base_units_dir = Some(dir.into());
+        self
+    }
+
+    /// Index with a supported analyzer instead of the legacy default.
+    pub fn with_analyzer_version(mut self, analyzer_version: impl Into<String>) -> Self {
+        self.analyzer_version = analyzer_version.into();
+        self
+    }
+
+    pub fn analyzer_version(&self) -> &str {
+        &self.analyzer_version
     }
 
     /// Make the generation body-ready (schema-2) with exactly these verified
     /// Units. An empty collection is still body-ready: every item had no text.
     pub fn with_body_units(mut self, units: Vec<KnowledgeUnit>) -> Self {
-        self.body_units = Some(units);
+        self.body_units = Some(BodyUnits(Arc::new(units)));
+        self
+    }
+
+    /// [`Self::with_body_units`] over Units the caller keeps owning (T12): the
+    /// build reads them in place instead of a copy.
+    pub fn with_body_unit_source(mut self, units: Arc<dyn UnitSource>) -> Self {
+        self.body_units = Some(BodyUnits(units));
         self
     }
 
@@ -93,10 +122,40 @@ impl LexicalBuildInput {
         &self.documents
     }
 
-    pub(crate) fn body_units(&self) -> Option<&[KnowledgeUnit]> {
-        self.body_units.as_deref()
+    pub(crate) fn body_units(&self) -> Option<Vec<&KnowledgeUnit>> {
+        self.body_units.as_ref().map(|units| units.0.units())
     }
 }
+
+/// Units a lexical build reads without owning them.
+pub trait UnitSource: Send + Sync {
+    /// Every Unit, in the caller's order.
+    fn units(&self) -> Vec<&KnowledgeUnit>;
+}
+
+impl UnitSource for Vec<KnowledgeUnit> {
+    fn units(&self) -> Vec<&KnowledgeUnit> {
+        self.iter().collect()
+    }
+}
+
+/// The body Units of one build input; equal when they hold the same Units.
+#[derive(Clone)]
+struct BodyUnits(Arc<dyn UnitSource>);
+
+impl std::fmt::Debug for BodyUnits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BodyUnits").field(&self.0.units()).finish()
+    }
+}
+
+impl PartialEq for BodyUnits {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.units() == other.0.units()
+    }
+}
+
+impl Eq for BodyUnits {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum LexicalIndexError {
@@ -116,7 +175,7 @@ pub enum LexicalIndexError {
     BodyNotPermitted,
     #[error("Source retention does not permit a persistent lexical index")]
     PersistenceDenied,
-    #[error("generation analyzer is not the qualified Tantivy default analyzer")]
+    #[error("generation analyzer is not a supported analyzer of this input")]
     AnalyzerMismatch,
     #[error("lexical generation already exists")]
     DuplicateGeneration,
@@ -159,6 +218,10 @@ pub(crate) struct GenerationIndex {
     pub fields: LexicalFields,
     pub documents: BTreeMap<String, DocumentMetadata>,
     pub units: Option<UnitIndex>,
+    /// The tokenizer of this generation's fields (read when a fault rebuilds
+    /// its Unit index).
+    #[cfg_attr(not(feature = "fault-injection"), allow(dead_code))]
+    pub tokenizer: &'static str,
 }
 
 /// A generation is assembled privately, then inserted once. Existing keyed
@@ -237,9 +300,11 @@ impl TantivyLexicalIndex {
         ) {
             return Err(LexicalIndexError::PersistenceDenied);
         }
-        if manifest.analyzer_version.as_deref() != Some(ANALYZER_VERSION) {
+        if manifest.analyzer_version.as_deref() != Some(input.analyzer_version.as_str()) {
             return Err(LexicalIndexError::AnalyzerMismatch);
         }
+        let tokenizer = crate::analyzer::tokenizer_name(&input.analyzer_version)
+            .ok_or(LexicalIndexError::AnalyzerMismatch)?;
         // A lexical generation may index only a subset of the Source snapshot,
         // but it cannot contain more distinct Resources than the manifest.
         if u64::try_from(input.documents.len())
@@ -268,7 +333,8 @@ impl TantivyLexicalIndex {
                 }
             }
         }
-        if let Some(units) = &input.body_units {
+        let body_units = input.body_units();
+        if let Some(units) = &body_units {
             if !units.is_empty()
                 && (source.retention_mode != RetentionMode::PersistentResource
                     || !source.supports(DiscoveryMode::LocalContentSearch))
@@ -281,7 +347,7 @@ impl TantivyLexicalIndex {
                 .map(|document| document.resource_ref)
                 .collect();
             let mut seen = std::collections::BTreeSet::new();
-            for unit in units {
+            for unit in units.iter() {
                 if unit.version.source_id != key.source_id {
                     return Err(LexicalIndexError::UnitSourceMismatch);
                 }
@@ -296,14 +362,23 @@ impl TantivyLexicalIndex {
         if let Some(dir) = dir {
             crate::persist::write_sidecar(dir, &manifest, source, &input)?;
         }
-        let unit_index = input
-            .body_units
+        let unit_index = body_units
             .as_deref()
             .map(|units| match dir {
                 Some(dir) => {
-                    crate::body::build_unit_index_at(units, &dir.join(crate::persist::UNITS_DIR))
+                    let target = dir.join(crate::persist::UNITS_DIR);
+                    let from_base = match &input.base_units_dir {
+                        Some(base) => crate::body::build_unit_index_from_base(
+                            units, base, &target, tokenizer,
+                        )?,
+                        None => None,
+                    };
+                    match from_base {
+                        Some(index) => Ok(index),
+                        None => crate::body::build_unit_index_at(units, &target, tokenizer),
+                    }
                 }
-                None => build_unit_index(units),
+                None => build_unit_index(units, tokenizer),
             })
             .transpose()?;
         let mut documents = input.documents;
@@ -315,7 +390,7 @@ impl TantivyLexicalIndex {
             return Err(LexicalIndexError::DuplicateResource);
         }
 
-        let (schema, fields) = lexical_schema();
+        let (schema, fields) = lexical_schema(tokenizer);
         let index = match dir {
             Some(dir) => {
                 let path = dir.join(crate::persist::RESOURCES_DIR);
@@ -324,6 +399,7 @@ impl TantivyLexicalIndex {
             }
             None => Index::create_in_ram(schema),
         };
+        crate::analyzer::register(&index);
         let mut writer = index.writer(15_000_000)?;
         let mut metadata = BTreeMap::new();
         for document in documents {
@@ -369,6 +445,7 @@ impl TantivyLexicalIndex {
             fields,
             documents: metadata,
             units: unit_index,
+            tokenizer,
         });
         let mut generations = self
             .generations
@@ -469,7 +546,11 @@ impl TantivyLexicalIndex {
                     )
                 })
                 .collect(),
-            units: Some(build_unit_index(&rebuilt)?),
+            units: Some(build_unit_index(
+                &rebuilt.iter().collect::<Vec<_>>(),
+                current.tokenizer,
+            )?),
+            tokenizer: current.tokenizer,
         };
         generations.insert(key, Arc::new(replaced));
         Ok(())

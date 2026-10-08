@@ -75,7 +75,7 @@ enum Mode {
 }
 
 /// One child or parent delete of the binding order.
-const DELETE_ORDER: [&str; 11] = [
+const DELETE_ORDER: [&str; 12] = [
     "DELETE FROM search_generation_full_guard WHERE source_id=$1 AND target_generation_id=$2",
     "DELETE FROM search_graph.build_guard WHERE source_id=$1 AND target_generation_id=$2",
     "DELETE FROM search_evaluation_lease WHERE source_id=$1 AND generation_id=$2 \
@@ -84,6 +84,7 @@ const DELETE_ORDER: [&str; 11] = [
     "DELETE FROM search_graph.relation WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_graph.resource WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2",
+    "DELETE FROM search_generation_segment WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_generation_receipt WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_lexical_artifact WHERE source_id=$1 AND generation_id=$2",
     "DELETE FROM search_graph.generation WHERE source_id=$1 AND generation_id=$2",
@@ -108,6 +109,50 @@ impl PgGenerationGc {
             lexical: LexicalArtifactStore::new(lexical_root.into(), pool.clone()),
             pool,
         }
+    }
+
+    /// Retires READY generations of `source_id` older than the current one and
+    /// the `keep_previous` newest before it. A pinned generation is skipped
+    /// and retried at the next publication. Returns the number deleted.
+    pub async fn retire_superseded(
+        &self,
+        source_id: SourceId,
+        keep_previous: usize,
+    ) -> Result<u64, GcError> {
+        let rows: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT g.generation_id FROM search_generation g \
+             JOIN search_source_coordination c ON c.source_id = g.source_id \
+             WHERE g.source_id = $1 AND g.state = 'READY' \
+             AND g.generation_id IS DISTINCT FROM c.current_generation_id \
+             ORDER BY g.ready_at DESC NULLS LAST OFFSET $2",
+        )
+        .bind(source_id.as_uuid())
+        .bind(i64::try_from(keep_previous).map_err(|_| GcError::Store)?)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut deleted = 0;
+        for generation in rows {
+            let key = ProjectionGenerationKey {
+                source_id,
+                generation_id: ProjectionGenerationId::from_uuid(generation),
+            };
+            if self.retire_unpinned(key).await? == GcOutcome::Deleted {
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
+    }
+
+    /// Deletes Unit segments that no generation lists any more. Returns the
+    /// number of deleted segments.
+    pub async fn sweep_unreferenced_segments(&self) -> Result<u64, GcError> {
+        let deleted = sqlx::query(
+            "DELETE FROM search_unit_segment s WHERE NOT EXISTS \
+             (SELECT 1 FROM search_generation_segment g WHERE g.segment_digest = s.segment_digest)",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(deleted.rows_affected())
     }
 
     /// Removes a READY key that is not current and has no live pin.
@@ -418,6 +463,9 @@ impl PgGenerationGc {
         tx.commit().await.map_err(|_| GcError::CompletionUnknown)?;
         remove_dir(&self.lexical.final_dir(key));
         remove_dir(&self.lexical.staging_dir(key));
+        // Best effort: a segment a concurrent build has just listed keeps its
+        // row (the foreign key refuses the delete) and is swept later.
+        let _ = self.sweep_unreferenced_segments().await;
         Ok(GcOutcome::Deleted)
     }
 }

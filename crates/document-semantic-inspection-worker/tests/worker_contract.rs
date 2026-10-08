@@ -165,6 +165,30 @@ fn unknown_binary_and_scriptless_text_classification_are_controlled() {
 }
 
 #[test]
+fn plain_text_quoting_markup_keeps_its_declared_format() {
+    // An article about XHTML quotes a DOCTYPE in its body.
+    let article = "XHTML\n\n例：\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\">\n<html><body></body></html>\n";
+    assert_eq!(
+        detect_format(article.as_bytes(), "text/plain").unwrap(),
+        FormatId::Txt
+    );
+    // A document that starts as HTML is still not plain text.
+    for disguised in [
+        &b"<!DOCTYPE html><html><body>x</body></html>"[..],
+        b"\xef\xbb\xbf  \n<html><body>x</body></html>",
+        b"<body>x</body>",
+    ] {
+        let error = detect_format(disguised, "text/plain").unwrap_err();
+        assert_eq!(error.code(), WorkerFailureCode::FormatMismatch);
+    }
+    // Declared HTML still accepts markup anywhere, as before.
+    assert_eq!(
+        detect_format(b"<!-- c -->\n<html><body>x</body></html>", "text/html").unwrap(),
+        FormatId::Html
+    );
+}
+
+#[test]
 fn malformed_or_oversized_request_is_a_controlled_failure() {
     let malformed = decode_request_bounded(b"{not-json", 1024).unwrap_err();
     assert_eq!(malformed.code(), WorkerFailureCode::MalformedRequest);
