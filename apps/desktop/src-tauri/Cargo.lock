@@ -1656,6 +1656,7 @@ dependencies = [
 name = "knowledge-platform-desktop"
 version = "0.0.0"
 dependencies = [
+ "gtk",
  "local-workspace-runtime",
  "reqwest",
  "rfd",

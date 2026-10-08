@@ -13,6 +13,7 @@
 // replaying page code would); 「ページのscript：」 = other page script (fetch,
 // window/frame/navigation probes, media queries, the IPC call counter);
 // 「WebDriver：」 = state only WebDriver sees (window handles, document.title);
+// 「プロセス：」 = whether the app process is still running;
 // 「ディスク：」 = files the harness reads on disk; 「ログ：」 = the app's stderr;
 // 「準備：」 = a harness setup step.
 import assert from 'node:assert/strict';
@@ -81,7 +82,7 @@ function scenario(name, body) {
   });
 }
 
-const CHECK_KINDS = ['IPC・ディスク', 'IPC', 'ページのscript', 'WebDriver', 'ディスク', 'ログ', '準備'];
+const CHECK_KINDS = ['IPC・ディスク', 'IPC', 'ページのscript', 'WebDriver', 'プロセス', 'ディスク', 'ログ', '準備'];
 
 function kindOf(label) {
   const prefix = /^([^：]+)：/.exec(label)?.[1];
@@ -518,10 +519,10 @@ scenario('起動・単一ウィンドウ・既存の文書画面（一覧→詳�
     await s.waitFor(async () => new URL(await s.url()).pathname === `/documents/${docId}`, { message: 'detail route' });
     check('詳細画面へRouterで遷移し、題名を表示', await s.waitForText('h1', 'デスクトップ確認用資料'));
     // Viewing the detail records it as read (POST through the shell); undo it from the screen.
-    check('詳細を表示すると既読になる（表示の記録をshell経由で送信）', await s.waitForText('section[aria-label="本人の既読状態"] p[role="status"]', '既読', { timeout: 30_000 })
-      && !(await (await s.find('section[aria-label="本人の既読状態"] p[role="status"]')).text()).includes('未読'));
+    const readState = async () => (await (await s.find('section[aria-label="本人の既読状態"] p[role="status"]')).text()).trim();
+    check('詳細を表示すると既読になる（表示の記録をshell経由で送信）', await s.waitFor(async () => (await readState()) === '既読', { timeout: 30_000, message: 'read' }));
     await clickText(s, 'section[aria-label="本人の既読状態"] button', '未読に戻す');
-    check('「未読に戻す」で未読になる', await s.waitFor(async () => (await (await s.find('section[aria-label="本人の既読状態"] p[role="status"]')).text()).trim() === '未読', { timeout: 30_000, message: 'unread' }));
+    check('「未読に戻す」で未読になる', await s.waitFor(async () => (await readState()) === '未読', { timeout: 30_000, message: 'unread' }));
     await shot(s, 'detail');
     // The desktop window has no browser back button: use the screen's own.
     await clickText(s, 'button', '← 一覧へ戻る');
@@ -1225,28 +1226,18 @@ scenario('再起動後の復元と、IPCでの同じ操作IDの再送・同時�
   }
 });
 
-scenario('ウィンドウを閉じる操作：処理中の操作があればページの離脱確認を出し、取消で残り、確定で終了する', async () => {
+scenario('ウィンドウを閉じる操作：処理中の操作があれば確認を出し、答えるまで閉じず、取消で残り、「閉じる」で終了する', async () => {
+  // WebDriver accepts leave-page prompts by itself (as the WebDriver spec
+  // requires), so closing is checked on apps started without WebDriver and
+  // driven by real X pointer and keyboard input. WebDriver only measures where
+  // the controls are (same window size, same data).
+  const CONFIRMATION = '閉じる前の確認';
   const closing = await startDriver('close', appEnvironment({ apiOrigin: backend.origin }));
+  const at = {};
   try {
-    // Nothing unsaved: the window closes at once.
-    let s = await launch(closing);
-    try {
-      await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
-      await X.requestClose('Knowledge Platform');
-      check('未保存の入力が無ければ、ウィンドウを閉じる操作でそのまま終了する', await s.waitFor(async () => (await appPids()).length === 0, { message: 'app exited' }));
-    } finally {
-      await s.delete();
-    }
-    await lockReleased();
-    // WebDriver accepts leave-page prompts by itself (as the WebDriver spec
-    // requires), so the prompt is checked on an app started without WebDriver
-    // and driven by real X pointer and keyboard input. A metadata save is kept
-    // in flight (the backend is paused), which makes the page guard the close.
-    // WebDriver only measures where the controls are (same window size, data).
-    s = await launch(closing);
+    const s = await launch(closing);
     const centre = (css, text) => s.execute(`const element = [...document.querySelectorAll(arguments[0])].find((item) => !arguments[1] || item.textContent.includes(arguments[1]));
       const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };`, [css, text]);
-    const at = {};
     try {
       await s.waitForText('[role="row"]', 'デスクトップ確認用資料');
       at.authoring = await centre('nav a', '編集作業');
@@ -1265,49 +1256,75 @@ scenario('ウィンドウを閉じる操作：処理中の操作があればペ�
     } finally {
       await quit(s);
     }
-    const direct = spawn(binary, [], { env: appEnvironment({ apiOrigin: backend.origin }), stdio: 'ignore' });
-    const alive = () => direct.exitCode === null && direct.signalCode === null;
-    try {
-      await s.waitFor(async () => (await X.windows()).some((window) => window.name === 'Knowledge Platform'), { message: 'direct window' });
-      await delay(5_000);
-      const origin = await X.origin('Knowledge Platform');
-      const click = async (point, wait) => { await X.clickAt(origin.x + point.x, origin.y + point.y); await delay(wait); };
-      await click(at.authoring, 2_500);
-      await click(at.row, 1_500);
-      await click(at.open, 3_000);
-      await click(at.edit, 2_000);
-      await click(at.reason, 500);
-      await X.typeAscii('close check');
-      backend.pause();
-      await click(at.save, 1_500);
-      const inFlight = await rootShot('save-in-flight');
-      await X.requestClose('Knowledge Platform');
-      await delay(2_000);
-      const prompt = await rootShot('leave-confirmation');
-      // WebKit draws its leave confirmation in the middle of the page.
-      const middle = { x: origin.x + 640 - 160, y: origin.y + 400 - 90, width: 320, height: 180 };
-      const shown = await regionDiff(inFlight, prompt, middle);
-      check('X操作：保存の処理中にウィンドウを閉じようとすると、ページの離脱確認が画面に出て、終了しない', alive() && shown > 2_000, { changedPixels: shown });
-      await X.key('Escape');
-      await delay(1_500);
-      const cancelled = await rootShot('after-cancel');
-      const gone = await regionDiff(inFlight, cancelled, middle);
-      check('X操作：確認を取り消すと確認は消え、ウィンドウと処理中の画面が残る', alive() && gone < 200, { changedPixels: gone });
-      await X.requestClose('Knowledge Platform');
-      await delay(2_000);
-      await rootShot('leave-confirmation-again');
-      await X.key('Return');
-      const deadline = Date.now() + 10_000;
-      while (alive() && Date.now() < deadline) await delay(200);
-      check('X操作：確認で離れることを選ぶと終了する', !alive());
-    } finally {
-      backend.resume();
-      if (alive()) direct.kill('SIGKILL');
-    }
-    await lockReleased();
   } finally {
     closing.stop();
   }
+  const startDirect = async () => {
+    const child = spawn(binary, [], { env: appEnvironment({ apiOrigin: backend.origin }), stdio: 'ignore' });
+    const alive = () => child.exitCode === null && child.signalCode === null;
+    const wait = async (predicate, message, timeout = 15_000) => {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        if (await predicate()) return true;
+        await delay(200);
+      }
+      throw new Error(`Timed out waiting for ${message}`);
+    };
+    await wait(() => X.hasWindow('Knowledge Platform'), 'direct window');
+    await delay(5_000);
+    return { child, alive, wait, origin: await X.origin('Knowledge Platform') };
+  };
+
+  // Nothing unsaved or in progress: the window closes at once, with no question.
+  let app = await startDirect();
+  try {
+    let asked = false;
+    await X.requestClose('Knowledge Platform');
+    await app.wait(async () => { asked ||= await X.hasWindow(CONFIRMATION); return !app.alive(); }, 'app exited', 10_000);
+    check('プロセス：処理中の操作も未保存の入力も無ければ、閉じる操作で確認なしに終了する', !app.alive() && !asked, { asked });
+  } finally {
+    if (app.alive()) app.child.kill('SIGKILL');
+  }
+  await lockReleased();
+
+  // A metadata save kept in flight (the backend is paused) guards the page.
+  app = await startDirect();
+  try {
+    const click = async (point, wait) => { await X.clickAt(app.origin.x + point.x, app.origin.y + point.y); await delay(wait); };
+    await click(at.authoring, 2_500);
+    await click(at.row, 1_500);
+    await click(at.open, 3_000);
+    await click(at.edit, 2_000);
+    await click(at.reason, 500);
+    await X.typeAscii('close check');
+    backend.pause();
+    await click(at.save, 1_500);
+    await rootShot('save-in-flight');
+    await X.requestClose('Knowledge Platform');
+    check('X操作：保存の処理中に閉じようとすると「閉じる前の確認」が出て、終了しない', await app.wait(() => X.hasWindow(CONFIRMATION), 'confirmation') && app.alive());
+    await rootShot('leave-confirmation');
+    // Repeated close requests while the question is open change nothing.
+    await X.requestClose('Knowledge Platform');
+    await delay(300);
+    await X.requestClose('Knowledge Platform');
+    await delay(1_500);
+    check('X操作：確認が出ている間に閉じる操作を重ねても閉じず、確認も残る', app.alive() && await X.hasWindow(CONFIRMATION));
+    await X.keyIn(CONFIRMATION, 'Escape');
+    await app.wait(async () => !(await X.hasWindow(CONFIRMATION)), 'confirmation closed');
+    await delay(1_000);
+    await rootShot('after-cancel');
+    check('X操作：確認を取り消すと（Escape）確認が閉じ、ウィンドウは残る', app.alive());
+    await X.requestClose('Knowledge Platform');
+    await app.wait(() => X.hasWindow(CONFIRMATION), 'confirmation again');
+    await rootShot('leave-confirmation-again');
+    await X.keyIn(CONFIRMATION, 'alt+c');
+    await app.wait(() => !app.alive(), 'app exited after confirming', 10_000);
+    check('プロセス：確認で「閉じる」を選ぶと終了する', !app.alive());
+  } finally {
+    backend.resume();
+    if (app.alive()) app.child.kill('SIGKILL');
+  }
+  await lockReleased();
 });
 
 scenario('強制終了（SIGKILL）からの再起動：記録の復元と、書き込み中に止めた作成の収束', async () => {

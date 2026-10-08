@@ -133,5 +133,15 @@ export function x11(env) {
     async key(name) {
       await xdo('key', '--clearmodifiers', name);
     },
+    /** Gives the named window the keyboard focus, then presses a key in it. */
+    async keyIn(windowName, name) {
+      const target = (await windows()).find((window) => window.name === windowName);
+      if (!target) throw new Error(`no window named ${windowName}`);
+      await xdo('windowfocus', '--sync', target.id);
+      await xdo('key', '--clearmodifiers', name);
+    },
+    async hasWindow(name) {
+      return (await windows()).some((window) => window.name === name);
+    },
   };
 }

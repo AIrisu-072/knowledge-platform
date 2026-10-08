@@ -101,11 +101,16 @@ function operationStore(client: QueryClient): Store {
   const items = new Map<string, UnresolvedOperation>();
   const listeners = new Set<() => void>();
   let snapshot: readonly UnresolvedOperation[] = [];
+  // A pending or uncertain operation ID lives only here: leaving the page (or
+  // closing the desktop window) asks first, as the document screens do.
+  const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
   const store: Store = {
     get: (key) => items.get(key),
     set: (key, value) => {
       if (value) items.set(key, value); else items.delete(key);
       snapshot = [...items.values()];
+      window.removeEventListener('beforeunload', warn);
+      if (items.size) window.addEventListener('beforeunload', warn);
       listeners.forEach((listener) => listener());
     },
     all: () => snapshot,

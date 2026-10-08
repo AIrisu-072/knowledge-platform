@@ -486,3 +486,27 @@ test('a changed context explained by the file form leaves no listing alert once 
   await screen.findByRole('button', { name: 'n.txt の内容を表示' });
   expect(within(screen.getByRole('region', { name: '資料 の閲覧' })).queryAllByRole('alert')).toHaveLength(0);
 });
+
+function leaving() {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test('leaving the page is guarded while a local operation is unresolved, and not after it is confirmed', async () => {
+  const user = userEvent.setup();
+  const fake = createFakeRuntime({ workspaces: [{ name: 'W', folders: { '資料': { 'a.txt': 'a' } } }] });
+  renderPage(fake.runtime);
+  await user.click(await screen.findByRole('button', { name: '資料を開く' }));
+  await screen.findByRole('table', { name: '資料の内容' });
+  expect(leaving()).toBe(false);
+  const form = screen.getByRole('form', { name: 'この場所にファイルを作成' });
+  await user.type(within(form).getByRole('textbox', { name: 'ファイル名' }), 'n.txt');
+  fake.fail('createFile', new RuntimeFailure('outcome_unknown'));
+  await user.click(within(form).getByRole('button', { name: '作成する' }));
+  await within(form).findByRole('button', { name: '結果を確認' });
+  expect(leaving()).toBe(true);
+  await user.click(within(form).getByRole('button', { name: '結果を確認' }));
+  await screen.findByText('ファイル「n.txt」を作成しました。');
+  expect(leaving()).toBe(false);
+});
