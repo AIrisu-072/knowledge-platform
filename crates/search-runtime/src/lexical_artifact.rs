@@ -19,8 +19,8 @@ use search_application::search_core::projection::{
 };
 use search_application::search_core::source::DiscoverableSource;
 use search_source_document::{
-    ArtifactReceipt, BodyUnitManifest, seal_lexical_entries, seal_lexical_hashes,
-    unit_manifest_receipt,
+    ArtifactReceipt, BodyUnitManifest, seal_lexical_hashes, unit_manifest_receipt_from_segments,
+    unit_seal_entries,
 };
 use search_tantivy::{TantivyLexicalIndex, UnitSealEntry};
 
@@ -222,12 +222,12 @@ const CACHED_SEALS: usize = 64;
 /// of its stored fields and text, in Unit ID order.
 fn unit_seal(units: &[UnitSealEntry]) -> Result<[u8; 32], LexicalArtifactError> {
     let mut ordered: Vec<&UnitSealEntry> = units.iter().collect();
-    ordered.sort_by_key(|entry| entry.unit_id);
+    ordered.sort_unstable_by_key(|entry| entry.unit_id);
     let mut hasher = Sha256::new();
     hasher.update(b"lexical-unit-seal:v2\0");
     hasher.update((ordered.len() as u64).to_be_bytes());
     for entry in ordered {
-        frame(&mut hasher, entry.unit_id.to_string().as_bytes());
+        frame(&mut hasher, &entry.unit_id.text_bytes());
         hasher.update(entry.hash);
     }
     Ok(hasher.finalize().into())
@@ -299,11 +299,15 @@ impl LexicalArtifactStore {
         if unit_manifest.key != manifest.key() {
             return Err(LexicalArtifactError::Seal);
         }
-        let units = unit_manifest_receipt(unit_manifest)
+        // One pass gives the receipt's segment digests and the Units' seal
+        // entries; unchanged items reuse the entries sealed before.
+        let (segments, expected) =
+            unit_seal_entries(unit_manifest).map_err(|_| LexicalArtifactError::Seal)?;
+        let units = unit_manifest_receipt_from_segments(unit_manifest.key, &segments)
             .map_err(|_| LexicalArtifactError::Seal)?
             .digest;
         self.seal_with(manifest, source, units, |persisted| {
-            seal_lexical_entries(unit_manifest, persisted).is_ok()
+            seal_lexical_hashes(&expected, persisted).is_ok()
         })
     }
 

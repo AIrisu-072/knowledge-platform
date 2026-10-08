@@ -10,10 +10,10 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
 use crate::knowledge_unit::{
-    ContentPartRef, EmbeddingCacheKey, ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator, UnitCodecError,
-    ResourceVersionRef, UnitId, UnitKind, VectorAuthorityInput, VectorHitRef,
-    cache_key_matches_authority,
-    compatible_kind, matches_pinned_unit, normalize_unit_text, text_sha256,
+    ContentPartRef, EmbeddingCacheKey, ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator,
+    ResourceVersionRef, UnitCodecError, UnitId, UnitKind, VectorAuthorityInput, VectorHitRef,
+    cache_key_matches_authority, compatible_kind, matches_pinned_unit, normalize_unit_text,
+    text_sha256,
 };
 use crate::projection::ProjectionGenerationKey;
 use crate::source::RetentionMode;
@@ -805,7 +805,9 @@ pub fn check_segment(
         let authority = &item.authority;
         validate_unit(unit, authority)?;
         if *unit.version != *version || *unit.part != *part {
-            return Err(VectorContractError::Invalid("Vector segment Version or Part"));
+            return Err(VectorContractError::Invalid(
+                "Vector segment Version or Part",
+            ));
         }
         if authority.generation != header.bundle_key
             || unit.provenance.source_snapshot != header.source_snapshot

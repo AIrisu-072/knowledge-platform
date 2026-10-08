@@ -159,7 +159,10 @@ async fn graph_generations_share_document_segments_and_fail_closed_on_change() {
     for text in ["東京本社の就業規程", "会議室の予約手順"] {
         let document = publish(&durable.pool, &durable.storage, text).await;
         match indexer
-            .handle(discovery_support::event("DocumentVersionPublished", document))
+            .handle(discovery_support::event(
+                "DocumentVersionPublished",
+                document,
+            ))
             .await
             .unwrap()
         {

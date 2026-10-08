@@ -67,6 +67,21 @@ impl UnitId {
     }
 }
 
+impl UnitId {
+    /// The bytes of [`Display`](std::fmt::Display) (`ku1:` and 64 lower-case
+    /// hex digits) without allocating.
+    pub fn text_bytes(&self) -> [u8; 68] {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = [0_u8; 68];
+        out[..4].copy_from_slice(b"ku1:");
+        for (at, byte) in self.0.iter().enumerate() {
+            out[4 + at * 2] = HEX[usize::from(byte >> 4)];
+            out[5 + at * 2] = HEX[usize::from(byte & 0x0f)];
+        }
+        out
+    }
+}
+
 impl std::fmt::Display for UnitId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ku1:{}", lower_hex(&self.0))

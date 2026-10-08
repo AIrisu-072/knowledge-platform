@@ -1100,3 +1100,16 @@ fn vector_binding_inputs() {
         assert!(!cache_key_matches_authority(&key, &unit, &changed));
     }
 }
+
+#[test]
+fn unit_id_text_bytes_equal_its_display() {
+    for text in [
+        format!("ku1:{}", "0".repeat(64)),
+        format!("ku1:{}", "f".repeat(64)),
+        format!("ku1:{}", "0123456789abcdef".repeat(4)),
+    ] {
+        let id = search_core::knowledge_unit::UnitId::parse(&text).unwrap();
+        assert_eq!(id.text_bytes().as_slice(), id.to_string().as_bytes());
+        assert_eq!(id.to_string(), text);
+    }
+}
