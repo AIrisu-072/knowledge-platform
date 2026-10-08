@@ -1,5 +1,21 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 単位B 文書の確定（運用手順・設計改訂4・計画）（worktree branch、未push）
+
+- branch `worktree-agent-a07ac0dcd80b1fa0d`（`a4a3f6f` の上、最新main `6a34de3` を取り込み済み）。commit：`79af4fa` 運用手順 [audit-delivery-store.md](../../operations/audit-delivery-store.md) を新規作成、`9620adb` 設計を改訂4へ更新、本commitで計画・状況・active pointerを更新。codeは `2955a8e` から変えていない。
+- 単位Bの内容：
+  - Store（`crates/audit-store-postgres`）：別DB・`audit_store` schema・専用ledger、idempotentなingestと構造化verdict、2段階開示とaudit-of-audit、verify・checkpoint・検証被覆、retention・purge・epoch後の再適用、権限・束縛・source service、posture、recovery mode・epoch（帯域外期待値とpreview）、拒否の集約、bin `audit-admin`（DB外の総合判定 `assess` を含む）。
+  - relay（`crates/audit-relay`）：Document DBの `audit_relay`（登録trigger、guard、`BEGIN ATOMIC` digest、definer関数）、`outbox-delivery` runnerへのadapter、circuit breaker・gate、relay側保留のbackoff、reconcile・replay・repair、health（circuit・警報）、進捗行、bin `audit-relay`。
+  - audit-coreへの加法変更と、catalogへのVIEW/RESET 2 typeの加法登録（既存typeは不変）。
+- review：
+  1. 独立review（Store・relay × security・correctness、`46ed5f6`）：指摘を修正前に失敗する再現試験とともに反映（`7c02d58` まで）。Minor 4件を見送り（下記）。
+  2. 確認review round1（`478a66f`）：NO-GO。Important I1–I4、Minor M1–M3を全件反映（`2a8b62f`〜`f97a909`）。
+  3. 確認review round2：Minor m1–m5を全件反映（`3fb4071`〜`2955a8e`）。m1–m5の修正後の再reviewは未実施。
+- 見送り（承認状態：awaiting requester decision）：purgeとlegal holdの優先、`register_source_service` の記録へのsource fieldの追加（kindの判断）、ackのepochをreceiptで持つこと、repair modeの記録の計画件数（実適用件数はCLI出力だけ）。
+- 設計からの差分：設計の改訂4（10項目、各箇所に「（改訂4）」）。承認状態：依頼者の指示（hard requirements）の範囲内で本trackが採用、単位Bのreviewで確認（依頼者による個別承認ではない）。
+- 検証（`a4a3f6f`、codeは `2955a8e` と同一）：`cargo test --locked --no-fail-fast -p audit-core -p audit-store-postgres -p audit-relay` exit 0（275 passed、1 ignored：core 152＋doc 2、Store 71、relay 50＋ignored 1）。docs commit後（`9620adb` と本commitの作業tree）：`cargo fmt --all -- --check`、`cargo clippy --locked -p audit-core -p audit-store-postgres -p audit-relay --all-targets -- -D warnings`、`cargo metadata --locked`、`cargo run --quiet --locked -p architecture-lint -- check`（architecture: pass）、`mise.toml` の `repo:policy` と同じ検査 PASS、追加した相対linkの存在確認（欠落0）、運用手順・設計の識別子（環境変数・command・関数・code）をsourceと照合（placeholder以外の欠落なし）。本番credential・migration・deployは行っていない。
+- 次のexact action：このbranchを `claude/cool-darwin-7xh893`（現在 `643cc85`、HEADの祖先）へpushし、単位BのDraft PRを作る → exact-head hosted CI → main統合 → main CI確認 → 単位C（Document producer E2E受入・handoff）。
+
 ## 2026-10-08 — 単位B 確認review round2のMinor指摘（m1–m5）の反映（worktree branch、未push）
 
 - branch `worktree-agent-a07ac0dcd80b1fa0d`（`d2380ca` の上）。各指摘を試験とともに1 commitずつ：

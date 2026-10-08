@@ -19,9 +19,13 @@
 
 ## 単位B：Store・配送
 
+状況（2026-10-08）：手順1–4は実施済み（worktree branch、未push）。設計からの意図的な差分は設計の改訂4、経過と検証は[状況](../execution/audit-infrastructure-v1-status.md)に記す。残りは手順5。
+
 1. `crates/audit-store-postgres`：migration（`audit_store`、ledger `audit_store_sqlx_migrations`、owner role、REVOKE PUBLIC、definer関数、guard、registered_types）、`AuditStore` portの実装、2段階開示、verify、retention/purge、権限・束縛、status/probe、roles.sql、bin `audit-admin`。
+   - 実施：上記に加え、`privileges.sql`、検証の被覆、拒否の集約（`suppressed_since_last`）、`begin_recovery_epoch` の帯域外期待値とpreview、DB外の総合判定 `audit-admin assess` と帯域外recovery記録 `kp-audit-recovery-records-v1`、postureの拡張（定義済みrole、REPLICATION login、列権限）。
 2. `crates/audit-relay`：migration（`audit_relay`、ledger `audit_relay_sqlx_migrations`、lock＋backfill＋trigger、guard、deliveries/history/policy、`BEGIN ATOMIC` digest、claim等のdefiner関数）、`OutboxStore` 実装、handler、circuit breaker admission、DeliveryLedger、replay/repair/reconcile/health、roles.sql、bin `audit-relay`。
-3. TDDの順序：
+   - 実施：上記に加え、`run` のcircuit報告（`report_runtime`）と進捗行、relay側保留の行ごとのbackoff、`max_referenced_store_seq`（`--relay-max-seq` の入力）、repairのepoch fence、postureの拡張（`owner_member`、`staging_read`、`table_access`、`column_privilege` ほか）、表の書き手guard。
+3. TDDの順序（実施：下記の順で試験とともに実装した。独立review・確認reviewの指摘は、修正前に失敗する再現試験を先に書いて反映した）：
    1. Storeの基本（ingest、idempotency、append-only）
    2. role行列・shadowing
    3. 開示2段階
@@ -33,6 +37,8 @@
    9. replay/reconcile
    10. restore/gate/epoch
 4. 日本語運用手順 `docs/operations/audit-delivery-store.md`。
+   - 実施：作成済み（未検証事項の一覧を含む）。
+5. branch `claude/cool-darwin-7xh893` へのpushとDraft PR → exact-head hosted CI → main統合 → main CI確認。統合後、単位Cへ進む。
 
 ## 単位C：Document受入・handoff
 

@@ -20,10 +20,10 @@
 
 ---
 
-## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
-- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
-- branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
+- 単位A（PR98）はmain統合済み。単位B（Store・relay）は実装・review反映・文書確定まで済み（未push）。次はbranch `claude/cool-darwin-7xh893` へのpushとDraft PR、exact-head CI。現在状態は状況文書とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
 
 ---
 
