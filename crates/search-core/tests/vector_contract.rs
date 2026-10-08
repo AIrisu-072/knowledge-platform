@@ -10,7 +10,7 @@ use search_core::vector::{
     BoundEmbedding, EmbeddingModelSpec, QueryEmbedding, RankedVectorHit, VectorActivationPolicy,
     VectorEntryRef, VectorIndexDescriptor, VectorManifestInput, VectorManifestUnit, VectorMetric,
     VectorNormalization, VectorPrecision, VectorProjectionManifest, VectorStorageKind,
-    VectorUnitCoverage,
+    VectorUnitCoverage, check_segment,
 };
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -825,4 +825,71 @@ fn disabled_default() {
         VectorActivationPolicy::default(),
         VectorActivationPolicy::Disabled
     );
+}
+
+#[test]
+fn segment_checks_compose_to_the_full_manifest_in_any_generation() {
+    let spec = spec();
+    let model = spec.validate_and_id().unwrap();
+    let first = unit(0);
+    let units = vec![first.clone(), later_unit_in_same_part(&first), unit(1)];
+    let input = input(&units);
+    let entries = entries(&spec, &units);
+    let full = stage(&spec, &input, &entries);
+    assert_eq!(full.schema_version, 2);
+    let header = input.header();
+    let volatile = VectorStorageKind::Volatile;
+    let checks = vec![
+        check_segment(&model, &header, volatile, &input.units[..2], &entries[..2]).unwrap(),
+        check_segment(&model, &header, volatile, &input.units[2..], &entries[2..]).unwrap(),
+    ];
+    let by_segments = VectorProjectionManifest::stage_segments(
+        &spec,
+        &header,
+        index(),
+        &checks,
+        volatile,
+        OffsetDateTime::UNIX_EPOCH,
+    )
+    .unwrap();
+    assert_eq!(by_segments, full);
+    assert!(full.validate_segments(&header, &checks).is_ok());
+
+    // A segment's check names no generation: the same Units bound to another
+    // generation check the same, while the manifest binds its own.
+    let other = ProjectionGenerationKey {
+        source_id: first.version.source_id,
+        generation_id: ProjectionGenerationId::from_uuid(id(4)),
+    };
+    let mut moved = input.clone();
+    moved.bundle_key = other;
+    for item in &mut moved.units {
+        item.authority.generation = other;
+    }
+    let moved_entries: Vec<VectorEntryRef> = moved
+        .units
+        .iter()
+        .map(|item| {
+            BoundEmbedding::new(&spec, &item.unit, &item.authority, vec![1.0, 0.0, 0.0])
+                .unwrap()
+                .entry_ref()
+        })
+        .collect();
+    let moved_check = check_segment(
+        &model,
+        &moved.header(),
+        volatile,
+        &moved.units[2..],
+        &moved_entries[2..],
+    )
+    .unwrap();
+    assert_eq!(moved_check, checks[1]);
+    assert!(full.validate_segments(&moved.header(), &checks).is_err());
+
+    // One segment spans one Part, and the segment order is sealed.
+    assert!(check_segment(&model, &header, volatile, &input.units, &entries).is_err());
+    let reordered = vec![checks[1].clone(), checks[0].clone()];
+    assert!(full.validate_segments(&header, &reordered).is_err());
+    // An entry of another segment is rejected.
+    assert!(check_segment(&model, &header, volatile, &input.units[..2], &entries[1..]).is_err());
 }

@@ -457,14 +457,32 @@ impl PgVectorIndex {
             .iter()
             .flat_map(|entry| entry.vector_digest.to_vec())
             .collect();
+        let descriptor = self.descriptor(bundle, model, &receipt);
+        self.insert_stage(
+            &descriptor,
+            bundle,
+            model,
+            i32::try_from(entries.len()).map_err(|_| unavailable("too many entries"))?,
+            segments,
+        )
+        .await?;
+        Ok((descriptor, entries))
+    }
+
+    fn descriptor(
+        &self,
+        bundle: ProjectionGenerationKey,
+        model: &EmbeddingModelId,
+        receipt: &[u8],
+    ) -> VectorIndexDescriptor {
         let nonce = Uuid::now_v7();
-        let descriptor = VectorIndexDescriptor {
+        VectorIndexDescriptor {
             engine: VECTOR_ENGINE.into(),
             engine_build: VECTOR_ENGINE_BUILD.into(),
             parameters_digest: sha256_text(
                 format!("metric=cosine;floor={}", self.floor).as_bytes(),
             ),
-            index_receipt_digest: sha256_text(&receipt),
+            index_receipt_digest: sha256_text(receipt),
             index_digest: sha256_text(
                 format!(
                     "{}:{}:{}:{}",
@@ -475,7 +493,17 @@ impl PgVectorIndex {
                 )
                 .as_bytes(),
             ),
-        };
+        }
+    }
+
+    async fn insert_stage(
+        &self,
+        descriptor: &VectorIndexDescriptor,
+        bundle: ProjectionGenerationKey,
+        model: &EmbeddingModelId,
+        entry_count: i32,
+        segments: &[String],
+    ) -> Result<(), SearchError> {
         let mut tx = self.pool.begin().await.map_err(sql)?;
         sqlx::query(
             "INSERT INTO search_vector_stage (index_digest,source_id,generation_id,model_id, \
@@ -485,8 +513,8 @@ impl PgVectorIndex {
         .bind(bundle.source_id.as_uuid())
         .bind(bundle.generation_id.as_uuid())
         .bind(model.as_str())
-        .bind(serde_json::to_value(&descriptor).map_err(|_| unavailable("descriptor"))?)
-        .bind(i32::try_from(entries.len()).map_err(|_| unavailable("too many entries"))?)
+        .bind(serde_json::to_value(descriptor).map_err(|_| unavailable("descriptor"))?)
+        .bind(entry_count)
         .execute(&mut *tx)
         .await
         .map_err(sql)?;
@@ -507,7 +535,84 @@ impl PgVectorIndex {
             .map_err(sql)?;
         }
         tx.commit().await.map_err(sql)?;
-        Ok((descriptor, entries))
+        Ok(())
+    }
+
+    /// The entries of the listed segments by digest, stamped with `bundle`,
+    /// read without the process cache.
+    pub async fn listed_entries(
+        &self,
+        bundle: ProjectionGenerationKey,
+        model: &EmbeddingModelId,
+        digests: &[String],
+    ) -> Result<HashMap<String, Vec<VectorEntryRef>>, SearchError> {
+        let mut out = HashMap::with_capacity(digests.len());
+        for (digest, segment) in self.fetch_segments(digests).await? {
+            if segment.model_id != model.as_str() {
+                return Err(unavailable("segment model"));
+            }
+            let mut entries = Vec::with_capacity(segment.entries.len());
+            for stored in segment.entries {
+                let mut entry = stored.entry.into_entry()?;
+                if entry.hit.generation.source_id != bundle.source_id {
+                    return Err(unavailable("segment Source"));
+                }
+                entry.hit.generation = bundle;
+                entries.push(entry);
+            }
+            out.insert(digest, entries);
+        }
+        Ok(out)
+    }
+
+    /// Writes an unpublished stage that lists stored `segments` in order,
+    /// without reading their entries: its receipt digests their entry digests.
+    pub async fn stage_listed(
+        &self,
+        bundle: ProjectionGenerationKey,
+        model: &EmbeddingModelId,
+        segments: &[String],
+    ) -> Result<VectorIndexDescriptor, SearchError> {
+        let mut sums: HashMap<String, (String, i64)> = HashMap::with_capacity(segments.len());
+        for batch in segments.chunks(FETCH_BATCH) {
+            let rows: Vec<(String, String, String, i32)> = sqlx::query_as(
+                "SELECT segment_digest, model_id, entries_sha256, entry_count \
+                 FROM search_vector_segment WHERE segment_digest = ANY($1)",
+            )
+            .bind(batch)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sql)?;
+            for (digest, model_id, sum, count) in rows {
+                if model_id != model.as_str() {
+                    return Err(unavailable("segment model"));
+                }
+                sums.insert(digest, (sum, i64::from(count)));
+            }
+        }
+        let mut receipt = Vec::new();
+        let mut count = 0i64;
+        for digest in segments {
+            let (sum, entries) = sums.get(digest).ok_or_else(|| unavailable("missing segment"))?;
+            receipt.extend_from_slice(sum.as_bytes());
+            receipt.push(b'\n');
+            count += entries;
+        }
+        let descriptor = self.descriptor(bundle, model, &receipt);
+        self.insert_stage(
+            &descriptor,
+            bundle,
+            model,
+            i32::try_from(count).map_err(|_| unavailable("too many entries"))?,
+            segments,
+        )
+        .await?;
+        Ok(descriptor)
+    }
+
+    /// The ordered segment list of a stage.
+    pub async fn listed_segments(&self, index_digest: &str) -> Result<Vec<String>, SearchError> {
+        Ok(self.stage_list(index_digest).await?.3)
     }
 
     /// The stage's bundle key, model, entry count and ordered segment list.
