@@ -409,7 +409,8 @@ test('runner pins the JSON environment override, rethrows failure and keeps capt
   const runner = await readFile(new URL('./run.mjs', import.meta.url), 'utf8');
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
   assert.match(runner, /\.\.\.process\.env,[^\n]*PLAYWRIGHT_JSON_OUTPUT_FILE: join\(directory, `browser-\$\{phase\}`, 'results\.json'\)/u);
-  assert.match(runner, /catch \(error\) \{\s*console\.error\(`Organization browser failure: \$\{JSON\.stringify\(await readBrowserFailureDiagnostics\(directory, phase\)\)\}`\);\s*throw error;/u);
+  assert.match(runner, /catch \(error\) \{\s*const browserDiagnostics = await readBrowserFailureDiagnostics\(directory, phase\);\s*console\.error\(`Organization browser failure: \$\{JSON\.stringify\(browserDiagnostics\)\}`\);[\s\S]*?throw error;/u);
+  assert.match(runner, /if \(browserDiagnostics\.failure\?\.httpStatus === 503 && browserDiagnostics\.failure\.readEndpoint === 'finding'\)/u);
   assert.match(config, /\['json', \{ outputFile: join\(output, 'results\.json'\) \}\]/u);
   for (const setting of ["preserveOutput: 'never'", "trace: 'off'", "screenshot: 'off'", "video: 'off'"]) assert.ok(config.includes(setting));
 });
