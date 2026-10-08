@@ -29,6 +29,10 @@ use document_application::{
     VersionFileAccessService, VersionFileRequest, VersionOperationId, VersionPurpose,
     VersionRequest, VersioningItemInput, VersioningPreflight, WithdrawVersionCommand,
 };
+use document_application::{
+    CancelScheduleCommand, PreparedManifest, RebaseWorkingVersionCommand,
+    UpdateWorkingVersionCommand,
+};
 use document_diff_core::{DiffCoverage, DiffProfileVersion, WorkerDiffRequest, WorkerDiffResponse};
 use document_domain::{
     Action, DocumentId, DocumentVersionId, FileId, FolderId, LogicalPath, MediaType, Metadata,
@@ -597,16 +601,16 @@ impl Platform {
             .map(|_| ())
     }
 
-    /// A new WORKING version, prepared the way the versioning endpoint does
-    /// (preflight over a repository scoped to the verified actor).
-    pub async fn create_version(
+    /// The manifest of one plain-text original, prepared the way the
+    /// versioning endpoint does (preflight over a repository scoped to the
+    /// verified actor).
+    async fn prepare(
         &self,
-        document: DocumentId,
+        ctx: &VerifiedActorContext,
         title: &str,
         content: &[u8],
-    ) -> Result<DocumentVersionId, ApplicationError> {
-        let ctx = editor_ctx();
-        let prepared = VersioningPreflight::new(
+    ) -> Result<PreparedManifest, ApplicationError> {
+        VersioningPreflight::new(
             Arc::new(self.repo.with_verified_actor(ctx.clone())),
             self.storage.clone(),
             Arc::new(SyntheticInspection),
@@ -619,11 +623,23 @@ impl Platform {
                 0,
                 FileId::from_uuid(Uuid::now_v7()),
                 MediaType::new("text/plain")?,
-                "synthetic-v2.txt",
+                "synthetic-version.txt",
                 Box::pin(Cursor::new(content.to_vec())),
             )],
         )
-        .await?;
+        .await
+    }
+
+    /// A new WORKING version, prepared the way the versioning endpoint does
+    /// (preflight over a repository scoped to the verified actor).
+    pub async fn create_version(
+        &self,
+        document: DocumentId,
+        title: &str,
+        content: &[u8],
+    ) -> Result<DocumentVersionId, ApplicationError> {
+        let ctx = editor_ctx();
+        let prepared = self.prepare(&ctx, title, content).await?;
         let target = DocumentVersionId::from_uuid(Uuid::now_v7());
         let revision = self.document_revision(document).await;
         self.docs
@@ -663,7 +679,10 @@ impl Platform {
     /// which needs the worker binary to be constructed) until `target` has
     /// been executed: database clock, due list, and the authorized due
     /// execution with the production scheduler attribution `service/scheduler`.
-    pub async fn run_scheduler_until(&self, target: PublishOperationId) {
+    pub async fn run_scheduler_until(
+        &self,
+        targets: &[PublishOperationId],
+    ) -> BTreeMap<Uuid, DueExecutionOutcome> {
         let scheduler = DocumentVersionService::new(
             Arc::new(V7Ids),
             Arc::new(UtcClock),
@@ -677,30 +696,140 @@ impl Platform {
             ("service", "scheduler")
         );
         let deadline = tokio::time::Instant::now() + StdDuration::from_secs(30);
+        let mut outcomes = BTreeMap::new();
         loop {
             let now = self.repo.database_now().await.expect("database clock");
             let due = self.repo.list_due(now, 100).await.expect("due schedules");
-            let mut executed = false;
             for id in due {
                 let outcome = scheduler
                     .execute_due_authorized(id, &Directory, &executor)
                     .await
                     .expect("due execution");
-                assert!(
-                    matches!(outcome, DueExecutionOutcome::Published(_)),
-                    "{outcome:?}"
-                );
-                executed |= id == target;
+                outcomes.insert(id.as_uuid(), outcome);
             }
-            if executed {
-                return;
+            if targets
+                .iter()
+                .all(|target| outcomes.contains_key(&target.as_uuid()))
+            {
+                return outcomes;
             }
             assert!(
                 tokio::time::Instant::now() < deadline,
-                "the schedule did not become due"
+                "the schedules did not become due: {outcomes:?}"
             );
             tokio::time::sleep(StdDuration::from_millis(200)).await;
         }
+    }
+
+    pub async fn cancel_schedule(
+        &self,
+        document: DocumentId,
+        version: DocumentVersionId,
+        schedule: PublishOperationId,
+    ) -> Result<(), ApplicationError> {
+        let revision = self.document_revision(document).await;
+        self.docs
+            .cancel_schedule(
+                &editor_ctx(),
+                CancelScheduleCommand::new(
+                    VersionOperationId::try_from_uuid(op())?,
+                    schedule,
+                    document,
+                    version,
+                    revision,
+                    editor(),
+                )?,
+            )
+            .await
+            .map(|_| ())
+    }
+
+    /// Replaces the content of a WORKING version (versioning endpoint PUT).
+    pub async fn update_working(
+        &self,
+        document: DocumentId,
+        version: DocumentVersionId,
+        title: &str,
+        content: &[u8],
+    ) -> Result<(), ApplicationError> {
+        let ctx = editor_ctx();
+        let prepared = self.prepare(&ctx, title, content).await?;
+        let revision = self.document_revision(document).await;
+        self.docs
+            .update_working_version(
+                &ctx,
+                UpdateWorkingVersionCommand::new(
+                    VersionOperationId::try_from_uuid(op())?,
+                    document,
+                    version,
+                    revision,
+                    editor(),
+                )?,
+                prepared,
+            )
+            .await
+            .map(|_| ())
+    }
+
+    /// Moves a WORKING version onto the current published version.
+    pub async fn rebase(
+        &self,
+        document: DocumentId,
+        version: DocumentVersionId,
+    ) -> Result<(), ApplicationError> {
+        let revision = self.document_revision(document).await;
+        self.docs
+            .rebase_working_version(
+                &editor_ctx(),
+                RebaseWorkingVersionCommand::new(
+                    VersionOperationId::try_from_uuid(op())?,
+                    document,
+                    version,
+                    revision,
+                    editor(),
+                )?,
+            )
+            .await
+            .map(|_| ())
+    }
+
+    /// A document policy that withdraws the editor's Publish (every other
+    /// action stays).
+    pub async fn revoke_publish(
+        &self,
+        document: DocumentId,
+        reason: &str,
+    ) -> Result<(), ApplicationError> {
+        let grants = vec![
+            PolicyGrant::new(
+                subject(PolicySubjectKind::Principal, EDITOR),
+                [
+                    Action::Read,
+                    Action::ReadHistory,
+                    Action::Write,
+                    Action::Administer,
+                ],
+            )
+            .expect("grant"),
+            PolicyGrant::new(
+                subject(PolicySubjectKind::Group, READERS_GROUP),
+                [Action::Read],
+            )
+            .expect("grant"),
+        ];
+        AccessPolicyService::new(self.repo.clone())
+            .set_access_policy(
+                &editor_ctx(),
+                ManagementCommand::SetAccessPolicy {
+                    operation_id: management_op(),
+                    target: PolicyTarget::Document(document),
+                    expected_policy_revision: 0,
+                    mode: PolicyMode::Explicit(grants),
+                    reason: reason.to_owned(),
+                },
+            )
+            .await
+            .map(|_| ())
     }
 
     pub async fn compare_versions(

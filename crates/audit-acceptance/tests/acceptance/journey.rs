@@ -1,7 +1,11 @@
-//! T1 (design §14.4): every Document producer, called through the
-//! production application services, reaches the Audit Store through the
-//! running relay exactly once, with the source identity, the scheduler's
-//! attribution and only a summary of every free-text reason; the Store
+//! T1 (design §14.4): every Document producer of the audit catalog (all 23
+//! relay-origin types), called through the production application
+//! services, reaches the Audit Store through the running relay
+//! (`audit-relay run`) exactly once, with the source identity, the
+//! scheduler's attribution (`service/scheduler` beside the requester) and
+//! only a summary of every free-text reason. Nothing the Store holds
+//! contains a reason text, file content, a storage locator or an ACL list.
+//! produced / delivered / stored / verified are reported apart; the Store
 //! chain verifies, a checkpoint is taken, and the offline assessment of an
 //! export against it is `authentic`.
 
@@ -10,7 +14,7 @@ use std::collections::BTreeSet;
 use audit_store_postgres::admin::AccessOperation;
 use audit_store_postgres::assess::{AssessClass, AssessInputs, assess_dir};
 use audit_store_postgres::files::{ExportRequest, export_to_dir};
-use document_application::{ApplicationError, ReadStateMutationKind};
+use document_application::{ApplicationError, DueExecutionOutcome, ReadStateMutationKind};
 use document_domain::FolderId;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -21,6 +25,9 @@ use crate::support::*;
 
 const V1: &[u8] = b"A synthetic acceptance original CONTENTMARK-7a1f\n";
 const V2: &[u8] = b"B synthetic acceptance revision CONTENTMARK-9b2e\n";
+const V2_UPDATED: &[u8] = b"C synthetic acceptance update CONTENTMARK-c3d0\n";
+const V3: &[u8] = b"D synthetic acceptance draft CONTENTMARK-d4f1\n";
+const V_REVOKED: &[u8] = b"E synthetic revoked schedule CONTENTMARK-e5a2\n";
 
 /// Free-text reasons: unique tokens that must never reach the Store.
 const METADATA_REASON: &str = "SYNTHREASON-metadata-41c7 監査用の理由";
@@ -31,8 +38,9 @@ const DOCUMENT_MOVE_REASON: &str = "SYNTHREASON-document-move-a90c";
 const POLICY_REASON: &str = "SYNTHREASON-policy-3f61";
 const WITHDRAW_REASON: &str = "SYNTHREASON-withdraw-c2d8";
 const END_REASON: &str = "SYNTHREASON-end-e5b4";
+const REVOKE_REASON: &str = "SYNTHREASON-revoke-publish-8a3c";
 
-const REASONS: [&str; 8] = [
+const REASONS: [&str; 9] = [
     METADATA_REASON,
     FOLDER_CREATE_REASON,
     FOLDER_RENAME_REASON,
@@ -41,6 +49,7 @@ const REASONS: [&str; 8] = [
     POLICY_REASON,
     WITHDRAW_REASON,
     END_REASON,
+    REVOKE_REASON,
 ];
 
 #[test]
@@ -170,13 +179,57 @@ async fn journey() {
         "{refused:?}"
     );
 
-    // Scheduled publication of v2, executed by the scheduler identity.
+    // The WORKING v2 is replaced (document.version.updated); a schedule is
+    // reserved and cancelled (publication.scheduled, .cancelled).
+    platform
+        .update_working(document, v2, "Synthetic acceptance v2 updated", V2_UPDATED)
+        .await
+        .expect("update working");
+    let far = OffsetDateTime::now_utc() + time::Duration::hours(1);
+    let cancelled = platform
+        .schedule_publish(document, v2, far)
+        .await
+        .expect("schedule");
+    platform
+        .cancel_schedule(document, v2, cancelled)
+        .await
+        .expect("cancel schedule");
+
+    // Scheduled publications executed by the scheduler identity: v2, and a
+    // second document whose requester loses Publish before the due time
+    // (publication.terminal, authorization_revoked).
     let due = OffsetDateTime::now_utc() + time::Duration::seconds(2);
     let schedule = platform
         .schedule_publish(document, v2, due)
         .await
         .expect("schedule");
-    platform.run_scheduler_until(schedule).await;
+    let (revoked_document, revoked_version) = platform
+        .create_document(Platform::root(), "Synthetic revoked schedule", V_REVOKED)
+        .await
+        .expect("create the second document");
+    let revoked = platform
+        .schedule_publish(revoked_document, revoked_version, due)
+        .await
+        .expect("schedule the second document");
+    platform
+        .revoke_publish(revoked_document, REVOKE_REASON)
+        .await
+        .expect("revoke Publish");
+    let outcomes = platform.run_scheduler_until(&[schedule, revoked]).await;
+    assert!(
+        matches!(
+            outcomes[&schedule.as_uuid()],
+            DueExecutionOutcome::Published(_)
+        ),
+        "{outcomes:?}"
+    );
+    assert!(
+        matches!(
+            &outcomes[&revoked.as_uuid()],
+            DueExecutionOutcome::Terminal(reason) if reason == "authorization_revoked"
+        ),
+        "{outcomes:?}"
+    );
 
     // Diff v1 → v2 (both originals opened: two file.access_granted, then
     // diff.result_access_granted); a revision comparison across versions
@@ -188,12 +241,18 @@ async fn journey() {
         "different versions: content compared"
     );
 
-    // Withdraw v2 (v1 is restored), then end the publication.
+    // A WORKING v3 on top of v2; withdraw v2 (v1 is restored), rebase v3
+    // onto v1 (document.version.rebased), then end the publication.
+    let v3 = platform
+        .create_version(document, "Synthetic acceptance v3", V3)
+        .await
+        .expect("create v3");
     let restored = platform
         .withdraw(document, v2, WITHDRAW_REASON)
         .await
         .expect("withdraw");
     assert_eq!(restored, Some(v1));
+    platform.rebase(document, v3).await.expect("rebase v3");
     platform
         .end_publication(document, v1, END_REASON)
         .await
@@ -221,10 +280,15 @@ async fn journey() {
     let types: Vec<&str> = staged.iter().map(|row| row.event_type.as_str()).collect();
     let count = |event_type: &str| types.iter().filter(|t| **t == event_type).count();
     for (event_type, expected) in [
-        ("access_policy.changed", 2),
-        ("document.created", 1),
-        ("document.version.created", 2),
+        ("access_policy.changed", 3),
+        ("document.created", 2),
+        ("document.version.created", 4),
+        ("document.version.updated", 1),
+        ("document.version.rebased", 1),
         ("document.version.published", 2),
+        ("document.version.publication.scheduled", 3),
+        ("document.version.publication.cancelled", 1),
+        ("document.version.publication.terminal", 1),
         ("document.version.read_confirmed", 1),
         ("document.version.detail_viewed", 2),
         ("document.version.marked_unread", 1),
@@ -236,15 +300,15 @@ async fn journey() {
         ("folder.moved", 1),
         ("document.moved", 1),
         ("authorization.denied", 3),
-        ("document.version.publication.scheduled", 1),
         ("document.diff.result_access_granted", 2),
         ("document.version.withdrawn", 1),
         ("document.publication.ended", 1),
     ] {
         assert_eq!(count(event_type), expected, "{event_type}: {types:?}");
     }
+    // Every Document type of the audit catalog (relay origin).
     let distinct: BTreeSet<&str> = types.iter().copied().collect();
-    assert_eq!(distinct.len(), 19, "{distinct:?}");
+    assert_eq!(distinct.len(), 23, "{distinct:?}");
     let denials: BTreeSet<String> = staged
         .iter()
         .filter(|row| row.event_type == "authorization.denied")
@@ -268,25 +332,33 @@ async fn journey() {
                 && row.data["bootstrap"] == json!(true)),
         "the bootstrap policy change is staged"
     );
-    let scheduled_publish: Vec<_> = staged
+    // The scheduler's executions: the requester stays the actor, the
+    // executing service is recorded beside it.
+    let executed: Vec<_> = staged
         .iter()
         .filter(|row| row.data.get("serviceExecutor").is_some())
         .collect();
-    assert_eq!(scheduled_publish.len(), 1, "one scheduled execution");
-    let scheduled_publish = scheduled_publish[0];
-    assert_eq!(scheduled_publish.event_type, "document.version.published");
+    let executed_types: BTreeSet<&str> =
+        executed.iter().map(|row| row.event_type.as_str()).collect();
     assert_eq!(
-        (
-            scheduled_publish.actor_idp.as_str(),
-            scheduled_publish.actor_pid.as_str()
-        ),
-        ("test-idp", "editor"),
-        "the requester stays the actor"
+        executed_types,
+        BTreeSet::from([
+            "document.version.published",
+            "document.version.publication.terminal"
+        ]),
+        "{executed:?}"
     );
-    assert_eq!(
-        scheduled_publish.data["serviceExecutor"],
-        json!({"identityProvider": "service", "principalId": "scheduler"})
-    );
+    for row in &executed {
+        assert_eq!(
+            (row.actor_idp.as_str(), row.actor_pid.as_str()),
+            ("test-idp", "editor"),
+            "the requester stays the actor"
+        );
+        assert_eq!(
+            row.data["serviceExecutor"],
+            json!({"identityProvider": "service", "principalId": "scheduler"})
+        );
+    }
     let original = staged
         .iter()
         .find(|row| row.trace_id == Some(correlation.to_string()))
@@ -304,22 +376,25 @@ async fn journey() {
         assert_eq!(delivery.attempt_count, 1, "no retries were needed");
         assert_eq!(delivery.registration_kind, "trigger");
     }
-    let executed = &stored[&scheduled_publish.event_id].envelope;
-    assert_eq!(
-        executed["data"]["actor"],
-        json!({"issuer": "test-idp", "principal_id": "editor"})
-    );
-    assert_eq!(
-        executed["data"]["service_executor"],
-        json!({"issuer": "service", "principal_id": "scheduler"})
-    );
+    for row in &executed {
+        let envelope = &stored[&row.event_id].envelope;
+        assert_eq!(
+            envelope["data"]["actor"],
+            json!({"issuer": "test-idp", "principal_id": "editor"})
+        );
+        assert_eq!(
+            envelope["data"]["service_executor"],
+            json!({"issuer": "service", "principal_id": "scheduler"})
+        );
+    }
     let reasons_staged = staged
         .iter()
         .filter(|row| row.data.get("reason").is_some())
         .count();
     assert_eq!(
         reasons_staged, 8,
-        "metadata, folders ×4, document move, withdraw, end keep their reason at the source"
+        "metadata, folders ×4, document move, withdraw, end keep their reason at the source \
+         (the ACL changes record none)"
     );
     let policy = stored
         .values()
@@ -350,8 +425,9 @@ async fn journey() {
     );
     needles.push("SYNTHREASON".to_owned());
     needles.push("CONTENTMARK".to_owned());
-    needles.push(String::from_utf8_lossy(V1).trim().to_owned());
-    needles.push(String::from_utf8_lossy(V2).trim().to_owned());
+    for body in [V1, V2, V2_UPDATED, V3, V_REVOKED] {
+        needles.push(String::from_utf8_lossy(body).trim().to_owned());
+    }
     needles.push(ACL_ONLY_GROUP.to_owned());
     needles.push(READERS_GROUP.to_owned());
     needles.push(
