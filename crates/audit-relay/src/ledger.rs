@@ -30,20 +30,36 @@ pub enum Note {
 }
 
 /// A failure detail. `outage` returns the attempt; `streak_countable` marks
-/// a residual unexpected error that may count toward `outage_streak`.
+/// a residual unexpected error that may count toward `outage_streak`;
+/// `relay_hold` marks a hold on the relay side (the Store was not reached):
+/// it returns the attempt too, but backs off on the row's own hold count
+/// and leaves the Store outage state alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FailureNote {
     pub code: String,
     pub outage: bool,
     pub streak_countable: bool,
+    pub relay_hold: bool,
 }
 
 impl FailureNote {
+    /// A Store outage (or an unknown Store outcome).
     pub fn outage(code: &str, streak_countable: bool) -> Self {
         Self {
             code: code.to_owned(),
             outage: true,
             streak_countable,
+            relay_hold: false,
+        }
+    }
+
+    /// A relay-side hold (catalog skew, projection or source bookkeeping).
+    pub fn relay_hold(code: &str) -> Self {
+        Self {
+            code: code.to_owned(),
+            outage: true,
+            streak_countable: false,
+            relay_hold: true,
         }
     }
 
@@ -52,6 +68,7 @@ impl FailureNote {
             code: code.to_owned(),
             outage: false,
             streak_countable: false,
+            relay_hold: false,
         }
     }
 }

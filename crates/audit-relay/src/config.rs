@@ -10,11 +10,20 @@
 //! | `AUDIT_RELAY_RENEW_MS` | 9000 |
 //! | `AUDIT_RELAY_MAX_PROCESSING_MS` | 900000 |
 //! | `AUDIT_RELAY_DRAIN_MS` | 30000 |
-//! | `AUDIT_RELAY_POLL_MS` | 1000 |
+//! | `AUDIT_RELAY_POLL_MS` | 250 |
 //! | `AUDIT_RELAY_REAP_BATCH` | 32 |
 //! | `AUDIT_RELAY_INGEST_TIMEOUT_MS` | lease / 3 − 1000 |
 //! | `AUDIT_RELAY_BREAKER_INITIAL_MS` | 1000 |
 //! | `AUDIT_RELAY_BREAKER_MAX_MS` | 60000 |
+//!
+//! Capacity: the runner claims at most `MAX_IN_FLIGHT` rows per cycle (one
+//! while the breaker is half-open), waits for them, then sleeps the poll
+//! interval, so one process delivers about
+//! `MAX_IN_FLIGHT / (poll + Store round trip)` events per second (about 15/s
+//! with the defaults). Raise `AUDIT_RELAY_MAX_IN_FLIGHT` (runner bound 8),
+//! lower the poll interval or run more relay processes for a higher
+//! sustained rate; `health` shows the backlog as `pending` and
+//! `oldest_pending_age_seconds`.
 
 use std::fmt;
 use std::time::Duration;
@@ -115,7 +124,7 @@ impl RunConfig {
             renew_interval: ms("AUDIT_RELAY_RENEW_MS", 9_000)?,
             max_processing: ms("AUDIT_RELAY_MAX_PROCESSING_MS", 900_000)?,
             drain_timeout: ms("AUDIT_RELAY_DRAIN_MS", 30_000)?,
-            poll_interval: ms("AUDIT_RELAY_POLL_MS", 1_000)?,
+            poll_interval: ms("AUDIT_RELAY_POLL_MS", 250)?,
             reap_batch: count("AUDIT_RELAY_REAP_BATCH", 32)?,
         };
         delivery.validate().map_err(|_| ConfigError::Delivery)?;
@@ -177,6 +186,7 @@ mod tests {
         assert_eq!(config.delivery.batch_size, 32);
         assert_eq!(config.delivery.max_in_flight, 4);
         assert_eq!(config.delivery.lease_duration, Duration::from_secs(30));
+        assert_eq!(config.delivery.poll_interval, Duration::from_millis(250));
         assert!(config.handler.ingest_timeout < config.delivery.lease_duration / 3);
         assert_eq!(config.policy, RelayPolicy::default());
         let rendered = format!("{config:?}");

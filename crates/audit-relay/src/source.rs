@@ -285,18 +285,20 @@ impl OutboxStore for RelayOutboxStore {
                 _ => FailureNote::verdict(code.as_str()),
             };
             let terminal = terminal && !note.outage;
-            let updated: bool =
-                sqlx::query_scalar("SELECT audit_relay.settle_failure($1, $2, $3, $4, $5, $6, $7)")
-                    .bind(event_id)
-                    .bind(lease_token)
-                    .bind(&note.code)
-                    .bind(terminal)
-                    .bind(backoff_ms)
-                    .bind(note.outage)
-                    .bind(note.streak_countable)
-                    .fetch_one(&self.pool)
-                    .await
-                    .map_err(unknown)?;
+            let updated: bool = sqlx::query_scalar(
+                "SELECT audit_relay.settle_failure($1, $2, $3, $4, $5, $6, $7, $8)",
+            )
+            .bind(event_id)
+            .bind(lease_token)
+            .bind(&note.code)
+            .bind(terminal)
+            .bind(backoff_ms)
+            .bind(note.outage)
+            .bind(note.streak_countable)
+            .bind(note.relay_hold)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unknown)?;
             Ok(fence(updated))
         })
     }

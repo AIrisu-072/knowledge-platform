@@ -7,7 +7,11 @@
 -- operator gets its own LOGIN role and is granted exactly one of them:
 --   audit_relay_worker   `audit-relay run`, `health`, read-only `reconcile`
 --   audit_relay_operator `audit-relay replay`, `reconcile --repair`
--- audit_relay.posture_check() reports drift from this matrix.
+-- audit_relay.posture_check() reports drift from this matrix, any other
+-- member of audit_relay_owner (revoke the membership a non-superuser
+-- migrate used), and any capability login that can read the staging table
+-- or touch the relay tables directly (grants, pg_read_all_data,
+-- pg_write_all_data).
 
 DO $roles$
 DECLARE
@@ -39,10 +43,12 @@ GRANT EXECUTE ON FUNCTION
     audit_relay.claim(uuid, integer, bigint),
     audit_relay.renew(uuid, uuid, bigint),
     audit_relay.settle_success(uuid, uuid, bigint, bytea, text, bigint),
-    audit_relay.settle_failure(uuid, uuid, text, boolean, bigint, boolean, boolean),
+    audit_relay.settle_failure(uuid, uuid, text, boolean, bigint, boolean, boolean, boolean),
     audit_relay.reap_exhausted(integer),
     audit_relay.mismatch_seq(uuid, uuid, text),
-    audit_relay.note_mismatch(uuid, uuid, text, bigint)
+    audit_relay.note_mismatch(uuid, uuid, text, bigint, bigint),
+    -- The health forecast projects staged content (as claim does).
+    audit_relay.preview_pending(uuid, integer)
     TO audit_relay_worker;
 
 -- Replay and repair transitions (design §6.4, §12).
@@ -53,12 +59,11 @@ GRANT EXECUTE ON FUNCTION
     audit_relay.register_missing(integer)
     TO audit_relay_operator;
 
--- Status, policy, regression gate, health forecast and reconcile reads.
+-- Status, policy, regression gate and content-free reconcile reads.
 GRANT EXECUTE ON FUNCTION
     audit_relay.status(),
     audit_relay.policy(),
     audit_relay.acked_head(bigint),
-    audit_relay.preview_pending(uuid, integer),
     audit_relay.reconcile_page(uuid, integer),
     audit_relay.lookup_deliveries(uuid[]),
     audit_relay.reconcile_history_page(bigint, integer),

@@ -749,7 +749,7 @@ pub fn sqlstate(error: &sqlx::Error) -> String {
 pub async fn assert_store_conforms(pool: &PgPool) -> usize {
     let rows = sqlx::query(
         "SELECT e.seq, e.event_id, e.origin, e.envelope_digest, e.prev_chain, e.chain, \
-                b.envelope::text AS body \
+                e.expired_at IS NOT NULL AS expired, b.envelope::text AS body \
          FROM audit_store.events AS e LEFT JOIN audit_store.event_bodies AS b ON b.seq = e.seq \
          ORDER BY e.seq",
     )
@@ -771,6 +771,14 @@ pub async fn assert_store_conforms(pool: &PgPool) -> usize {
         let expected = audit_core::chain_next(&prev, seq, event_id, &digest);
         assert_eq!(chain, expected.to_vec(), "seq {seq}: chain");
         let path = Origin::parse(&origin).expect("origin");
+        let expired: bool = row.get("expired");
+        if expired && path == Origin::Relay {
+            // A retention or purge tombstone: only the identity row remains.
+            assert!(body.is_none(), "seq {seq}: an expired row keeps no body");
+            relayed += 1;
+            prev = expected;
+            continue;
+        }
         let body = body.unwrap_or_else(|| panic!("event {seq} keeps its body"));
         assert_eq!(
             audit_core::envelope_digest(&body),

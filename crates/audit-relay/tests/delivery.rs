@@ -221,9 +221,14 @@ async fn every_producer_shape_reaches_the_store_without_reason_text() {
     .expect("health");
     assert_eq!(report["stored"]["gate"], json!("ok"));
     assert_eq!(report["stored"]["missing_types"], Value::Null);
-    assert_eq!(report["verified"]["last_verified_seq"], json!(verified.seq));
+    // The verified coverage reaches the scan's head; only the verification
+    // record itself (after it) is unverified.
+    assert_eq!(
+        report["verified"]["last_verified_seq"],
+        json!(verified.to_seq)
+    );
     assert_eq!(report["verified"]["outcome"], json!("ok"));
-    assert_eq!(report["verified"]["unverified_events"], json!(0));
+    assert_eq!(report["verified"]["unverified_events"], json!(1));
     assert_eq!(report["stored"]["head_seq"], json!(verified.seq));
     assert_eq!(
         report["delivered"]["delivered"],
@@ -332,6 +337,194 @@ async fn invalid_rows_quarantine_and_catalog_skew_is_held() {
     assert_eq!(details["count_relay_catalog_skew"], json!(2));
 }
 
+/// `(relay_hold_count, available_at - last_attempt_at in seconds)` of one row.
+async fn hold_backoff(env: &Env, id: Uuid) -> (i32, f64) {
+    sqlx::query_as(
+        "SELECT relay_hold_count, \
+                extract(epoch FROM available_at - last_attempt_at)::float8 \
+         FROM audit_relay.deliveries WHERE event_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&env.doc_admin)
+    .await
+    .expect("hold backoff")
+}
+
+/// Relay-side holds (catalog skew here: a Document deploy ahead of the
+/// relay) back off exponentially per row, are reported as relay holds (the
+/// Store is healthy: no outage_held), and never starve a row the relay can
+/// deliver: rows the relay has not held are claimed first.
+#[tokio::test]
+async fn relay_side_holds_back_off_and_never_starve_deliverable_rows() {
+    let env = Env::start().await;
+    let held: Vec<Staged> = (0..40)
+        .map(|_| Staged::created().with_type("document.future_event"))
+        .collect();
+    for row in &held {
+        env.insert(row).await;
+    }
+    let relay = env.relay().await;
+    drive(&relay, CONVERGE, || async {
+        env.status().await["catalog_skew_held"] == json!(40)
+    })
+    .await;
+    // FORCED_BY_TEST_SQL: the worst case, every held row due again at once
+    // (and due earlier than anything produced from now on).
+    let first_holds: Vec<Value> = sqlx::query_scalar(
+        "SELECT to_jsonb(d) FROM audit_relay.deliveries d \
+         WHERE last_error_code = 'relay_catalog_skew' ORDER BY event_id",
+    )
+    .fetch_all(&env.doc_admin)
+    .await
+    .expect("held rows");
+    env.force(
+        "UPDATE audit_relay.deliveries SET available_at = now() - interval '1 hour' \
+         WHERE last_error_code = 'relay_catalog_skew'",
+    )
+    .await;
+    let good = Staged::created();
+    env.insert(&good).await;
+    cycles(&relay, 2).await;
+    assert!(
+        is_delivered(&env, good.event_id).await,
+        "a deliverable row is not starved by held rows"
+    );
+    // The first hold waited backoff_min; holds are relay holds, not Store
+    // outages.
+    assert_eq!(first_holds.len(), 40);
+    for row in &first_holds {
+        assert_eq!(row["relay_hold_count"], json!(1));
+        assert!(row["last_outage_code"].is_null(), "{row}");
+    }
+    let status = env.status().await;
+    assert_eq!(
+        (&status["relay_held"], &status["outage_held"]),
+        (&json!(40), &json!(0)),
+        "relay holds are not Store outages"
+    );
+    // A second hold doubles the row's delay (bounded by backoff_max).
+    drive(&relay, CONVERGE, || async {
+        let mut twice = 0;
+        for row in &held {
+            if hold_backoff(&env, row.event_id).await.0 >= 2 {
+                twice += 1;
+            }
+        }
+        twice >= 4
+    })
+    .await;
+    for row in &held {
+        let (holds, delay) = hold_backoff(&env, row.event_id).await;
+        if holds == 2 {
+            assert!((2.0..3.0).contains(&delay), "second hold ({delay})");
+        }
+    }
+    let report = health(
+        &env.worker.pool,
+        Arc::new(env.store_client().await),
+        HealthOptions::default(),
+    )
+    .await
+    .expect("health");
+    assert_eq!(report["delivered"]["relay_held"], json!(40));
+    assert_eq!(report["delivered"]["outage_held"], json!(0));
+    let alarms = report["alarms"].as_array().expect("alarms");
+    assert!(alarms.contains(&json!("relay_held")), "{alarms:?}");
+    assert!(!alarms.contains(&json!("outage_held")), "{alarms:?}");
+    assert_eq!(report["stored"]["gate"], json!("ok"));
+}
+
+/// Producer data carrying keys outside the catalog (sensitive ones such as
+/// `body`, `token`, `query` included) is held as catalog skew and never
+/// reaches the Store, neither the row nor any of its text.
+#[tokio::test]
+async fn sensitive_data_keys_are_held_and_never_ingested() {
+    let env = Env::start().await;
+    let rows: Vec<Staged> = ["body", "token", "query"]
+        .into_iter()
+        .map(|key| {
+            let mut data = Staged::created().data;
+            data[key] = json!(format!("held-marker-{key}"));
+            Staged::created().with_data(data)
+        })
+        .collect();
+    for row in &rows {
+        env.insert(row).await;
+    }
+    let relay = env.relay().await;
+    drive(&relay, CONVERGE, || async {
+        env.status().await["catalog_skew_held"] == json!(3)
+    })
+    .await;
+    for row in &rows {
+        assert!(env.store_rows(row.event_id).await.is_empty());
+    }
+    let leaked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_store.event_bodies WHERE envelope::text LIKE '%held-marker-%'",
+    )
+    .fetch_one(&env.store_admin)
+    .await
+    .expect("bodies");
+    assert_eq!(leaked, 0);
+}
+
+/// A body removed by retention or purge keeps its tombstone: reconcile
+/// still matches the receipt (ok, not delivered_missing or
+/// digest_mismatch), a re-delivery is acknowledged as `duplicate_expired`
+/// and the regression gate stays open.
+#[tokio::test]
+async fn purged_bodies_reconcile_and_redeliver_as_duplicate_expired() {
+    let env = Env::start().await;
+    let kept = Staged::created();
+    let purged = Staged::created();
+    env.insert(&kept).await;
+    env.insert(&purged).await;
+    let relay = env.relay().await;
+    drive(&relay, CONVERGE, || all_delivered(&env, 2)).await;
+    AuditAdmin::connect(env.maintainer.pool.clone())
+        .await
+        .expect("maintainer")
+        .purge_body(purged.event_id, "adapter_defect")
+        .await
+        .expect("purged");
+    assert_eq!(env.store_body(purged.event_id).await, None);
+    let reconciler = audit_relay::reconcile::Reconciler::new(
+        env.worker.pool.clone(),
+        Arc::new(env.operator_client().await),
+    );
+    let classified = reconciler.classify().await.expect("classify");
+    assert_eq!(
+        (
+            classified.counts.ok,
+            classified.counts.delivered_missing,
+            classified.counts.digest_mismatch
+        ),
+        (2, 0, 0)
+    );
+    // FORCED_BY_TEST_SQL: a re-delivery of the purged event.
+    env.force(&format!(
+        "UPDATE audit_relay.deliveries SET delivered_at = NULL, store_seq = NULL, \
+         store_envelope_digest = NULL, store_outcome = NULL, store_recovery_epoch = NULL, \
+         attempt_count = 0, attempt_limit = NULL, available_at = clock_timestamp() \
+         WHERE event_id = '{}'",
+        purged.event_id
+    ))
+    .await;
+    drive(&relay, CONVERGE, || is_delivered(&env, purged.event_id)).await;
+    assert_eq!(
+        env.delivery(purged.event_id).await["store_outcome"],
+        json!("duplicate_expired")
+    );
+    assert_eq!(env.store_rows(purged.event_id).await.len(), 1);
+    assert_eq!(relay.breaker.gate(), Gate::Ok);
+    let classified = reconciler.classify().await.expect("classify");
+    assert_eq!(
+        (classified.counts.ok, classified.counts.delivered_missing),
+        (2, 0)
+    );
+    assert_store_conforms(&env.store_admin).await;
+}
+
 #[tokio::test]
 async fn source_mismatch_records_the_control_event_first_and_once() {
     let env = Env::start().await;
@@ -378,11 +571,12 @@ async fn source_mismatch_records_the_control_event_first_and_once() {
         .await
         .expect("earlier record")
         .seq;
-    let ok: bool = sqlx::query_scalar("SELECT audit_relay.note_mismatch($1, $2, $3, $4)")
+    let ok: bool = sqlx::query_scalar("SELECT audit_relay.note_mismatch($1, $2, $3, $4, $5)")
         .bind(noted.event_id)
         .bind(token)
         .bind("source_digest_mismatch")
         .bind(earlier)
+        .bind(1_i64)
         .fetch_one(&env.worker.pool)
         .await
         .expect("note");
@@ -595,23 +789,27 @@ async fn reprojection_acks_the_original_receipt_and_a_forgotten_bump_conflicts()
 
     // A newer adapter version (registered by a Store migration).
     register_type(&env.store_admin, "document.created", 2).await;
-    let operator = env.operator.pool.clone();
+    let doc_admin = env.doc_admin.clone();
     let row_id = row.event_id;
-    let reset = |seq: i64| {
-        let operator = operator.clone();
+    let reset = || {
+        let doc_admin = doc_admin.clone();
         async move {
-            // Re-delivery path (operator reset; reconcile is tested elsewhere).
-            let done: bool =
-                sqlx::query_scalar("SELECT audit_relay.repair_reset_missing($1, $2, 1, 1)")
-                    .bind(row_id)
-                    .bind(seq)
-                    .fetch_one(&operator)
-                    .await
-                    .expect("reset");
-            assert!(done);
+            // FORCED_BY_TEST_SQL: re-delivery of an event the Store holds
+            // (reconcile's reset is fenced to receipts of older epochs and
+            // is tested in tests/recovery.rs).
+            force(
+                &doc_admin,
+                &format!(
+                    "UPDATE audit_relay.deliveries SET delivered_at = NULL, store_seq = NULL, \
+                     store_envelope_digest = NULL, store_outcome = NULL, \
+                     store_recovery_epoch = NULL, attempt_count = 0, attempt_limit = NULL, \
+                     available_at = clock_timestamp() WHERE event_id = '{row_id}'"
+                ),
+            )
+            .await;
         }
     };
-    reset(original["store_seq"].as_i64().expect("seq")).await;
+    reset().await;
     // The relay of the newer deploy ingests version 2 (its probe still
     // expects the version-1 catalog, which stays registered).
     let relay_v2 = env
@@ -634,7 +832,7 @@ async fn reprojection_acks_the_original_receipt_and_a_forgotten_bump_conflicts()
     assert_eq!(env.store_rows(row.event_id).await.len(), 1);
 
     // Same adapter version, different envelope: a conflict verdict.
-    reset(original["store_seq"].as_i64().expect("seq")).await;
+    reset().await;
     let buggy: audit_relay::handler::Projector = Arc::new(|row: &DocumentStagingProjection| {
         let mut value = audit_core::project(row)?.into_value();
         value["time"] = json!("2026-10-07T09:09:09.000000Z");

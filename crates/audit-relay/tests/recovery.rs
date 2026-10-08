@@ -636,10 +636,12 @@ async fn checkpoint(env: &Env) -> audit_core::Checkpoint {
         .expect("checkpoint value")
 }
 
-async fn relay_max_seq(env: &Env) -> i64 {
-    env.status().await["max_acked_store_seq"]
+/// The highest Store seq the relay references in one Store recovery epoch
+/// (acks, mismatch records, replay and repair control events).
+async fn relay_max_seq(env: &Env, epoch: i64) -> i64 {
+    env.status().await["max_referenced_store_seq"][epoch.to_string()]
         .as_i64()
-        .expect("acked")
+        .expect("referenced")
 }
 
 /// Starts a recovery epoch as an operator does: preview the Store's
@@ -721,8 +723,9 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     .await;
     let c1 = checkpoint(&env).await;
     pg_dump(&env, "/tmp/store.dump").await;
-    // After the backup: a replay is recorded (its Store record will be
-    // lost), then the replayed row and two more are delivered.
+    // After the backup: two more rows are delivered, then a replay is
+    // recorded (its Store record will be lost) and no ack follows it: the
+    // replay's control seq is the highest Store seq the relay references.
     let replayed = Staged::created();
     env.insert(&replayed).await;
     env.force(&format!(
@@ -731,6 +734,13 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
         replayed.event_id
     ))
     .await;
+    for _ in 0..2 {
+        env.insert(&Staged::created()).await;
+    }
+    drive(&relay, CONVERGE, || async {
+        delivered_count(&env).await == 5
+    })
+    .await;
     let lost_replay = replay(
         &env.operator.pool,
         &env.operator_client().await,
@@ -738,14 +748,8 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     )
     .await
     .expect("replay before the restore");
-    for _ in 0..2 {
-        env.insert(&Staged::created()).await;
-    }
-    drive(&relay, CONVERGE, || async {
-        delivered_count(&env).await == 6
-    })
-    .await;
-    assert!(relay_max_seq(&env).await > lost_replay.control_seq);
+    assert!(env.status().await["max_acked_store_seq"].as_i64() < Some(lost_replay.control_seq));
+    assert_eq!(relay_max_seq(&env, 1).await, lost_replay.control_seq);
 
     let restored = "audit_store_restored";
     let (code, output) = env
@@ -802,14 +806,23 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     let maintainer = AuditAdmin::connect(store_pool(&env, &env.maintainer, restored).await)
         .await
         .expect("maintainer");
-    let relay_max = relay_max_seq(&env).await;
+    // The operator's --relay-max-seq: the highest Store seq the relay
+    // references in the restored epoch (health: stored.relay_max_seq).
+    let relay_max = relay_max_seq(&env, 1).await;
+    let report = health(&env.worker.pool, store.clone(), HealthOptions::default())
+        .await
+        .expect("health");
+    assert_eq!(report["stored"]["relay_max_seq"], json!(relay_max));
     let started = start_epoch(&maintainer, &c1, relay_max)
         .await
         .expect("epoch");
     assert_eq!(started.new_epoch, 2);
     assert_eq!(started.classification, "restore");
     assert_eq!(started.checkpoint_classification.as_deref(), Some("match"));
-    drive(&moved, CONVERGE, || is_delivered(&env, late.event_id)).await;
+    drive(&moved, CONVERGE, || async {
+        is_delivered(&env, late.event_id).await && is_delivered(&env, replayed.event_id).await
+    })
+    .await;
     assert_eq!(
         env.delivery(late.event_id).await["store_recovery_epoch"],
         json!(2)
@@ -823,7 +836,7 @@ async fn store_restore_into_a_new_database_gates_until_a_new_epoch() {
     );
     // The replay record of epoch 1 lies in the declared lost range: a
     // recorded loss, not an unaudited replay.
-    redeliver_after_repair(&env, &moved, operator, 3, 1).await;
+    redeliver_after_repair(&env, &moved, operator, 2, 1).await;
     assert_store_conforms(&restored_admin).await;
 }
 
@@ -853,7 +866,7 @@ async fn an_in_place_restore_is_detected_as_store_regressed() {
         delivered_count(&env).await == 4
     })
     .await;
-    let acked = relay_max_seq(&env).await;
+    let acked = relay_max_seq(&env, 1).await;
 
     // Same database, same oid and timeline: the fingerprint cannot see it.
     let (code, output) = env
@@ -926,4 +939,105 @@ async fn an_in_place_restore_is_detected_as_store_regressed() {
     assert_eq!(relay.breaker.gate(), Gate::Ok);
     redeliver_after_repair(&env, &relay, Arc::new(env.operator_client().await), 2, 0).await;
     assert_store_conforms(&env.store_admin).await;
+}
+
+/// A receipt missing in the Store epoch it was acknowledged in is an
+/// unreported regression (an in-place restore or deletion the fingerprint
+/// cannot see), not a repairable loss: `reconcile --repair` keeps it (and
+/// the SQL fence refuses the reset), so the relay's gate still detects and
+/// reports the regression and a recovery epoch has to be declared.
+#[tokio::test]
+async fn repair_never_resets_rows_missing_in_their_own_epoch() {
+    let env = Env::start().await;
+    let wrapped = Arc::new(WrappedStore::new(Arc::new(env.store_client().await)));
+    let relay = env
+        .relay_with(RelayOverrides {
+            store: Some(wrapped.clone()),
+            ..RelayOverrides::default()
+        })
+        .await;
+    for _ in 0..2 {
+        env.insert(&Staged::created()).await;
+    }
+    drive(&relay, CONVERGE, || async {
+        delivered_count(&env).await == 2
+    })
+    .await;
+    pg_dump(&env, "/tmp/store-unreported.dump").await;
+    for _ in 0..2 {
+        env.insert(&Staged::created()).await;
+    }
+    drive(&relay, CONVERGE, || async {
+        delivered_count(&env).await == 4
+    })
+    .await;
+    // The relay is stopped; the Store is restored in place (same database,
+    // oid and timeline) and no probe has reported anything yet.
+    let (code, output) = env
+        .cluster
+        .docker_exec(&[
+            "pg_restore",
+            "-U",
+            "postgres",
+            "--clean",
+            "--if-exists",
+            "--exit-on-error",
+            "--single-transaction",
+            "-d",
+            STORE_DB,
+            "/tmp/store-unreported.dump",
+        ])
+        .await;
+    assert_eq!(code, 0, "pg_restore: {output}");
+    let operator: Arc<dyn RelayStore> = Arc::new(env.operator_client().await);
+    let report = Reconciler::new(env.operator.pool.clone(), operator.clone())
+        .run(true)
+        .await
+        .expect("repair run");
+    assert_eq!(report.store_epoch, 1);
+    assert_eq!(report.counts.delivered_missing, 2);
+    assert_eq!(
+        (
+            report.planned.delivered_missing,
+            report.applied.delivered_missing
+        ),
+        (0, 0),
+        "rows missing in their own epoch are not reset"
+    );
+    assert_eq!(delivered_count(&env).await, 4, "the receipts stay");
+    // The SQL fence refuses the reset too: the receipt's epoch is not older
+    // than the epoch of the repair run's control event.
+    let (id, seq): (Uuid, i64) = sqlx::query_as(
+        "SELECT event_id, store_seq FROM audit_relay.deliveries \
+         ORDER BY store_seq DESC LIMIT 1",
+    )
+    .fetch_one(&env.doc_admin)
+    .await
+    .expect("acked head");
+    let reset: bool = sqlx::query_scalar("SELECT audit_relay.repair_reset_missing($1, $2, $3, $4)")
+        .bind(id)
+        .bind(seq)
+        .bind(report.control_seq.expect("recorded"))
+        .bind(1_i64)
+        .fetch_one(&env.operator.pool)
+        .await
+        .expect("fenced call");
+    assert!(!reset);
+    let resets: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_relay.delivery_history \
+         WHERE transition = 'repair_reset_missing'",
+    )
+    .fetch_one(&env.doc_admin)
+    .await
+    .expect("history");
+    assert_eq!(resets, 0);
+    // The relay detects the regression and reports it to the Store.
+    let late = Staged::created();
+    env.insert(&late).await;
+    cycles(&relay, 6).await;
+    assert_eq!(relay.breaker.gate(), Gate::Regressed);
+    assert!(!wrapped.reports.lock().unwrap().is_empty());
+    let status = wrapped.store_status().await.expect("status");
+    assert!(status.recovery_mode && status.recovery_pending);
+    assert_eq!(env.delivery(late.event_id).await["attempt_count"], json!(0));
 }

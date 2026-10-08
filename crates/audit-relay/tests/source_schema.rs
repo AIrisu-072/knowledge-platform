@@ -444,7 +444,6 @@ async fn role_matrix_posture_and_session_refusal() {
     let worker = &env.worker.pool;
     let operator = &env.operator.pool;
     let nobody = doc_login(&env.cluster, "relay_nobody", &[]).await;
-    let owner_member = doc_login(&env.cluster, "relay_owner_member", &["audit_relay_owner"]).await;
 
     for (pool, statement) in [
         (worker, "SELECT count(*) FROM audit_relay.deliveries"),
@@ -469,6 +468,11 @@ async fn role_matrix_posture_and_session_refusal() {
         (
             worker,
             "SELECT audit_relay.commitment('\\x00'::bytea, '\\x00'::bytea)",
+        ),
+        // The forecast projection is staged content: the worker's only.
+        (
+            operator,
+            "SELECT * FROM audit_relay.preview_pending(NULL, 10)",
         ),
     ] {
         let error = sqlx::query(sqlx::AssertSqlSafe(statement))
@@ -543,15 +547,8 @@ async fn role_matrix_posture_and_session_refusal() {
         "ALTER TABLE public.audit_outbox_events ENABLE TRIGGER audit_relay_append_only",
     )
     .await;
-    // owner_member is a privileged login: the posture reports it.
-    assert!(
-        audit_relay::session::posture(worker)
-            .await
-            .expect("posture")
-            .is_empty()
-    );
-
     // Session refusal (design §10.1): superuser and owner members.
+    let owner_member = doc_login(&env.cluster, "relay_owner_member", &["audit_relay_owner"]).await;
     assert_eq!(
         refuse_privileged_source(admin).await,
         Err(StartupError::Privileged(audit_relay::session::Side::Source))
@@ -566,6 +563,112 @@ async fn role_matrix_posture_and_session_refusal() {
     refuse_privileged_source(operator)
         .await
         .expect("operator session");
+
+    // Any other role holding the owner's rights (e.g. the staging owner
+    // kept as a member after a non-superuser migrate) bypasses every guard:
+    // the posture reports it until the membership is revoked (design §5.3).
+    let violations = audit_relay::session::posture(worker)
+        .await
+        .expect("posture");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.violation == "owner_member" && v.object == owner_member.role),
+        "{violations:?}"
+    );
+    exec(
+        admin,
+        &format!("REVOKE audit_relay_owner FROM {}", owner_member.role),
+    )
+    .await;
+    assert_eq!(posture_codes(worker).await, Vec::<String>::new());
+
+    // Drift that would let a capability login read staged content or write
+    // the relay tables, a zero timeout, row security hiding staged rows, and
+    // registration/guard triggers replaced by other definitions.
+    let worker_role = &env.worker.role;
+    let operator_role = &env.operator.role;
+    let scenarios: Vec<(String, String, &str)> = vec![
+        (
+            "GRANT SELECT ON public.audit_outbox_events TO audit_relay_worker".into(),
+            "REVOKE SELECT ON public.audit_outbox_events FROM audit_relay_worker".into(),
+            "staging_read",
+        ),
+        (
+            format!("GRANT SELECT (data) ON public.audit_outbox_events TO {operator_role}"),
+            format!("REVOKE SELECT (data) ON public.audit_outbox_events FROM {operator_role}"),
+            "staging_read",
+        ),
+        (
+            format!("GRANT pg_read_all_data TO {operator_role}"),
+            format!("REVOKE pg_read_all_data FROM {operator_role}"),
+            "staging_read",
+        ),
+        (
+            format!("GRANT pg_write_all_data TO {worker_role}"),
+            format!("REVOKE pg_write_all_data FROM {worker_role}"),
+            "table_access",
+        ),
+        (
+            format!("ALTER ROLE {worker_role} IN DATABASE {DOC_DB} SET statement_timeout = 0"),
+            format!("ALTER ROLE {worker_role} IN DATABASE {DOC_DB} SET statement_timeout = '30s'"),
+            "login_timeouts_missing",
+        ),
+        (
+            "ALTER TABLE public.audit_outbox_events ENABLE ROW LEVEL SECURITY".into(),
+            "ALTER TABLE public.audit_outbox_events DISABLE ROW LEVEL SECURITY".into(),
+            "row_security",
+        ),
+        (
+            "CREATE FUNCTION public.noop_trigger() RETURNS trigger LANGUAGE plpgsql \
+             AS $$BEGIN RETURN NULL; END$$; \
+             DROP TRIGGER audit_relay_register ON public.audit_outbox_events; \
+             CREATE TRIGGER audit_relay_register AFTER INSERT ON public.audit_outbox_events \
+             FOR EACH ROW EXECUTE FUNCTION public.noop_trigger()"
+                .into(),
+            "DROP TRIGGER audit_relay_register ON public.audit_outbox_events; \
+             DROP FUNCTION public.noop_trigger(); \
+             CREATE TRIGGER audit_relay_register AFTER INSERT ON public.audit_outbox_events \
+             FOR EACH ROW EXECUTE FUNCTION audit_relay.register_staged()"
+                .into(),
+            "trigger_missing",
+        ),
+        (
+            "DROP TRIGGER audit_relay_append_only ON public.audit_outbox_events; \
+             CREATE TRIGGER audit_relay_append_only BEFORE DELETE ON public.audit_outbox_events \
+             FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_staging()"
+                .into(),
+            "DROP TRIGGER audit_relay_append_only ON public.audit_outbox_events; \
+             CREATE TRIGGER audit_relay_append_only BEFORE UPDATE OR DELETE \
+             ON public.audit_outbox_events \
+             FOR EACH ROW EXECUTE FUNCTION audit_relay.guard_staging()"
+                .into(),
+            "trigger_missing",
+        ),
+    ];
+    for (break_sql, repair_sql, violation) in &scenarios {
+        exec(admin, break_sql).await;
+        let codes = posture_codes(worker).await;
+        assert!(
+            codes.contains(&(*violation).to_owned()),
+            "{break_sql}: {codes:?}"
+        );
+        exec(admin, repair_sql).await;
+        assert_eq!(
+            posture_codes(worker).await,
+            Vec::<String>::new(),
+            "{repair_sql}"
+        );
+    }
+}
+
+async fn posture_codes(pool: &PgPool) -> Vec<String> {
+    audit_relay::session::posture(pool)
+        .await
+        .expect("posture")
+        .into_iter()
+        .map(|v| v.violation)
+        .collect()
 }
 
 #[tokio::test]

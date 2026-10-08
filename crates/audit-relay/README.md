@@ -12,7 +12,7 @@ Audit Infrastructure v1の配送（[設計](../../docs/superpowers/specs/2026-10
 | 手順 | 実行者 | 内容 |
 |---|---|---|
 | 1 | Document migrator | Documentのmigration（`_sqlx_migrations`） |
-| 2 | superuser（`AUDIT_RELAY_MIGRATE_DATABASE_URL`） | `audit-relay migrate`。事前検査（stagingの列・型、Document ledger）→ `audit_relay_owner`（NOLOGIN・非superuser）とschema → backfill → 登録trigger・guard |
+| 2 | superuser（`AUDIT_RELAY_MIGRATE_DATABASE_URL`） | `audit-relay migrate`。事前検査（stagingの列・型、Document ledger）→ `audit_relay_owner`（NOLOGIN・非superuser）とschema → backfill → 登録trigger・guard。superuserでなくstagingのownerで実行した場合は、そのroleが持つ `audit_relay_owner` のmembershipを実行後に必ずREVOKEする（残っている間、postureは `owner_member` を報告し、`run`・`reconcile`・`replay` は起動しない。設計§5.3：Documentのowner・runtime roleには `audit_relay` への権限を与えない） |
 | 3 | DB owner | `sql/roles.sql`：`audit_relay_worker` / `audit_relay_operator` とEXECUTE行列、LOGIN roleのtimeout。LOGIN role追加後とDocument DBのrestore後に再実行する |
 | 4 | Store側 | `audit-store-postgres` の手順。relay serviceのStore loginを `service/audit-relay`（Documentのsource serviceとして登録済み）に束縛する |
 
@@ -24,14 +24,14 @@ Audit Infrastructure v1の配送（[設計](../../docs/superpowers/specs/2026-10
 | command | `AUDIT_SOURCE_DATABASE_URL`（Document） | `AUDIT_STORE_DATABASE_URL`（Store） |
 |---|---|---|
 | `run` | `audit_relay_worker` を持つservice login | relay service：`audit_store_ingest`＋`audit_store_relay_control`＋`audit_store_reconciler`、`service/audit-relay` に束縛 |
-| `health` / `reconcile` | worker（read-only） | operator：`audit_store_relay_control`＋`audit_store_reconciler`（ingestは持たない）、本人の主体に束縛 |
-| `reconcile --repair` / `replay` | operator本人の `audit_relay_operator` login | 同上（operator本人のStore login） |
+| `health` / `reconcile` | worker（read-only。`health --forecast` はworkerだけ：配送前の内容を投影する `preview_pending` はworkerにだけ与える） | operator：`audit_store_relay_control`＋`audit_store_reconciler`（ingestは持たない）、本人の主体に束縛 |
+| `reconcile --repair` / `replay` | operator本人の `audit_relay_operator` login | 同上（operator本人のStore login）。`audit_store_ingest` を持つStore loginは拒否する（CLIとStoreの両方。特権操作の記録のactorを操作したoperatorにするため） |
 
 - operatorのStore loginはprobeできないので、`health` の `stored.missing_types`（catalog skew）は `null` になる。relay serviceのloginで実行すると、Storeが未登録のcatalog typeを返し、空でなければ `store_catalog_skew` を警報する。
 
 - capability roleは表の権限を持たず、definer関数（`SECURITY DEFINER`、`search_path = pg_catalog, pg_temp`、owner `audit_relay_owner`）だけを実行する。PUBLICには何も与えない。
-- `migrate` 以外は、superuserと `audit_relay_owner`（Store側は `audit_store_owner`）のmemberのsessionを拒否する。sourceとStoreが同一database（`system_identifier` と `current_database()`）なら起動しない。URLの `options` を拒否し、全接続で `synchronous_commit = on` を確認する。URL・credentialはerrorに出さない。
-- `run`・`reconcile`・`replay` は `audit_relay.posture_check()` に違反がある間は起動しない（`health` は警報として出す）。
+- `migrate` 以外は、superuserと `audit_relay_owner`（Store側は `audit_store_owner`）のmemberのsessionを拒否する。sourceとStoreが同一database（`system_identifier` と `current_database()`）なら起動しない。URLの `options`・`options[<設定>]` と空でない `PGOPTIONS` を拒否し、全接続で `synchronous_commit = on` を確認する。URL・credentialはerrorに出さない。
+- `run`・`reconcile`・`replay` は `audit_relay.posture_check()` に違反がある間は起動しない（`health` は警報として出す）。postureはEXECUTE行列・所有者・schema/表の権限に加え、次を違反として報告する：`audit_relay_owner` のmember（superuser以外のすべてのrole。`owner_member`）、capability roleまたはそのloginがstagingを直接読めること（表・列の権限、`pg_read_all_data`。`staging_read`）、`audit_relay` の表を読み書きできること（`pg_write_all_data` 等。`table_access`）、stagingのrow security（定義者関数から行が見えなくなる。`row_security`）、登録・guard triggerが別の関数・event・WHEN条件で作り直されていること（`trigger_missing`）、capability loginのtimeoutが未設定または0であること（`login_timeouts_missing`）。
 
 ## command
 
@@ -43,23 +43,28 @@ audit-relay reconcile [--repair]                 # 1 runにつき audit.reconcil
 audit-relay replay --event-id <uuid>             # Storeへ replay_requested を記録してから戻す
 ```
 
-`run` の設定は環境変数（`AUDIT_RELAY_BATCH_SIZE` 32、`AUDIT_RELAY_MAX_IN_FLIGHT` 4、`AUDIT_RELAY_LEASE_MS` 30000、`AUDIT_RELAY_RENEW_MS` 9000、`AUDIT_RELAY_INGEST_TIMEOUT_MS` lease/3未満 など。`src/config.rs`）。policyの既定は試行16、lease 1–120秒、backoff 1–300秒、`outage_streak` 上限64。
+`run` の設定は環境変数（`AUDIT_RELAY_BATCH_SIZE` 32、`AUDIT_RELAY_MAX_IN_FLIGHT` 4、`AUDIT_RELAY_LEASE_MS` 30000、`AUDIT_RELAY_RENEW_MS` 9000、`AUDIT_RELAY_POLL_MS` 250、`AUDIT_RELAY_INGEST_TIMEOUT_MS` lease/3未満 など。`src/config.rs`）。policyの既定は試行16、lease 1–120秒、backoff 1–300秒、`outage_streak` 上限64。runnerは1 cycleで最大 `MAX_IN_FLIGHT` 件（breakerがhalf-openの間は1件）をclaimし、処理を待ってからpoll間隔だけ休むので、1 processの処理量は約 `MAX_IN_FLIGHT / (poll + Store往復)` 件/秒（既定で約15件/秒）である。継続的にこれを超える場合は `MAX_IN_FLIGHT`（runnerの上限8）を上げるか、pollを短くするか、relay processを増やす。滞留は `health` の `pending`・`oldest_pending_age_seconds` に出る。
 
 ## 失敗の扱い
 
 - quarantine（終端）は、Storeの構造化verdict（`conflict`、`rejected_<code>`。`audit_core::IngestRow::into_result` だけが作る）とrelay側の判定（`source_digest_mismatch`、`actor_mismatch`、catalog不適合）だけ。source改変は先に `audit.integrity.source_mismatch_detected` を記録し（event・codeごとに1回）、記録できなければ保留する。
 - quarantine codeはStoreのcode形式 `[a-z0-9_]{1,64}` に従う（replayが `quarantine_code` として記録できるように）。relayの拒否codeはそのまま、Storeの拒否は `rejected_<code>` を64 byteで切る。
 - それ以外（通信断、timeout、全SQLSTATE、結果不明、recovery mode、後退、posture違反、未登録type、ingest主体の拒否）は外部障害として試行を返却して保留し、circuit breakerを開く。breakerはingestの構造化結果でだけ閉じる。
-- relayのcatalogより新しいtype・fieldは `relay_catalog_skew` として保留し、healthで警報する。reconcileはこの保留を独立したclass `relay_catalog_skew`（pendingとは別、`count_relay_catalog_skew`）として数え、警報を出す（`audit_relay.delivery_view` の `last_error_code` で判定する）。
+- relayのcatalogより新しいtype・field（未知のdata keyを含む）は `relay_catalog_skew` として保留し、healthで警報する。reconcileはこの保留を独立したclass `relay_catalog_skew`（pendingとは別、`count_relay_catalog_skew`）として数え、警報を出す（`audit_relay.delivery_view` の `last_error_code` で判定する）。
+- relay側の保留（Storeに届いていない：`relay_catalog_skew`、`relay_projection_invalid`、`relay_source_unavailable`）は試行を返却し、streakに数えず、Storeの障害状態（`last_outage_*`、`outage_held`）に触れない。行ごとの保留回数 `relay_hold_count` で指数backoff（`backoff_min × 2^(回数−1)`、`backoff_max` で頭打ち）し、claimは保留していない行を先に取る（保留行が大量にあっても配送できる行を待たせない）。healthは `delivered.relay_held` と警報 `relay_held` で示す。Storeの結果・replay・repairで回数は0に戻る。breakerを開きも閉じもしない（half-openの許可は解放され、次のclaimに使われる）。
 - `outage_streak` は、audit-coreが残余とするoutage（`store_internal`、`store_other`。`OutageCode::counts_toward_outage_streak`）が、別の配送の成功を挟んで続いた場合だけ数える。上限で `outage_suspected_event_specific` としてquarantineする。
 - claimの前のgate（`BreakerAdmission`）：catalogの期待（source、adapter_version、type一覧。`ProbeExpectation::from_catalog`）と、Storeの現在のrecovery epochで最後にackしたreceiptを渡してprobeする。epochが前回と違えばそのepochのack headで2回目のprobeをする。順序は、同じepochで検知済みの後退（sticky）→ Storeの状態（recovery mode、posture、read-only）→ 後退 → 未登録type（`store_unregistered_type`）。
-- 後退（operationalなStoreが最後にackしたreceiptを解決できない。fingerprintで見えないin-place restoreなど）を検知すると、`audit_store.report_regression` で報告し（Storeが再確認して `recovery_pending` にする）、recovery epochが変わるまでclaimを止める。fingerprintで検知されたrestoreはrecovery modeとして止まり、operatorが `begin-recovery-epoch --relay-max-seq` でrelayの最大seqを記録する（`--preview` で確認した復元head・消失範囲を帯域外の記録に書き、その値を `--expect-*` で渡す。Storeは食い違う記録を拒否する）。
+- 後退（operationalなStoreが最後にackしたreceiptを解決できない。fingerprintで見えないin-place restoreなど）を検知すると、`audit_store.report_regression` で報告し（Storeが再確認して `recovery_pending` にする）、recovery epochが変わるまでclaimを止める。fingerprintで検知されたrestoreはrecovery modeとして止まり、operatorが `begin-recovery-epoch --relay-max-seq` でrelayの最大seqを記録する（`--preview` で確認した復元head・消失範囲を帯域外の記録に書き、その値を `--expect-*` で渡す。Storeは食い違う記録を拒否する）。`--relay-max-seq` には `health` の `stored.relay_max_seq` を使う：復元したepochでrelayが参照する最大のStore seq（receiptに加え、source mismatch・replay・repairのcontrol event、historyに残したreceipt。`status()` の `max_referenced_store_seq` をepochごとに持つ）。`max_acked_store_seq`（全epochのreceiptの最大）では、ackの後に記録されたreplayが消失範囲から外れ、`unaudited_replay` に誤分類される。
+- `reconcile --repair` の delivered_missing → pending は、Storeの現在のrecovery epochより古いepochのreceiptだけに行う（宣言されたrecoveryの後）。同じepochで失われたreceiptは未報告の後退（fingerprintで見えないin-place restore・削除）なので戻さず、delivered_missingの警報のまま残す（SQL関数 `repair_reset_missing` も同じfenceで拒否する）。relayのgateが後退を報告し、recovery epochを開始してから修復する。
+- source mismatchの記録は（seq, recovery epoch）を持ち、`delivery_history` のcontrol eventは（epoch, seq）で一意である（restore後にseqが再利用されるため）。
 
 ## 限界
 
 - Document DBのsuperuser・`audit_relay` の所有者は、trigger・FKを迂回して配送前のstagingと配送台帳を改変できる。guardは事故とDDLを伴わない不正DMLの防止である（設計§5.3）。
 - `reconcile` は配送履歴（replay・repair）をStoreのcontrol eventに照合する。replay行は、同じevent・同じrecovery epoch・同じquarantine codeの `audit.delivery.replay_requested` に1対1で（同じcontrol eventを2行が使えば2行目は不一致）、repair行は同じepochの `audit.reconciliation.completed`（mode `repair`）に対応しなければならない。対応しない行は、そのepochでStoreが宣言した消失範囲（`lookup_lost_ranges`）に入っていれば `replay_record_lost`、それ以外は `unaudited_replay`。`count_replay_record_lost` は `audit.reconciliation.completed` に記録される。
 - `repair_ack_stored` のfenceは、渡されたcommitmentとserver側の再計算値の一致を確かめる。Storeの事実そのものはDocument側で検証できないので、CLIがStoreのreceiptを渡す。
+- ackに記録するStoreのrecovery epochは、claim前のprobeで観測したepochである。probeとingestの間で `begin_recovery_epoch` が完了した場合（手順ではrelayを止めて行う）、そのackは1つ前のepochとして記録される。
+- repair modeの `audit.reconciliation.completed` は、修復の前に記録する計画件数（`repaired_*`）を持つ。実際に適用した件数はCLIの出力（`applied`）にだけ出る。
 
 ## 試験
 

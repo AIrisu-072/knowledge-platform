@@ -147,6 +147,11 @@ CREATE TABLE audit_relay.deliveries (
     outage_streak INTEGER NOT NULL DEFAULT 0,
     last_outage_generation BIGINT NULL,
     last_outage_at TIMESTAMPTZ NULL,
+    -- Consecutive relay-side holds (the relay could not project or record
+    -- the row: catalog skew, projection or source bookkeeping failures).
+    -- Drives the row's own backoff and the claim order; reset by any Store
+    -- result, a replay or a repair.
+    relay_hold_count INTEGER NOT NULL DEFAULT 0,
     delivered_at TIMESTAMPTZ NULL,
     store_seq BIGINT NULL,
     store_envelope_digest BYTEA NULL,
@@ -154,6 +159,7 @@ CREATE TABLE audit_relay.deliveries (
     store_recovery_epoch BIGINT NULL,
     source_mismatch_code TEXT NULL,
     source_mismatch_seq BIGINT NULL,
+    source_mismatch_epoch BIGINT NULL,
     quarantined_at TIMESTAMPTZ NULL,
     quarantine_code TEXT NULL,
     replay_count INTEGER NOT NULL DEFAULT 0,
@@ -171,7 +177,8 @@ CREATE TABLE audit_relay.deliveries (
         AND (quarantine_code IS NULL OR quarantine_code ~ '^[a-z0-9_]{1,64}$')
         AND (source_mismatch_code IS NULL
              OR source_mismatch_code IN ('source_digest_mismatch', 'actor_mismatch'))),
-    CONSTRAINT ck_deliveries_streak CHECK (outage_streak >= 0 AND replay_count >= 0),
+    CONSTRAINT ck_deliveries_streak CHECK (
+        outage_streak >= 0 AND replay_count >= 0 AND relay_hold_count >= 0),
     CONSTRAINT ck_deliveries_receipt CHECK (
         (delivered_at IS NULL) = (store_seq IS NULL)
         AND (delivered_at IS NULL) = (store_envelope_digest IS NULL)
@@ -182,7 +189,9 @@ CREATE TABLE audit_relay.deliveries (
         AND (store_outcome IS NULL OR store_outcome IN
              ('stored', 'duplicate', 'duplicate_expired', 'duplicate_reprojected'))),
     CONSTRAINT ck_deliveries_mismatch CHECK (
-        (source_mismatch_code IS NULL) = (source_mismatch_seq IS NULL)),
+        (source_mismatch_code IS NULL) = (source_mismatch_seq IS NULL)
+        AND (source_mismatch_code IS NULL) = (source_mismatch_epoch IS NULL)
+        AND (source_mismatch_epoch IS NULL OR source_mismatch_epoch >= 1)),
     CONSTRAINT ck_deliveries_quarantine CHECK ((quarantined_at IS NULL) = (quarantine_code IS NULL)),
     CONSTRAINT ck_deliveries_terminal CHECK (
         NOT (delivered_at IS NOT NULL AND quarantined_at IS NOT NULL)
@@ -190,14 +199,15 @@ CREATE TABLE audit_relay.deliveries (
 );
 
 CREATE INDEX ix_deliveries_claimable ON audit_relay.deliveries
-    (available_at, registered_at, event_id)
+    ((relay_hold_count > 0), available_at, registered_at, event_id)
     WHERE delivered_at IS NULL AND quarantined_at IS NULL;
 CREATE INDEX ix_deliveries_acked ON audit_relay.deliveries (store_recovery_epoch, store_seq)
     WHERE delivered_at IS NOT NULL;
 
 -- Terminal evidence preserved before replay/repair (design §5.1, §6.4).
 -- control_seq is the Store seq of audit.delivery.replay_requested (one to
--- one); reconcile_seq is the Store seq of the repair run's
+-- one per Store recovery epoch: seqs are reused after a restore);
+-- reconcile_seq is the Store seq of the repair run's
 -- audit.reconciliation.completed; control_epoch is the Store recovery epoch
 -- in which that control event was recorded.
 CREATE TABLE audit_relay.delivery_history (
@@ -205,7 +215,7 @@ CREATE TABLE audit_relay.delivery_history (
     event_id UUID NOT NULL REFERENCES audit_relay.deliveries (event_id),
     transition TEXT NOT NULL,
     recorded_at TIMESTAMPTZ NOT NULL,
-    control_seq BIGINT NULL UNIQUE,
+    control_seq BIGINT NULL,
     control_epoch BIGINT NOT NULL,
     reconcile_seq BIGINT NULL,
     attempt_count INTEGER NOT NULL,
@@ -225,7 +235,8 @@ CREATE TABLE audit_relay.delivery_history (
     CONSTRAINT ck_history_reference CHECK (
         control_epoch >= 1
         AND ((transition = 'replay' AND control_seq > 0 AND reconcile_seq IS NULL)
-             OR (transition <> 'replay' AND control_seq IS NULL AND reconcile_seq > 0)))
+             OR (transition <> 'replay' AND control_seq IS NULL AND reconcile_seq > 0))),
+    CONSTRAINT uq_history_control UNIQUE (control_epoch, control_seq)
 );
 
 CREATE INDEX ix_history_event ON audit_relay.delivery_history (event_id, history_id);
@@ -421,7 +432,8 @@ BEGIN
         IF NEW.delivered_at IS NOT NULL OR NEW.quarantined_at IS NOT NULL
            OR NEW.lease_token IS NOT NULL OR NEW.attempt_count <> 0
            OR NEW.attempt_limit IS NOT NULL OR NEW.replay_count <> 0
-           OR NEW.outage_streak <> 0 OR NEW.source_mismatch_seq IS NOT NULL THEN
+           OR NEW.outage_streak <> 0 OR NEW.relay_hold_count <> 0
+           OR NEW.source_mismatch_seq IS NOT NULL THEN
             RAISE EXCEPTION 'audit_relay.deliveries: a registration starts pending'
                 USING ERRCODE = '55000';
         END IF;
@@ -452,8 +464,9 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
     IF OLD.source_mismatch_seq IS NOT NULL
-       AND (NEW.source_mismatch_code, NEW.source_mismatch_seq)
-           IS DISTINCT FROM (OLD.source_mismatch_code, OLD.source_mismatch_seq)
+       AND (NEW.source_mismatch_code, NEW.source_mismatch_seq, NEW.source_mismatch_epoch)
+           IS DISTINCT FROM (OLD.source_mismatch_code, OLD.source_mismatch_seq,
+                             OLD.source_mismatch_epoch)
        AND NOT audit_relay.transition_is(ARRAY['replay']) THEN
         RAISE EXCEPTION 'audit_relay.deliveries: a mismatch record is set once'
             USING ERRCODE = '55000';
@@ -559,7 +572,10 @@ BEGIN
           AND d.available_at <= tick.t
           AND (d.lease_expires_at IS NULL OR d.lease_expires_at <= tick.t)
           AND d.attempt_count < coalesce(d.attempt_limit, p.max_attempts)
-        ORDER BY d.available_at, d.registered_at, d.event_id
+        -- Rows the relay itself holds (relay_hold_count > 0) yield to every
+        -- other due row, so a backlog of held rows never starves the rows
+        -- the relay can deliver.
+        ORDER BY (d.relay_hold_count > 0), d.available_at, d.registered_at, d.event_id
         LIMIT p_limit
         FOR UPDATE OF d SKIP LOCKED
     )
@@ -620,7 +636,7 @@ BEGIN
     SET delivered_at = v_tick, store_seq = p_store_seq, store_envelope_digest = p_envelope_digest,
         store_outcome = p_outcome, store_recovery_epoch = p_store_epoch,
         lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL,
-        outage_streak = 0, last_error_code = NULL
+        outage_streak = 0, relay_hold_count = 0, last_error_code = NULL
     WHERE d.event_id = p_event_id AND d.lease_token = p_token
       AND d.delivered_at IS NULL AND d.quarantined_at IS NULL
       AND d.lease_expires_at > v_tick;
@@ -635,11 +651,15 @@ $settle_success$;
 
 -- Fenced failure (design §6.3). An outage returns the attempt, counts the
 -- streak only for residual errors after another delivery succeeded since the
--- row's previous outage, and uses a Store-side capped backoff. A terminal
--- verdict, or a non-outage failure at the attempt limit, quarantines.
+-- row's previous outage, and uses a Store-side capped backoff. A relay-side
+-- hold (p_relay_hold: the relay could not project or record the row; the
+-- Store was not reached) also returns the attempt, never touches the Store
+-- outage state, and backs off exponentially on the row's own hold count
+-- (backoff_min * 2^(holds - 1), capped at backoff_max). A terminal verdict,
+-- or a non-outage failure at the attempt limit, quarantines.
 CREATE FUNCTION audit_relay.settle_failure(
     p_event_id UUID, p_token UUID, p_code TEXT, p_terminal BOOLEAN, p_backoff_ms BIGINT,
-    p_outage BOOLEAN, p_streak_countable BOOLEAN)
+    p_outage BOOLEAN, p_streak_countable BOOLEAN, p_relay_hold BOOLEAN)
 RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $settle_failure$
 DECLARE
@@ -652,9 +672,10 @@ DECLARE
 BEGIN
     PERFORM set_config('synchronous_commit', 'on', TRUE);
     IF NOT audit_relay.is_code(p_code) OR p_terminal IS NULL OR p_outage IS NULL
-       OR p_streak_countable IS NULL
+       OR p_streak_countable IS NULL OR p_relay_hold IS NULL
        OR p_backoff_ms IS NULL OR p_backoff_ms NOT BETWEEN p.backoff_min_ms AND p.backoff_max_ms
-       OR (p_terminal AND p_outage) THEN
+       OR (p_terminal AND p_outage)
+       OR (p_relay_hold AND (NOT p_outage OR p_streak_countable)) THEN
         RAISE EXCEPTION 'audit_relay.settle_failure: invalid arguments' USING ERRCODE = '22023';
     END IF;
     SELECT * INTO d FROM audit_relay.deliveries AS x
@@ -665,7 +686,17 @@ BEGIN
     IF NOT FOUND THEN
         RETURN FALSE;
     END IF;
-    IF p_outage THEN
+    IF p_relay_hold THEN
+        v_backoff := least(p.backoff_max_ms,
+                           p.backoff_min_ms * (2::bigint ^ least(d.relay_hold_count, 16))::bigint);
+        UPDATE audit_relay.deliveries AS x
+        SET attempt_count = greatest(x.attempt_count - 1, 0),
+            relay_hold_count = x.relay_hold_count + 1,
+            last_error_code = p_code,
+            available_at = v_tick + v_backoff * interval '1 millisecond',
+            lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL
+        WHERE x.event_id = d.event_id;
+    ELSIF p_outage THEN
         SELECT g.success_generation INTO STRICT v_generation
         FROM audit_relay.delivery_progress AS g WHERE g.singleton;
         v_streak := d.outage_streak;
@@ -677,6 +708,7 @@ BEGIN
                            p.backoff_min_ms * (2::bigint ^ least(v_streak, 16))::bigint);
         UPDATE audit_relay.deliveries AS x
         SET attempt_count = greatest(x.attempt_count - 1, 0),
+            relay_hold_count = 0,
             outage_streak = v_streak,
             last_outage_generation = v_generation,
             last_outage_at = v_tick,
@@ -691,11 +723,12 @@ BEGIN
     ELSIF p_terminal OR d.attempt_count >= d.attempt_limit THEN
         UPDATE audit_relay.deliveries AS x
         SET last_error_code = p_code, quarantined_at = v_tick, quarantine_code = p_code,
+            relay_hold_count = 0,
             lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL
         WHERE x.event_id = d.event_id;
     ELSE
         UPDATE audit_relay.deliveries AS x
-        SET last_error_code = p_code,
+        SET last_error_code = p_code, relay_hold_count = 0,
             available_at = v_tick + p_backoff_ms * interval '1 millisecond',
             lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL
         WHERE x.event_id = d.event_id;
@@ -747,18 +780,21 @@ SET search_path = pg_catalog, pg_temp AS $mismatch_seq$
       AND d.source_mismatch_code = p_code
 $mismatch_seq$;
 
+-- Notes the Store position (seq, recovery epoch) of the recorded
+-- audit.integrity.source_mismatch_detected.
 CREATE FUNCTION audit_relay.note_mismatch(
-    p_event_id UUID, p_token UUID, p_code TEXT, p_seq BIGINT)
+    p_event_id UUID, p_token UUID, p_code TEXT, p_seq BIGINT, p_epoch BIGINT)
 RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $note_mismatch$
 BEGIN
     PERFORM set_config('synchronous_commit', 'on', TRUE);
     IF p_code IS NULL OR p_code NOT IN ('source_digest_mismatch', 'actor_mismatch')
-       OR p_seq IS NULL OR p_seq < 1 THEN
+       OR p_seq IS NULL OR p_seq < 1 OR p_epoch IS NULL OR p_epoch < 1 THEN
         RAISE EXCEPTION 'audit_relay.note_mismatch: invalid arguments' USING ERRCODE = '22023';
     END IF;
     UPDATE audit_relay.deliveries AS d
-    SET source_mismatch_code = p_code, source_mismatch_seq = p_seq
+    SET source_mismatch_code = p_code, source_mismatch_seq = p_seq,
+        source_mismatch_epoch = p_epoch
     WHERE d.event_id = p_event_id AND d.lease_token = p_token
       AND d.lease_expires_at > clock_timestamp() AND d.source_mismatch_seq IS NULL;
     RETURN FOUND;
@@ -778,7 +814,12 @@ SET search_path = pg_catalog, pg_temp AS $acked_head$
     LIMIT 1
 $acked_head$;
 
--- Content-free counts for health (design §12).
+-- Content-free counts for health (design §12). max_referenced_store_seq is,
+-- per Store recovery epoch, the highest Store seq the relay references
+-- (receipts, source mismatch records, replay and repair control events,
+-- receipts kept in history): the --relay-max-seq of begin_recovery_epoch
+-- for that epoch (design §11). max_acked_store_seq is the highest receipt
+-- of any epoch.
 CREATE FUNCTION audit_relay.status()
 RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $status$
@@ -787,7 +828,22 @@ DECLARE
     v JSONB;
     v_quarantined JSONB;
     v_registration JSONB;
+    v_referenced JSONB;
 BEGIN
+    SELECT coalesce(jsonb_object_agg(r.epoch::text, r.max_seq), '{}'::jsonb) INTO v_referenced
+    FROM (SELECT x.epoch, max(x.seq) AS max_seq
+          FROM (SELECT d.store_recovery_epoch AS epoch, d.store_seq AS seq
+                FROM audit_relay.deliveries AS d WHERE d.store_seq IS NOT NULL
+                UNION ALL
+                SELECT d.source_mismatch_epoch, d.source_mismatch_seq
+                FROM audit_relay.deliveries AS d WHERE d.source_mismatch_seq IS NOT NULL
+                UNION ALL
+                SELECT h.control_epoch, coalesce(h.control_seq, h.reconcile_seq)
+                FROM audit_relay.delivery_history AS h
+                UNION ALL
+                SELECT h.store_recovery_epoch, h.store_seq
+                FROM audit_relay.delivery_history AS h WHERE h.store_seq IS NOT NULL) AS x
+          GROUP BY x.epoch) AS r;
     SELECT coalesce(jsonb_object_agg(q.code, q.n), '{}'::jsonb) INTO v_quarantined
     FROM (SELECT d.quarantine_code AS code, count(*) AS n FROM audit_relay.deliveries AS d
           WHERE d.quarantined_at IS NOT NULL GROUP BY d.quarantine_code) AS q;
@@ -820,6 +876,9 @@ BEGIN
         'catalog_skew_held', count(*) FILTER (WHERE d.delivered_at IS NULL
                                               AND d.quarantined_at IS NULL
                                               AND d.last_error_code = 'relay_catalog_skew'),
+        'relay_held', count(*) FILTER (WHERE d.delivered_at IS NULL
+                                       AND d.quarantined_at IS NULL
+                                       AND d.relay_hold_count > 0),
         'quarantined', v_quarantined,
         'quarantined_total', count(*) FILTER (WHERE d.quarantined_at IS NOT NULL),
         'delivered', count(*) FILTER (WHERE d.delivered_at IS NOT NULL),
@@ -827,6 +886,7 @@ BEGIN
             extract(epoch FROM v_tick - min(d.registered_at) FILTER (
                 WHERE d.delivered_at IS NULL AND d.quarantined_at IS NULL))::double precision,
         'max_acked_store_seq', max(d.store_seq),
+        'max_referenced_store_seq', v_referenced,
         'replayed', coalesce(sum(d.replay_count), 0),
         'policy_revision', (SELECT p.revision FROM audit_relay.delivery_policy AS p
                             WHERE p.singleton),
@@ -846,16 +906,35 @@ BEGIN
 END
 $status$;
 
+-- Whether a relay trigger is installed as this migration defines it: the
+-- name, enabled, the expected function and timing/events/level (tgtype:
+-- ROW 1, BEFORE 2, INSERT 4, DELETE 8, UPDATE 16, TRUNCATE 32), no WHEN
+-- condition and no UPDATE OF column list. A trigger recreated with another
+-- function or narrower events is not installed.
 CREATE FUNCTION audit_relay.trigger_enabled(p_table REGCLASS, p_name TEXT)
 RETURNS BOOLEAN LANGUAGE sql STABLE
 SET search_path = pg_catalog, pg_temp AS $trigger_enabled$
-    SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger AS t
-                   WHERE t.tgrelid = p_table AND t.tgname = p_name
-                     AND t.tgenabled IN ('O', 'A'))
+    SELECT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_trigger AS t
+        JOIN (VALUES ('audit_relay_register', 'audit_relay.register_staged', 5),
+                     ('audit_relay_append_only', 'audit_relay.guard_staging', 27),
+                     ('audit_relay_no_truncate', 'audit_relay.guard_staging', 34),
+                     ('deliveries_guard', 'audit_relay.guard_deliveries', 31),
+                     ('deliveries_no_truncate', 'audit_relay.refuse_mutation', 34),
+                     ('history_guard', 'audit_relay.refuse_mutation', 27),
+                     ('history_no_truncate', 'audit_relay.refuse_mutation', 34))
+             AS x(name, function, kind) ON x.name = t.tgname
+        WHERE t.tgrelid = p_table AND t.tgname = p_name
+          AND t.tgenabled IN ('O', 'A')
+          AND t.tgfoid = pg_catalog.to_regprocedure(x.function || '()')
+          AND t.tgtype = x.kind
+          AND t.tgqual IS NULL
+          AND pg_catalog.cardinality(t.tgattr::pg_catalog.int2[]) = 0)
 $trigger_enabled$;
 
 -- Rows not yet delivered, projected without claiming: health forecasts the
--- quarantine codes after a backfill (design §5.1).
+-- quarantine codes after a backfill (design §5.1). The projection is staged
+-- content (as claim's), so only audit_relay_worker may call it.
 CREATE FUNCTION audit_relay.preview_pending(p_after UUID, p_limit INTEGER)
 RETURNS TABLE (event_id UUID, projection JSONB)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -1006,7 +1085,8 @@ BEGIN
     UPDATE audit_relay.deliveries AS x
     SET attempt_count = 0, attempt_limit = NULL, outage_streak = 0,
         last_outage_generation = NULL, quarantined_at = NULL, quarantine_code = NULL,
-        source_mismatch_code = NULL, source_mismatch_seq = NULL,
+        source_mismatch_code = NULL, source_mismatch_seq = NULL, source_mismatch_epoch = NULL,
+        relay_hold_count = 0,
         lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL,
         available_at = v_tick, replay_count = x.replay_count + 1
     WHERE x.event_id = d.event_id;
@@ -1052,15 +1132,21 @@ BEGIN
     SET delivered_at = v_tick, store_seq = p_store_seq,
         store_envelope_digest = p_envelope_digest, store_outcome = p_store_outcome,
         store_recovery_epoch = p_store_epoch, quarantined_at = NULL, quarantine_code = NULL,
-        lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL, outage_streak = 0
+        lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL, outage_streak = 0,
+        relay_hold_count = 0
     WHERE x.event_id = d.event_id;
     PERFORM set_config('audit_relay.transition', '', TRUE);
     RETURN TRUE;
 END
 $repair_ack_stored$;
 
--- Returns an acked delivery that the Store no longer holds (delivered_missing,
--- e.g. after a Store restore) to pending, preserving the receipt in history.
+-- Returns an acked delivery that the Store no longer holds (delivered_missing
+-- after a declared Store restore) to pending, preserving the receipt in
+-- history. Only a receipt of an older Store recovery epoch than the repair
+-- run's control event (p_control_epoch: the Store's current epoch) is reset:
+-- a receipt missing in its own epoch is an unreported regression (an
+-- in-place restore or deletion the fingerprint cannot see) that the relay's
+-- gate must report, never something to erase (design §11).
 CREATE FUNCTION audit_relay.repair_reset_missing(
     p_event_id UUID, p_expected_store_seq BIGINT, p_control_seq BIGINT, p_control_epoch BIGINT)
 RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE SECURITY DEFINER
@@ -1076,7 +1162,8 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
     SELECT * INTO d FROM audit_relay.deliveries AS x WHERE x.event_id = p_event_id FOR UPDATE;
-    IF NOT FOUND OR d.delivered_at IS NULL OR d.store_seq IS DISTINCT FROM p_expected_store_seq THEN
+    IF NOT FOUND OR d.delivered_at IS NULL OR d.store_seq IS DISTINCT FROM p_expected_store_seq
+       OR d.store_recovery_epoch >= p_control_epoch THEN
         RETURN FALSE;
     END IF;
     PERFORM audit_relay.write_history(d, 'repair_reset_missing', NULL, p_control_epoch,
@@ -1086,7 +1173,7 @@ BEGIN
     SET delivered_at = NULL, store_seq = NULL, store_envelope_digest = NULL,
         store_outcome = NULL, store_recovery_epoch = NULL, attempt_count = 0,
         attempt_limit = NULL, outage_streak = 0, last_outage_generation = NULL,
-        available_at = v_tick
+        relay_hold_count = 0, available_at = v_tick
     WHERE x.event_id = d.event_id;
     PERFORM set_config('audit_relay.transition', '', TRUE);
     RETURN TRUE;
@@ -1144,10 +1231,10 @@ WITH matrix(signature, rolname) AS (
         'audit_relay.claim(uuid,integer,bigint)',
         'audit_relay.renew(uuid,uuid,bigint)',
         'audit_relay.settle_success(uuid,uuid,bigint,bytea,text,bigint)',
-        'audit_relay.settle_failure(uuid,uuid,text,boolean,bigint,boolean,boolean)',
+        'audit_relay.settle_failure(uuid,uuid,text,boolean,bigint,boolean,boolean,boolean)',
         'audit_relay.reap_exhausted(integer)',
         'audit_relay.mismatch_seq(uuid,uuid,text)',
-        'audit_relay.note_mismatch(uuid,uuid,text,bigint)',
+        'audit_relay.note_mismatch(uuid,uuid,text,bigint,bigint)',
         'audit_relay.acked_head(bigint)',
         'audit_relay.status()',
         'audit_relay.policy()',
@@ -1165,7 +1252,6 @@ WITH matrix(signature, rolname) AS (
         'audit_relay.acked_head(bigint)',
         'audit_relay.status()',
         'audit_relay.policy()',
-        'audit_relay.preview_pending(uuid,integer)',
         'audit_relay.reconcile_page(uuid,integer)',
         'audit_relay.lookup_deliveries(uuid[])',
         'audit_relay.reconcile_history_page(bigint,integer)',
@@ -1194,6 +1280,18 @@ WITH matrix(signature, rolname) AS (
     )
     SELECT DISTINCT l.oid, l.rolname::text AS rolname FROM reach
     JOIN pg_roles AS l ON l.oid = reach.member WHERE l.rolcanlogin
+), capability_holders AS (
+    -- The capability roles and every login that holds one.
+    SELECT r.oid, r.rolname::text AS rolname FROM pg_roles AS r
+    WHERE r.rolname IN (SELECT c.rolname FROM capability AS c)
+    UNION
+    SELECT m.oid, m.rolname FROM capability_members AS m
+), this_db AS (
+    SELECT d.oid FROM pg_database AS d WHERE d.datname = current_database()
+), role_settings AS (
+    SELECT s.setrole, s.setdatabase, cfg
+    FROM pg_db_role_setting AS s, unnest(s.setconfig) AS cfg
+    WHERE s.setdatabase IN (0, (SELECT d.oid FROM this_db AS d))
 )
 SELECT 'owner_role_missing', 'audit_relay_owner'
 WHERE NOT EXISTS (SELECT 1 FROM owner_role)
@@ -1262,20 +1360,51 @@ SELECT 'trigger_missing', t.name FROM (VALUES
     ('audit_relay.delivery_history'::regclass, 'history_no_truncate')) AS t(rel, name)
 WHERE NOT audit_relay.trigger_enabled(t.rel, t.name)
 UNION ALL
+-- Each timeout must be set and non-zero (0 disables it); a per-database
+-- setting overrides the role-wide one.
 SELECT 'login_timeouts_missing', m.rolname FROM capability_members AS m
 WHERE EXISTS (
     SELECT 1 FROM unnest(ARRAY['statement_timeout', 'lock_timeout',
                                'idle_in_transaction_session_timeout']) AS setting(name)
     WHERE NOT EXISTS (
-        SELECT 1 FROM pg_db_role_setting AS s, unnest(s.setconfig) AS cfg
-        WHERE s.setrole = m.oid
-          AND s.setdatabase IN (0, (SELECT d.oid FROM pg_database AS d
-                                    WHERE d.datname = current_database()))
-          AND cfg LIKE setting.name || '=%'))
+        SELECT 1 FROM (
+            SELECT s.cfg FROM role_settings AS s
+            WHERE s.setrole = m.oid AND s.cfg LIKE setting.name || '=%'
+            ORDER BY s.setdatabase = 0
+            LIMIT 1) AS effective
+        WHERE effective.cfg ~ ('^' || setting.name || '=0*[1-9]')))
 UNION ALL
 SELECT 'login_privileged', m.rolname FROM capability_members AS m
 JOIN pg_roles AS r ON r.oid = m.oid
 WHERE r.rolsuper OR pg_has_role(m.oid, 'audit_relay_owner', 'MEMBER')
+UNION ALL
+-- Every other role holding the owner's rights (direct or inherited, e.g.
+-- the staging owner kept as a member after a non-superuser migrate)
+-- bypasses every guard (design §5.3: the Document owner and runtime roles
+-- get no rights on audit_relay). Superusers are outside this boundary.
+SELECT 'owner_member', r.rolname::text FROM pg_roles AS r, owner_role AS o
+WHERE r.oid <> o.oid AND NOT r.rolsuper AND pg_has_role(r.oid, o.oid, 'MEMBER')
+UNION ALL
+-- The staging table is read only through the definer functions (design
+-- §5.4): no capability role or capability login may read it directly
+-- (table or column grants, pg_read_all_data).
+SELECT 'staging_read', h.rolname FROM capability_holders AS h
+WHERE has_any_column_privilege(h.oid, 'public.audit_outbox_events'::regclass, 'SELECT')
+UNION ALL
+-- Nor read or write the relay tables (grants, pg_read_all_data,
+-- pg_write_all_data: a forged receipt needs no guard bypass).
+SELECT DISTINCT 'table_access', h.rolname FROM capability_holders AS h, pg_class AS c
+WHERE c.relnamespace = (SELECT s.oid FROM schema_oid AS s)
+  AND c.relkind IN ('r', 'p', 'v', 'm')
+  AND has_table_privilege(h.oid, c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE')
+UNION ALL
+-- Row security on the staging table hides rows from the definer functions
+-- (audit_relay_owner is NOBYPASSRLS): claim and reconcile would silently
+-- skip them. Forced row security on a relay table does the same.
+SELECT 'row_security', c.oid::regclass::text FROM pg_class AS c
+WHERE (c.oid = 'public.audit_outbox_events'::regclass
+       AND (c.relrowsecurity OR c.relforcerowsecurity))
+   OR (c.relnamespace = (SELECT s.oid FROM schema_oid AS s) AND c.relforcerowsecurity)
 $posture_check$;
 
 -- ---------------------------------------------------------------------------

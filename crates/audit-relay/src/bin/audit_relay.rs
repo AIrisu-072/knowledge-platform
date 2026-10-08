@@ -11,7 +11,10 @@
 //! Output is JSON on stdout; errors are codes on stderr. URLs and
 //! credentials are never printed. `run` uses the relay service's Store login
 //! (ingest + relay_control + reconciler); `health`, `reconcile` and `replay`
-//! are meant for the operator's Store login (relay_control + reconciler).
+//! are meant for the operator's Store login (relay_control + reconciler):
+//! `replay` and `reconcile --repair` refuse a Store login holding
+//! `audit_store_ingest`. `health --forecast` needs the worker's source login
+//! (the forecast projects staged content).
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -22,7 +25,7 @@ use audit_relay::health::{HealthOptions, health};
 use audit_relay::reconcile::Reconciler;
 use audit_relay::relay::{connect_checked, run};
 use audit_relay::replay::replay;
-use audit_relay::session::{Side, connect};
+use audit_relay::session::{Side, connect, refuse_service_store_login};
 use serde_json::json;
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -125,6 +128,11 @@ async fn command(args: &[String]) -> Result<(), String> {
                 connect_checked(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT, true)
                     .await
                     .map_err(|e| e.to_string())?;
+            if repair {
+                refuse_service_store_login(&connections.store_pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             let report = Reconciler::new(connections.source, Arc::new(connections.store))
                 .run(repair)
                 .await
@@ -139,6 +147,9 @@ async fn command(args: &[String]) -> Result<(), String> {
                 connect_checked(&env(SOURCE_URL)?, &env(STORE_URL)?, ADMIN_TIMEOUT, true)
                     .await
                     .map_err(|e| e.to_string())?;
+            refuse_service_store_login(&connections.store_pool)
+                .await
+                .map_err(|e| e.to_string())?;
             let outcome = replay(&connections.source, &connections.store, event_id)
                 .await
                 .map_err(|e| e.to_string())?;

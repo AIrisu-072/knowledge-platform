@@ -5,8 +5,13 @@
 //!   superuser and `audit_store_owner` members in `audit-store-postgres`).
 //! - The relay refuses when source and Store resolve to the same database
 //!   (`system_identifier` and `current_database()` both equal).
-//! - Connection URLs carrying `options` are refused, and every pooled
-//!   connection must report `synchronous_commit = on`.
+//! - Connection URLs carrying `options` (or `options[<setting>]` keys) and a
+//!   non-empty `PGOPTIONS` are refused, and every pooled connection must
+//!   report `synchronous_commit = on`.
+//! - `replay` and `reconcile --repair` refuse a Store login that holds
+//!   `audit_store_ingest` (the relay service's): the privileged control
+//!   event must name the operator who acted (design §6.4, §10.1). The Store
+//!   refuses to record a replay or a repair run from such a login as well.
 //!
 //! Errors carry codes only, never a URL or credential.
 
@@ -41,10 +46,17 @@ pub enum StartupError {
     SameDatabase,
     #[error("{side} connection URL must not carry `options`")]
     UrlOptions { side: Side },
+    #[error("PGOPTIONS must not be set (it sets session options on every connection)")]
+    EnvironmentOptions,
     #[error("{side} connection URL is not a postgres URL")]
     UrlInvalid { side: Side },
     #[error("{side} session does not run with synchronous_commit = on")]
     SynchronousCommitOff { side: Side },
+    #[error(
+        "replay and repair need the operator's own Store login, not one holding \
+         audit_store_ingest"
+    )]
+    ServiceStoreLogin,
     #[error("audit_relay posture is invalid ({count} violations: {codes})")]
     PostureInvalid { count: usize, codes: String },
     #[error("{side} database unavailable ({code})")]
@@ -83,14 +95,17 @@ impl StartupError {
 
 const SYNC_COMMIT_REFUSED: &str = "audit relay: synchronous_commit is not on";
 
-/// Refuses a URL whose query string sets `options` (which could, e.g., turn
-/// off synchronous_commit or change search_path for the session). The same
-/// check as the Store client (`audit_store_postgres::session::check_url`).
+/// Refuses a URL whose query string sets `options` or an
+/// `options[<setting>]` key (which could, e.g., turn off synchronous_commit,
+/// zero the role timeouts or change search_path for the session), and a set
+/// `PGOPTIONS`. The same checks as the Store client
+/// (`audit_store_postgres::session::check_url` / `check_environment`).
 pub fn check_url(side: Side, url: &str) -> Result<(), StartupError> {
     audit_store_postgres::session::check_url(url).map_err(|error| match error {
         audit_store_postgres::SessionError::UrlOptions => StartupError::UrlOptions { side },
         _ => StartupError::UrlInvalid { side },
-    })
+    })?;
+    audit_store_postgres::session::check_environment().map_err(|_| StartupError::EnvironmentOptions)
 }
 
 /// A short redacted label for logs: scheme and database name only.
@@ -213,6 +228,24 @@ pub async fn refuse_privileged_source(pool: &PgPool) -> Result<(), StartupError>
     Ok(())
 }
 
+/// Refuses a Store session that holds `audit_store_ingest` (directly or
+/// inherited) for `replay` and `reconcile --repair`.
+pub async fn refuse_service_store_login(store: &PgPool) -> Result<(), StartupError> {
+    let ingest: bool = sqlx::query_scalar(
+        "SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_roles \
+                                  WHERE rolname = 'audit_store_ingest') \
+                     THEN pg_catalog.pg_has_role(session_user, 'audit_store_ingest', 'MEMBER') \
+                     ELSE FALSE END",
+    )
+    .fetch_one(store)
+    .await
+    .map_err(|error| StartupError::from_sqlx(Side::Store, &error))?;
+    if ingest {
+        return Err(StartupError::ServiceStoreLogin);
+    }
+    Ok(())
+}
+
 /// `(system_identifier, current_database())` of a session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseIdentity {
@@ -300,6 +333,8 @@ mod tests {
             "postgres://u:p@h/db?sslmode=disable&OPTIONS=x",
             "postgres://u:p@h/db?%6Fptions=x",
             "postgresql://u:p@h/db?options",
+            "postgres://u:p@h/db?options[statement_timeout]=0",
+            "postgres://u:p@h/db?options%5Bsynchronous_commit%5D=off",
         ] {
             assert_eq!(
                 check_url(Side::Store, bad),

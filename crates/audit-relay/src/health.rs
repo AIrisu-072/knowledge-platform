@@ -1,11 +1,22 @@
 //! `audit-relay health` (design §12): content-free JSON that keeps the four
 //! kinds of evidence apart (design §1.7):
-//! - produced: staged rows and their registration,
-//! - delivered: acknowledged deliveries and the queue,
+//! - produced: staged rows and their registration (`staging_rows_hidden`
+//!   when more rows are registered than the relay can see, e.g. row security
+//!   on the staging table),
+//! - delivered: acknowledged deliveries and the queue; rows held by the
+//!   Store (`outage_held`) and by the relay itself (`relay_held`: catalog
+//!   skew, projection or source bookkeeping, with their own backoff) are
+//!   counted apart; `max_referenced_store_seq` is, per Store recovery epoch,
+//!   the highest Store seq the relay references,
 //! - stored: the Store head and gate (recovery, posture, regression of the
 //!   acknowledged head, and catalog skew: types the relay's catalog expects
-//!   that the Store has not registered, `store_catalog_skew`),
-//! - verified: the last origin=store `audit.integrity.verified`.
+//!   that the Store has not registered, `store_catalog_skew`), and
+//!   `relay_max_seq`: the relay's highest referenced seq in the Store's
+//!   current epoch, the `--relay-max-seq` input of `begin-recovery-epoch`,
+//! - verified: the Store's verification coverage (`store_status`): the
+//!   highest seq verified contiguously from genesis and the outcome, which
+//!   stays `violations` until a verification from genesis to its head is
+//!   `ok` again.
 //!
 //! Labels are fixed codes; no principal, resource or payload appears.
 
@@ -152,10 +163,12 @@ pub async fn health(
     if skew.as_ref().is_some_and(|missing| !missing.is_empty()) {
         alarms.push("store_catalog_skew".into());
     }
+    let referenced = &status["max_referenced_store_seq"];
     let stored = match &store_status {
         Ok(row) => {
             let gate = store_gate(source, store.as_ref(), row).await?;
             json!({
+                "relay_max_seq": referenced[row.recovery_epoch.to_string()],
                 "available": gate == "ok",
                 "gate": gate,
                 "head_seq": row.head_seq,
@@ -168,6 +181,7 @@ pub async fn health(
             })
         }
         Err(error) => json!({
+            "relay_max_seq": null,
             "available": false,
             "gate": outage_of(error).as_str(),
             "head_seq": null,
@@ -210,6 +224,11 @@ pub async fn health(
     if count(&status, "unregistered") > 0 {
         alarms.push("unregistered_rows".into());
     }
+    // Every registration references a staging row (FK): more registrations
+    // than visible staging rows means rows hidden from the relay.
+    if count(&status, "registered") > count(&status, "staged") {
+        alarms.push("staging_rows_hidden".into());
+    }
     if count(&status["registration"], "repair") > 0 {
         alarms.push("repair_registered".into());
     }
@@ -218,6 +237,9 @@ pub async fn health(
     }
     if count(&status, "outage_held") > 0 {
         alarms.push("outage_held".into());
+    }
+    if count(&status, "relay_held") > 0 {
+        alarms.push("relay_held".into());
     }
     if count(&status, "quarantined_total") > 0 {
         alarms.push("quarantined".into());
@@ -282,11 +304,13 @@ pub async fn health(
             "leased": count(&status, "leased"),
             "retry_waiting": count(&status, "retry_waiting"),
             "outage_held": count(&status, "outage_held"),
+            "relay_held": count(&status, "relay_held"),
             "catalog_skew_held": count(&status, "catalog_skew_held"),
             "quarantined": status["quarantined"],
             "quarantined_total": count(&status, "quarantined_total"),
             "oldest_pending_age_seconds": status["oldest_pending_age_seconds"],
             "max_acked_store_seq": status["max_acked_store_seq"],
+            "max_referenced_store_seq": referenced,
             "replayed": count(&status, "replayed"),
         },
         "stored": stored,

@@ -8,9 +8,17 @@
 //!
 //! Everything else holds the row as an outage that returns the attempt:
 //! transport, timeouts, any SQLSTATE, unknown outcomes, recovery mode,
-//! regression, posture, unregistered types, identity refusals. Relay catalog
-//! skew (`unknown_event_type` / `unknown_field`: a Document deploy ahead of
-//! the relay) is held as `relay_catalog_skew`, exempt from the streak.
+//! regression, posture, unregistered types, identity refusals. Relay-side
+//! holds (the Store was not reached): catalog skew (`unknown_event_type` /
+//! `unknown_field`: a Document deploy ahead of the relay) is held as
+//! `relay_catalog_skew`, an unparsable claim projection as
+//! `relay_projection_invalid` and a source failure during the mismatch
+//! bookkeeping as `relay_source_unavailable`. They return the attempt, are
+//! exempt from the streak, back off exponentially on the row's own hold
+//! count and are claimed after every row the relay has not held, so a
+//! backlog of held rows never starves deliverable rows. They neither open
+//! nor close the breaker (a half-open permit released after a relay hold
+//! admits the next claim).
 //!
 //! A source mismatch records `audit.integrity.source_mismatch_detected`
 //! first (once per event and code); when the Store cannot record it the row
@@ -142,12 +150,21 @@ impl AuditDeliveryHandler {
         self
     }
 
+    /// A Store outage (or unknown Store outcome): the attempt is returned.
     fn hold(&self, id: Uuid, token: Uuid, code: &str, countable: bool) -> DeliveryDecision {
         self.ledger.record(
             id,
             token,
             Note::Failure(FailureNote::outage(code, countable)),
         );
+        DeliveryDecision::Retryable(ErrorCode::DeliveryUnknown)
+    }
+
+    /// A relay-side hold: the attempt is returned and the row backs off on
+    /// its own hold count.
+    fn relay_hold(&self, id: Uuid, token: Uuid, code: &str) -> DeliveryDecision {
+        self.ledger
+            .record(id, token, Note::Failure(FailureNote::relay_hold(code)));
         DeliveryDecision::Retryable(ErrorCode::DeliveryUnknown)
     }
 
@@ -173,7 +190,7 @@ impl AuditDeliveryHandler {
         let token = context.outbox_token;
         let row: DocumentStagingProjection = match serde_json::from_value(envelope.payload) {
             Ok(row) => row,
-            Err(_) => return self.hold(id, token, PROJECTION_INVALID, false),
+            Err(_) => return self.relay_hold(id, token, PROJECTION_INVALID),
         };
         // A changed source row wins over every other finding, oversize included.
         if !row.source_intact {
@@ -194,7 +211,7 @@ impl AuditDeliveryHandler {
                             .await
                     }
                     RejectionCode::UnknownEventType | RejectionCode::UnknownField => {
-                        self.hold(id, token, CATALOG_SKEW, false)
+                        self.relay_hold(id, token, CATALOG_SKEW)
                     }
                     code => self.quarantine(id, token, code.as_str(), ErrorCode::InvalidEnvelope),
                 };
@@ -265,7 +282,7 @@ impl AuditDeliveryHandler {
                 .await;
         let recorded = match recorded {
             Ok(recorded) => recorded,
-            Err(_) => return self.hold(id, token, SOURCE_UNAVAILABLE, false),
+            Err(_) => return self.relay_hold(id, token, SOURCE_UNAVAILABLE),
         };
         if recorded.is_none() {
             let control = RelayControl::from(RelayControlKind::SourceMismatchDetected {
@@ -273,7 +290,7 @@ impl AuditDeliveryHandler {
                 code: mismatch,
             });
             let mut last_error = OutageCode::Other;
-            let mut seq = None;
+            let mut position = None;
             for attempt in 0..self.config.control_attempts.max(1) {
                 if attempt > 0 {
                     tokio::time::sleep(Duration::from_millis(200 * u64::from(attempt))).await;
@@ -285,27 +302,29 @@ impl AuditDeliveryHandler {
                 .await
                 {
                     Ok(Ok(receipt)) => {
-                        seq = Some(receipt.seq);
+                        position = Some((receipt.seq, receipt.recovery_epoch));
                         break;
                     }
                     Ok(Err(error)) => last_error = outage_of(&error),
                     Err(_) => last_error = OutageCode::Timeout,
                 }
             }
-            let Some(seq) = seq else {
+            let Some((seq, epoch)) = position else {
                 self.breaker.record_outage();
                 return self.hold(id, token, last_error.as_str(), false);
             };
+            // The Store position (seq, recovery epoch) of the record.
             let noted: Result<bool, sqlx::Error> =
-                sqlx::query_scalar("SELECT audit_relay.note_mismatch($1, $2, $3, $4)")
+                sqlx::query_scalar("SELECT audit_relay.note_mismatch($1, $2, $3, $4, $5)")
                     .bind(id)
                     .bind(token)
                     .bind(code)
                     .bind(seq)
+                    .bind(epoch)
                     .fetch_one(&self.source)
                     .await;
             if noted.is_err() {
-                return self.hold(id, token, SOURCE_UNAVAILABLE, false);
+                return self.relay_hold(id, token, SOURCE_UNAVAILABLE);
             }
         }
         self.quarantine(id, token, code, ErrorCode::InvalidEnvelope)

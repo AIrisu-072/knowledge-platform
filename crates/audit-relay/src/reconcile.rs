@@ -8,7 +8,13 @@
 //! `audit.reconciliation.completed` (`audit_core::ReconcileCounts`).
 //! `--repair` records it first and then applies only the allowed
 //! transitions:
-//! - delivered_missing → pending (history kept),
+//! - delivered_missing → pending (history kept), only for receipts of an
+//!   older Store recovery epoch than the Store's current one (after a
+//!   declared recovery). A receipt missing in its own epoch is an
+//!   unreported regression (an in-place restore or deletion the fingerprint
+//!   cannot see): it stays delivered_missing (an alarm) and is not reset, so
+//!   the relay's regression gate still reports it and a recovery epoch has to
+//!   be declared first (the SQL function enforces the same fence),
 //! - quarantined_stored → acked with the Store receipt (SQL fence:
 //!   `delivery_unknown_at_limit` only, commitment recomputed server-side),
 //! - unregistered → registered (`registration_kind = 'repair'`).
@@ -24,7 +30,8 @@
 //! `repair` in the same epoch. A row that does not resolve is
 //! `replay_record_lost` when its control seq lies in a lost range the Store
 //! declared for that epoch (`lookup_lost_ranges`), otherwise
-//! `unaudited_replay`.
+//! `unaudited_replay`. Store seqs are reused across recovery epochs, so a
+//! control event is identified by (epoch, seq).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -274,13 +281,13 @@ pub enum HistoryVerdict {
     Unaudited,
 }
 
-/// Resolves one history row (pure; `claimed` holds the replay control seqs
-/// already claimed by earlier rows of this run).
+/// Resolves one history row (pure; `claimed` holds the replay control
+/// events, as (epoch, seq), already claimed by earlier rows of this run).
 pub fn resolve_history(
     row: &HistoryRow,
     controls: &HashMap<i64, ControlReceiptRow>,
     lost: &[LostRange],
-    claimed: &mut HashSet<i64>,
+    claimed: &mut HashSet<(i64, i64)>,
 ) -> HistoryVerdict {
     let (seq, expected) = match row.transition.as_str() {
         "replay" => (row.control_seq, REPLAY_TYPE),
@@ -302,7 +309,7 @@ pub fn resolve_history(
                 code == Some(ReconcileMode::Repair.as_str())
             }
     });
-    if resolved && (expected != REPLAY_TYPE || claimed.insert(seq)) {
+    if resolved && (expected != REPLAY_TYPE || claimed.insert((row.control_epoch, seq))) {
         return HistoryVerdict::Resolved;
     }
     if lost
@@ -430,7 +437,13 @@ impl Reconciler {
                 let class = classify(row, receipt);
                 add(&mut counts, class);
                 match (class, receipt) {
-                    (Class::DeliveredMissing, _) => {
+                    // Only receipts of an older epoch than the Store's
+                    // current one (see the module documentation).
+                    (Class::DeliveredMissing, _)
+                        if row
+                            .store_recovery_epoch
+                            .is_some_and(|epoch| epoch < store_epoch) =>
+                    {
                         if let Some(store_seq) = row.store_seq {
                             repairs.push(Repair::ResetMissing {
                                 event_id: row.event_id,
@@ -788,7 +801,7 @@ mod tests {
         .collect();
         let lost = [lost_range(1, 20, 30)];
         let mut claimed = HashSet::new();
-        let verdict = |row: &HistoryRow, claimed: &mut HashSet<i64>| {
+        let verdict = |row: &HistoryRow, claimed: &mut HashSet<(i64, i64)>| {
             resolve_history(row, &controls, &lost, claimed)
         };
         assert_eq!(
