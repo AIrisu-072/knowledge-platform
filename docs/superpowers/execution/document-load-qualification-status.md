@@ -98,3 +98,7 @@ CIは終端14job中12成功（Rust test/static・両macOS parity等を含む）�
 14:13追補：Macでtest-only head a7f759feのactual REDを確認。固定Rust1.98.1/PDFiumでcompile成功、既存6成功・追加5失敗（UnsupportedSemanticConstruct）・既存raster子test1 ignore。旧main114の15合成PDFbaselineは10成功full evidence＋5拒否として別保持。これはLinux sandbox資格ではない。
 
 最初のgraphics incrementはfinite opaque path/default state・vector projection・矩形clipの包含証明を追加する。独立レビューでDefaultGray/RGB override、stroke-text状態の欠落、vectorで一部textを隠す順序曖昧性を発見し、限定拒否と回帰fixtureを追加した。文字/Formとvectorの交差は初段拒否。strokeはsegmentの保守的bounds、clipは任意epsilonなし、proof回数にも上限を設ける。固定PDFium151での新fixture実行と旧baseline比較は次Mac試行待ち。タグ15件はtest-onlyで、gs/tag/Diff製品対応は未実装。公式smallは引き続き失敗/未資格である。
+
+14:26追補：Mac整形/タグ試験compile修正head9494e68c3c313825a9e4d719e07eb24fa28fa191/tree59775dac38672156f648630b667314226d4832ebをfetch/fast-forwardで保持。変更は4file rustfmtとVecに対する誤った.expect除去のみ。タグは実compile後15件すべてBDC未対応のRED、paint16成功・既存child1 ignore、旧15baselineは全field/拒否完全一致。初回タグcompile失敗はbehavioral REDとして数えない。
+
+gs/page group4件、Diff page残余/新vector5件、native vector2件、派生cache4件をtest-onlyで追加準備。top-level残余は次のprivate seam試験で補う。Nodeは現在main114組合せでbuild成功、実行したload/runtime/API契約glob257件成功・skip0。旧259とはglobが異なるので増減比較しない。

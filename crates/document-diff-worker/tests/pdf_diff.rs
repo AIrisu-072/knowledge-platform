@@ -177,6 +177,69 @@ fn paint_order_pdf(text_before_image: bool) -> Vec<u8> {
     ])
 }
 
+#[test]
+fn bounded_vector_difference_is_partial_visual_at_the_affected_page() {
+    let base = bounded_vector_pdf(1, "Stable final page");
+    let target = bounded_vector_pdf(2, "Stable final page");
+    let result = compare(&base, &target);
+
+    assert_eq!(result.coverage, DiffCoverage::Partial);
+    assert!(result.changes.iter().any(|change| {
+        change.facet == "pdf_visual"
+            && change.operation == Some(document_diff_core::ChangeOperation::Modified)
+            && change.base == Some(SourceLocator::PdfPage { page: 1, region: None })
+            && change.target == Some(SourceLocator::PdfPage { page: 1, region: None })
+    }));
+    assert!(result.unverified_regions.iter().any(|region| {
+        region.base == Some(SourceLocator::PdfPage { page: 1, region: None })
+            && region.target == Some(SourceLocator::PdfPage { page: 1, region: None })
+            && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+    }));
+    assert!(!result.changes.iter().any(|change| change.facet == "pdf_text"));
+}
+
+#[test]
+fn bounded_vector_difference_with_another_pages_text_change_never_becomes_full() {
+    let base = bounded_vector_pdf(1, "Old final page");
+    let target = bounded_vector_pdf(2, "New final page");
+    let result = compare(&base, &target);
+
+    assert_eq!(result.coverage, DiffCoverage::Partial);
+    for (facet, page) in [("pdf_visual", 1), ("pdf_text", 3)] {
+        assert!(result.changes.iter().any(|change| {
+            change.facet == facet
+                && change.operation == Some(document_diff_core::ChangeOperation::Modified)
+                && change.base == Some(SourceLocator::PdfPage { page, region: None })
+                && change.target == Some(SourceLocator::PdfPage { page, region: None })
+        }), "missing {facet} change on page {page}: {:?}", result.changes);
+    }
+    assert!(result.unverified_regions.iter().any(|region| {
+        region.base == Some(SourceLocator::PdfPage { page: 1, region: None })
+            && region.target == Some(SourceLocator::PdfPage { page: 1, region: None })
+            && region.reason == UnverifiedReason::UnsupportedSemanticConstruct
+    }));
+}
+
+fn bounded_vector_pdf(line_width: u8, final_text: &str) -> Vec<u8> {
+    let first = format!(
+        "q {line_width} w 12 80 m 100 80 l S Q \
+         BT /F1 12 Tf 12 180 Td (Stable vector page) Tj ET"
+    );
+    let anchor = "BT /F1 12 Tf 12 180 Td (Unique unchanged anchor) Tj ET";
+    let last = format!("BT /F1 12 Tf 12 180 Td ({final_text}) Tj ET");
+    serialize_pdf(vec![
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec()),
+        (2, b"<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>".to_vec()),
+        (3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec()),
+        (4, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>".to_vec()),
+        (5, pdf_stream(b"", first.as_bytes())),
+        (6, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>".to_vec()),
+        (7, pdf_stream(b"", anchor.as_bytes())),
+        (8, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>".to_vec()),
+        (9, pdf_stream(b"", last.as_bytes())),
+    ])
+}
+
 fn pdf_stream(attributes: &[u8], data: &[u8]) -> Vec<u8> {
     let mut body = format!(
         "<< {} /Length {} >>\nstream\n",
