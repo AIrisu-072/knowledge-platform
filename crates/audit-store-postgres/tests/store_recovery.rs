@@ -606,6 +606,115 @@ async fn planned_move_is_an_epoch_with_an_empty_lost_range() {
     assert_store_conforms(&r.admin).await;
 }
 
+/// `audit-admin` against `url` (no migrate URL): `(exit code, JSON lines)`.
+fn audit_admin(url: &str, args: &[&str]) -> (Option<i32>, Vec<Value>, String) {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_audit-admin"))
+        .args(args)
+        .env("AUDIT_STORE_DATABASE_URL", url)
+        .env_remove("AUDIT_STORE_MIGRATE_DATABASE_URL")
+        .env_remove("PGOPTIONS")
+        .output()
+        .expect("run audit-admin");
+    let lines = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("json line"))
+        .collect();
+    (
+        output.status.code(),
+        lines,
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+/// A restore into a new database with neither an out-of-band checkpoint nor
+/// the relay's highest referenced seq (and no regression report): the Store
+/// cannot bound the lost range. The preview and the epoch record
+/// `lost_upper_known: false` (never NULL, which the catalog refuses), and
+/// `audit-admin begin-recovery-epoch` previews and starts the epoch and
+/// prints the record line.
+#[tokio::test]
+async fn a_restore_without_checkpoint_or_relay_seq_has_an_unknown_lost_bound() {
+    let db = TestDb::start().await;
+    if db.container.is_none() {
+        eprintln!("skipped: the restore test runs pg_dump inside the container");
+        return;
+    }
+    let cast = Cast::new(&db).await;
+    let store = cast.relay.store().await;
+    ingest(&store, 2).await;
+    dump_and_restore(&db, "/tmp/unknown.dump", Some("audit_store_unknown")).await;
+    let r = connect_restored(&db, &cast, "audit_store_unknown").await;
+    sqlx::raw_sql(sqlx::AssertSqlSafe(PRIVILEGES_SQL))
+        .execute(&r.admin)
+        .await
+        .expect("privileges");
+    let (restored_head, restored_chain, _) = head(&r.admin).await;
+    let status = r.verifier.store_status().await.expect("status");
+    assert!(status.recovery_mode && !status.recovery_pending);
+
+    let preview = r
+        .maintainer
+        .preview_recovery_epoch(None, None)
+        .await
+        .expect("preview without checkpoint or relay seq");
+    assert_eq!(
+        (
+            preview.restored_head_seq,
+            preview.lost_upper_seq,
+            preview.lost_upper_known,
+            preview.classification.as_str(),
+            preview.checkpoint_classification.as_deref(),
+        ),
+        (restored_head, restored_head, false, "restore", None)
+    );
+
+    let url = db.url(&cast.maintainer.role, "audit_store_unknown");
+    let (code, previewed, stderr) = audit_admin(&url, &["begin-recovery-epoch", "--preview"]);
+    assert_eq!(code, Some(0), "preview: {stderr}");
+    assert_eq!(previewed.len(), 2, "the preview prints the record line");
+    assert_eq!(previewed[0]["lost_upper_known"], json!(false));
+    assert_eq!(previewed[1]["format"], "kp-audit-recovery-records-v1");
+    let expect = |key: &str| match &previewed[0][key] {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    let (old_epoch, head_seq, head_chain) = (
+        expect("old_epoch"),
+        expect("restored_head_seq"),
+        expect("restored_head_chain"),
+    );
+    assert_eq!(head_chain, hex(&restored_chain));
+    let lost_upper = expect("lost_upper_seq");
+    let (code, started, stderr) = audit_admin(
+        &url,
+        &[
+            "begin-recovery-epoch",
+            "--expect-old-epoch",
+            &old_epoch,
+            "--expect-head-seq",
+            &head_seq,
+            "--expect-head-chain",
+            &head_chain,
+            "--expect-lost-upper",
+            &lost_upper,
+        ],
+    );
+    assert_eq!(code, Some(0), "start: {stderr}");
+    assert_eq!(started.len(), 2, "the epoch prints the record line");
+    assert_eq!(started[1], previewed[1], "the Store confirmed the record");
+    assert_eq!(started[0]["lost_upper_known"], json!(false));
+
+    let details = &control_events(&r.admin, "audit.recovery.epoch_started").await[0].1;
+    assert_eq!(details["lost_upper_known"], json!(false));
+    assert_eq!(details["lost_upper_seq"], json!(restored_head));
+    assert_eq!(details["classification"], json!("restore"));
+    assert_eq!(details["checkpoint_classification"], Value::Null);
+    assert_eq!(details["relay_max_seq"], Value::Null);
+    // Every control event, including this epoch_started, conforms to the
+    // catalog (lost_upper_known is a required boolean).
+    assert_store_conforms(&r.admin).await;
+}
+
 #[tokio::test]
 async fn a_regression_report_enters_recovery_until_a_regression_epoch() {
     let db = TestDb::start().await;

@@ -3650,8 +3650,11 @@ BEGIN
     v_upper := greatest(v_head, coalesce(p_checkpoint_seq, 0), coalesce(p_relay_max_seq, 0),
                         CASE WHEN h.pending_reason = 'regression'
                              THEN coalesce(h.pending_seq, 0) ELSE 0 END);
+    -- Known only from a checkpoint, the relay's highest referenced seq or a
+    -- regression report. pending_reason is NULL after a restore into a new
+    -- database (fingerprint mismatch): never let NULL leak into the record.
     v_known := v_has_checkpoint OR p_relay_max_seq IS NOT NULL
-               OR h.pending_reason = 'regression';
+               OR coalesce(h.pending_reason = 'regression', FALSE);
     v_class := CASE WHEN h.pending_reason = 'regression' THEN 'regression'
                     WHEN v_cp_class = 'match' AND v_upper = v_head THEN 'planned_move'
                     ELSE 'restore' END;
