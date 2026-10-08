@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex};
 use document_domain::DocumentId;
 use search_application::SearchError;
 use search_application::graph_generation::{
-    BuildGuardHandle, ClosureBasis, GraphBatchCursor, GraphBatchPhase, GraphGenerationReceipt,
-    GraphIncrementalDelta, GraphRelationClosureProof, GraphResourceRecord, GraphSourceMapping,
+    BuildGuardHandle, GraphBuildRef, GraphGenerationReceipt, GraphResourceRecord,
+    GraphSourceMapping,
 };
 use search_application::indexing_service::DocumentSourceEvent;
 use search_application::ports::{
@@ -37,9 +37,7 @@ use search_application::ports::{
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection,
 };
-use search_application::search_core::id::{
-    ProjectionGenerationId, RelationId, ResourceId, SourceId,
-};
+use search_application::search_core::id::{ProjectionGenerationId, ResourceId, SourceId};
 use search_application::search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
@@ -115,139 +113,6 @@ impl Registered {
             Self::Event(handle) => handle.graph_target(),
             Self::Incremental(_) => None,
         }
-    }
-}
-
-/// Graph rows copied from the base per batch.
-const GRAPH_COPY_BATCH: u32 = 1_000;
-
-fn without_relations(record: &GraphResourceRecord) -> GraphResourceRecord {
-    GraphResourceRecord {
-        attached_relations: Vec::new(),
-        ..record.clone()
-    }
-}
-
-/// The closure-proved delta from a base Graph to the target plan. Every
-/// Resource whose own row or any incident relation changed is affected, and
-/// every relation incident to an affected Resource is removed from the copy
-/// and written again when it remains, so the closure holds by construction.
-fn incremental_delta(
-    base: &GraphGenerationReceipt,
-    base_records: &[GraphResourceRecord],
-    base_relations: &[TypedRelationInstance],
-    target_snapshot: &str,
-    plan: &GraphPlan,
-) -> GraphIncrementalDelta {
-    let old: BTreeMap<RelationId, &TypedRelationInstance> = base_relations
-        .iter()
-        .map(|relation| (relation.relation_id, relation))
-        .collect();
-    let new: BTreeMap<RelationId, &TypedRelationInstance> = plan
-        .relations
-        .iter()
-        .map(|relation| (relation.relation_id, relation))
-        .collect();
-    let touched: BTreeSet<RelationId> = old
-        .iter()
-        .filter(|(id, relation)| new.get(id) != Some(relation))
-        .map(|(id, _)| *id)
-        .chain(new.keys().filter(|id| !old.contains_key(id)).copied())
-        .collect();
-    let participants = |relation: &TypedRelationInstance| -> Vec<ResourceId> {
-        relation
-            .participants
-            .iter()
-            .map(|participant| participant.resource_ref)
-            .collect()
-    };
-    let in_touched: BTreeSet<ResourceId> = touched
-        .iter()
-        .flat_map(|id| {
-            old.get(id)
-                .map(|relation| participants(relation))
-                .into_iter()
-                .chain(new.get(id).map(|relation| participants(relation)))
-                .flatten()
-        })
-        .collect();
-    let base_rows: BTreeMap<ResourceId, GraphResourceRecord> = base_records
-        .iter()
-        .map(|record| (record.resource_ref, without_relations(record)))
-        .collect();
-    let target_ids: BTreeSet<ResourceId> = plan
-        .records
-        .iter()
-        .map(|record| record.resource_ref)
-        .collect();
-    let changed_resources: Vec<GraphResourceRecord> = plan
-        .records
-        .iter()
-        .filter(|record| {
-            base_rows.get(&record.resource_ref) != Some(&without_relations(record))
-                || in_touched.contains(&record.resource_ref)
-        })
-        .cloned()
-        .collect();
-    let retired_resources: Vec<ResourceId> = base_rows
-        .keys()
-        .filter(|id| !target_ids.contains(id))
-        .copied()
-        .collect();
-    let affected: BTreeSet<ResourceId> = changed_resources
-        .iter()
-        .map(|record| record.resource_ref)
-        .chain(retired_resources.iter().copied())
-        .collect();
-    let incident: BTreeSet<RelationId> = old
-        .iter()
-        .filter(|(_, relation)| {
-            relation
-                .participants
-                .iter()
-                .any(|participant| affected.contains(&participant.resource_ref))
-        })
-        .map(|(id, _)| *id)
-        .collect();
-    let replacement_relations: Vec<TypedRelationInstance> = new
-        .iter()
-        .filter(|(id, _)| touched.contains(id) || incident.contains(id))
-        .map(|(_, relation)| (*relation).clone())
-        .collect();
-    let changed_relation_ids: Vec<RelationId> = replacement_relations
-        .iter()
-        .map(|relation| relation.relation_id)
-        .filter(|id| old.contains_key(id))
-        .collect();
-    let retired_relation_ids: Vec<RelationId> = old
-        .keys()
-        .filter(|id| !new.contains_key(id))
-        .copied()
-        .collect();
-    let old_relation_ids: BTreeSet<RelationId> = incident
-        .iter()
-        .chain(&changed_relation_ids)
-        .chain(&retired_relation_ids)
-        .copied()
-        .collect();
-    GraphIncrementalDelta {
-        proof: GraphRelationClosureProof {
-            base_snapshot: base.source_snapshot.clone(),
-            target_snapshot: target_snapshot.to_owned(),
-            affected_resources: affected.into_iter().collect(),
-            old_relation_ids: old_relation_ids.into_iter().collect(),
-            new_relation_ids: replacement_relations
-                .iter()
-                .map(|relation| relation.relation_id)
-                .collect(),
-            basis: ClosureBasis::CompleteEnumeration,
-        },
-        changed_resources,
-        retired_resources,
-        changed_relation_ids,
-        retired_relation_ids,
-        replacement_relations,
-        target_source_mapping_digest: plan.mapping_digest.clone(),
     }
 }
 
@@ -397,19 +262,13 @@ impl PgDocumentIndexRuntime {
         Ok(true)
     }
 
-    /// The READY current base and its Graph rows, when the target may be
-    /// built incrementally from it.
+    /// The READY current base's Graph receipt, when the target may be built
+    /// incrementally from it. Nothing is copied from the base (stage 4), so
+    /// only its receipt is read.
     async fn incremental_base(
         &self,
         key: ProjectionGenerationKey,
-    ) -> Result<
-        Option<(
-            GraphGenerationReceipt,
-            Vec<GraphResourceRecord>,
-            Vec<TypedRelationInstance>,
-        )>,
-        SearchError,
-    > {
+    ) -> Result<Option<GraphGenerationReceipt>, SearchError> {
         if self.next_full.swap(false, Ordering::SeqCst) {
             return Ok(None);
         }
@@ -420,20 +279,18 @@ impl PgDocumentIndexRuntime {
             return Ok(None);
         }
         let manifest = self.stored_manifest(base).await?;
-        // A base whose Graph no longer recovers is rebuilt in full.
         Ok(PostgresGraphStore::new(self.pool.clone())
-            .recover_rows(base, &manifest.digest)
+            .ready_receipt(base, &manifest.digest)
             .await
             .ok())
     }
 
-    /// Copies the base, applies the delta and settles the bundle READY.
+    /// Stages the target Graph as segments and settles the bundle READY.
     #[allow(clippy::too_many_arguments)]
     async fn finish_incremental(
         &self,
         handle: BuildGuardHandle,
         manifest: &ProjectionGenerationManifest,
-        delta: &GraphIncrementalDelta,
         lexical: ArtifactReceipt,
         resources: Vec<CompiledResourceProjection>,
         registry: SemanticRegistrySnapshot,
@@ -442,44 +299,14 @@ impl PgDocumentIndexRuntime {
         coverage: BodyCoverageArtifact,
     ) -> Result<(VerifiedBundle, BodyUnitManifest), SearchError> {
         let key = manifest.key();
-        let store = PostgresGraphStore::new(self.pool.clone());
-        let mut position = GraphBatchCursor {
-            target_key: key,
-            phase: GraphBatchPhase::Copy,
-            committed_sequence: 0,
-        };
-        loop {
-            let next = store
-                .copy_batch(&handle, &position, GRAPH_COPY_BATCH)
-                .await
-                .map_err(|error| failed("graph copy", error))?;
-            if next == position {
-                break;
-            }
-            position = next;
-        }
-        store
-            .verify_copy(&handle)
-            .await
-            .map_err(|error| failed("graph copy verification", error))?;
-        let size = delta.changed_resources.len()
-            + delta.retired_resources.len()
-            + delta.changed_relation_ids.len()
-            + delta.retired_relation_ids.len()
-            + delta.replacement_relations.len();
-        store
-            .apply_delta_batch(
-                &handle,
-                delta,
-                &GraphBatchCursor {
-                    target_key: key,
-                    phase: GraphBatchPhase::Delta,
-                    committed_sequence: 0,
-                },
-                u32::try_from(size.max(1)).map_err(|_| failed("graph delta size", size))?,
+        PostgresGraphStore::new(self.pool.clone())
+            .stage_segments(
+                &GraphBuildRef::Incremental(handle),
+                &graph.records,
+                &graph.relations,
             )
             .await
-            .map_err(|error| failed("graph delta", error))?;
+            .map_err(|error| failed("graph stage", error))?;
         let artifacts = self.lexical();
         artifacts
             .finalize(
@@ -559,14 +386,7 @@ impl PgDocumentIndexRuntime {
             manifest: manifest.clone(),
             expected_snapshot: manifest.source_snapshot.clone(),
         };
-        if let Some((base, base_records, base_relations)) = self.incremental_base(key).await? {
-            let delta = incremental_delta(
-                &base,
-                &base_records,
-                &base_relations,
-                &manifest.source_snapshot,
-                &graph,
-            );
+        if let Some(base) = self.incremental_base(key).await? {
             let registered = match &delivery {
                 Some((event, fence)) => {
                     self.registrar
@@ -601,7 +421,6 @@ impl PgDocumentIndexRuntime {
                         .finish_incremental(
                             handle,
                             &manifest,
-                            &delta,
                             lexical,
                             resources,
                             registry,
@@ -693,7 +512,11 @@ impl PgDocumentIndexRuntime {
             .graph_target()
             .ok_or_else(|| failed("graph target", key))?;
         PostgresGraphStore::new(self.pool.clone())
-            .stage_full(&target, &graph.records, &graph.relations)
+            .stage_segments(
+                &GraphBuildRef::Full(target),
+                &graph.records,
+                &graph.relations,
+            )
             .await
             .map_err(|error| failed("graph stage", error))?;
         let coordinator =

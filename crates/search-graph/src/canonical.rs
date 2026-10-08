@@ -416,11 +416,14 @@ fn validate_attachments(
             }
         }
     }
+    let by_ref: BTreeMap<ResourceId, &GraphResourceRecord> = resources
+        .iter()
+        .map(|record| (record.resource_ref, record))
+        .collect();
     for (relation_id, members) in participants {
         for resource in members.intersection(&present) {
-            let record = resources
-                .iter()
-                .find(|record| record.resource_ref == *resource)
+            let record = by_ref
+                .get(resource)
                 .ok_or_else(|| invalid("participant Resource missing"))?;
             if !record
                 .attached_relations
@@ -540,4 +543,45 @@ pub fn canonical_graph_digest(
         out.frame(bytes)?;
     }
     Ok(sha256_text(DOMAIN, &out.0))
+}
+
+/// `sha256:` digest of one stored segment: its Source, every Resource row
+/// (without relation attachments) and every relation, in key order.
+pub fn segment_digest(
+    source: SourceId,
+    resources: &[GraphResourceRecord],
+    relations: &[TypedRelationInstance],
+) -> Result<String, GraphError> {
+    let mut canonical_resources = BTreeMap::new();
+    for record in resources {
+        if !record.attached_relations.is_empty() {
+            return Err(invalid("segment Resource carries attachments"));
+        }
+        if canonical_resources
+            .insert(record.resource_ref, canonical_resource(record)?)
+            .is_some()
+        {
+            return Err(invalid("duplicate Resource"));
+        }
+    }
+    let mut canonical_relations = BTreeMap::new();
+    for relation in relations {
+        if canonical_relations
+            .insert(relation.relation_id, canonical_relation(relation)?)
+            .is_some()
+        {
+            return Err(invalid("duplicate relation ID"));
+        }
+    }
+    let mut out = Canonical::default();
+    out.uuid(source.as_uuid());
+    out.count(canonical_resources.len())?;
+    for bytes in canonical_resources.values() {
+        out.frame(bytes)?;
+    }
+    out.count(canonical_relations.len())?;
+    for bytes in canonical_relations.values() {
+        out.frame(bytes)?;
+    }
+    Ok(sha256_text(b"search-graph:segment-v1\0", &out.0))
 }

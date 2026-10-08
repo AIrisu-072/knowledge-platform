@@ -593,7 +593,9 @@ impl PgVectorIndex {
         let mut receipt = Vec::new();
         let mut count = 0i64;
         for digest in segments {
-            let (sum, entries) = sums.get(digest).ok_or_else(|| unavailable("missing segment"))?;
+            let (sum, entries) = sums
+                .get(digest)
+                .ok_or_else(|| unavailable("missing segment"))?;
             receipt.extend_from_slice(sum.as_bytes());
             receipt.push(b'\n');
             count += entries;
@@ -691,7 +693,10 @@ impl PgVectorIndex {
                     let task = self.detached();
                     let digest = index_digest.to_owned();
                     tokio::spawn(async move {
-                        let result = task.load_now(&digest).await.map_err(|error| error.to_string());
+                        let result = task
+                            .load_now(&digest)
+                            .await
+                            .map_err(|error| error.to_string());
                         if let Ok(mut loading) = task.loading.lock()
                             && loading.as_ref().is_some_and(|(at, _)| *at == digest)
                         {
