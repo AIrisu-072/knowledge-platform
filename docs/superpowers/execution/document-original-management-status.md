@@ -24,6 +24,8 @@ Node 24.21.0、既存の固定依存を専用worktreeにhardlinkコピーして�
 - 実runtimeの型検査・5試験収集・記録抑止source試験15件成功。実browser実行の成功を意味しない。
 - registration/schema/SDKの独立レビューでP2を2件検出し修正、再レビューGO。Rust全体の独立レビューは親の実施待ち。
 
+Rust/DBのRED・GREENとcontainer確認は担当agentのツール出力に記録したが、生ログファイルは保存していない。独立レビューで原ファイルを読み直せる証拠とは区別する。DB固有のREDは未記録。共有targetは `/Users/airisu/Documents/Codex/2026-10-08/task/knowledge-platform/target`、jobs2。最終focusedは `cargo test -p document-application --test create_document_contract --test create_outcome_validation --test commit_outcome_identity -p document-api-http --test create_http`、実DBは `cargo test -p document-repository-postgres --test initial_multiple_originals -- --nocapture`（`initial_multiple_transaction_full_recovery_and_adapter_restart`）。再現のための合成fixtureはrepositoryに保存しているが、生ログを後から作り直して元実行の証拠とはしない。
+
 DBは所有する使い捨てcontainerだけを使用。最終container `18c43935…` は `127.0.0.1:32769` に束縛し、試験後の削除を確認。既存の利用者containerやセキュリティ設定を変更していない。
 
 ## 次のexact actionと未実施
