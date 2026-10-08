@@ -141,9 +141,9 @@ mise run desktop:gui:e2e
 
 ### 証拠とした実行
 
-- 2026-10-07 23:42–23:49 UTC、`run-XbKm2e` と `run-NKcwUg`（連続2回）：commit `6504778`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも26シナリオ・217項目がすべて成功し、`qualifying: true`。217項目の内訳（report.jsonの `checkCounts`）は、画面103（X操作を含む）、WebDriver 2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8です。離脱確認の判定に使った画面中央の画素の差は、確認の表示中が23,443、取り消し後が0でした。
+- 2026-10-07 23:59〜10-08 00:06 UTC、`run-PxtF12` と `run-0PfXNH`（連続2回）：mainの取り込み（PR #98・#106）後のcommit `b9b492d`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも26シナリオ・219項目がすべて成功し、`qualifying: true`。219項目の内訳（report.jsonの `checkCounts`）は、画面105（X操作を含む）、WebDriver 2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8です。取り込み前のcommit `6504778` でも連続2回成功しています（`run-XbKm2e`・`run-NKcwUg`、217項目）。離脱確認の判定に使った画面中央の画素の差は、確認の表示中が23,443、取り消し後が0でした。
 - 実行の手順：この環境のmiseはrepositoryの設定を信頼済みにしていないため、`mise run desktop:gui:e2e` と同じ手順（画面の本番build、shellのbuild、backendのbuild、`node apps/desktop/e2e/run.mjs`）を、固定版のNode 24.21.0（miseで取得）・Rust 1.98.1・pnpm 12.4.1で個別に実行しました。
-- 実行ファイル（debug build）のsha256は `47a6e75bf2e082d697cbfb17fe01cb3f57344915723ac1c5ed9fd84e4187e4c7`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、PostgreSQL 18.6。
+- 実行ファイル（debug build）のsha256は `302a21f7f198488935d951fb4a17c6e82506720cb6232ea608fe368910fd7f5b`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、PostgreSQL 18.6。
 - 参考（証跡の条件を満たさない実行。修正前の動作で場面が失敗することの確認）：
   - `run-9ZrhTA`：Work APIの専用headerを落とす許可リストのshell（実行ファイルを差し替え、sha256 `7211fcfedd1e566f8a30f84dcc849a73aaa3a0f58b6d4944ed82cae67b423532`、絞り込み実行）で、タスク画面の作業ファイルの場面は保存が完了せず失敗。画面には一般的な失敗の表示だけが出て、backendの記録にも422は残らないため、原因（headerの欠落による422）は、shellの試験（headerが届かない）とserverの試験（headerが無ければ422）からの推定です。
   - `run-AR2LPn`：閉じる処理を外したshell（実行ファイルを差し替え、sha256 `f5b8b9893d2d889f95bffab648e545a95a5d9300055f2a189e851c52500ea6c7`、絞り込み実行）で、保存の処理中に閉じる要求を送るとアプリがそのまま終了し、閉じる操作の場面が失敗。

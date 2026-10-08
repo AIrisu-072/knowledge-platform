@@ -9,9 +9,10 @@
 - 画面：作成フォームが状況変更を説明したら、一覧側の同じ説明は消す（再試行の成功後も残っていた）。shell試験：API定義のheader一致を `$ref`・path単位・引用符付きYAMLまで確認。
 - 実GUIの証跡：確認手段の分類の残り（WebDriver、IPC、scriptによる操作）を修正し、「X操作」を追加。タスク画面の接続先未設定時の表示を追加。修正前のshellでの失敗の確認は、証跡の条件を満たさない参考の実行として記録。実行は固定版のNode 24.21.0で、`mise run desktop:gui:e2e` と同じ手順（画面の本番build、shellのbuild、backendのbuild、harness）を個別に実行した（この環境のmiseはrepositoryの設定を信頼済みにしていないため）。
 - 検証（ローカル、Linux）：
-  - 実GUI：`run-XbKm2e`・`run-NKcwUg`（commit `6504778`、Node 24.21.0、連続2回）で26シナリオ・217項目がすべて成功、`qualifying: true`（画面103、WebDriver 2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8）。参考：閉じる処理を外したshellでは閉じる操作の場面が失敗（`run-AR2LPn`）。
+  - mainの更新（PR #98 監査基盤、PR #106 文書の自動既読）を `b4741fe` で取り込み（衝突なし）。新しい既読APIはGET・POSTのみで専用headerは無い。取り込んだ自動既読と「未読に戻す」を実GUIの起動の場面に追加（`b9b492d`）。
+  - 実GUI：`run-XbKm2e`・`run-NKcwUg`（commit `6504778`、Node 24.21.0、連続2回、217項目）と、取り込み後の `run-PxtF12`・`run-0PfXNH`（commit `b9b492d`、Node 24.21.0、連続2回）で26シナリオがすべて成功、`qualifying: true`（後者は219項目：画面105、WebDriver 2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8）。参考：閉じる処理を外したshellでは閉じる操作の場面が失敗（`run-AR2LPn`）。
   - shell：単体28件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`。architecture-lint成功。
-  - 画面：全69 suites／1660件、型検査、本番build（Node 24.21.0）。
+  - 画面：取り込み後に全73 suites／1736件、型検査、本番build（Node 24.21.0）。
 - 未検証：Windows実機・WebView2・MSVC build（依頼者。確認項目7に閉じる操作を追加）、Windows版broker（未実装）、Windowsでの閉じる操作の離脱確認（未実装）、macOS、手順書の「Linuxで未確認」の項目。
 - 依頼者の判断事項：デスクトップ版の入口（タスク・検索の画面への導線、または起動時の画面）。
 - 次のexact action：push → exact-head CI → Draft解除と統合 → 統合後のmain CIを確認 → 最終報告。
