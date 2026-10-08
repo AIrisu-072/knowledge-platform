@@ -8,7 +8,7 @@
 - 文書が「離れるを選んだときだけ閉じる」と言い過ぎていたため、ページが応答しない・processが無いときはWebKitが確認なしで閉じることを明記。
 - 実GUI：閉じる操作の場面を、WebDriverを使わずに起動したアプリで、何も無ければ確認なしに終了／処理中なら確認が出る／確認中に閉じる要求を重ねても閉じない／Escapeで残る／「閉じる」で終了、の順に確認。processの終了の判定は「プロセス：」に分類。既読の確認は表示が「既読」と一致するまで待つよう修正。
 - 検証（ローカル、Linux）：
-  - 実GUI：`run-kSJXXO`・`run-JAkXJd`（commit `86f187b`、Node 24.21.0、連続2回）で26シナリオ・220項目がすべて成功、`qualifying: true`（画面104、WebDriver 2、プロセス2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8）。
+  - 実GUI：`run-kSJXXO`・`run-JAkXJd`（commit `86f187b`、Node 24.21.0、連続2回）と、mainのPR #107を取り込んだ後の `run-SKJP09`・`run-8qDyRU`（commit `f20353e`、連続2回）で26シナリオ・220項目がすべて成功、`qualifying: true`（画面104、WebDriver 2、プロセス2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8）。
   - shell：単体28件・設定固定6件・transport shim 5件、clippy -D warnings、fmt、desktopの `cargo deny check`。architecture-lint成功。
   - 画面：全73 suites／1737件、型検査、本番build（Node 24.21.0）。
 - 次のexact action：push → exact-head CI → Draft解除と統合 → 統合後のmain CIを確認 → 最終報告。

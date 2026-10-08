@@ -141,7 +141,7 @@ mise run desktop:gui:e2e
 
 ### 証拠とした実行
 
-- 2026-10-08 05:13–05:21 UTC、`run-kSJXXO` と `run-JAkXJd`（連続2回）：commit `86f187b`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、どちらも26シナリオ・220項目がすべて成功し、`qualifying: true`。220項目の内訳（report.jsonの `checkCounts`）は、画面104（X操作を含む）、WebDriver 2、プロセス2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8です。それ以前のcommit `b9b492d`（`run-PxtF12`・`run-0PfXNH`）と `6504778`（`run-XbKm2e`・`run-NKcwUg`）でも連続2回成功していますが、閉じる操作の確認はshellの確認ダイアログに変える前のものです。
+- 2026-10-08 05:13–05:21 UTC、`run-kSJXXO` と `run-JAkXJd`（連続2回）：commit `86f187b`、およびmainの取り込み（PR #107、実GUI確認のbackendが使う文書検査workerの修正）後の 05:46–05:54 UTC、`run-SKJP09` と `run-8qDyRU`（連続2回）：commit `f20353e`（作業ツリーはcommit済み、絞り込み無し、実行ファイルの差し替え無し）で、いずれも26シナリオ・220項目がすべて成功し、`qualifying: true`。220項目の内訳（report.jsonの `checkCounts`）は、画面104（X操作を含む）、WebDriver 2、プロセス2、ページのscript 40、IPC 39、IPC・ディスク2、ディスク20、ログ3、準備8です。それ以前のcommit `b9b492d`（`run-PxtF12`・`run-0PfXNH`）と `6504778`（`run-XbKm2e`・`run-NKcwUg`）でも連続2回成功していますが、閉じる操作の確認はshellの確認ダイアログに変える前のものです。
 - 実行の手順：この環境のmiseはrepositoryの設定を信頼済みにしていないため、`mise run desktop:gui:e2e` と同じ手順（画面の本番build、shellのbuild、backendのbuild、`node apps/desktop/e2e/run.mjs`）を、固定版のNode 24.21.0（miseで取得）・Rust 1.98.1・pnpm 12.4.1で個別に実行しました。
 - 実行ファイル（debug build）のsha256は `d8a0d78be9129c167dfd048937715d95591e262df9f62e3c627881bc1ef8c266`。WebKitGTK 2.52.6、webkit2gtk-driver 2.52.6-0ubuntu0.24.04.1、xvfb 2:21.1.12-1ubuntu1.8、xdotool 1:3.20160805.1-5build1、xclip 0.13-3、tauri-driver 2.1.0（sha256 `628e1b01729825cf688858699fb66969e987d04571a615c1c74a8141b34a2b5d`）、PostgreSQL 18.6。
 - 参考（証跡の条件を満たさない実行。修正前の動作で場面が失敗することの確認）：
