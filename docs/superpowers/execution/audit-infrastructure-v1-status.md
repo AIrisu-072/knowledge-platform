@@ -1,5 +1,35 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-08 — 単位B 独立review（Store・relay × security・correctness）の指摘反映（worktree branch、未push）
+
+- branch `worktree-agent-a07ac0dcd80b1fa0d`（`46ed5f6` の上）。container再起動で中断した前回の未commit変更を見直して引き継ぎ、残りを実装した。各blocking指摘は、先に再現試験を書き、修正前のcodeで失敗することを確認してから直した。
+- Store（`audit-store-postgres`）：
+  - verifyの本文開示：`access_reapply_pending` の間は、`open_access('verify')` と、開いているverify tokenの `read_page` も55000で拒否する（identity chainとDB内 `verify` は可）。
+  - verify範囲：`1 ≤ from ≤ to ≤ head` 以外（headを越えるto、headより後のfrom、空範囲）を `invalid_input` で拒否し、偽の `violations` を記録しない。記録のhead（seq・epoch・chain）は範囲内で実在する最後の行のもの。
+  - 検証状態：`store_status` / `probe` は最新記録ではなく被覆（`verification_coverage`）。`last_verified_seq` は最後の違反以後のgenesisから連続する `ok` の範囲、`last_verified_outcome` は違反後にgenesisから走査headまでの `ok` 検証が1件あるまで `violations`。
+  - posture：`pg_read_all_data` / `pg_write_all_data` / `pg_maintain` を持つ非superuser login（`predefined_role_member`）、列権限（`column_privilege`）、0のtimeoutを違反にする。backupはowner memberかsuperuserで行う（README）。
+  - 拒否の集約：間引かない。まとめた件数を `audit.access.denied` の任意field `suppressed_since_last`（catalogへ加法追加、schema再生成）で記録し、code変更時・成功時にも未記録分を先に記録する。
+  - retentionの再適用：epoch後、現行revisionで `count < limit` かつeffective cutoffがpolicy floor（`tx_time - retain_days`、UTC日）の `expire` があるときだけ満たす。
+  - Minor：`options[...]`・`PGOPTIONS` の拒否、`administer` の取消しを開いているinclude_control tokenへ適用、expireのcutoffを年0001–9999に限定、`audit-admin verify` は違反で終了code 3、replay・repair modeのreconciliationはingest loginから記録しない（`insufficient_capability`）。
+- relay（`audit-relay`）：
+  - posture：`audit_relay_owner` のmember（`owner_member`）、capability role・loginのstaging直接読取（`staging_read`、列・`pg_read_all_data` を含む）、relay表へのアクセス（`table_access`）、staging/relay表のrow security（`row_security`）、triggerの関数・event・WHEN・列の差替え（`trigger_missing`）、0のtimeoutを違反にする。`source_schema.rs` のowner memberの試験を違反の期待へ直した。
+  - `preview_pending` はworkerだけに与える（operatorは42501）。
+  - relay側の保留（catalog skew、projection、source）は行ごとの `relay_hold_count` で指数backoff（`backoff_min×2^(n−1)`、上限 `backoff_max`）、claimは保留していない行を先に取る、Storeの障害状態に触れず `relay_held` として報告する。
+  - `reconcile --repair` は、Storeの現在epochより古いepochのreceiptだけをpendingへ戻す（SQL関数も同じfence）。同じepochで失われたreceiptは警報のまま残し、gateが後退を報告する。
+  - `status()` に `max_referenced_store_seq`（epochごと：receipt、source mismatch（epochを記録するよう `note_mismatch` に引数追加）、replay・repairのcontrol event、historyのreceipt）、healthに `stored.relay_max_seq`（`--relay-max-seq` の入力）。restore試験はreplayの後にackが無い場合へ変更。
+  - Minor：`delivery_history` を（control_epoch, control_seq）で一意に、reconcileのclaimも（epoch, seq）、replay・`reconcile --repair` はingestを持つStore loginを拒否、0のtimeoutをposture違反、`staging_rows_hidden` 警報（registered > staged）、既定poll 250 msと処理量の目安（README）、relay試験（機微keyは保留されStoreへ届かない、purge後のreconcile ok・`duplicate_expired` 再配送）。
+- 見送ったMinor（理由）：
+  - `purge_body` と有効なlegal hold：holdとprohibited content purgeの優先は方針判断（v1にholdを作る関数は無い）。依頼者の判断待ち。
+  - `register_source_service` の記録へのsource追加：catalogの `source_urn` はcatalogのsourceだけを受けるが、`registered_types` はcatalogに先行するsourceをmigrationで持ち得る（試験 `idempotency_outcomes_and_conflicts` で不適合になった）。kindの判断が要る。
+  - ackのepoch（probe時のepoch）：IngestReceiptにepochが無く、portの変更か配送ごとの追加照会が要る。relay停止を前提とする手順で発生しないので、READMEの限界に記載。
+  - repairの計画件数（`repaired_*`）：catalogの意味の変更か2件目のcontrol eventが要る。READMEの限界に記載。
+- 設計改訂3からの差分（承認状態：依頼者の修正指示（hard requirements）の範囲内で本trackが採用、修正確認review未実施）。設計本文（delivery_history、replay手順、access_reapply_pending、role行列、open_access、restore、health）へ反映済み：
+  - `access_reapply_pending` は本文を返すverifyも閉じる。retentionの再適用は期限切れ本文が残らない `expire` を要する。
+  - healthのverifiedは被覆（違反はgenesisからheadまでの再検証まで残る）。
+  - `delivery_history` の一意性は（epoch, control seq）。`preview_pending` はworkerの行列へ。`--relay-max-seq` は参照する最大seq。
+- ローカル検証：`cargo test -p audit-core -p audit-store-postgres -p audit-relay` 全PASS（core 147＋doc 2、Store 64、relay 44＋ignored 1）、clippy `--all-targets -D warnings`・`cargo fmt --all -- --check`・architecture-lint PASS。
+- 次のexact action：修正確認review（security・correctness）→ 指摘反映 → 最新mainから作り直したbranchへ移してDraft PR → exact-head CI。
+
 ## 2026-10-07 — 単位B（Store・relay）の改訂core追従と確認review引継事項の実装（worktree branch、未push）
 
 - branch `worktree-agent-a07ac0dcd80b1fa0d`（基点 `0ee9cf5`＝単位B統合branchに単位A `74795be` をmerge）。commit：

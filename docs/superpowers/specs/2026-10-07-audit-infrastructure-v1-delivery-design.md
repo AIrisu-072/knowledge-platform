@@ -212,7 +212,7 @@ stagingへのINSERT権限を持つrole（producer、現PoCではowner）は、�
   - receipt：delivered_at、store_seq、store_envelope_digest、store_outcome
   - quarantine：quarantined_at、quarantine_code
   - replay_count
-- `audit_relay.delivery_history` は、replay/repair前の終端証拠を保存するappend-only表である（Store control eventの（epoch, seq）を持ち、control seqはUNIQUE）。`audit_relay.delivery_progress` はsingletonで、ackのたびに増えるsuccess_generationを持つ（§6.3）。`audit_relay.delivery_policy` はsingletonで、revisionを持つ。
+- `audit_relay.delivery_history` は、replay/repair前の終端証拠を保存するappend-only表である（Store control eventの（epoch, seq）を持ち、（epoch, control seq）はUNIQUE。restore後はseqが再利用されるため）。`audit_relay.delivery_progress` はsingletonで、ackのたびに増えるsuccess_generationを持つ（§6.3）。`audit_relay.delivery_policy` はsingletonで、revisionを持つ。
 - 登録trigger：`AFTER INSERT ON public.audit_outbox_events FOR EACH ROW` で、同一transaction内にdeliveries行を作る。
   - 関数は `SECURITY DEFINER`、`SET search_path = pg_catalog, pg_temp`、全objectをschema修飾し、本体の冒頭で `TG_RELID = 'public.audit_outbox_events'::regclass AND TG_OP = 'INSERT' AND TG_LEVEL = 'ROW'` を確認する。
   - 登録が失敗すると元のINSERTが失敗し、producerは既存どおりrollbackする。producer roleに新しい権限は要らない（trigger関数のEXECUTEはPUBLICから剥奪する。triggerの発火にはEXECUTE権限が要らない）。
@@ -333,7 +333,7 @@ quarantineは削除でも成功でもなく、保持される終端証拠であ�
 1. Storeの `record_relay_control`（operatorのStore login。主体は本人）で `audit.delivery.replay_requested` を記録し、返されたseqを得る。記録できなければ中止する。
 2. `audit_relay.replay(event_id, control_seq)` を1 transactionで実行する。
    1. 行を `FOR UPDATE` でlockし、quarantined・未leaseであることを確認する。
-   2. 直前の終端証拠（attempt_count、attempt_limit、quarantine_code、quarantined_at、last_attempt_at）と、Store control eventの（epoch, seq）を `delivery_history` に追加する（control seqはUNIQUE。1件のreplay記録で複数のreplayを裏付けることはできない）。
+   2. 直前の終端証拠（attempt_count、attempt_limit、quarantine_code、quarantined_at、last_attempt_at）と、Store control eventの（epoch, seq）を `delivery_history` に追加する（（epoch, control seq）はUNIQUE。1件のreplay記録で複数のreplayを裏付けることはできない）。
    3. `attempt_count=0`、`attempt_limit=NULL`、`outage_streak=0`、quarantine列とlease列をNULL、`available_at=now()`、`replay_count+1` にする。
 
 信頼の限界：Document側の関数は、Storeの事実（ackのreceipt、replayのcontrol seq）をDB内で検証できない。「Storeに記録してから戻す」という順序はCLIが守る。直接SQLで行われたreplayは、reconcileの `unaudited_replay`（`delivery_history` の（epoch, seq）がStore上で、origin=relay_control・type=replay_requested・同じevent_id・同じ旧codeに1対1で解決できない）として検出する。宣言済みの消失範囲（§11）にあるseqは、`replay_record_lost` として区別する。restartは試行履歴をresetしない。resetするのは監査付きのreplay/repairだけである。
@@ -346,7 +346,7 @@ quarantineは削除でも成功でもなく、保持される終端証拠であ�
   - last_seq、last_chain、recovery_epoch
   - store_fingerprint：(`pg_control_system().system_identifier`, database oid, 現timeline)
   - recovery_pending：`report_regression`（relayがidentity照合の不一致を報告する）または `declare_recovery_pending`（maintain）が設定する。その証拠（報告されたidentity、session_user、時刻、報告時のhead）も保持する。解除するのは `begin_recovery_epoch` だけである。
-  - access_reapply_pending：`begin_recovery_epoch` が設定する。設定中は、investigate/exportのopen_accessを拒否する。administerの主体が権限の再適用を記録し、maintainの主体が現行retentionで `expire` を再実行すると解除される（§11）。
+  - access_reapply_pending：`begin_recovery_epoch` が設定する。設定中は、本文を開示する操作（investigate、export、本文を返すverify）を、open_accessでも開いているtokenのread_pageでも拒否する（identity chainとDB内のverifyは開いたまま）。administerの主体が権限の再適用を記録し、maintainの主体が現行retentionで、policyのcutoffまで期限切れの本文を残さず `expire` を再実行すると解除される（§11）。
   - `last_chain` の初期値は `GENESIS = sha256('kp-audit-chain-genesis-v1')`、epochは1から始める。
 - `events`（永続identity、削除しない）：
   - seq PK、event_id UNIQUE
@@ -506,7 +506,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 | `audit_store_admin` | `change_access`、`set_retention_policy` |
 | `audit_store_maintainer` | `expire`、`purge_body`、`begin_recovery_epoch`、`declare_recovery_pending`、`verify_recovery`、`identity_chain_recovery_page` |
 | owner（`audit_store_owner`）のmemberのみ | `bootstrap_administrator`、`bind_principal`、`unbind_principal` |
-| `audit_relay_worker` | `claim`、`renew`、`settle_*`、`reap_exhausted`、`status`、`posture_check`、読取専用の `reconcile_page` / `reconcile_history_page` / `lookup_deliveries` |
+| `audit_relay_worker` | `claim`、`renew`、`settle_*`、`reap_exhausted`、`status`、`posture_check`、`preview_pending`（healthの見込み。配送前の内容を投影するのでworkerだけ）、読取専用の `reconcile_page` / `reconcile_history_page` / `lookup_deliveries` |
 | `audit_relay_operator` | `replay`、`repair_ack_stored`、`repair_reset_missing`、`register_missing`、`status`、`posture_check`、`reconcile_page` / `reconcile_history_page` / `lookup_deliveries` |
 
 - PUBLICにはどの関数のEXECUTEも与えない。Store DBのCONNECT・TEMPもPUBLICから剥奪する。
@@ -540,7 +540,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
 ### 10.3 開示の2段階（fail-closed）
 
 1. `open_access(op, filter, page_size, max_pages)`
-   1. 主体・権限（opに応じたcapability role：investigate/exportはreader、verify/identity_chainはverifier）・入力を検査する。filter allowlist：event_types≤16、source、actor、resource、occurred範囲、event_ids≤100、`seq_after`（排他的下限）、`seq_through`（上限、W以下）。identity_chainと、検証用のexportでは、`seq_after` / `seq_through` だけを許し、全origin（control eventを含む）を対象にする。page sizeはinvestigate 1–100、export・identity_chain 1–1000。max_pagesは最大100。大きなStoreでは、intentを順に開いて連続範囲を検証する（各intentを記録する）。`access_reapply_pending` の間は、investigate/exportを拒否する。
+   1. 主体・権限（opに応じたcapability role：investigate/exportはreader、verify/identity_chainはverifier）・入力を検査する。filter allowlist：event_types≤16、source、actor、resource、occurred範囲、event_ids≤100、`seq_after`（排他的下限）、`seq_through`（上限、W以下）。identity_chainと、検証用のexportでは、`seq_after` / `seq_through` だけを許し、全origin（control eventを含む）を対象にする。page sizeはinvestigate 1–100、export・identity_chain 1–1000。max_pagesは最大100。大きなStoreでは、intentを順に開いて連続範囲を検証する（各intentを記録する）。`access_reapply_pending` の間は、investigate/exportと本文を返すverifyを拒否する。
    2. watermark W（現在head以下。clientは指定できない）と可視範囲を固定する。
    3. `audit.access.intent_opened`（op、型付きfilterの全値、filter_digest、W、page_size、max_pages、可視範囲、期限）を記録する。
    4. `access_intents` に、`creating_xid = pg_current_xact_id()`（savepoint内でも最上位transactionのID）とともに保存する。
@@ -615,7 +615,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
      - control eventの記録：
        - 照合したcheckpointと照合の分類
        - recovery identity範囲のdigest
-       - 消失したseq範囲：(復元head, max(checkpoint seq, relayの最大store_seq)]。上限は「主張値」として記録し、復元headより小さい値は拒否する
+       - 消失したseq範囲：(復元head, max(checkpoint seq, relayの最大store_seq)]。relayの最大store_seqは、そのepochでrelayが参照する最大のStore seq（receiptに加え、source mismatch・replay・repairのcontrol event）である（`audit-relay health` の `stored.relay_max_seq`）。上限は「主張値」として記録し、復元headより小さい値は拒否する
        - 旧/新fingerprint
      - 新fingerprintを設定する。
   5. `audit-relay reconcile --repair` で、delivered_missingをpendingへ戻す（履歴を保存する）。
@@ -625,7 +625,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   epochはchainを継続する（genesisへ戻さない）。
 - 限界：
   - Store内で生成されたcontrol event（閲覧intent、拒否、retention、replay、integrity、権限変更）は、backup以降の分がsourceを持たないため回復できない。RPOを縮めたい場合は、WAL archiving/PITRを運用上で選択する（新しい依存は不要）。
-  - 復元後は `access_reapply_pending` が設定され、investigate/exportは閉じたままになる。帯域外の記録から権限の失効・束縛解除・retention revisionを再適用し、それをcontrol eventとして記録し、現行retentionで `expire` を再実行すると開く。失効より前の古いbackupをrestoreすると失効済みの本文が戻り得るので、restore後に現行retentionを再適用して記録する。
+  - 復元後は `access_reapply_pending` が設定され、investigate/exportと本文を返すverifyは閉じたままになる。帯域外の記録から権限の失効・束縛解除・retention revisionを再適用し、それをcontrol eventとして記録し、現行retentionで期限切れの本文が残らなくなるまで `expire` を再実行すると開く。失効より前の古いbackupをrestoreすると失効済みの本文が戻り得るので、restore後に現行retentionを再適用して記録する。
 - source（Document DB）を古いbackupへ戻した場合、Storeにあってsourceに無いeventが生じ得る。reconcileはこれを `store_only` として報告し、自動では削除しない。Document DBのrestoreでも、`audit_relay` に対して同じ前提（globals、権限の再適用、`audit_relay.posture_check()`）を適用する。違反がある間、relayの `run` / `replay` / `repair` は起動を拒否し、healthで警報を出す。
 
 ## 12. Health・reconciliation・restart
@@ -635,7 +635,7 @@ roleの作成はtemplate（`crates/audit-store-postgres/sql/roles.sql`、`crates
   - pending / leased / retry待ち / quarantined（code別）、最古pendingの経過時間、delivered件数
   - Store可用性：circuit状態、`store_recovery_required` / `store_regressed` / `store_posture_invalid`
   - Store head seq（stored）
-  - 最終 `audit.integrity.verified`（origin=store）のseqと時刻（verified）、verification lag
+  - 検証の被覆（verified）：最後の違反以後の `ok` の `audit.integrity.verified`（origin=store）がgenesisから連続して覆う最大seqと時刻、verification lag。違反は、その後にgenesisから走査時のheadまでの検証が `ok` になるまで報告し続ける（部分範囲・空の範囲では解除しない）
   - 導入状態：登録trigger、guard trigger、digest関数の存在、policy revision
   - reconcileの警報（unaudited_replay、delivered_missing、digest_mismatch、store_only、relay_catalog_skew、store_catalog_skew、audit_relayのposture違反）
 
