@@ -1,0 +1,4 @@
+.viewer { margin-block: 1rem; border: 1px solid var(--color-border, #bac3cb); padding: 1rem; }
+.controls { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32rem; overflow: auto; }
+.canvas { max-width: 100%; height: auto; display: block; }

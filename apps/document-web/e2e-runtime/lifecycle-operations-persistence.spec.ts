@@ -92,7 +92,7 @@ async function verifyHistoryWorkspace(page: Page, context: Awaited<ReturnType<ty
   await expect(selected).toContainText(detail.title);
   const originals = files.items.filter(file => file.role === 'AUTHORITATIVE');
   expect(originals.length).toBeGreaterThan(0);
-  await expect(selected.getByRole('button')).toHaveCount(originals.length);
+  await expect(selected.getByRole('button', { name: /^履歴の原本を取得: / })).toHaveCount(originals.length);
   for (const file of originals) {
     const downloadRead = historyResponse(`/${oldVersion.versionId}/files/${file.contentItemId}/${file.representationId}`);
     const download = page.waitForEvent('download');

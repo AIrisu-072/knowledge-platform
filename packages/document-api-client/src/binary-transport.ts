@@ -31,7 +31,7 @@ export type BinaryTransportBridgeOptions = {
 };
 
 type HttpMethod = 'GET' | 'POST' | 'PUT';
-type BinaryRequestOptions = { signal?: AbortSignal };
+type BinaryRequestOptions = { signal?: AbortSignal; maxBytes?: number };
 const binaryDeadlineMs = 120_000;
 
 
@@ -134,9 +134,11 @@ export class BinaryTransportBridge {
   }
 
   async downloadVersionFileBlob(input: DownloadVersionFileInput, options: BinaryRequestOptions = {}): Promise<Blob> {
+    if (options.maxBytes !== undefined && (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0)) throw new BinaryTransportError('Invalid viewer byte limit');
+    const headers = options.maxBytes === undefined ? undefined : { 'x-knowledge-viewer-max-bytes': String(options.maxBytes) };
     return boundedBinaryRequest(async signal => {
-      const response = await this.request(downloadPath(input), 'GET', undefined, undefined, signal);
-      return response.blob();
+      const response = await this.request(downloadPath(input), 'GET', undefined, headers, signal);
+      return options.maxBytes === undefined ? response.blob() : readBoundedBlob(response, options.maxBytes, signal);
     }, options.signal);
   }
 
@@ -329,6 +331,30 @@ function isProblem(value: unknown): value is Problem {
     && typeof problem.code === 'string'
     && typeof problem.traceId === 'string'
     && typeof problem.retryable === 'boolean';
+}
+
+async function readBoundedBlob(response: Response, maximum: number, signal: AbortSignal): Promise<Blob> {
+  if (!Number.isSafeInteger(maximum) || maximum <= 0) { await response.body?.cancel(); throw new BinaryTransportError('Invalid viewer byte limit'); }
+  const length = response.headers.get('content-length');
+  if (length && /^\d+$/.test(length) && Number(length) > maximum) { await response.body?.cancel(); throw new BinaryTransportError('File exceeds viewer byte limit'); }
+  if (!response.body) throw new BinaryTransportError('The successful file response had no body');
+  const reader = response.body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener('abort', cancel, { once: true });
+  const parts: BlobPart[] = []; let size = 0;
+  try {
+    while (true) {
+      if (signal.aborted) throw new BinaryTransportError('Binary request was cancelled/aborted');
+      const { done, value } = await reader.read();
+      if (signal.aborted) throw new BinaryTransportError('Binary request was cancelled/aborted');
+      if (done) break;
+      size += value.byteLength;
+      if (size > maximum) throw new BinaryTransportError('File exceeds viewer byte limit');
+      parts.push(new Uint8Array(value));
+    }
+    return new Blob(parts, { type: response.headers.get('content-type') ?? '' });
+  } catch (error) { await reader.cancel().catch(() => undefined); throw error; }
+  finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
 
 async function boundedBinaryRequest<T>(run: (signal: AbortSignal) => Promise<T>, external?: AbortSignal): Promise<T> {

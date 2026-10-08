@@ -237,7 +237,7 @@ export const documentApi = {
     contentItemId: string;
     representationId: string;
     purpose: View;
-  }, options?: { signal?: AbortSignal }) {
+  }, options?: { signal?: AbortSignal; maxBytes?: number }) {
     return binary.downloadVersionFileBlob(input, options);
   },
 };
