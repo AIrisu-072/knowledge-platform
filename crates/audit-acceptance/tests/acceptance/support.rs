@@ -156,26 +156,40 @@ pub struct Env {
 
 impl Env {
     pub async fn start() -> Self {
-        let container = GenericImage::new("postgres", "18.6-bookworm")
-            .with_exposed_port(5432.tcp())
-            .with_wait_for(WaitFor::message_on_stderr(
-                "database system is ready to accept connections",
-            ))
-            .with_env_var("POSTGRES_USER", "postgres")
-            .with_env_var("POSTGRES_PASSWORD", "postgres")
-            .with_env_var("POSTGRES_DB", "postgres")
-            .with_cmd([
-                "postgres",
-                "-c",
-                "fsync=off",
-                "-c",
-                "full_page_writes=off",
-                "-c",
-                "max_connections=300",
-            ])
-            .start()
-            .await
-            .expect("disposable PostgreSQL 18.6 should start");
+        // Parallel scenarios pull the same image on a cold runner; a pull
+        // that breaks mid-stream is retried a bounded number of times. Any
+        // other start error fails at once.
+        let mut attempt = 1;
+        let container = loop {
+            match GenericImage::new("postgres", "18.6-bookworm")
+                .with_exposed_port(5432.tcp())
+                .with_wait_for(WaitFor::message_on_stderr(
+                    "database system is ready to accept connections",
+                ))
+                .with_env_var("POSTGRES_USER", "postgres")
+                .with_env_var("POSTGRES_PASSWORD", "postgres")
+                .with_env_var("POSTGRES_DB", "postgres")
+                .with_cmd([
+                    "postgres",
+                    "-c",
+                    "fsync=off",
+                    "-c",
+                    "full_page_writes=off",
+                    "-c",
+                    "max_connections=300",
+                ])
+                .start()
+                .await
+            {
+                Ok(container) => break container,
+                Err(error) if attempt < 3 && format!("{error:?}").contains("PullImage") => {
+                    eprintln!("postgres image pull failed (attempt {attempt}); retrying");
+                    tokio::time::sleep(Duration::from_secs(2 * attempt)).await;
+                    attempt += 1;
+                }
+                Err(error) => panic!("disposable PostgreSQL 18.6 should start: {error:?}"),
+            }
+        };
         let port = container
             .get_host_port_ipv4(5432.tcp())
             .await
