@@ -707,3 +707,72 @@ test('最新document readの403をcache内の旧success値で上書きせず入�
   expect(within(retained).getByRole('button', { name: '作業版を保存' })).toBeDisabled();
   fireEvent.submit(retained); expect(api.updateWorkingVersion).not.toHaveBeenCalled();
 });
+
+test('作業版で原本を追加・除外・上下移動でき、除外は保存まで取り消せる', async () => {
+  const { api } = setup(); const form = await open(); const ui = within(form);
+  fireEvent.click(ui.getByRole('button', { name: '原本を追加' }));
+  await userEvent.setup().upload(ui.getByLabelText('追加原本ファイル'), new File(['new'], '追加.txt', { type: 'text/plain' }));
+  fireEvent.change(ui.getByLabelText('追加原本パス'), { target: { value: 'new/追加' } });
+  fireEvent.click(ui.getByRole('button', { name: '追加原本を確定' }));
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtを除外' }));
+  expect(ui.getByRole('button', { name: '正確な 原本A.txtの除外を取消' })).toBeVisible();
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtの除外を取消' }));
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtを除外' }));
+  fireEvent.click(ui.getByRole('button', { name: '追加.txtを上へ' }));
+  fireEvent.submit(form); await screen.findByText('作業版を保存しました。');
+  const body = api.updateWorkingVersion.mock.calls[0][2];
+  expect(body.items).toMatchObject([{ logicalPath: 'new/追加', ordinal: 0, renditions: [] }, { logicalPath: 'original-b', ordinal: 1, fileId: 'file-b' }]);
+  expect(api.downloadVersionFile).toHaveBeenCalledTimes(2);
+});
+test('最後の原本の除外と不正・重複パスの追加は送信できない', async () => {
+  const { api } = setup(); const form = await open(); const ui = within(form);
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtを除外' }));
+  expect(ui.getByRole('button', { name: '原本B-正確.txtを除外' })).toBeDisabled();
+  fireEvent.click(ui.getByRole('button', { name: '原本を追加' }));
+  await userEvent.setup().upload(ui.getByLabelText('追加原本ファイル'), new File(['new'], '追加.txt', { type: 'text/plain' }));
+  fireEvent.change(ui.getByLabelText('追加原本パス'), { target: { value: 'original-b' } });
+  expect(ui.getByRole('button', { name: '追加原本を確定' })).toBeDisabled();
+  expect(ui.getByRole('button', { name: '作業版を保存' })).toBeDisabled();
+  fireEvent.change(ui.getByLabelText('追加原本パス'), { target: { value: '../bad' } });
+  expect(ui.getByRole('button', { name: '追加原本を確定' })).toBeDisabled();
+  expect(api.updateWorkingVersion).not.toHaveBeenCalled();
+});
+test('公開版から新しい作業版を作る画面には構成変更を表示しない', async () => {
+  setup({ published: true }); fireEvent.click((await screen.findAllByRole('button', { name: '新しい版を作成' }))[0]!);
+  const form = await screen.findByRole('form', { name: '作業版の原本を編集' });
+  expect(within(form).queryByRole('button', { name: '原本を追加' })).not.toBeInTheDocument();
+  expect(within(form).queryByRole('button', { name: /を除外$/ })).not.toBeInTheDocument();
+});
+
+test('除外中の既存パスへ追加した原本がある場合は、元原本を重複する構成へ戻さない', async () => {
+  setup(); const form = await open(); const ui = within(form);
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtを除外' }));
+  fireEvent.click(ui.getByRole('button', { name: '原本を追加' }));
+  await userEvent.setup().upload(ui.getByLabelText('追加原本ファイル'), new File(['new'], '追加.txt', { type: 'text/plain' }));
+  fireEvent.change(ui.getByLabelText('追加原本パス'), { target: { value: 'folder/original-a' } });
+  fireEvent.click(ui.getByRole('button', { name: '追加原本を確定' }));
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtの除外を取消' }));
+  expect(ui.getByText(/原本パスが重複/)).toBeVisible();
+  expect(ui.queryByRole('button', { name: '正確な 原本A.txtを除外' })).not.toBeInTheDocument();
+});
+test('構成変更の結果不明は並びと追加bytesを固定し、同一multipartで再試行する', async () => {
+  const { api } = setup(); const form = await open(); const ui = within(form);
+  const upload = new File(['new'], '追加.txt', { type: 'text/plain' });
+  fireEvent.click(ui.getByRole('button', { name: '原本を追加' }));
+  await userEvent.setup().upload(ui.getByLabelText('追加原本ファイル'), upload);
+  fireEvent.change(ui.getByLabelText('追加原本パス'), { target: { value: 'new/path' } });
+  fireEvent.click(ui.getByRole('button', { name: '追加原本を確定' }));
+  fireEvent.click(ui.getByRole('button', { name: '正確な 原本A.txtを除外' }));
+  fireEvent.click(ui.getByRole('button', { name: '追加.txtを上へ' }));
+  api.updateWorkingVersion.mockRejectedValueOnce(new Error('connection lost'));
+  fireEvent.submit(form); await screen.findByRole('heading', { name: '保存結果を確認できません' });
+  expect(screen.queryByRole('button', { name: '原本を追加' })).not.toBeInTheDocument();
+  const initial = api.updateWorkingVersion.mock.calls[0];
+  expect(initial[2].items.map((item: { logicalPath: string }) => item.logicalPath)).toEqual(['new/path', 'original-b']);
+  expect(initial[3].get(initial[2].items[0].partId)).toBe(upload);
+  fireEvent.click(screen.getByRole('button', { name: '同じ内容で再試行' }));
+  await screen.findByText('作業版を保存しました。');
+  const retry = api.updateWorkingVersion.mock.calls[1];
+  expect(retry[2]).toBe(initial[2]); expect(retry[3]).toBe(initial[3]); expect(retry[4]).toBe(initial[4]);
+  expect(api.downloadVersionFile).toHaveBeenCalledTimes(2); expect(api.prepareVersionUpload).toHaveBeenCalledTimes(1);
+});

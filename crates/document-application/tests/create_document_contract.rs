@@ -71,6 +71,7 @@ struct FakeStorage {
     open_result: Arc<Mutex<Result<Vec<u8>, StorageError>>>,
     objects: Arc<Mutex<Vec<StorageObjectInfo>>>,
     object_modified_at: OffsetDateTime,
+    fail_on_call: Option<usize>,
 }
 
 impl FakeStorage {
@@ -81,6 +82,7 @@ impl FakeStorage {
             open_result: Arc::new(Mutex::new(Ok(b"authoritative-content".to_vec()))),
             objects: Arc::new(Mutex::new(Vec::new())),
             object_modified_at: OffsetDateTime::UNIX_EPOCH,
+            fail_on_call: None,
         }
     }
 
@@ -97,6 +99,9 @@ impl FileStorage for FakeStorage {
     async fn put_immutable(&self, request: StoreFileRequest) -> Result<StoredFile, StorageError> {
         let file_id = request.file_id();
         self.steps.lock().unwrap().mark_storage();
+        if self.fail_on_call == self.steps.lock().unwrap().storage_finalized {
+            return Err(StorageError::WriteFailed);
+        }
         *self.finalized.lock().unwrap() = true;
         self.objects.lock().unwrap().push(StorageObjectInfo::new(
             "objects/00/file",
@@ -552,4 +557,134 @@ async fn missing_referenced_binary_is_integrity_violation_not_document_not_found
     };
 
     assert_eq!(error, ApplicationError::IntegrityViolation);
+}
+
+#[tokio::test]
+async fn multiple_initial_originals_are_sorted_and_saved_atomically() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let storage = Arc::new(FakeStorage::new(steps.clone()));
+    let repository = Arc::new(FakeRepository::new(steps.clone()));
+    let service = service(storage, repository.clone());
+    let result = service
+        .create_document_items(multiple_command())
+        .await
+        .unwrap();
+    let state = repository.state.lock().unwrap();
+    let document = state.document.as_ref().unwrap();
+    assert_eq!(document.content_items().len(), 2);
+    assert_eq!(document.content_items()[0].logical_path().as_str(), "a.pdf");
+    assert_eq!(document.content_items()[1].logical_path().as_str(), "b.pdf");
+    assert_eq!(result.file_ids().unwrap().len(), 2);
+    assert_eq!(result.file_id(), result.file_ids().unwrap()[0]);
+    assert_eq!(state.create_calls, 1);
+    assert_eq!(state.domain_event_types.len(), 2);
+    assert_eq!(state.audit_event_types.len(), 2);
+    let steps = steps.lock().unwrap();
+    assert_eq!(steps.storage_finalized, Some(2));
+    assert_eq!(steps.repository_called, Some(3));
+}
+
+fn multiple_command() -> document_application::CreateDocumentItemsCommand {
+    let legacy = command();
+    document_application::CreateDocumentItemsCommand {
+        folder_id: legacy.folder_id,
+        title: legacy.title,
+        document_metadata: legacy.document_metadata,
+        version_metadata: legacy.version_metadata,
+        principal: legacy.principal,
+        items: [("b.pdf", 1), ("a.pdf", 0)]
+            .into_iter()
+            .map(|(path, ordinal)| document_application::CreateDocumentItem {
+                logical_path: document_domain::LogicalPath::new(path).unwrap(),
+                ordinal,
+                original_filename: path.into(),
+                media_type: MediaType::new("application/pdf").unwrap(),
+                content: content(),
+            })
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn multiple_initial_unknown_outcome_contains_all_generated_ids() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let storage = Arc::new(FakeStorage::new(steps.clone()));
+    let repository = Arc::new(FakeRepository::new(steps));
+    repository.fail_create_with(RepositoryError::CommitOutcomeUnknown);
+    let error = service(storage, repository)
+        .create_document_items(multiple_command())
+        .await
+        .unwrap_err();
+    match error {
+        ApplicationError::CommitOutcomeUnknown {
+            file_id,
+            file_ids: Some(ids),
+            ..
+        } => {
+            assert_eq!(ids.len(), 2);
+            assert_eq!(file_id, ids[0]);
+            assert_ne!(ids[0], ids[1]);
+        }
+        other => panic!("missing complete recovery receipt: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn second_initial_storage_failure_never_calls_database() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let mut storage = FakeStorage::new(steps.clone());
+    storage.fail_on_call = Some(2);
+    let storage = Arc::new(storage);
+    let repository = Arc::new(FakeRepository::new(steps));
+    let error = service(storage.clone(), repository.clone())
+        .create_document_items(multiple_command())
+        .await
+        .unwrap_err();
+    assert_eq!(error, ApplicationError::StorageWriteFailed);
+    assert_eq!(repository.create_calls(), 0);
+    assert_eq!(storage.objects.lock().unwrap().len(), 1);
+    assert!(repository.state.lock().unwrap().document.is_none());
+}
+
+#[tokio::test]
+async fn duplicate_initial_anchor_is_rejected_before_storage() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let storage = Arc::new(FakeStorage::new(steps.clone()));
+    let repository = Arc::new(FakeRepository::new(steps));
+    let mut command = multiple_command();
+    command.items[1].logical_path = command.items[0].logical_path.clone();
+    command.items[1].ordinal = command.items[0].ordinal;
+    assert!(matches!(
+        service(storage.clone(), repository.clone())
+            .create_document_items(command)
+            .await,
+        Err(ApplicationError::Validation(_))
+    ));
+    assert_eq!(repository.create_calls(), 0);
+    assert!(storage.objects.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn oversized_initial_manifest_is_rejected_before_storage() {
+    let steps = Arc::new(Mutex::new(StepState::default()));
+    let storage = Arc::new(FakeStorage::new(steps.clone()));
+    let repository = Arc::new(FakeRepository::new(steps));
+    let mut command = multiple_command();
+    command.items = (0..64)
+        .map(|ordinal| document_application::CreateDocumentItem {
+            logical_path: document_domain::LogicalPath::new(&format!("{ordinal}.pdf")).unwrap(),
+            ordinal,
+            original_filename: format!("{ordinal}.pdf"),
+            media_type: MediaType::new("application/pdf").unwrap(),
+            content: content(),
+        })
+        .collect();
+    assert!(matches!(
+        service(storage.clone(), repository.clone())
+            .create_document_items(command)
+            .await,
+        Err(ApplicationError::Validation(_))
+    ));
+    assert_eq!(repository.create_calls(), 0);
+    assert!(storage.objects.lock().unwrap().is_empty());
 }

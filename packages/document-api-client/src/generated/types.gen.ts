@@ -40,6 +40,10 @@ export type CreateRecovery = {
     documentId: IdentifiersUuid;
     documentVersionId: IdentifiersUuid;
     fileId: IdentifiersUuid;
+    /**
+     * Complete ordered initial File IDs for atomic items creation recovery.
+     */
+    fileIds?: Array<IdentifiersUuid>;
     recoveryEndpoint: string;
 };
 
@@ -229,6 +233,10 @@ export type CommandsCreateDocument = {
     versionMetadata: {
         [key: string]: unknown;
     };
+    /**
+     * Atomic initial originals. Uses files parts; cannot be mixed with legacy file.
+     */
+    items?: Array<InitialContentItem>;
 };
 
 export type CommandsCreateFolder = {
@@ -245,6 +253,14 @@ export type CommandsEndPublication = {
     expectedRevision: number;
     expectedCurrentVersionId: string;
     reason: string;
+};
+
+export type InitialContentItem = {
+    logicalPath: string;
+    ordinal: number;
+    partId: string;
+    mediaType: string;
+    originalFilename: string;
 };
 
 export type CommandsMetadataPatch = {
@@ -476,6 +492,10 @@ export type ModelsCreateDocumentResult = {
     documentId: string;
     documentVersionId: string;
     fileId: string;
+    /**
+     * All initial original File IDs in ordinal then logicalPath order. Present for atomic items creation.
+     */
+    fileIds?: Array<string>;
 };
 
 export type ModelsCurrentReadProjection = {
@@ -1250,9 +1270,15 @@ export type ComparisonRequest2 = CommandsComparisonRequest;
 
 export type RevisionComparisonRequest2 = CommandsRevisionComparisonRequest;
 
-export type CreateDocumentMultipart = {
+export type CreateDocumentMultipart = (unknown | {
+    request?: unknown;
+}) & {
     request: CommandsCreateDocument;
-    file: Blob | File;
+    /**
+     * One binary per request.items partId using X-Part-Id, same framing as VersionMultipart. Cannot be mixed with legacy file.
+     */
+    files?: Array<Blob | File>;
+    file?: Blob | File;
 };
 
 export type VersionMultipart = {
@@ -1411,6 +1437,10 @@ export type RecoverDocumentCreationData = {
     query: {
         documentVersionId: IdentifiersUuid;
         fileId: IdentifiersUuid;
+        /**
+         * Comma-separated ordered full original File IDs; required to recover an atomic items create. Legacy three-ID recovery only accepts a single primary original.
+         */
+        fileIds?: string;
     };
     url: '/v1/document-creation-outcomes/{documentId}';
 };

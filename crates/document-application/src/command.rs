@@ -1,5 +1,5 @@
 use document_domain::{
-    DocumentId, DocumentVersionId, FileId, FolderId, MediaType, Metadata, PrincipalRef,
+    DocumentId, DocumentVersionId, FileId, FolderId, LogicalPath, MediaType, Metadata, PrincipalRef,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -17,11 +17,29 @@ pub struct CreateDocumentCommand {
     pub content: ContentReader,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CreateDocumentItem {
+    pub logical_path: LogicalPath,
+    pub ordinal: u32,
+    pub original_filename: String,
+    pub media_type: MediaType,
+    pub content: ContentReader,
+}
+
+pub struct CreateDocumentItemsCommand {
+    pub folder_id: FolderId,
+    pub title: String,
+    pub document_metadata: Metadata,
+    pub version_metadata: Metadata,
+    pub principal: PrincipalRef,
+    pub items: Vec<CreateDocumentItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateDocumentResult {
     document_id: DocumentId,
     document_version_id: DocumentVersionId,
     file_id: FileId,
+    file_ids: Option<Vec<FileId>>,
 }
 
 impl CreateDocumentResult {
@@ -34,7 +52,17 @@ impl CreateDocumentResult {
             document_id,
             document_version_id,
             file_id,
+            file_ids: None,
         }
+    }
+
+    pub(crate) fn with_file_ids(mut self, file_ids: Option<Vec<FileId>>) -> Self {
+        self.file_ids = file_ids;
+        self
+    }
+
+    pub fn file_ids(&self) -> Option<&[FileId]> {
+        self.file_ids.as_deref()
     }
 
     pub const fn document_id(&self) -> DocumentId {
