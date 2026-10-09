@@ -35,6 +35,26 @@ function harness(route = () => { throw new Error('Unexpected HTTP request'); }, 
 }
 async function verified(route, options) { const h = harness(route, options); await h.probe.verifySessions(); return h; }
 
+test('fake transport: exactly100000 identities on1000 terminal pages are accepted',async()=>{
+ let page=0;
+ const h=await verified(async(request,url)=>{
+  assert.equal(url.searchParams.get('pageSize'),'100');
+  const offset=page++*100;
+  return json({items:Array.from({length:100},(_,i)=>({documentId:`scale-${offset+i}`})),nextCursor:page===1000?null:`cursor-${page}`});
+ });
+ const ids=await h.probe.list('scale-folder');assert.equal(page,1000);assert.equal(ids.length,100000);assert.equal(ids[0],'scale-0');assert.equal(ids.at(-1),'scale-99999');
+});
+test('fake transport:100k boundary refuses excess items and a required1001st page',async()=>{
+ for(const excess of ['item','page']){
+  let page=0;
+  const h=await verified(async()=>{
+   const offset=page++*100;
+   return json({items:Array.from({length:page===1000&&excess==='item'?101:100},(_,i)=>({documentId:`scale-${offset+i}`})),nextCursor:page===1000&&excess==='item'?null:`cursor-${page}`});
+  });
+  await assert.rejects(h.probe.list('scale-folder'),/Pagination (item|page) limit exceeded/);assert.equal(page,1000);
+ }
+});
+
 test('fake transport: requires a distinct loopback pair and fixed verified sessions before mutation', async () => {
   const h = harness();
   await assert.rejects(h.probe.publish('d', 'v', 0, 'op'), /verif/i);

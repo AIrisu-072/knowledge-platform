@@ -143,18 +143,18 @@ test('each Docker command receives the smaller remaining cleanup budget', async 
   assert.equal(result.failed, false); assert.deepEqual(timeouts, [100, 90]);
 });
 
-test('runtime uses bounded cleanup and Git probes only for explicit ten-thousand mode', async () => {
+test('runtime uses bounded cleanup and Git probes only for explicit ten-thousand or local scale mode', async () => {
   const source = await readFile(new URL('../../document-poc-runtime/run.mjs', import.meta.url), 'utf8');
-  assert.match(source, /const provenanceTimeoutMs = process\.env\.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true' \? 10_000 : undefined;/);
+  assert.match(source, /const provenanceTimeoutMs = tenThousandMode \|\| localScaleMode \? 10_000 : undefined;/);
   const gitCalls = [...source.matchAll(/await run\('[^']+', 'git', \[[^\]]+\]([^)]*)\)/g)];
   assert.equal(gitCalls.length, 6);
   assert.ok(gitCalls.every(match => match[1] === ', undefined, provenanceTimeoutMs'));
-  assert.match(source, /if \(process\.env\.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true'\) \{\s+const result = await cleanupOwnedRuntime\(/);
+  assert.match(source, /if \(tenThousandMode \|\| localScaleMode\) \{\s+const result = await cleanupOwnedRuntime\(/);
   assert.match(source, /if \(result\.failed\) \{ failed = true; report\.data\.status = 'failed'; \}/);
   assert.ok(source.indexOf('await cleanupOwnedRuntime(') < source.indexOf('await report.finish();'));
 });
 
-test('actual runtime finalization cannot qualify or exit successfully after unconfirmed cleanup', async t => {
+for (const mode of ['ten-thousand','local-scale']) test(`actual ${mode} runtime finalization cannot qualify or export after unconfirmed cleanup`, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'document-load-cleanup-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const report = new EvidenceReport(directory, ['qualification']);
@@ -164,16 +164,16 @@ test('actual runtime finalization cannot qualify or exit successfully after unco
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const finalize = new AsyncFunction('context', `
     const { process, processes, stopProcess, proxy, cid, runId, run, report, interrupted,
-      visualEnabled, console, cleanupOwnedRuntime, assert } = context;
+      visualEnabled, console, cleanupOwnedRuntime, assert, tenThousandMode, localScaleMode, writeLocalScaleReceipt } = context;
     let failed = false;
     ${finalization}
   `);
-  const process = { env: { KP_DOCUMENT_LOAD_TEN_THOUSAND: 'true' } };
+  const process = { env: {} };let receiptAttempted=false;
   await finalize({ process, processes: [], proxy: { close: () => { throw Error('private close failure'); } },
-    report, interrupted: false, visualEnabled: false, console: { log() {} }, assert,
+    report, interrupted: false, visualEnabled: false, console: { log() {} }, assert, tenThousandMode:mode==='ten-thousand',localScaleMode:mode==='local-scale',writeLocalScaleReceipt:()=>{receiptAttempted=true;throw Error('Unexpected receipt');},
     cleanupOwnedRuntime: options => cleanup(options, quick) });
   assert.equal(report.data.status, 'failed'); assert.equal(report.data.acceptanceQualified, false);
-  assert.equal(process.exitCode, 1); assert.deepEqual(report.data.stages.at(-1), { name: 'cleanup', status: 'failed' });
+  assert.equal(receiptAttempted,false);assert.equal(process.exitCode, 1); assert.deepEqual(report.data.stages.at(-1), { name: 'cleanup', status: 'failed' });
   const persisted = JSON.parse(await readFile(report.path, 'utf8'));
   assert.equal(persisted.status, 'failed'); assert.equal(persisted.acceptanceQualified, false);
 });

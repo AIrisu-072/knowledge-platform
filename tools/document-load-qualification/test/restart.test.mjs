@@ -17,6 +17,14 @@ test('explicit three-stage restart budget provides three unique generations and 
  assert.deepEqual(starts,[['poc-human',4],['poc-agent',3],['poc-human',5],['poc-agent',4],['poc-human',6],['poc-agent',5]]);
  await assert.rejects(restart(),/restart limit/);assert.equal(starts.length,6);
 });
-test('restart budget accepts only the existing two stages or explicit three stages',()=>{
- for(const maxStages of [0,1,4,100000,'3',null,NaN,Infinity])assert.throws(()=>createLoadRestarter({maxStages}),/restart stage limit/i);
+test('restart budget accepts only two, three, or four stages',()=>{
+ for(const maxStages of [0,1,5,100000,'3','4',null,NaN,Infinity])assert.throws(()=>createLoadRestarter({maxStages}),/restart stage limit/i);
+});
+
+test('explicit local four-stage budget provides a fourth restart and refuses a fifth',async()=>{
+ let pair={human:{id:3},agent:{id:2}};const starts=[];
+ const restart=createLoadRestarter({maxStages:4,current:()=>pair,stop:async()=>{},start:async(profile,generation)=>{starts.push([profile,generation]);return{id:generation};},replace:value=>{pair=value;}});
+ for(let stage=0;stage<4;stage++)await restart();
+ assert.deepEqual(starts,[['poc-human',4],['poc-agent',3],['poc-human',5],['poc-agent',4],['poc-human',6],['poc-agent',5],['poc-human',7],['poc-agent',6]]);
+ await assert.rejects(restart(),/restart limit/);assert.equal(starts.length,8);
 });

@@ -126,3 +126,13 @@ SHA-256は整合性確認であって署名/実行真正性ではありません
 同じ環境でsmall → 1,000 → 10,000を実行します。最後の段階は330分と残時間の短い方が上限で、係数2による予測・実測容量・完全な直前reportが揃わなければ登録しません。負荷中止後の処理と後処理に15分の運用予算を確保します。後処理の確認失敗やtimeoutは失敗のままで、成功用artifactを保存しません。
 
 成功時の証拠は3段階の全IDを含む閉じたJSONで、上限1MiB・保存1日を維持します。大規模段階の原本内容/履歴の詳細比較は3件の標本です。毎秒の資源観測・保存ファイル全走査は変更せず、走査時間とentry数を固定の数値項目として追加観測します。製品SLO、全原本内容の一致、10万件の成功を示すものではありません。詳しくは[1万件の計画](../../docs/superpowers/plans/2026-10-09-document-load-ten-thousand.md)を参照してください。
+
+## 専用Ubuntuでの10万件枠
+
+`local-launch.mjs start <checkout> <private-ext4-root> <reviewed-head>` は、固定依存を準備したLinux x86_64でだけ使います。正確なclean HEADを照合し、空のmode700 evidence rootを所有marker付きで使用します。`status <launch-directory>` はPID・開始tick・boot IDを照合する読み取り専用操作です。process停止は合格を意味しないため、必ずruntime reportを確認します。
+
+local modeはGitHubイベントを使わず、元の起動時刻から80時間を上限とするwatchdogと、small→1000→1万→10万の同一DB/storage chainを使用します。DBは最初から専用ext4に置き、毎回実mountを照合します。最大72時間の10万件段階も、fresh1万件の係数2予測・実容量・残時間を満たさなければ開始しません。途中再送やshard合算は行いません。
+
+長寿命serverの秘密値除去済みlogはdiskへ流し、メモリには最大1MiBの末尾を保持します。全資源観測はprivate sidecarへ保存し、メモリには最大256件と正確な集約値を保持します。終了処理まで成功した場合だけ、4段階の全IDを検査して件数と正規化ID集合digestを含むcompact receiptをprivateな`local-scale-export/qualification.json`へ生成します。公開uploadは追加しません。3件の詳細標本を全原本内容の検証とは呼ばず、digestからadmission用reportを再構築しません。
+
+導入・予算・停止・証拠の詳細は[Ubuntuの計画](../../docs/superpowers/plans/2026-10-09-document-load-local-scale.md)を参照してください。実行はレビューと正確headのCI、実際のUbuntu sandbox事前確認を経てからです。
