@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import * as hosted from '../hosted.mjs';
+test('database filesystem explanation follows owned storage rather than load size',()=>{
+ assert.equal(typeof hosted.databaseFilesystemLimitation,'function');
+ for(const env of [{},{KP_DOCUMENT_LOAD_SMALL:'true'},{KP_DOCUMENT_LOAD_SMALL:'true',GITHUB_ACTIONS:'true'}]){
+  assert.match(hosted.databaseFilesystemLimitation(env),/tmpfs consumes host memory/);
+ }
+ for(const env of [{KP_DOCUMENT_LOAD_HUNDRED_THOUSAND:'true'},{KP_DOCUMENT_LOAD_SMALL:'true',KP_POC_OWNED_EXT4_DATABASE:'true'}]){
+  const description=hosted.databaseFilesystemLimitation(env);assert.match(description,/verified dedicated ext4 mount/);assert.doesNotMatch(description,/tmpfs/);
+ }
+});
 test('local100k mode is explicit, cannot spoof hosted execution, and excludes every other mode',()=>{
  assert.equal(hosted.loadEnabled({KP_DOCUMENT_LOAD_HUNDRED_THOUSAND:'true'},false),true);
  for(const value of ['false','100000',''])assert.throws(()=>hosted.loadEnabled({KP_DOCUMENT_LOAD_HUNDRED_THOUSAND:value},false));
