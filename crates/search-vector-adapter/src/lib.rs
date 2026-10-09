@@ -8,6 +8,13 @@
 //! prefixes, a 512-token limit after the prefix, attention-masked mean
 //! pooling of the last hidden state and an L2-normalized result for cosine
 //! retrieval. Inference runs on a blocking thread.
+//!
+//! The pinned `google/embeddinggemma-2` text tower ([`eg2`]) runs on the same
+//! runtime under the same file pinning: its own prompts, a 512-token limit,
+//! the mean of the projected token embeddings (prompt included) and an
+//! L2-normalized result.
+
+pub mod eg2;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -45,6 +52,27 @@ struct Pinned {
     name: &'static str,
     sha256: &'static str,
 }
+
+/// The pinned EmbeddingGemma 2 repository revision.
+pub const EG2_REVISION: &str = "914f7f89142e33e77833254d9c9b90c3cef7303b";
+
+const EG2_FILES: [Pinned; 3] = [
+    Pinned {
+        name: "model.safetensors",
+        sha256: "197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79",
+    },
+    Pinned {
+        name: "tokenizer.json",
+        sha256: "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4",
+    },
+    Pinned {
+        name: "config.json",
+        sha256: "b8f1e9931b57fbc054acdb445c41765d55b0074c58d145fa82839941ad1b5bb3",
+    },
+];
+/// `tokenizer_config.json` of the pinned EmbeddingGemma 2 revision.
+const EG2_TOKENIZER_CONFIG_SHA256: &str =
+    "17bd5d6e9364ca49a534e1502076593317c298d4a663623091ed45388f004874";
 
 const FILES: [Pinned; 3] = [
     Pinned {
@@ -103,8 +131,37 @@ pub fn e5_small_spec() -> EmbeddingModelSpec {
     }
 }
 
-fn verify(dir: &Path) -> Result<(), AdapterError> {
-    for file in &FILES {
+/// The registered specification of the pinned EmbeddingGemma 2 text tower.
+pub fn eg2_spec() -> EmbeddingModelSpec {
+    EmbeddingModelSpec {
+        model_name: "google/embeddinggemma-2".into(),
+        model_revision: EG2_REVISION.into(),
+        weights_sha256: hex(EG2_FILES[0].sha256),
+        tokenizer_revision: EG2_REVISION.into(),
+        tokenizer_files_sha256: hex(EG2_FILES[1].sha256),
+        tokenizer_config_sha256: hex(EG2_TOKENIZER_CONFIG_SHA256),
+        unicode_preprocessing: "pinned tokenizer.json normalizer".into(),
+        input_preprocessing: "prompt then tokenizer with special tokens".into(),
+        query_template: "task: search result | query: {text}".into(),
+        passage_template: "title: none | text: {text}".into(),
+        pooling: "attention-masked mean of the projected token embeddings, prompt included".into(),
+        attention_masking: "tokenizer attention mask, batch-longest padding".into(),
+        max_tokens: eg2::MAX_TOKENS as u32,
+        chunking: "one P1 Unit per embedding".into(),
+        truncation: "tokenizer truncation to 512 tokens with special tokens".into(),
+        dimension: 768,
+        precision: VectorPrecision::F32,
+        normalization: VectorNormalization::UnitL2,
+        metric: VectorMetric::Cosine,
+        runtime_family: "candle-cpu".into(),
+        runtime_build: "candle-0.11.0+tokenizers-0.22.0+eg2-port-v1".into(),
+        native_binary_sha256: None,
+        deterministic_config_sha256: hex(EG2_FILES[2].sha256),
+    }
+}
+
+fn verify(dir: &Path, files: &[Pinned]) -> Result<(), AdapterError> {
+    for file in files {
         let bytes =
             std::fs::read(dir.join(file.name)).map_err(|_| AdapterError::Missing(file.name))?;
         let digest: String = Sha256::digest(&bytes)
@@ -118,15 +175,20 @@ fn verify(dir: &Path) -> Result<(), AdapterError> {
     Ok(())
 }
 
+enum Encoder {
+    Bert(BertModel),
+    Gemma(eg2::TextModel),
+}
+
 struct Model {
-    bert: BertModel,
+    encoder: Encoder,
     tokenizer: Tokenizer,
     device: Device,
 }
 
 impl Model {
     fn load(dir: &Path) -> Result<Self, AdapterError> {
-        verify(dir)?;
+        verify(dir, &FILES)?;
         let load = |error: &dyn std::fmt::Display| AdapterError::Load(error.to_string());
         let device = Device::Cpu;
         let config: Config = serde_json::from_slice(
@@ -144,26 +206,40 @@ impl Model {
         }
         .map_err(|error| load(&error))?;
         let bert = BertModel::load(vb, &config).map_err(|error| load(&error))?;
-        let mut tokenizer =
-            Tokenizer::from_file(dir.join("tokenizer.json")).map_err(|error| load(&error))?;
-        let pad_id = tokenizer
-            .token_to_id("<pad>")
-            .ok_or_else(|| AdapterError::Load("tokenizer has no <pad> token".into()))?;
-        tokenizer.with_padding(Some(PaddingParams {
-            strategy: PaddingStrategy::BatchLongest,
-            pad_id,
-            pad_token: "<pad>".into(),
-            ..PaddingParams::default()
-        }));
-        tokenizer
-            .with_truncation(Some(TruncationParams {
-                max_length: 512,
-                ..TruncationParams::default()
-            }))
+        Ok(Self {
+            encoder: Encoder::Bert(bert),
+            tokenizer: padded_tokenizer(dir)?,
+            device,
+        })
+    }
+
+    fn load_eg2(dir: &Path) -> Result<Self, AdapterError> {
+        verify(dir, &EG2_FILES)?;
+        let load = |error: &dyn std::fmt::Display| AdapterError::Load(error.to_string());
+        let device = Device::Cpu;
+        let config: eg2::Config = serde_json::from_slice(
+            &std::fs::read(dir.join("config.json"))
+                .map_err(|_| AdapterError::Missing("config.json"))?,
+        )
+        .map_err(|error| load(&error))?;
+        config
+            .text_config
+            .check()
+            .map_err(|error| AdapterError::Load(format!("unsupported config: {error}")))?;
+        // SAFETY: the weights file was hash-checked above and is read-only.
+        let vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(
+                &[dir.join("model.safetensors")],
+                DType::F32,
+                &device,
+            )
+        }
+        .map_err(|error| load(&error))?;
+        let model = eg2::TextModel::new(&config.text_config, vb.pp("language_model"))
             .map_err(|error| load(&error))?;
         Ok(Self {
-            bert,
-            tokenizer,
+            encoder: Encoder::Gemma(model),
+            tokenizer: padded_tokenizer(dir)?,
             device,
         })
     }
@@ -187,11 +263,13 @@ impl Model {
             let error = |error: candle_core::Error| error.to_string();
             let input = Tensor::from_vec(ids, (batch, seq), &self.device).map_err(error)?;
             let mask = Tensor::from_vec(mask, (batch, seq), &self.device).map_err(error)?;
-            let types = input.zeros_like().map_err(error)?;
-            let hidden = self
-                .bert
-                .forward(&input, &types, Some(&mask))
-                .map_err(error)?;
+            let hidden = match &self.encoder {
+                Encoder::Bert(bert) => {
+                    let types = input.zeros_like().map_err(error)?;
+                    bert.forward(&input, &types, Some(&mask)).map_err(error)?
+                }
+                Encoder::Gemma(model) => model.forward(&input, &mask).map_err(error)?,
+            };
             let weights = mask
                 .to_dtype(DType::F32)
                 .and_then(|mask| mask.unsqueeze(2))
@@ -214,7 +292,31 @@ impl Model {
     }
 }
 
-/// The pinned E5 model as the registered [`EmbeddingProvider`].
+/// The pinned tokenizer, padding to the batch's longest input and truncating
+/// at 512 tokens.
+fn padded_tokenizer(dir: &Path) -> Result<Tokenizer, AdapterError> {
+    let load = |error: &dyn std::fmt::Display| AdapterError::Load(error.to_string());
+    let mut tokenizer =
+        Tokenizer::from_file(dir.join("tokenizer.json")).map_err(|error| load(&error))?;
+    let pad_id = tokenizer
+        .token_to_id("<pad>")
+        .ok_or_else(|| AdapterError::Load("tokenizer has no <pad> token".into()))?;
+    tokenizer.with_padding(Some(PaddingParams {
+        strategy: PaddingStrategy::BatchLongest,
+        pad_id,
+        pad_token: "<pad>".into(),
+        ..PaddingParams::default()
+    }));
+    tokenizer
+        .with_truncation(Some(TruncationParams {
+            max_length: 512,
+            ..TruncationParams::default()
+        }))
+        .map_err(|error| load(&error))?;
+    Ok(tokenizer)
+}
+
+/// A pinned model as the registered [`EmbeddingProvider`].
 pub struct CandleEmbeddingProvider {
     spec: EmbeddingModelSpec,
     model: Arc<Model>,
@@ -227,6 +329,16 @@ impl CandleEmbeddingProvider {
         Ok(Self {
             spec: e5_small_spec(),
             model: Arc::new(Model::load(&dir)?),
+        })
+    }
+
+    /// Loads the pinned EmbeddingGemma 2 text tower from `dir` after
+    /// checking every pinned file.
+    pub fn load_eg2(dir: impl Into<PathBuf>) -> Result<Self, AdapterError> {
+        let dir = dir.into();
+        Ok(Self {
+            spec: eg2_spec(),
+            model: Arc::new(Model::load_eg2(&dir)?),
         })
     }
 
