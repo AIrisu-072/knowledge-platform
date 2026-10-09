@@ -7,6 +7,7 @@ import {summarizeAdmission}from'./admission-summary.mjs';
 import {summarizeScans}from'./scan-diagnostics.mjs';
 import {smallPlan,runThousandChain,runTenThousandChain}from'./chain.mjs';
 import {runLocalScaleChain}from'./local-chain.mjs';
+import {ownedExt4DatabaseEnabled}from'./local-storage.mjs';
 export {smallPlan}from'./chain.mjs';
 import {writeSmallReceipt,writeThousandReceipt,writeTenThousandReceipt}from'./receipt-export.mjs';
 import {sanitizeWorkerDiagnostic,workerProbeArguments} from './worker-probe.mjs';
@@ -15,6 +16,7 @@ import {postgresVersionArgs}from'../document-poc-runtime/postgres-readiness.mjs'
 export function receiptExportEnabled(env){return env.GITHUB_ACTIONS==='true' && env.KP_DOCUMENT_LOAD_RECEIPT_ALLOWED==='true';}
 export function receiptSourceHead(env){const head=env.KP_DOCUMENT_LOAD_SOURCE_HEAD;if(typeof head!=='string'||!/^[a-f0-9]{40}$/.test(head))throw Error('Receipt checkout head unavailable');return head;}
 export function normalizeWorkerResult(result,binding){return{...sanitizeWorkerDiagnostic(result),binding};}
+export function databaseFilesystemLimitation(env){return ownedExt4DatabaseEnabled(env)?'Database filesystem free capacity measured inside the owned PostgreSQL container on the verified dedicated ext4 mount.':'Database filesystem free capacity measured inside the owned PostgreSQL container; tmpfs consumes host memory.';}
 export function loadEnabled(env,prebuilt){
  const modes=['KP_DOCUMENT_LOAD_SMALL','KP_DOCUMENT_LOAD_PLAN','KP_DOCUMENT_LOAD_THOUSAND','KP_DOCUMENT_LOAD_TEN_THOUSAND','KP_DOCUMENT_LOAD_HUNDRED_THOUSAND'].filter(key=>env[key]!==undefined);
  if(!modes.length)return false;
@@ -93,7 +95,7 @@ export async function runDocumentLoad({root,directory,runId,sourceHead,artifacts
    observation.databaseFilesystemVerified=true;
    observation.databaseDiskFreeBytes=databaseFreeBytes;
    observation.limitations=observation.limitations.filter(item=>!item.includes('Database filesystem capacity'));
-   observation.limitations.push(localRequested?'Database filesystem free capacity measured inside the owned PostgreSQL container on the verified dedicated ext4 mount.':'Database filesystem free capacity measured inside the owned PostgreSQL container; tmpfs consumes host memory.');
+   observation.limitations.push(databaseFilesystemLimitation(process.env));
    if(tenThousandRequested||localRequested)observation.resourceObservationMs=performance.now()-observationStarted;
    return observation;
   };

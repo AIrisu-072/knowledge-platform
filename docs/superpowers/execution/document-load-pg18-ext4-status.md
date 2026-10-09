@@ -9,3 +9,5 @@ Status: ACTIVE / ローカル修正・実機資格確認中、未公開
 - TDD: PGDATA 引数と explicit opt-in の RED→GREEN を確認。独立レビューは重大0、中程度1（Docker CLI失敗後cidfile回収）を検出し、finally回収を追加して再確認中。
 - 検証: Mac全load試験はLinuxの/proc・launcher・RSS依存8件で失敗。成功へ読み替えず、固定依存のUbuntuで全suiteを確認する。実Docker回帰は明示opt-in時だけ動く。通常runtime/smallの実結果はこれから。
 - 次: clean修正headをbundleで専用Ubuntuへ渡し、旧PG18設定の正確な失敗log、新設定のDB起動・回帰suite・通常runtime・smallの結果を保存する。公開が拒否された場合は停止し別経路を使わない。既存サービス・データ・認証・.npmrcは触れない。
+
+2026-10-09: 未公開c51e64a7/tree1b8f4596のUbuntu clean checkoutでload456成功/実機opt-in1skip、runtime191成功、DB canary成功（旧設定の正確なmkdir Permission denied、修正後18.6/mode700/UID999、CLI失敗後cid回収・削除確認）。通常runtimeは全段階・owned DB cleanupまでpassed。smallは実行中。独立exact-headレビューは重大・中程度0。観測説明が試験規模で分岐しているため、ext4 opt-in smallをtmpfsと記述する誤りを追加RED→GREENで修正した。実測値を否定するものではないが、c51の結果を新headの成功へ転用せず、最終headで回帰・通常・smallを取り直す。長期4段階は未開始。
