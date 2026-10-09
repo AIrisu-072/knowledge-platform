@@ -352,9 +352,12 @@ struct SegmentSummary {
 /// Unit); above this the cache keeps only the segments of the generation
 /// being read.
 const SUMMARY_CACHE_ITEMS: usize = 1_000_000;
-/// Segments read per query by `restore_without_units`, so the Unit text of
-/// one batch at most is held at a time.
-const SUMMARY_FETCH_BATCH: usize = 256;
+/// Segments read per query by `restore_without_units`.
+const SUMMARY_FETCH_BATCH: usize = 64;
+/// Batches read and summarized at once: decoding and hashing every Unit
+/// dominates a cold load (at 10,000 documents 26 s on one thread). The Unit
+/// text of at most this many batches is held at a time.
+const SUMMARY_FETCH_PARALLEL: usize = 8;
 
 /// Whole restored summaries kept per process, newest last: the one a load
 /// re-verified and then reads (each holds every Unit's seal entry).
@@ -374,6 +377,38 @@ fn summary_cache() -> &'static Mutex<HashMap<String, Arc<SegmentSummary>>> {
 
 /// Verifies a segment read from the database as `assemble` does, applies the
 /// per-item checks bound to `header`'s Source snapshot and keeps its summary.
+/// Reads one batch of listed segments and summarizes each on a blocking
+/// thread.
+async fn summarize_batch(
+    pool: PgPool,
+    batch: Vec<String>,
+    header: UnitManifestHeaderV1,
+) -> Result<Vec<(String, SegmentSummary)>, BundleError> {
+    let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT segment_digest, dto_version, payload::text, unit_count \
+         FROM search_unit_segment WHERE segment_digest = ANY($1)",
+    )
+    .bind(&batch)
+    .fetch_all(&pool)
+    .await?;
+    if rows.len() != batch.len() {
+        return Err(BundleError::Shape);
+    }
+    tokio::task::spawn_blocking(move || {
+        rows.into_iter()
+            .map(|(digest, version, text, count)| {
+                if version != PAYLOAD_DTO_VERSION {
+                    return Err(BundleError::Shape);
+                }
+                let summary = summarize_segment(&digest, count, &text, &header)?;
+                Ok((digest, summary))
+            })
+            .collect()
+    })
+    .await
+    .map_err(|_| BundleError::StoreUnknown)?
+}
+
 fn summarize_segment(
     digest: &str,
     count: i64,
@@ -955,23 +990,21 @@ impl PgPayloadStore {
             wanted.dedup();
             wanted
         };
-        let mut fetched = HashMap::new();
-        for batch in missing.chunks(SUMMARY_FETCH_BATCH) {
-            let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
-                "SELECT segment_digest, dto_version, payload::text, unit_count \
-                 FROM search_unit_segment WHERE segment_digest = ANY($1)",
-            )
-            .bind(batch)
-            .fetch_all(&self.pool)
-            .await?;
-            if rows.len() != batch.len() {
-                return Err(BundleError::Shape);
+        let mut fetched = HashMap::with_capacity(missing.len());
+        let mut batches = missing.chunks(SUMMARY_FETCH_BATCH).map(<[String]>::to_vec);
+        let mut tasks = tokio::task::JoinSet::new();
+        loop {
+            while tasks.len() < SUMMARY_FETCH_PARALLEL {
+                let Some(batch) = batches.next() else {
+                    break;
+                };
+                tasks.spawn(summarize_batch(self.pool.clone(), batch, header.clone()));
             }
-            for (digest, version, text, count) in rows {
-                if version != PAYLOAD_DTO_VERSION {
-                    return Err(BundleError::Shape);
-                }
-                let summary = summarize_segment(&digest, count, &text, &header)?;
+            // An error drops the set, which aborts the other batches.
+            let Some(done) = tasks.join_next().await else {
+                break;
+            };
+            for (digest, summary) in done.map_err(|_| BundleError::StoreUnknown)?? {
                 fetched.insert(digest, Arc::new(summary));
             }
         }
