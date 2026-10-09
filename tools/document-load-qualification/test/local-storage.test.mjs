@@ -17,6 +17,21 @@ async function fixture(t) {
 }
 function mount(source,overrides={}) { return {Type:'bind',Source:source,Destination:'/var/lib/postgresql',RW:true,...overrides}; }
 
+test('owned ext4 canary is explicit and refuses external databases or hosted opt-in',()=>{
+  assert.equal(typeof storage.ownedExt4DatabaseEnabled,'function');
+  assert.equal(storage.ownedExt4DatabaseEnabled({}),false);
+  assert.equal(storage.ownedExt4DatabaseEnabled({KP_DOCUMENT_LOAD_HUNDRED_THOUSAND:'true'}),true);
+  assert.equal(storage.ownedExt4DatabaseEnabled({KP_DOCUMENT_LOAD_SMALL:'true'}),false);
+  assert.equal(storage.ownedExt4DatabaseEnabled({KP_POC_OWNED_EXT4_DATABASE:'true'}),true);
+  assert.equal(storage.ownedExt4DatabaseEnabled({KP_POC_OWNED_EXT4_DATABASE:'true',KP_DOCUMENT_LOAD_SMALL:'true'}),true);
+  for(const env of [{KP_POC_OWNED_EXT4_DATABASE:'false'},{KP_POC_OWNED_EXT4_DATABASE:''},
+    {KP_POC_OWNED_EXT4_DATABASE:'true',GITHUB_ACTIONS:'true'},
+    {KP_POC_OWNED_EXT4_DATABASE:'true',TEST_DATABASE_URL:'postgres://external'},
+    {KP_POC_OWNED_EXT4_DATABASE:'true',KP_POC_DISPOSABLE_DATABASE:'true'}]) {
+    assert.throws(()=>storage.ownedExt4DatabaseEnabled(env),/explicit|owned|hosted/i);
+  }
+});
+
 test('creates a fresh private ext4 database directory and keeps paths out of public identity',async t => {
   assert.equal(typeof storage.prepareOwnedDatabaseStorage,'function');
   const {directory} = await fixture(t);
@@ -61,6 +76,7 @@ test('postgres wrapper preserves hosted tmpfs defaults and accepts only a verifi
   const args=storage.ownedPostgresArguments(runId,cidfile,binding);
   const expected=postgresArguments(runId,cidfile),position=expected.indexOf('--tmpfs');
   expected.splice(position,2,'--mount',`type=bind,src=${join(directory,'postgres-data')},dst=/var/lib/postgresql`);
+  expected.splice(expected.length-1,0,'--env','PGDATA=/var/lib/postgresql');
   assert.deepEqual(args,expected);
   assert.throws(()=>storage.ownedPostgresArguments(runId,join(directory,'..','foreign.cid'),binding),/cidfile/);
 });

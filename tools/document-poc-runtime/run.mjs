@@ -22,7 +22,7 @@ import { fetchCurrentRunBudget, createWorkClock } from '../document-load-qualifi
 import { cleanupOwnedRuntime } from '../document-load-qualification/cleanup.mjs';
 import { createLocalRunBudget } from '../document-load-qualification/local-budget.mjs';
 import { validateLocalLaunchContext, recordLocalStartup } from '../document-load-qualification/local-launch.mjs';
-import { prepareOwnedDatabaseStorage, ownedPostgresArguments, verifyOwnedDatabaseMounts } from '../document-load-qualification/local-storage.mjs';
+import { ownedExt4DatabaseEnabled, prepareOwnedDatabaseStorage, ownedPostgresArguments, verifyOwnedDatabaseMounts } from '../document-load-qualification/local-storage.mjs';
 import { writeLocalScaleReceipt } from '../document-load-qualification/local-receipt-export.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -31,6 +31,7 @@ if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/docum
 const documentLoadEnabled = loadEnabled(process.env, args.includes('--prebuilt'));
 const tenThousandMode = process.env.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true';
 const localScaleMode = process.env.KP_DOCUMENT_LOAD_HUNDRED_THOUSAND === 'true';
+const ownedExt4Database = ownedExt4DatabaseEnabled(process.env);
 const localContext = localScaleMode ? await validateLocalLaunchContext(process.env) : undefined;
 const loadBudget = tenThousandMode ? await fetchCurrentRunBudget() : localScaleMode ? createLocalRunBudget({startedAt:localContext.startedAt,now:Date.now()}) : undefined;
 const loadClock = tenThousandMode || localScaleMode ? createWorkClock() : undefined;
@@ -131,9 +132,9 @@ try {
     if (database) { report.data.database = { ownership: 'caller-asserted-disposable', cleanup: 'caller-owned; never dropped by harness' }; return; }
     password = randomBytes(24).toString('hex');
     const cidfile = join(directory, 'postgres.cid');
-    if (localScaleMode) localDatabaseStorage = await prepareOwnedDatabaseStorage(directory);
+    if (ownedExt4Database) localDatabaseStorage = await prepareOwnedDatabaseStorage(directory);
     try {
-      await databaseDiagnostics.step('docker-run', () => run('postgres-start', 'docker', localScaleMode ? ownedPostgresArguments(runId,cidfile,localDatabaseStorage) : postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }));
+      await databaseDiagnostics.step('docker-run', () => run('postgres-start', 'docker', ownedExt4Database ? ownedPostgresArguments(runId,cidfile,localDatabaseStorage) : postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }));
     } catch (error) {
       try { cid = (await readFile(cidfile, 'utf8')).trim(); } catch { /* Docker might not have created the owned container. */ }
       throw new Blocked(`Disposable Docker PostgreSQL could not start: ${error.message}`, { cause: error });
@@ -147,7 +148,7 @@ try {
     const digestResult = await databaseDiagnostics.step('repo-digest-query', () => run('postgres-image', 'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', imageId]));
     const repoDigests = await databaseDiagnostics.step('repo-digest-parse', async () => JSON.parse(digestResult));
     report.data.database = { ownership: 'harness-owned', image: 'postgres:18.6-bookworm', imageId, repoDigests };
-    if (localScaleMode) report.data.database.storage = await verifyOwnedDatabaseMounts(cid,localDatabaseStorage,run);
+    if (ownedExt4Database) report.data.database.storage = await verifyOwnedDatabaseMounts(cid,localDatabaseStorage,run);
     await databaseDiagnostics.step('readiness', () => waitForPostgresTcp(
       async budget => parsePostgresReadyStatus(await run('postgres-ready', 'docker', postgresReadyArgs(cid), process.env, budget)),
     ));

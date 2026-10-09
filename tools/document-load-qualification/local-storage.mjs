@@ -10,6 +10,15 @@ const executeFile = promisify(execFile);
 const bindings = new WeakMap();
 const destination = '/var/lib/postgresql';
 
+/** Only an explicit local canary changes ordinary/small storage; hosted stays tmpfs. */
+export function ownedExt4DatabaseEnabled(env) {
+  if (env.KP_POC_OWNED_EXT4_DATABASE === undefined) return env.KP_DOCUMENT_LOAD_HUNDRED_THOUSAND === 'true';
+  if (env.KP_POC_OWNED_EXT4_DATABASE !== 'true') throw Error('Explicit owned ext4 database opt-in must be true');
+  if (env.GITHUB_ACTIONS === 'true') throw Error('Owned ext4 canary cannot change hosted storage');
+  if (env.TEST_DATABASE_URL !== undefined || env.KP_POC_DISPOSABLE_DATABASE !== undefined) throw Error('Owned ext4 canary requires its fresh owned database');
+  return true;
+}
+
 export function assertLocalLinux({platform=process.platform,arch=process.arch}={}) {
   if (platform !== 'linux' || arch !== 'x64') throw Error('Owned local qualification requires Linux x64');
 }
@@ -73,6 +82,10 @@ export function ownedPostgresArguments(runId,cidfile,binding) {
   const index = args.indexOf('--tmpfs');
   if (index < 0 || args[index+1] !== `${destination}:rw` || args.indexOf('--tmpfs',index+1) !== -1) throw Error('Default PostgreSQL mount contract changed');
   args.splice(index,2,'--mount',`type=bind,src=${record.source},dst=${destination}`);
+  // PG18's default nested PGDATA leaves this private mount root user-owned.
+  // Make the fresh disposable mount the data directory so the official
+  // entrypoint chowns that exact directory before dropping to postgres.
+  args.splice(args.length-1,0,'--env',`PGDATA=${destination}`);
   return args;
 }
 
