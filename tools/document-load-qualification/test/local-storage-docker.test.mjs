@@ -46,6 +46,9 @@ test('real PG18 rejects the private ancestor and starts when fresh bind root is 
         await writeFile(join(directory,'result.json'),JSON.stringify({status:'SUCCEEDED',databaseOnly:true,version,mode:source.mode&0o777,uid:source.uid})+'\n',{mode:0o600,flag:'wx'});
       }
     }finally{
+      // Docker can create the owned container/cidfile before its CLI times out.
+      if(!cid){try{cid=(await readFile(join(directory,'postgres.cid'),'utf8')).trim();}catch(error){if(error.code!=='ENOENT')throw error;}}
+      if(cid)assert.match(cid,/^[a-f0-9]{64}$/);
       if(cid){assert.equal(await docker(['inspect','--format','{{index .Config.Labels "kp.document-poc.run"}}',cid]),runId);await docker(['rm','--force',cid]);}
     }
   }
