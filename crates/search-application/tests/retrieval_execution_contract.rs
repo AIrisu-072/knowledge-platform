@@ -370,6 +370,7 @@ fn input<'a>(
         graph_plan: None,
         body_query: None,
         vector_query: None,
+        defer_access_to_caller: false,
     }
 }
 

@@ -57,6 +57,11 @@ pub struct RetrievalExecutionInput<'a> {
     pub graph_plan: Option<&'a GraphTraversalPlan>,
     /// Request text for the Vector arm.
     pub vector_query: Option<&'a str>,
+    /// The caller checks current access itself, in rank order and only as
+    /// far as it discloses, before anything leaves it: hits are returned
+    /// unchecked and their rank counts every retriever position. Only a
+    /// caller with such a final gate (Search) sets this.
+    pub defer_access_to_caller: bool,
 }
 
 /// Authorized retriever output, before applicability, evidence, or Primary
@@ -294,13 +299,15 @@ impl RetrievalExecutor {
         for hit in port_hits {
             // Denied, Unknown, and evaluator errors have the same silent result:
             // none of the candidate identity, locator, or trace leaves here.
-            if !matches!(
-                ports
-                    .access
-                    .evaluate(&hit.candidate, &input.request.access_context)
-                    .await,
-                Ok(AccessDecision::Allowed)
-            ) {
+            if !input.defer_access_to_caller
+                && !matches!(
+                    ports
+                        .access
+                        .evaluate(&hit.candidate, &input.request.access_context)
+                        .await,
+                    Ok(AccessDecision::Allowed)
+                )
+            {
                 continue;
             }
             if let Some(paths) = &hit.graph_paths {

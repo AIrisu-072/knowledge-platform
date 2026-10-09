@@ -67,9 +67,10 @@ pub struct Corpus {
     pub docs: BTreeMap<SourceId, Vec<Doc>>,
     generations: Mutex<BTreeMap<SourceId, u128>>,
     pub denied: Mutex<BTreeSet<ResourceId>>,
-    /// Allowed on the first access check, denied afterwards.
-    pub revoke_after_first_check: Mutex<BTreeSet<ResourceId>>,
-    checked: Mutex<BTreeSet<ResourceId>>,
+    /// Allowed while retrieved, denied from then on.
+    pub revoke_after_retrieval: Mutex<BTreeSet<ResourceId>>,
+    /// Every Resource the access port was asked about, in order.
+    pub evaluated: Mutex<Vec<ResourceId>>,
     pub failing: Mutex<BTreeSet<SourceId>>,
     pub body_refused: Mutex<BTreeSet<SourceId>>,
     pub retrieved: Mutex<Vec<SourceId>>,
@@ -369,7 +370,14 @@ impl LexicalRetrieverPort for Corpus {
             if self.failing.lock().unwrap().contains(&key.source_id) {
                 return Err(SearchError::SourceUnavailable("timeout".into()));
             }
-            Ok(self
+            let revoked: Vec<_> = self
+                .revoke_after_retrieval
+                .lock()
+                .unwrap()
+                .iter()
+                .copied()
+                .collect();
+            let hits = self
                 .docs
                 .get(&key.source_id)
                 .into_iter()
@@ -380,7 +388,9 @@ impl LexicalRetrieverPort for Corpus {
                     candidate.matched_signals.push("title".into());
                     candidate
                 })
-                .collect())
+                .collect();
+            self.denied.lock().unwrap().extend(revoked);
+            Ok(hits)
         })
     }
 
@@ -429,12 +439,8 @@ impl CurrentCandidateAccessEvaluatorPort for Corpus {
             let Some(id) = candidate.resource_ref else {
                 return Ok(AccessDecision::Unknown);
             };
+            self.evaluated.lock().unwrap().push(id);
             if self.denied.lock().unwrap().contains(&id) {
-                return Ok(AccessDecision::Denied);
-            }
-            if self.revoke_after_first_check.lock().unwrap().contains(&id)
-                && !self.checked.lock().unwrap().insert(id)
-            {
                 return Ok(AccessDecision::Denied);
             }
             Ok(AccessDecision::Allowed)
