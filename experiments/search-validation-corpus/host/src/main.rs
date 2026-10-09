@@ -409,8 +409,15 @@ async fn run() -> Result<(), String> {
     if !actors_file.bind.ip().is_loopback() {
         return Err("the validation host binds only a loopback address".into());
     }
+    // Requests hold a connection for each access check; the pool bounds how
+    // many run at once (SEARCH_API_POOL_SIZE, default 16).
+    let pool_size = std::env::var("SEARCH_API_POOL_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|size| (1..=256).contains(size))
+        .unwrap_or(16);
     let pool = PgPoolOptions::new()
-        .max_connections(16)
+        .max_connections(pool_size)
         .connect(&env("SEARCH_API_DATABASE_URL")?)
         .await
         .map_err(|_| "Search database unavailable".to_string())?;
