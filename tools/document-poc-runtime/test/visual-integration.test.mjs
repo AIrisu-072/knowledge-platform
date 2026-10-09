@@ -135,7 +135,7 @@ test('WORKING編集と予約取消を既存journey・再起動の正確な集合
   const match = config.match(/testMatch: phase === 'journey' \? (\[[^\]]*\]) : (\[[^\]]*\])/);
   assert.ok(match);
   const entries = value => [...value.matchAll(/'([^']+)'/g)].map(item => item[1]);
-  assert.deepEqual(entries(match[1]), ['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts',
+  assert.deepEqual(entries(match[1]), ['document-runtime.spec.ts', 'initial-registration.spec.ts', 'document-list-focus.spec.ts', 'metadata-editor.spec.ts',
     'lifecycle-operations.spec.ts', 'document-schedule-cancellation.spec.ts', 'working-version-editor.spec.ts',
     'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'timestamp-layout.spec.ts']);
   assert.deepEqual(entries(match[2]), ['persistence.spec.ts', 'metadata-editor.spec.ts', 'lifecycle-operations-persistence.spec.ts',
