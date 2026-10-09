@@ -1,5 +1,12 @@
 # Active Execution Pointer
 
+## 2026-10-09 — 遅延した文書一覧応答のフォーカス保持
+
+- 再開先は[状況](document-list-focus-status.md)と[操作手順](../../operations/document-list-focus.md)。保存済み修正を main `e15be9c3` に取り込んだ独立 branch `fix/document-list-focus-20261009`。登録ボタンや別操作から一覧応答がフォーカスを奪う制御再現済みの不具合を修正する。元の Ubuntu small 失敗と同一原因とは断定しない。
+- push と日本語 Draft PR 作成は承認済み。次は関連試験・独立レビュー、重複確認後の公開、正確な head の必須 CI の確認。まだ merge しない。1 万件 run `37887357388`、他担当の branch / PR、実環境の設定は変更しない。
+
+---
+
 ## 2026-10-08 — 作業版の原本構成・初回複数原本登録
 
 - 再開先は[状況](document-original-management-status.md)、[承認範囲](../specs/2026-10-08-document-original-management.md)、[実装計画](../plans/2026-10-08-document-original-management-implementation.md)。06:23:37 UTCの「この方針で進めてください」で、作業版だけの追加・削除・並替（最終原本不可、公開/履歴保持）と初回複数の原子的作成を承認。下の旧設計待ち記録を現在状態として使用しない。
