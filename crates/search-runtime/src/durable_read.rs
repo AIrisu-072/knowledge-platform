@@ -46,6 +46,9 @@ use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock, watch};
 use uuid::Uuid;
 
+use search_application::ports::{AccessDecision, BoxFuture, CurrentCandidateAccessEvaluatorPort};
+use search_application::search_core::discovery::FederatedCandidate;
+
 use crate::api::{ActorPorts, ActorPortsFactory};
 use crate::lexical_artifact::LexicalArtifactStore;
 use crate::payload::PgPayloadStore;
@@ -378,6 +381,61 @@ impl DurableDocumentPorts {
     }
 }
 
+/// The access decisions of one request, by candidate: a Resource reached by
+/// several Unit hits is checked against Document once per request, as if
+/// every candidate had been checked when the request began. Evaluator errors
+/// are not kept, so a later call asks again.
+struct RequestAccessDecisions {
+    inner: Arc<dyn CurrentCandidateAccessEvaluatorPort>,
+    decided: std::sync::Mutex<std::collections::HashMap<String, AccessDecision>>,
+}
+
+impl RequestAccessDecisions {
+    fn new(inner: Arc<dyn CurrentCandidateAccessEvaluatorPort>) -> Self {
+        Self {
+            inner,
+            decided: Default::default(),
+        }
+    }
+
+    /// Every candidate field the Document evaluator reads, and the context.
+    fn key(candidate: &FederatedCandidate, access_context: &str) -> String {
+        format!(
+            "{:?}\u{0}{:?}\u{0}{:?}\u{0}{}\u{0}{}",
+            candidate.source_ref,
+            candidate.resource_ref,
+            candidate.identity_class,
+            candidate.candidate_id,
+            access_context
+        )
+    }
+}
+
+impl CurrentCandidateAccessEvaluatorPort for RequestAccessDecisions {
+    fn evaluate<'a>(
+        &'a self,
+        candidate: &'a FederatedCandidate,
+        access_context: &'a str,
+    ) -> BoxFuture<'a, AccessDecision> {
+        Box::pin(async move {
+            let key = Self::key(candidate, access_context);
+            if let Some(decision) = self
+                .decided
+                .lock()
+                .ok()
+                .and_then(|decided| decided.get(&key).copied())
+            {
+                return Ok(decision);
+            }
+            let decision = self.inner.evaluate(candidate, access_context).await?;
+            if let Ok(mut decided) = self.decided.lock() {
+                decided.insert(key, decision);
+            }
+            Ok(decision)
+        })
+    }
+}
+
 impl ActorPortsFactory for DurableDocumentPorts {
     fn for_actor<'a>(&'a self, actor: &'a TrustedSearchScope) -> ApiFuture<'a, ActorPorts> {
         Box::pin(async move {
@@ -442,7 +500,7 @@ impl ActorPortsFactory for DurableDocumentPorts {
                 hypergraph,
                 graph_resource_access,
                 vector,
-                access: access.access,
+                access: Arc::new(RequestAccessDecisions::new(access.access)),
                 resource_locator: access.resource_locator,
                 resource_reader: access.resource_reader,
             })

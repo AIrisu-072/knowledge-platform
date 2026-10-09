@@ -341,6 +341,10 @@ impl<'a> SearchQueryService<'a> {
                         request,
                         query,
                         MAX_EVALUATED_CANDIDATES,
+                        // A first page needs its items and one more to know
+                        // whether a next page exists; a continuation is
+                        // ranked in full, since its offset is bound later.
+                        input.cursor.is_none().then_some(input.page_size + 1),
                     )
                     .await
                     .map_err(|_| ApiError::DependencyUnavailable)?,
