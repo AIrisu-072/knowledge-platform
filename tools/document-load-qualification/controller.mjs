@@ -7,16 +7,18 @@ import {exerciseStage,verifyRetained}from'./workflow.mjs';
 import {exerciseNegative,verifyNegativeRetained,sanitizeNegativeFailureCode}from'./negative.mjs';
 import {sanitizeWorkerDiagnostic} from './worker-probe.mjs';
 import {sanitizeFailureDiagnostic,sanitizeInspectionDiagnostic,sanitizePublicationPrerequisites} from './diagnostics.mjs';
+import {BoundedTelemetry} from './telemetry.mjs';
 export async function runQualification({directory,runId,plan,previousReport,corpus,runtime,probeFactory,execute=exerciseStage,verify=verifyRetained,executeNegative=exerciseNegative,verifyNegative=verifyNegativeRetained}){
  await mkdir(directory,{recursive:true,mode:0o700});
  const started=performance.now(),timings=[],observations=[];
  const report={schemaVersion:1,runId,evidenceClass:runtime.evidenceClass==='owned-real-process'?'owned-real-process':'test-double',status:'NOT_RUN',stage:plan?.stage,documentCount:plan?.documentCount,fingerprint:plan?.fingerprint,plan,previousReport,productionSloClaim:false,qualityClaim:false,startedAt:new Date().toISOString(),sampleIntervalMs:1000};
  async function save(){const file=await open(join(directory,'report.tmp'),'w',0o600);try{await file.writeFile(JSON.stringify(report,null,2)+'\n');await file.sync();}finally{await file.close();}await rename(join(directory,'report.tmp'),join(directory,'report.json'));}
- let journal,timer,monitor,busy,stopError;
+ let journal,timer,monitor,busy,stopError,telemetry;
+ const boundedTelemetry=runtime.telemetryMode==='bounded-disk';
  const abort=new AbortController();
  const fail=code=>{const error=Error(code);error.code=code;return error;};
  let lastObservationAt=-Infinity;
- async function observe(force=false){if(busy)return busy;if(!force && performance.now()-lastObservationAt<1000)return observations.at(-1);busy=(async()=>{const value=await runtime.observe();observations.push(value);lastObservationAt=performance.now();return value;})();try{return await busy;}finally{busy=undefined;}}
+ async function observe(force=false){if(busy)return busy;if(!force && performance.now()-lastObservationAt<1000)return observations.at(-1);busy=(async()=>{const value=await runtime.observe();if(telemetry)await telemetry.recordObservation(value);observations.push(value);if(telemetry&&observations.length>256)observations.shift();lastObservationAt=performance.now();return value;})();try{return await busy;}finally{busy=undefined;}}
  async function checkpoint(force=false){
   if(stopError)throw stopError;
   if(performance.now()-started>plan.budgets.maxWallTimeMs || Date.now()>Date.parse(plan.deadlineAt))throw fail('wall-budget-exhausted');
@@ -30,6 +32,7 @@ export async function runQualification({directory,runId,plan,previousReport,corp
  try{
   const valid=validatePlan(plan);
   if(!valid.valid || corpus.hash!==plan.fingerprint.corpus){report.status='NOT_ADMITTED';report.failureCode='invalid-plan-or-corpus';await save();return report;}
+  if(boundedTelemetry)telemetry=await BoundedTelemetry.open(join(directory,'observations.jsonl'));
   const initial=await observe();report.admission=admitStage(plan,previousReport,initial);
   if(report.admission.status!=='ADMITTED'){report.status='NOT_ADMITTED';await save();return report;}
   report.status='RUNNING';await save();
@@ -37,7 +40,11 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   timer=setTimeout(()=>{stopError=fail('wall-budget-exhausted');abort.abort(stopError);},budgetMs);
   monitor=setInterval(()=>{checkpoint().catch(error=>{stopError=error;abort.abort(error);});},1000);
   journal=await Journal.open(join(directory,'operations.jsonl'),{runId,fingerprint:plan.fingerprint,stage:plan.stage,documentCount:plan.documentCount});
-  const probe=await probeFactory({signal:abort.signal,onTiming:value=>timings.push(value)});
+  const probe=await probeFactory({signal:abort.signal,onTiming:value=>{
+   if(!telemetry)return timings.push(value);
+   try{telemetry.recordTiming(value);}catch(error){stopError=error;abort.abort(error);throw error;}
+  }});
+  if(telemetry&&stopError)throw stopError;
   const identityBefore=await runtime.identity();
   if(corpus.negativeAssets?.length){
    report.negativeCorpus=await executeNegative({probe,journal,assets:corpus.negativeAssets,checkpoint,runId,stageLabel:plan.stage,diagnosePublication:runtime.diagnosePublication,diagnoseWorker:runtime.diagnoseWorker});
@@ -61,7 +68,7 @@ export async function runQualification({directory,runId,plan,previousReport,corp
  }catch(error){
   error=stopError??error;
   report.status=error?.code==='wall-budget-exhausted'||error?.code==='resource-budget-exhausted'?'ABORTED':'FAILED';
-  report.failureCode=['wall-budget-exhausted','resource-budget-exhausted','restart-proof-failed'].includes(error?.code)?error.code:'qualification-assertion-or-prerequisite-failed';
+  report.failureCode=['wall-budget-exhausted','resource-budget-exhausted','restart-proof-failed','telemetry-write-failed'].includes(error?.code)?error.code:'qualification-assertion-or-prerequisite-failed';
   report.failureDiagnostic=sanitizeFailureDiagnostic(error?.diagnostic);
   const negativeFailureCode=sanitizeNegativeFailureCode(error);
   if(negativeFailureCode)report.negativeFailureCode=negativeFailureCode;
@@ -95,8 +102,19 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   await journal?.close();
   report.finishedAt=new Date().toISOString();
   report.observations=observations;
-  report.metrics=summarizeResources(observations,performance.now()-started);
-  report.timings=Object.fromEntries([...new Set(timings.map(t=>t.operation))].map(operation=>{const samples=timings.filter(t=>t.operation===operation);return[operation,{...summarizeTimings(samples.map(t=>t.elapsedMs)),statuses:Object.fromEntries([...new Set(samples.map(t=>String(t.status)))].map(status=>[status,samples.filter(t=>String(t.status)===status).length]))}];}));
+  if(boundedTelemetry){
+   try{
+    if(telemetry){report.telemetry=await telemetry.close();report.metrics=telemetry.summary(performance.now()-started);report.timings=telemetry.timingSummary();report.scanDiagnostics=telemetry.scanSummary();}
+    else if(report.failureCode==='telemetry-write-failed')throw fail('telemetry-write-failed');
+    else{report.metrics=null;report.timings={};report.scanDiagnostics={status:'unavailable'};}
+   }catch{
+    report.status='FAILED';report.failureCode='telemetry-write-failed';report.metricQualification='measurement-unavailable';report.metrics=null;report.timings={};report.scanDiagnostics={status:'unavailable'};delete report.telemetry;
+    if(report.negativeCorpus)report.negativeCorpus.status='FAILED';
+   }
+  }else{
+   report.metrics=summarizeResources(observations,performance.now()-started);
+   report.timings=Object.fromEntries([...new Set(timings.map(t=>t.operation))].map(operation=>{const samples=timings.filter(t=>t.operation===operation);return[operation,{...summarizeTimings(samples.map(t=>t.elapsedMs)),statuses:Object.fromEntries([...new Set(samples.map(t=>String(t.status)))].map(status=>[status,samples.filter(t=>String(t.status)===status).length]))}];}));
+  }
   report.throughputDocumentsPerSecond=report.status==='SUCCEEDED'?plan.documentCount/(report.metrics.totalElapsedMs/1000):null;
   await save();
  }

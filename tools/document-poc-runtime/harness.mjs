@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { StringDecoder } from 'node:string_decoder';
 import { request as httpRequest } from 'node:http';
+import { startBoundedProcess } from './bounded-process-log.mjs';
 
 export const RUNTIME_STAGES = ['toolchain', 'build', 'artifacts', 'database', 'migrate', 'bootstrap', 'human-start', 'agent-start', 'trace-request', 'seed', 'seed-replay', 'browser-journey', 'agent-acceptance', 'health-recovery', 'ordinary-request-sigterm', 'stalled-download-sigterm', 'shutdown', 'agent-outage', 'diagnostics', 'restart', 'browser-persistence', 'final-shutdown'];
 
@@ -99,7 +100,8 @@ export async function waitReady(origin, child, timeout = STARTUP_OBSERVATION_MS)
   throw Error('Server did not become ready within the test startup window');
 }
 
-export function startProcess(command, args, { cwd, env, log, secrets = [] }) {
+export function startProcess(command, args, { cwd, env, log, secrets = [], captureMode }) {
+  if (captureMode === 'bounded-tail') return startBoundedProcess(command, args, { cwd, env, log, secrets });
   const stream = createWriteStream(log, { flags: 'a', mode: 0o600 });
   const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let rawOutput = '';
