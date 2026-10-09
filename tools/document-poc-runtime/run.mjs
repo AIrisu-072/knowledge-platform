@@ -17,6 +17,7 @@ import { assertSameRuntime, observeOwnedRuntime, privateProvenanceProbe } from '
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
 import { loadEnabled, runDocumentLoad } from '../document-load-qualification/hosted.mjs';
+import { createLoadRestarter } from '../document-load-qualification/restart.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
@@ -324,6 +325,10 @@ try {
     humanProcess = await start('poc-human', 3); agentProcess = await start('poc-agent', 2);
   });
   await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
+  const restartForDocumentLoad = createLoadRestarter({
+    current: () => ({ human: humanProcess, agent: agentProcess }), stop: stopProcess, start,
+    replace: ({ human, agent }) => { humanProcess = human; agentProcess = agent; },
+  });
   if (documentLoadEnabled) await report.stage('document-load-qualification', async () => {
     report.data.documentLoadQualification = await runDocumentLoad({ root, directory, runId,
       sourceHead: report.data.gitHead, artifacts: report.data.artifacts, storage, cid, password, human, agent, run, worker: dsi, pdfium,
@@ -332,10 +337,7 @@ try {
         ...report.data.runtimeProvenance.documentLoadCheckpoint,
         humanPid: humanProcess.child.pid, agentPid: agentProcess.child.pid,
       }; },
-      restart: async () => {
-        await stopProcess(humanProcess); await stopProcess(agentProcess);
-        humanProcess = await start('poc-human', 4); agentProcess = await start('poc-agent', 3);
-      },
+      restart: restartForDocumentLoad,
     });
   });
   await report.stage('final-shutdown', async () => { await stopProcess(humanProcess); await stopProcess(agentProcess); });

@@ -1,11 +1,17 @@
 import {mkdir,lstat,realpath,open} from 'node:fs/promises';
 import {join} from 'node:path';
-import {MAX_RECEIPT_BYTES,projectQualificationReceipt} from './receipt.mjs';
+import {MAX_RECEIPT_BYTES,projectQualificationReceipt,projectThousandQualificationReceipt} from './receipt.mjs';
 
-/** One fixed small-stage CI artifact. Never writes the private source report. */
+/** One fixed successful qualification artifact, never a private source report. */
 export async function writeSmallReceipt(root,report,expectedCode){
- if(typeof expectedCode!=='string'||!/^[a-f0-9]{40}$/.test(expectedCode)||report?.fingerprint?.code!==expectedCode)throw Error('Receipt source code mismatch');
- const envelope=projectQualificationReceipt(report);
+ return writeEnvelope(root,projectQualificationReceipt(report),expectedCode);
+}
+export async function writeThousandReceipt(root,chain,expectedCode){
+ if(chain?.status!=='SUCCEEDED')throw Error('Qualification chain is incomplete');
+ return writeEnvelope(root,projectThousandQualificationReceipt({small:chain.small,thousand:chain.thousand}),expectedCode);
+}
+async function writeEnvelope(root,envelope,expectedCode){
+ if(typeof expectedCode!=='string'||!/^[a-f0-9]{40}$/.test(expectedCode)||envelope.receipt.fingerprint.code!==expectedCode)throw Error('Receipt source code mismatch');
  const bytes=Buffer.from(JSON.stringify(envelope)+'\n');
  if(bytes.length>MAX_RECEIPT_BYTES)throw Error('Receipt byte limit exceeded');
  let directory=await realpath(root);

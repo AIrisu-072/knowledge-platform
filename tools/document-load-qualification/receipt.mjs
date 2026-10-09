@@ -60,10 +60,10 @@ function canonical(value) {
 }
 const hash = value => createHash('sha256').update(canonical(value)).digest('hex');
 
-function validateReceipt(receipt) {
+function validateReceipt(receipt, stage = 'small', documentCount = 2) {
   exact(receipt, RECEIPT_KEYS);
   requireValue(receipt.schemaVersion === 1 && receipt.evidenceClass === 'owned-real-process' && receipt.status === 'SUCCEEDED'
-    && receipt.stage === 'small' && receipt.documentCount === 2 && uuid(receipt.runId)
+    && receipt.stage === stage && receipt.documentCount === documentCount && uuid(receipt.runId)
     && receipt.metricQualification === 'complete-stage' && receipt.productionSloClaim === false && receipt.qualityClaim === false);
   exact(receipt.fingerprint, ['code', 'corpus', 'runtime']);
   requireValue(sha(receipt.fingerprint.code, 40) && sha(receipt.fingerprint.corpus) && sha(receipt.fingerprint.runtime));
@@ -75,9 +75,9 @@ function validateReceipt(receipt) {
     && receipt.metrics.storageAllocatedGrowthBytes >= receipt.metrics.storageGrowthBytes
     && receipt.metrics.databaseAllocatedGrowthBytes >= receipt.metrics.databaseGrowthBytes);
   exact(receipt.counts, COUNTS);
-  requireValue(COUNTS.every(key => receipt.counts[key] === 2));
+  requireValue(COUNTS.every(key => receipt.counts[key] === documentCount));
   exact(receipt.evidence, ['documentIds']);
-  ids(receipt.evidence.documentIds, 2);
+  ids(receipt.evidence.documentIds, documentCount);
   exact(receipt.restart, ['identityRetained', 'processesReplaced', 'before', 'after', 'processes']);
   requireValue(receipt.restart.identityRetained === true && receipt.restart.processesReplaced === true);
   for (const identity of [receipt.restart.before, receipt.restart.after]) {
@@ -108,12 +108,16 @@ function validateReceipt(receipt) {
  * Successful projection establishes a schema, not that a real run occurred.
  */
 export function projectQualificationReceipt(report) {
+  return projectStageReceipt(report, 'small', 2);
+}
+
+function projectStageReceipt(report, stage, documentCount) {
   try {
     const restart = read(report, 'restart');
     const before = read(restart, 'before'), after = read(restart, 'after');
     requireValue(read(before, 'runId') === read(report, 'runId') && read(after, 'runId') === read(report, 'runId') && isDeepStrictEqual(before, after));
     const evidence = read(report, 'evidence');
-    const documentIds = read(evidence, 'documentIds'); ids(documentIds, 2);
+    const documentIds = read(evidence, 'documentIds'); ids(documentIds, documentCount);
     const processes = read(restart, 'processes');
     const oldPids = read(processes, 'before'), newPids = read(processes, 'after'); pids(oldPids); pids(newPids);
     const negative = read(report, 'negativeCorpus');
@@ -140,7 +144,7 @@ export function projectQualificationReceipt(report) {
       },
       ...select(report, ['productionSloClaim', 'qualityClaim']),
     };
-    validateReceipt(receipt);
+    validateReceipt(receipt, stage, documentCount);
     const envelope = { schemaVersion: 1, sha256: hash(receipt), receipt };
     requireValue(Buffer.byteLength(JSON.stringify(envelope)) <= MAX_RECEIPT_BYTES);
     return envelope;
@@ -173,6 +177,84 @@ export function verifyQualificationReceipt(input, expected) {
     exact(envelope, ['schemaVersion', 'sha256', 'receipt']);
     requireValue(envelope.schemaVersion === 1 && sha(envelope.sha256));
     validateReceipt(envelope.receipt);
+    requireValue(Buffer.byteLength(JSON.stringify(envelope)) <= MAX_RECEIPT_BYTES);
+    requireValue(envelope.sha256 === hash(envelope.receipt) && envelope.sha256 === expected.sha256
+      && envelope.receipt.runId === expected.runId
+      && ['code', 'corpus', 'runtime'].every(key => envelope.receipt.fingerprint[key] === expected[key]));
+    return { receipt: JSON.parse(JSON.stringify(envelope.receipt)), integrityVerified: true, authenticityVerified: false };
+  } catch { invalid(); }
+}
+
+function validateThousandReceipt(receipt) {
+  exact(receipt, ['schemaVersion', 'evidenceClass', 'status', 'runId', 'fingerprint', 'stages', 'productionSloClaim', 'qualityClaim']);
+  requireValue(receipt.schemaVersion === 1 && receipt.evidenceClass === 'owned-real-process' && receipt.status === 'SUCCEEDED'
+    && uuid(receipt.runId) && receipt.productionSloClaim === false && receipt.qualityClaim === false);
+  exact(receipt.fingerprint, ['code', 'corpus', 'runtime']);
+  requireValue(sha(receipt.fingerprint.code, 40) && sha(receipt.fingerprint.corpus) && sha(receipt.fingerprint.runtime));
+  array(receipt.stages, 2, () => true);
+  const [small, thousand] = receipt.stages;
+  validateReceipt(small);
+  validateReceipt(thousand, 1000, 1000);
+  for (const stage of receipt.stages) {
+    requireValue(stage.runId === receipt.runId && isDeepStrictEqual(stage.fingerprint, receipt.fingerprint));
+  }
+  requireValue(Date.parse(small.finishedAt) <= Date.parse(thousand.startedAt)
+    && isDeepStrictEqual(small.restart.after, thousand.restart.before)
+    && isDeepStrictEqual(small.restart.processes.after, thousand.restart.processes.before));
+  const documentIds = receipt.stages.flatMap(stage => [...stage.evidence.documentIds, ...stage.negativeCorpus.documentIds]);
+  requireValue(new Set(documentIds).size === documentIds.length);
+}
+
+/**
+ * Export only the fresh in-memory small -> 1000 full-report chain. The exact
+ * previousReport object is required to prevent accidental loaded-history use;
+ * this is an API guard, not proof of execution or provenance. Full private
+ * restart datasets are compared before their approved fields are projected.
+ * The resulting bounded envelope contains no source report, journal or path.
+ */
+export function projectThousandQualificationReceipt(chain) {
+  try {
+    exact(chain, ['small', 'thousand']);
+    const small = read(chain, 'small'), thousand = read(chain, 'thousand');
+    requireValue(read(thousand, 'previousReport') === small);
+    const smallAfter = read(read(small, 'restart'), 'after');
+    const thousandBefore = read(read(thousand, 'restart'), 'before');
+    requireValue(isDeepStrictEqual(smallAfter, thousandBefore));
+    const stages = [projectStageReceipt(small, 'small', 2).receipt, projectStageReceipt(thousand, 1000, 1000).receipt];
+    const receipt = {
+      ...select(stages[0], ['schemaVersion', 'evidenceClass', 'status', 'runId']),
+      fingerprint: select(stages[0].fingerprint, ['code', 'corpus', 'runtime']),
+      stages, productionSloClaim: false, qualityClaim: false,
+    };
+    validateThousandReceipt(receipt);
+    const envelope = { schemaVersion: 1, sha256: hash(receipt), receipt };
+    requireValue(Buffer.byteLength(JSON.stringify(envelope)) <= MAX_RECEIPT_BYTES);
+    return envelope;
+  } catch { invalid(); }
+}
+
+/**
+ * Verify the closed chain schema and canonical SHA-256 integrity only. All five
+ * expected bindings must come from independently trusted owned GitHub workflow,
+ * run/attempt, checkout and artifact provenance, never this envelope alone.
+ * No historical report is reconstructed and no stage is admitted by this API.
+ */
+export function verifyThousandQualificationReceipt(input, expected) {
+  try {
+    let envelope = input;
+    if (Buffer.isBuffer(input)) {
+      requireValue(input.length <= MAX_RECEIPT_BYTES);
+      envelope = input.toString('utf8');
+    }
+    if (typeof envelope === 'string') {
+      requireValue(Buffer.byteLength(envelope) <= MAX_RECEIPT_BYTES);
+      envelope = JSON.parse(envelope);
+    }
+    exact(expected, ['code', 'corpus', 'runtime', 'runId', 'sha256']);
+    requireValue(sha(expected.code, 40) && sha(expected.corpus) && sha(expected.runtime) && uuid(expected.runId) && sha(expected.sha256));
+    exact(envelope, ['schemaVersion', 'sha256', 'receipt']);
+    requireValue(envelope.schemaVersion === 1 && sha(envelope.sha256));
+    validateThousandReceipt(envelope.receipt);
     requireValue(Buffer.byteLength(JSON.stringify(envelope)) <= MAX_RECEIPT_BYTES);
     requireValue(envelope.sha256 === hash(envelope.receipt) && envelope.sha256 === expected.sha256
       && envelope.receipt.runId === expected.runId

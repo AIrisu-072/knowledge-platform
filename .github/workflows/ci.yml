@@ -225,6 +225,8 @@ jobs:
           mise install node
           mise install pnpm
           pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check Document qualification contracts
+        run: pnpm --dir tools/document-load-qualification test
       - name: Install verified Japanese runner font
         run: node tools/document-poc-runtime/runner-font.mjs
       - name: Install pinned Chromium
@@ -239,7 +241,7 @@ jobs:
           KP_DOCUMENT_LOAD_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           KP_DOCUMENT_LOAD_REQUESTED: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'document-load-small') }}
         run: |
-          unset KP_DOCUMENT_LOAD_SMALL KP_DOCUMENT_LOAD_PLAN
+          unset KP_DOCUMENT_LOAD_SMALL KP_DOCUMENT_LOAD_PLAN KP_DOCUMENT_LOAD_THOUSAND
           if [[ "$KP_DOCUMENT_LOAD_REQUESTED" == "true" ]]; then
             export KP_DOCUMENT_LOAD_SMALL=true
           fi
