@@ -108,3 +108,13 @@ manifestのexpectedOutcomeは来歴hashに含めます。負例の422はnegative
 JSONは小量正例2/負例1の成功条件、数値、UUID、再起動identity/PID、取得時刻を厳格に検査し、最大1MiB、固定パス、freshなdirectory/排他的file作成を使います。PRのcheckout headと一致しなければexport失敗です。fork PR、失敗run、大量stageはexport/uploadしません。公開ログにはreceiptのSHA-256だけを追加します。
 
 SHA-256は整合性確認であって署名/実行真正性ではありません。verifyQualificationReceiptは信頼された別経路のcode/corpus/runtime/runId/SHA-256を全て要求し、authenticityVerified:falseを明示します。次段の利用前に、同repoの承認workflow、run/attempt、checkout head、artifact originとログdigestを照合する必要があります。未知JSONを自己申告hashだけでadmissionへ渡しません。今回の追加は保存/整合性検査までで、任意receiptの自動restoreや大規模CI起動を追加しません。
+
+## 明示的な1,000件枠
+
+`Document 1000 qualification` workflowはmanual dispatchだけを受け付けます。同一public repositoryのmain・固定1000入力・標準ubuntu-24.04に限定し、通常CIの45分枠は延長しません。job上限180分の内側で、fresh smallを5分以内、1000を120分の作業中止/admission期限、全chainを125分期限で評価します。期限後の既存probe/cleanupには時間を要する場合があり、runner全体の強制終了は180分です。
+
+同一build/runtime/corpus/run UUID/DB/storageでsmallを取り直し、成功後のidentity・PID連続性を確認してから、現在の実測資源とfull small reportを既存admissionへ渡します。以前の添付receiptや別runnerの値を現在容量へ読み替えません。stage別のFolder名・directory/journal・再起動log世代を使い、smallの文書を1000件へ含めません。factor2、RSS2GiB、disk余裕1GiB、空きmemory余裕512MiBは不変です。
+
+成功時だけsmall＋1000の閉じたschemaの証拠を固定JSON1ファイルへ保存します（最大1MiB・1日）。旧small-only receiptの形式は維持します。未知field、別run/DB/storage、PID不連続、重複ID、未完の段階を拒否します。失敗/未admissionでは成功artifactを作らず、公開logへ固定reason codeと数値予測/予算/資源だけを出します。raw report・本文・原本・env/credentials/pathは出しません。
+
+10,000/100,000はこのworkflowに選択肢を設けません。次の段階は実1000結果と使用環境を改めて評価してからです。詳しい停止条件と実装順は[計画](../../docs/superpowers/plans/2026-10-09-document-load-thousand.md)を参照してください。

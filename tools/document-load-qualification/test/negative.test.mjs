@@ -260,3 +260,11 @@ test('negative failure sanitizer preserves a safe prerequisite category without 
     return true;
   });
 });
+
+test('negative corpus folder names are distinct across co-located stages',async t=>{
+ const names=[];
+ for(const stageLabel of ['small',1000]){
+  const c=await context(t);c.stageLabel=stageLabel;c.probe.createFolder=async request=>{names.push(request.name);return{resourceId:request.folderId};};await exerciseNegative(c);
+ }
+ assert.equal(new Set(names.map(name=>name.toLowerCase())).size,2);
+});

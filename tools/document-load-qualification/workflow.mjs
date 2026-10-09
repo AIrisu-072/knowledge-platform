@@ -1,15 +1,17 @@
 import {randomBytes} from 'node:crypto';
 import assert from 'node:assert/strict';
 export function uuid7(){const b=randomBytes(16);b.writeUIntBE(Date.now(),0,6);b[6]=(b[6]&15)|112;b[8]=(b[8]&63)|128;const h=b.toString('hex');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
+export function qualificationStageSuffix(stageLabel){if(stageLabel===undefined)return '';if(!['small',1000,10000,100000].includes(stageLabel))throw Error('Invalid qualification stage label');return ` [${stageLabel}]`;}
 const HUMAN={subjectKind:'group',identityProvider:'poc',subjectId:'poc-users',actions:['read','readHistory','write','publish','administer']};
 const AGENT={subjectKind:'group',identityProvider:'poc',subjectId:'poc-agents',actions:['read','readHistory']};
 function equal(actual,expected,label){assert.deepEqual(actual,expected,label);}
 async function listCheck(probe,folderId,expected,who='human'){equal((await probe.list(folderId,who)).sort(),[...expected].sort(),`${who} list membership mismatch`);}
-export async function exerciseStage({probe,journal,count,assets,checkpoint,runId}){
+export async function exerciseStage({probe,journal,count,assets,checkpoint,runId,stageLabel}){
  if(!Number.isSafeInteger(count)||count<2||count>100000||assets.length<2||new Set(assets.map(asset=>asset.sha256)).size!==assets.length)throw Error('Stage requires at least two documents and two distinct PDFs');
+ const suffix=qualificationStageSuffix(stageLabel);
  const session=await probe.verifySessions();await checkpoint();
  const mutate=async(key,makeRequest,action,options)=>{await checkpoint();const request=journal.get(key)?.request??await makeRequest();return journal.perform(key,request,action,options);};
- const folderRequest=()=>({operationId:uuid7(),folderId:uuid7(),parentFolderId:session.rootFolderId,expectedParentRevision:session.root.revision,name:`Document load ${runId}`,reason:'Isolated synthetic-repetition qualification'});
+ const folderRequest=()=>({operationId:uuid7(),folderId:uuid7(),parentFolderId:session.rootFolderId,expectedParentRevision:session.root.revision,name:`Document load ${runId}${suffix}`,reason:'Isolated synthetic-repetition qualification'});
  await mutate('folder',folderRequest,request=>probe.createFolder(request));
  const folderId=journal.get('folder').request.folderId;
  await mutate('folder-policy',()=>({operationId:uuid7(),expectedPolicyRevision:0,reason:'Fixed PoC qualification profiles',mode:'explicit',grants:[HUMAN,AGENT]}),request=>probe.setFolderPolicy(folderId,request));

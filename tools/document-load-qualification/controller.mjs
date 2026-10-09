@@ -40,10 +40,10 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   const probe=await probeFactory({signal:abort.signal,onTiming:value=>timings.push(value)});
   const identityBefore=await runtime.identity();
   if(corpus.negativeAssets?.length){
-   report.negativeCorpus=await executeNegative({probe,journal,assets:corpus.negativeAssets,checkpoint,runId,diagnosePublication:runtime.diagnosePublication,diagnoseWorker:runtime.diagnoseWorker});
+   report.negativeCorpus=await executeNegative({probe,journal,assets:corpus.negativeAssets,checkpoint,runId,stageLabel:plan.stage,diagnosePublication:runtime.diagnosePublication,diagnoseWorker:runtime.diagnoseWorker});
    await save();
   }
-  report.evidence=await execute({probe,journal,count:plan.documentCount,assets:corpus.assets,checkpoint,runId});
+  report.evidence=await execute({probe,journal,count:plan.documentCount,assets:corpus.assets,checkpoint,runId,stageLabel:plan.stage});
   report.status='AWAITING_RESTART';await save();
   // Avoid observing expected process absence while the owned restart is in progress.
   clearInterval(monitor);monitor=undefined;await busy;

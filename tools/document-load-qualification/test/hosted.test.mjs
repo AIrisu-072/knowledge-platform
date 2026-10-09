@@ -17,7 +17,7 @@ test('CI exports only the fixed successful small receipt with the existing pinne
  const yaml=await readFile(new URL('../../../.github/workflows/ci.yml',import.meta.url),'utf8');
  const step=yaml.split('- name: Upload bounded Document small qualification receipt')[1]?.split('- name:')[0];
  assert.ok(step);assert.match(step,/success\(\)/);assert.match(step,/document-load-small/);assert.match(step,/actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);assert.match(step,/retention-days: 1/);assert.match(step,/overwrite: false/);assert.match(step,/if-no-files-found: error/);assert.match(step,/path: tools\/document-poc-runtime\/\.state\/document-load-export\/qualification\.json/);assert.doesNotMatch(step,/path:.*\*|report\.json/);
- const hostedSource=await readFile(new URL('../hosted.mjs',import.meta.url),'utf8');assert.match(hostedSource,/GITHUB_ACTIONS==='true'/);assert.match(hostedSource,/report\.status==='SUCCEEDED' && report\.stage==='small'/);assert.match(hostedSource,/writeSmallReceipt\(root,report,receiptSourceHead\(process\.env\)\)/);
+ const hostedSource=await readFile(new URL('../hosted.mjs',import.meta.url),'utf8');assert.match(hostedSource,/GITHUB_ACTIONS==='true'/);assert.match(hostedSource,/report\.status==='SUCCEEDED' && \(report\.stage==='small'\|\|thousandRequested\)/);assert.match(hostedSource,/writeSmallReceipt\(root,report,receiptSourceHead\(process\.env\)\)/);
 });
 test('receipt uses the explicit checked-out PR head even when GitHub event SHA is a merge commit',()=>{
  assert.equal(typeof hosted.receiptSourceHead,'function');const head='a'.repeat(40),merge='b'.repeat(40);
@@ -28,4 +28,15 @@ test('receipt export is opt-in only for the workflow-confirmed same-repository C
  assert.equal(typeof hosted.receiptExportEnabled,'function');assert.equal(hosted.receiptExportEnabled({GITHUB_ACTIONS:'true',KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:'true'}),true);
  for(const env of [{GITHUB_ACTIONS:'true',KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:'false'},{GITHUB_ACTIONS:'true'},{KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:'true'},{}])assert.equal(hosted.receiptExportEnabled(env),false);
  const yaml=await readFile(new URL('../../../.github/workflows/ci.yml',import.meta.url),'utf8');const step=yaml.split('- name: Upload bounded Document small qualification receipt')[1]?.split('- name:')[0];assert.match(step,/github\.event\.pull_request\.head\.repo != null/);assert.match(step,/github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);assert.match(yaml,/KP_DOCUMENT_LOAD_RECEIPT_ALLOWED:.*head\.repo\.full_name == github\.repository/);
+});
+test('1000 mode is explicit and mutually exclusive; higher volumes are never implicit',()=>{
+ assert.equal(hosted.loadEnabled({KP_DOCUMENT_LOAD_THOUSAND:'true'},false),true);
+ for(const env of [{KP_DOCUMENT_LOAD_THOUSAND:'false'},{KP_DOCUMENT_LOAD_THOUSAND:'10000'},{KP_DOCUMENT_LOAD_THOUSAND:'true',KP_DOCUMENT_LOAD_SMALL:'true'},{KP_DOCUMENT_LOAD_THOUSAND:'true',KP_DOCUMENT_LOAD_PLAN:'/private/plan'}])assert.throws(()=>hosted.loadEnabled(env,false));
+ assert.throws(()=>hosted.loadEnabled({KP_DOCUMENT_LOAD_THOUSAND:'true'},true));
+});
+test('a blocked chain does not relabel successful small measurements as completed1000 results',()=>{
+ assert.equal(typeof hosted.selectChainReport,'function');const small={status:'SUCCEEDED',metrics:{totalElapsedMs:100},counts:{confirmedCreatedDocuments:2}};
+ const report=hosted.selectChainReport({status:'NOT_ADMITTED',failureCode:'interstage-runtime-identity-mismatch',small},{code:'x'});
+ assert.equal(report.status,'NOT_ADMITTED');assert.equal(report.stage,1000);assert.equal(report.documentCount,1000);assert.equal(report.metrics,null);assert.equal(report.counts.confirmedCreatedDocuments,0);assert.equal(report.previousReport,small);
+ const thousand={status:'FAILED',stage:1000,metrics:{totalElapsedMs:20}};assert.equal(hosted.selectChainReport({status:'FAILED',small,thousand},{}),thousand);
 });

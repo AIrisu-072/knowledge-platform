@@ -1,5 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
-import {uuid7} from './workflow.mjs';
+import {uuid7,qualificationStageSuffix} from './workflow.mjs';
 import {sanitizeFailureDiagnostic, sanitizeInspectionDiagnostic, sanitizePublicationPrerequisites} from './diagnostics.mjs';
 import {sanitizeWorkerDiagnostic} from './worker-probe.mjs';
 
@@ -89,7 +89,7 @@ async function verifyMembership(probe, checkpoint, folderId, ids) {
 }
 
 /** Expected failure is an explicit API test, never a successful publication. */
-export async function exerciseNegative({probe, journal, assets, checkpoint, runId, diagnosePublication, diagnoseWorker}) {
+export async function exerciseNegative({probe, journal, assets, checkpoint, runId, stageLabel, diagnosePublication, diagnoseWorker}) {
   try {
     if (!Array.isArray(assets) || assets.length > 20
       || assets.some(asset => !asset || asset.expectedOutcome !== 'reject-unsupported')
@@ -97,13 +97,14 @@ export async function exerciseNegative({probe, journal, assets, checkpoint, runI
       || new Set(assets.map(asset => asset.sha256)).size !== assets.length) fail('negative-assets-invalid');
     if (assets.length === 0) return notRun();
     if (typeof diagnosePublication !== 'function' || typeof diagnoseWorker !== 'function') fail('negative-diagnostics-required');
+    const suffix = qualificationStageSuffix(stageLabel);
     const session = await guarded(checkpoint,() => probe.verifySessions());
     const mutate = async (key, makeRequest, action, options) => {
       await checkpoint();
       const request = journal.get(key)?.request ?? await makeRequest();
       return journal.perform(key,request,action,options);
     };
-    await mutate('negative-folder',() => ({operationId:uuid7(),folderId:uuid7(),parentFolderId:session.rootFolderId,expectedParentRevision:session.root.revision,name:`Document negative ${runId}`,reason:'Isolated unsupported official PDF qualification'}),request => probe.createFolder(request));
+    await mutate('negative-folder',() => ({operationId:uuid7(),folderId:uuid7(),parentFolderId:session.rootFolderId,expectedParentRevision:session.root.revision,name:`Document negative ${runId}${suffix}`,reason:'Isolated unsupported official PDF qualification'}),request => probe.createFolder(request));
     const folderId = journal.get('negative-folder').request.folderId;
     await mutate('negative-folder-policy',() => ({operationId:uuid7(),expectedPolicyRevision:0,reason:'Private fixed PoC negative qualification',mode:'explicit',grants:[HUMAN]}),request => probe.setFolderPolicy(folderId,request));
     const documents = [];

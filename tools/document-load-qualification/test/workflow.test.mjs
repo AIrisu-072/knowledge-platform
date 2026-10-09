@@ -6,3 +6,10 @@ test('stage exercises real-contract operations and leaves restart verification p
 test('missing list entry cannot qualify stage and checkpoint failure prevents creates',async t=>{assert.equal(typeof exerciseStage,'function');const c=await context(t);c.probe.list=async()=>[];await assert.rejects(exerciseStage(c),/list/);const d=await context(t);d.checkpoint=async()=>{throw Error('capacity stop');};await assert.rejects(exerciseStage(d),/capacity/);assert.equal(d.probe.docs.size,0);});
 test('restart detects changed retained state and leaked private list membership',async t=>{assert.equal(typeof exerciseStage,'function');const c=await context(t);const evidence=await exerciseStage(c);c.probe.docs.get(evidence.documentIds[0]).revision++;await assert.rejects(verifyRetained({...c,evidence}),/retained/);});
 test('different source labels with identical original bytes do not qualify content switching',async t=>{const c=await context(t);c.assets[1].sha256=c.assets[0].sha256;await assert.rejects(exerciseStage(c),/distinct/);assert.equal(c.probe.docs.size,0);});
+test('co-located stages use distinct fixed folder names without changing the run UUID',async t=>{
+ const names=[];
+ for(const stageLabel of ['small',1000]){
+  const c=await context(t);c.stageLabel=stageLabel;c.probe.createFolder=async req=>{names.push(req.name);return{folderId:req.folderId};};await exerciseStage(c);
+ }
+ assert.equal(new Set(names.map(n=>n.toLowerCase())).size,2);assert.ok(names.every(n=>n.includes('test')));
+});
