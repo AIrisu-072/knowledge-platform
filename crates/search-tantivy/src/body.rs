@@ -104,6 +104,11 @@ fn segment_cache() -> &'static Mutex<SegmentCache> {
     CACHE.get_or_init(Default::default)
 }
 
+/// Segments with at least this many documents are read in parallel.
+const PARALLEL_READ_MIN_DOCS: u32 = 50_000;
+/// Threads reading one segment.
+const PARALLEL_READ_THREADS: usize = 8;
+
 /// Read passes a cached segment stays unused before it is dropped: the
 /// segments of the index read last and of the one read before it (a build's
 /// base and its result) stay, those a merge replaced do not.
@@ -150,15 +155,50 @@ fn segment_entries(
     }
     let searcher = units.reader.searcher();
     let ord = u32::try_from(segment_ord).map_err(|_| LexicalIndexError::UnitEncoding)?;
-    let mut entries = Vec::with_capacity(segment.max_doc() as usize);
-    for doc_id in 0..segment.max_doc() {
-        let document: TantivyDocument = searcher.doc(tantivy::DocAddress::new(ord, doc_id))?;
-        let unit = read_unit(&document, units.fields)?;
-        entries.push(UnitSealEntry {
-            unit_id: unit.unit_id,
-            hash: unit_doc_hash(&unit)?,
+    let read = |docs: std::ops::Range<u32>| {
+        docs.map(|doc_id| {
+            let document: TantivyDocument = searcher.doc(tantivy::DocAddress::new(ord, doc_id))?;
+            let unit = read_unit(&document, units.fields)?;
+            Ok(UnitSealEntry {
+                unit_id: unit.unit_id,
+                hash: unit_doc_hash(&unit)?,
+            })
+        })
+        .collect::<Result<Vec<_>, LexicalIndexError>>()
+    };
+    // Reading and hashing every stored document dominates a cold seal; a
+    // large segment is read in parallel ranges, joined in document order.
+    let max_doc = segment.max_doc();
+    let threads = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(PARALLEL_READ_THREADS);
+    let entries = if max_doc < PARALLEL_READ_MIN_DOCS || threads < 2 {
+        read(0..max_doc)?
+    } else {
+        let step = max_doc.div_ceil(threads as u32);
+        let parts = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..max_doc)
+                .step_by(step as usize)
+                .map(|start| {
+                    let read = &read;
+                    scope.spawn(move || read(start..(start + step).min(max_doc)))
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .unwrap_or(Err(LexicalIndexError::UnitEncoding))
+                })
+                .collect::<Vec<_>>()
         });
-    }
+        let mut entries = Vec::with_capacity(max_doc as usize);
+        for part in parts {
+            entries.extend(part?);
+        }
+        entries
+    };
     let entries = Arc::new(entries);
     if let Some(key) = key {
         segment_cache()
@@ -341,10 +381,49 @@ pub(crate) fn build_unit_index_from_base(
         }
     }
     writer.commit()?;
+    merge_small_segments(&index.index, &mut writer)?;
     writer.wait_merging_threads()?;
     index.reader.reload()?;
     index.dir = Some(dir.to_path_buf());
     Ok(Some(index))
+}
+
+/// Segments with fewer documents than this count as small.
+const SMALL_SEGMENT_DOCS: u32 = 10_000;
+/// Small segments a Unit index keeps before they are merged into one. Every
+/// query looks each term up in every segment: at 10,000 documents an index
+/// of 707 segments (one per update) spent most of a query there.
+const SMALL_SEGMENT_LIMIT: usize = 8;
+
+/// Merges the committed small segments into one once there are more than
+/// `SMALL_SEGMENT_LIMIT`; large segments, and their files, are kept.
+fn merge_small_segments(
+    index: &Index,
+    writer: &mut tantivy::IndexWriter,
+) -> Result<(), LexicalIndexError> {
+    let small: Vec<_> = index
+        .searchable_segment_metas()?
+        .iter()
+        .filter(|meta| meta.max_doc() < SMALL_SEGMENT_DOCS)
+        .map(|meta| meta.id())
+        .collect();
+    if small.len() > SMALL_SEGMENT_LIMIT {
+        writer.merge(&small).wait()?;
+    }
+    Ok(())
+}
+
+/// Merges every committed segment into one when there are more than
+/// `SMALL_SEGMENT_LIMIT` (a full build writes many).
+fn merge_all_segments(
+    index: &Index,
+    writer: &mut tantivy::IndexWriter,
+) -> Result<(), LexicalIndexError> {
+    let segments = index.searchable_segment_ids()?;
+    if segments.len() > SMALL_SEGMENT_LIMIT {
+        writer.merge(&segments).wait()?;
+    }
+    Ok(())
 }
 
 /// Opens a committed Unit index and checks it has the Unit schema.
@@ -391,6 +470,7 @@ fn fill_unit_index(
         writer.add_document(unit_document(fields, unit)?)?;
     }
     writer.commit()?;
+    merge_all_segments(&index, &mut writer)?;
     writer.wait_merging_threads()?;
     let reader = index.reader()?;
     reader.reload()?;
