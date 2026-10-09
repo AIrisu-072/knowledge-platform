@@ -17,7 +17,7 @@ test('CI exports only the fixed successful small receipt with the existing pinne
  const yaml=await readFile(new URL('../../../.github/workflows/ci.yml',import.meta.url),'utf8');
  const step=yaml.split('- name: Upload bounded Document small qualification receipt')[1]?.split('- name:')[0];
  assert.ok(step);assert.match(step,/success\(\)/);assert.match(step,/document-load-small/);assert.match(step,/actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);assert.match(step,/retention-days: 1/);assert.match(step,/overwrite: false/);assert.match(step,/if-no-files-found: error/);assert.match(step,/path: tools\/document-poc-runtime\/\.state\/document-load-export\/qualification\.json/);assert.doesNotMatch(step,/path:.*\*|report\.json/);
- const hostedSource=await readFile(new URL('../hosted.mjs',import.meta.url),'utf8');assert.match(hostedSource,/GITHUB_ACTIONS==='true'/);assert.match(hostedSource,/report\.status==='SUCCEEDED' && \(report\.stage==='small'\|\|thousandRequested\)/);assert.match(hostedSource,/writeSmallReceipt\(root,report,receiptSourceHead\(process\.env\)\)/);
+ const hostedSource=await readFile(new URL('../hosted.mjs',import.meta.url),'utf8');assert.match(hostedSource,/GITHUB_ACTIONS==='true'/);assert.match(hostedSource,/report\.status==='SUCCEEDED' && \(report\.stage==='small'\|\|thousandRequested\|\|tenThousandRequested\)/);assert.match(hostedSource,/writeSmallReceipt\(root,report,receiptSourceHead\(process\.env\)\)/);
 });
 test('receipt uses the explicit checked-out PR head even when GitHub event SHA is a merge commit',()=>{
  assert.equal(typeof hosted.receiptSourceHead,'function');const head='a'.repeat(40),merge='b'.repeat(40);

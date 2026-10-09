@@ -18,11 +18,16 @@ import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitF
 
 import { loadEnabled, runDocumentLoad } from '../document-load-qualification/hosted.mjs';
 import { createLoadRestarter } from '../document-load-qualification/restart.mjs';
+import { fetchCurrentRunBudget, createWorkClock } from '../document-load-qualification/job-budget.mjs';
+import { cleanupOwnedRuntime } from '../document-load-qualification/cleanup.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/document-poc-runtime/run.mjs [--prebuilt]');
 const documentLoadEnabled = loadEnabled(process.env, args.includes('--prebuilt'));
+const tenThousandMode = process.env.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true';
+const loadBudget = tenThousandMode ? await fetchCurrentRunBudget() : undefined;
+const loadClock = tenThousandMode ? createWorkClock() : undefined;
 const visualEnabled = process.env.KP_POC_CAPTURE_VISUAL === 'true';
 if (process.env.KP_POC_CAPTURE_VISUAL !== undefined && !visualEnabled) throw Error('KP_POC_CAPTURE_VISUAL must be absent or true');
 if (visualEnabled && args.includes('--prebuilt')) throw Error('Visual evidence requires built-in-this-run source provenance');
@@ -44,14 +49,16 @@ let cid, database, password, proxy;
 const log = name => join(directory, `${name}.log`);
 const options = (name, env = process.env) => ({ cwd: root, env, log: log(name), secrets: [database, password] });
 const run = (name, executable, args, env, timeoutMs) => command(executable, args, { ...options(name, env), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+const provenanceTimeoutMs = process.env.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true' ? 10_000 : undefined;
 let visualContext;
 let failed = false;
 let interrupted = false;
 const onSignal = () => { interrupted = true; for (const owned of processes) if (owned.child.exitCode === null) owned.child.kill('SIGTERM'); };
 process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal);
 try {
-  report.data.gitHead = await run('git', 'git', ['rev-parse', 'HEAD']);
-  report.data.gitDirty = Boolean(await run('git', 'git', ['status', '--porcelain']));
+  report.data.gitHead = await run('git', 'git', ['rev-parse', 'HEAD'], undefined, provenanceTimeoutMs);
+  if (tenThousandMode) assert.equal(report.data.gitHead, process.env.GITHUB_SHA, 'Qualification checkout differs from provider run');
+  report.data.gitDirty = Boolean(await run('git', 'git', ['status', '--porcelain'], undefined, provenanceTimeoutMs));
   await report.stage('toolchain', async () => {
     report.data.tools = { rustc: await run('rustc-version', 'rustc', ['--version']), pnpm: await run('pnpm-version', 'pnpm', ['--version']) };
     report.data.sourceLocks = { cargo: await sha256File(join(root, 'Cargo.lock')), pnpm: await sha256File(join(root, 'pnpm-lock.yaml')) };
@@ -180,9 +187,9 @@ try {
     // External disposable databases retain their nonvisual diagnostic path, but
     // cannot establish harness-owned identity and are explicitly unverified.
     if (report.data.database.ownership !== 'harness-owned') return;
-    const sourceHead = await run('provenance-head', 'git', ['rev-parse', 'HEAD']);
+    const sourceHead = await run('provenance-head', 'git', ['rev-parse', 'HEAD'], undefined, provenanceTimeoutMs);
     assert.equal(sourceHead, report.data.gitHead, 'Owned runtime provenance source changed');
-    assert.equal(await run('provenance-dirty', 'git', ['status', '--porcelain']), '', 'Owned runtime provenance source is dirty');
+    assert.equal(await run('provenance-dirty', 'git', ['status', '--porcelain'], undefined, provenanceTimeoutMs), '', 'Owned runtime provenance source is dirty');
     const container = await privateProvenanceProbe('docker', ['inspect', '--format', '{{.Id}} {{index .Config.Labels "kp.document-poc.run"}}', cid], process.env);
     const binding = await privateProvenanceProbe('docker', ['port', cid, '5432/tcp'], process.env);
     const query = postgresVersionArgs(cid);
@@ -326,6 +333,7 @@ try {
   });
   await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
   const restartForDocumentLoad = createLoadRestarter({
+    maxStages: tenThousandMode ? 3 : 2,
     current: () => ({ human: humanProcess, agent: agentProcess }), stop: stopProcess, start,
     replace: ({ human, agent }) => { humanProcess = human; agentProcess = agent; },
   });
@@ -337,7 +345,7 @@ try {
         ...report.data.runtimeProvenance.documentLoadCheckpoint,
         humanPid: humanProcess.child.pid, agentPid: agentProcess.child.pid,
       }; },
-      restart: restartForDocumentLoad,
+      restart: restartForDocumentLoad, loadBudget, loadClock,
     });
   });
   await report.stage('final-shutdown', async () => { await stopProcess(humanProcess); await stopProcess(agentProcess); });
@@ -347,6 +355,11 @@ try {
   console.error(`Document runtime acceptance ${report.data.status}; local evidence retained`);
 } finally {
   const cleanup = [];
+  if (process.env.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true') {
+    const result = await cleanupOwnedRuntime({ processes, stop: stopProcess, proxy, cid, runId, run, env: process.env });
+    cleanup.push(...result.cleanup);
+    if (result.failed) { failed = true; report.data.status = 'failed'; }
+  } else {
   for (const owned of processes) {
     if (owned.child.exitCode !== null || owned.child.signalCode || owned.child.spawnFailure) continue;
     try { await stopProcess(owned); cleanup.push({ pid: owned.child.pid, result: 'gracefully-stopped' }); }
@@ -366,6 +379,7 @@ try {
       cleanup.push({ resource: 'owned-postgres', result: 'removed' });
     } catch { cleanup.push({ resource: 'owned-postgres', result: 'cleanup-unconfirmed' }); failed = true; report.data.status = 'failed'; }
   }
+  }
   report.data.cleanup = cleanup;
   if (interrupted) { failed = true; report.data.status = 'failed'; report.data.failure = 'Harness interrupted'; }
   // finish must not override cleanup failures with passing acceptance.
@@ -373,8 +387,8 @@ try {
   await report.finish();
   if (visualEnabled && report.data.acceptanceQualified) {
     try {
-      const currentSource = { gitHead: await run('visual-git-head', 'git', ['rev-parse', 'HEAD']),
-        gitDirty: Boolean(await run('visual-git-dirty', 'git', ['status', '--porcelain'])) };
+      const currentSource = { gitHead: await run('visual-git-head', 'git', ['rev-parse', 'HEAD'], undefined, provenanceTimeoutMs),
+        gitDirty: Boolean(await run('visual-git-dirty', 'git', ['status', '--porcelain'], undefined, provenanceTimeoutMs)) };
       await exportVisualEvidence({ runDirectory: directory, report: report.data, context: visualContext, currentSource });
       report.data.visualEvidence = { status: 'validated-local-export', count: 13, visualReview: 'NOT RUN' };
     } catch {

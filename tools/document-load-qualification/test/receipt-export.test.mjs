@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,readFile,rm,symlink,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const {writeSmallReceipt,writeThousandReceipt}=await import('../receipt-export.mjs').catch(()=>({}));
+const {writeSmallReceipt,writeThousandReceipt,writeTenThousandReceipt}=await import('../receipt-export.mjs').catch(()=>({}));
 function report(){
  const code='a'.repeat(40),identity={runId:'12345678-1234-4abc-8abc-123456789abc',sourceHead:code,databaseIdentitySha256:'d'.repeat(64),storageIdentitySha256:'e'.repeat(64)};
  const ids=['0198eada-1234-7000-8000-000000000001','0198eada-1234-7000-8000-000000000002'],negativeId='0198eada-1234-7000-8000-000000000003';
@@ -22,4 +22,37 @@ test('exports the complete successful two-stage receipt as one bounded fixed fil
  thousand.negativeCorpus.documentIds=[uuid(2000)];thousand.negativeCorpus.documents[0].documentId=uuid(2000);
  const result=await writeThousandReceipt(root,{status:'SUCCEEDED',small,thousand},small.fingerprint.code);
  const text=await readFile(join(root,'tools/document-poc-runtime/.state/document-load-export/qualification.json'),'utf8');const envelope=JSON.parse(text);assert.equal(envelope.sha256,result.sha256);assert.equal(envelope.receipt.stages[1].evidence.documentIds.length,1000);assert.equal(envelope.receipt.stages[0].documentCount,2);assert.ok(!text.includes('PRIVATE_SENTINEL'));assert.ok(Buffer.byteLength(text)<1024*1024);
+});
+
+function tenThousandChain(){
+ const small=report(),thousand=structuredClone(small),tenThousand=structuredClone(small);
+ const uuid=n=>`0198eada-1234-7000-8000-${String(n).padStart(12,'0')}`;
+ for(const [stage,count,offset,start,finish,before,after] of [[thousand,1000,4,'2026-10-08T16:00:02.000Z','2026-10-08T16:09:02.000Z',[101,201],[102,202]],[tenThousand,10000,1005,'2026-10-08T16:09:03.000Z','2026-10-08T17:39:03.000Z',[102,202],[103,203]]]){
+  stage.stage=count;stage.documentCount=count;stage.counts={targetDocuments:count,confirmedCreatedDocuments:count,confirmedPublishedDocuments:count};stage.evidence.documentIds=Array.from({length:count},(_,i)=>uuid(i+offset));
+  stage.startedAt=start;stage.finishedAt=finish;stage.restart.processes={before,after};stage.negativeCorpus.documentIds=[uuid(offset+count)];stage.negativeCorpus.documents[0].documentId=uuid(offset+count);
+ }
+ thousand.previousReport=small;tenThousand.previousReport=thousand;
+ return {status:'SUCCEEDED',small,thousand,tenThousand};
+}
+
+test('exports all three successful stages through the exact projector argument as one private bounded file',async t=>{
+ assert.equal(typeof writeTenThousandReceipt,'function');
+ const root=await directory(t),source=tenThousandChain();source.privatePath='PRIVATE_SENTINEL';
+ const result=await writeTenThousandReceipt(root,source,source.small.fingerprint.code);
+ const path=join(root,'tools/document-poc-runtime/.state/document-load-export/qualification.json'),text=await readFile(path,'utf8'),envelope=JSON.parse(text);
+ assert.equal(result.sha256,envelope.sha256);assert.equal(result.byteLength,Buffer.byteLength(text));assert.deepEqual(envelope.receipt.stages.map(stage=>stage.documentCount),[2,1000,10000]);assert.equal(envelope.receipt.stages[2].evidence.documentIds.length,10000);assert.ok(!text.includes('PRIVATE_SENTINEL'));assert.ok(result.byteLength<=1024*1024);assert.equal((await stat(path)).mode&0o777,0o600);
+ await assert.rejects(writeTenThousandReceipt(root,source,source.small.fingerprint.code));
+});
+
+test('a missing, unsuccessful or incorrectly bound third stage creates no receipt directory',async t=>{
+ assert.equal(typeof writeTenThousandReceipt,'function');
+ for(const mutate of [c=>{c.status='NOT_ADMITTED';},c=>{delete c.tenThousand;},c=>{c.tenThousand.status='ABORTED';},c=>{c.tenThousand.counts.confirmedPublishedDocuments=9999;},c=>{delete c.tenThousand.metrics.peakRssBytes;},c=>{c.tenThousand.previousReport=structuredClone(c.thousand);}]){
+  const root=await directory(t),source=tenThousandChain();mutate(source);await assert.rejects(writeTenThousandReceipt(root,source,source.small.fingerprint.code));await assert.rejects(stat(join(root,'tools/document-poc-runtime/.state/document-load-export')));
+ }
+ const root=await directory(t),source=tenThousandChain();await assert.rejects(writeTenThousandReceipt(root,source,'f'.repeat(40)));await assert.rejects(stat(join(root,'tools/document-poc-runtime/.state/document-load-export')));
+});
+
+test('three-stage export cannot follow a symlinked state directory',async t=>{
+ assert.equal(typeof writeTenThousandReceipt,'function');
+ const root=await directory(t),other=await directory(t),source=tenThousandChain();await mkdir(join(root,'tools/document-poc-runtime'),{recursive:true});await symlink(other,join(root,'tools/document-poc-runtime/.state'));await assert.rejects(writeTenThousandReceipt(root,source,source.small.fingerprint.code));await assert.rejects(stat(join(other,'document-load-export')));
 });
