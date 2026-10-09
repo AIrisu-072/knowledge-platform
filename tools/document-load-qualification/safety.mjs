@@ -120,10 +120,11 @@ export function summarizeTimings(samples) {
   };
 }
 
-async function storageSize(root, { maxStorageEntries, maxStorageObservationMs }, limitations) {
+async function storageSize(root, { maxStorageEntries, maxStorageObservationMs }, limitations, diagnostics) {
   if (typeof root !== 'string' || !root) throw new Error('storageRoot is required');
   if (!Number.isSafeInteger(maxStorageEntries) || maxStorageEntries < 1 || !finiteNonnegative(maxStorageObservationMs) || maxStorageObservationMs <= 0) throw new Error('invalid storage observation bounds');
-  const end = performance.now() + maxStorageObservationMs;
+  const scanStarted = performance.now();
+  const end = scanStarted + maxStorageObservationMs;
   let entries = 0;
   let total = 0;
   let skippedSymlinks = false;
@@ -151,6 +152,7 @@ async function storageSize(root, { maxStorageEntries, maxStorageObservationMs },
     }
   }
   if (skippedSymlinks) limitations.push('Storage symlinks were excluded without traversal; storageBytes covers regular files only.');
+  if(diagnostics)Object.assign(diagnostics,{complete:true,elapsedMs:performance.now()-scanStarted,entries});
   return total;
 }
 
@@ -199,7 +201,7 @@ async function processTreeRss(pids) {
  */
 export async function observeResources({
   storageRoot, databaseRoot, databaseSharesStorageFilesystem = false, pids, databaseBytes,
-  maxStorageEntries = 1_000_000, maxStorageObservationMs = 10_000,
+  maxStorageEntries = 1_000_000, maxStorageObservationMs = 10_000, includeScanDiagnostics = false,
 } = {}) {
   const limitations = ['RSS and storage are point-in-time samples; short-lived processes and between-sample peaks may be missed.'];
   const observation = {
@@ -208,6 +210,7 @@ export async function observeResources({
     storageBytes: null, databaseBytes: byteCount(databaseBytes) ? databaseBytes : null,
     databaseFilesystemVerified: false, limitations,
   };
+  if(includeScanDiagnostics)observation.storageScan={complete:false,elapsedMs:null,entries:null};
   if (observation.databaseBytes === null) limitations.push('Measured databaseBytes was not supplied by the orchestrator.');
   await Promise.all([
     (async () => {
@@ -251,7 +254,7 @@ export async function observeResources({
       } catch (error) { limitations.push(`Memory observation unavailable: ${error.message}`); }
     })(),
     (async () => {
-      try { observation.storageBytes = await storageSize(storageRoot, { maxStorageEntries, maxStorageObservationMs }, limitations); }
+      try { observation.storageBytes = await storageSize(storageRoot, { maxStorageEntries, maxStorageObservationMs }, limitations, observation.storageScan); }
       catch (error) { limitations.push(`Storage observation unavailable: ${error.message}`); }
     })(),
     (async () => {

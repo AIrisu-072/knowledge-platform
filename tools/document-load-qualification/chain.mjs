@@ -55,3 +55,68 @@ export async function runThousandChain({directory, runId, fingerprint, corpus, r
     return {...result, status:'FAILED', failureCode:'chain-prerequisite-failed'};
   }
 }
+
+/** Fresh three-stage chain; the caller supplies the validated GitHub attempt cutoff. */
+export async function runTenThousandChain({directory, runId, fingerprint, corpus, runtime, probeFactory, workDeadlineAt, qualify = runQualification, now = Date.now}) {
+  const result = {status:'FAILED'};
+  const refuse = failureCode => ({...result,status:'NOT_ADMITTED',failureCode});
+  try {
+    let current = now();
+    if (!Number.isSafeInteger(current)) return refuse('chain-clock-invalid');
+    const deadline = typeof workDeadlineAt === 'string' ? Date.parse(workDeadlineAt) : NaN;
+    if (!Number.isSafeInteger(deadline) || new Date(deadline).toISOString() !== workDeadlineAt || deadline-current > 345*MINUTE) {
+      return refuse('chain-deadline-invalid');
+    }
+    if (current >= deadline) return refuse('chain-deadline-exhausted');
+    let lastClock = current;
+    const clockFailure = () => {
+      current = now();
+      if (!Number.isSafeInteger(current) || current < lastClock) return 'chain-clock-invalid';
+      lastClock = current;
+      return current >= deadline ? 'chain-deadline-exhausted' : undefined;
+    };
+    const stages = [['small',2,5,'small'],[1000,1000,120,'thousand'],[10000,10000,330,'tenThousand']];
+    const common = {runId,corpus,runtime,probeFactory};
+    let previousReport, baselineDataset;
+    for (const [index,[stage,documentCount,minutes,key]] of stages.entries()) {
+      let failureCode = clockFailure();
+      if (failureCode) return refuse(failureCode);
+      if (previousReport) {
+        const [priorStage,priorCount,,priorKey] = stages[index-1];
+        const requiredHistory = index === 1 ? undefined : result[stages[index-2][3]];
+        if (previousReport !== result[priorKey] || previousReport.runId !== runId
+          || previousReport.stage !== priorStage || previousReport.documentCount !== priorCount
+          || !isDeepStrictEqual(previousReport.fingerprint,fingerprint)
+          || !isDeepStrictEqual(previousReport.previousReport,requiredHistory)) {
+          return refuse('interstage-report-identity-mismatch');
+        }
+        const {humanPid,agentPid,...currentDataset} = await runtime.identity();
+        const after = previousReport.restart?.after;
+        if (!after || after.runId !== runId || after.sourceHead !== fingerprint.code
+          || !isDeepStrictEqual(currentDataset,after)
+          || !isDeepStrictEqual([humanPid,agentPid],previousReport.restart.processes?.after)
+          || (baselineDataset && !isDeepStrictEqual(currentDataset,baselineDataset))) {
+          return refuse('interstage-runtime-identity-mismatch');
+        }
+        baselineDataset ??= currentDataset;
+        failureCode = clockFailure();
+        if (failureCode) return refuse(failureCode);
+      }
+      const plan = {...smallPlan(fingerprint,current),stage,documentCount};
+      plan.budgets.maxWallTimeMs = Math.min(minutes*MINUTE,deadline-current);
+      plan.deadlineAt = new Date(Math.min(current+minutes*MINUTE,deadline)).toISOString();
+      const stageDirectory = join(directory,String(stage));
+      await mkdir(stageDirectory,{mode:0o700});
+      // The unmodified controller re-observes capacity and validates the full
+      // report chain before opening a mutation journal. No 100k stage is selected.
+      result[key] = await qualify({...common,directory:stageDirectory,plan,previousReport});
+      result.status = result[key].status;
+      if (result.status !== 'SUCCEEDED') return result;
+      previousReport = result[key];
+    }
+    const failureCode = clockFailure();
+    return failureCode ? refuse(failureCode) : result;
+  } catch {
+    return {...result,status:'FAILED',failureCode:'chain-prerequisite-failed'};
+  }
+}

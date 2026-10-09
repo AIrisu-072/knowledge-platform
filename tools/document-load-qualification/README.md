@@ -118,3 +118,11 @@ SHA-256は整合性確認であって署名/実行真正性ではありません
 成功時だけsmall＋1000の閉じたschemaの証拠を固定JSON1ファイルへ保存します（最大1MiB・1日）。旧small-only receiptの形式は維持します。未知field、別run/DB/storage、PID不連続、重複ID、未完の段階を拒否します。失敗/未admissionでは成功artifactを作らず、公開logへ固定reason codeと数値予測/予算/資源だけを出します。raw report・本文・原本・env/credentials/pathは出しません。
 
 10,000/100,000はこのworkflowに選択肢を設けません。次の段階は実1000結果と使用環境を改めて評価してからです。詳しい停止条件と実装順は[計画](../../docs/superpowers/plans/2026-10-09-document-load-thousand.md)を参照してください。
+
+## 明示的な1万件枠
+
+別の `Document 10000 qualification` workflowは、同じ公開repositoryのmainに対する手動の `stage=10000` のみを受け付けます。標準runnerのjob上限は360分で、GitHubが返す当該run/attemptの開始時刻から345分を負荷期限とします。取得失敗、別head・ref・repository、時刻不一致では開始しません。準備中の経過時間を差し引き、時計が後退しても使える時間を増やしません。
+
+同じ環境でsmall → 1,000 → 10,000を実行します。最後の段階は330分と残時間の短い方が上限で、係数2による予測・実測容量・完全な直前reportが揃わなければ登録しません。負荷中止後の処理と後処理に15分の運用予算を確保します。後処理の確認失敗やtimeoutは失敗のままで、成功用artifactを保存しません。
+
+成功時の証拠は3段階の全IDを含む閉じたJSONで、上限1MiB・保存1日を維持します。大規模段階の原本内容/履歴の詳細比較は3件の標本です。毎秒の資源観測・保存ファイル全走査は変更せず、走査時間とentry数を固定の数値項目として追加観測します。製品SLO、全原本内容の一致、10万件の成功を示すものではありません。詳しくは[1万件の計画](../../docs/superpowers/plans/2026-10-09-document-load-ten-thousand.md)を参照してください。

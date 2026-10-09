@@ -262,3 +262,72 @@ export function verifyThousandQualificationReceipt(input, expected) {
     return { receipt: JSON.parse(JSON.stringify(envelope.receipt)), integrityVerified: true, authenticityVerified: false };
   } catch { invalid(); }
 }
+
+function validateTenThousandReceipt(receipt) {
+  const headerKeys = ['schemaVersion', 'evidenceClass', 'status', 'runId', 'fingerprint', 'productionSloClaim', 'qualityClaim'];
+  exact(receipt, [...headerKeys, 'stages']);
+  array(receipt.stages, 3, () => true);
+  const [small, thousand, tenThousand] = receipt.stages;
+  validateThousandReceipt({ ...select(receipt, headerKeys), stages: [small, thousand] });
+  validateReceipt(tenThousand, 10000, 10000);
+  requireValue(tenThousand.runId === receipt.runId && isDeepStrictEqual(tenThousand.fingerprint, receipt.fingerprint)
+    && Date.parse(thousand.finishedAt) <= Date.parse(tenThousand.startedAt)
+    && isDeepStrictEqual(thousand.restart.after, tenThousand.restart.before)
+    && isDeepStrictEqual(thousand.restart.processes.after, tenThousand.restart.processes.before));
+  const documentIds = receipt.stages.flatMap(stage => [...stage.evidence.documentIds, ...stage.negativeCorpus.documentIds]);
+  requireValue(new Set(documentIds).size === documentIds.length);
+}
+
+/**
+ * Project exactly the fresh in-memory small -> 1000 -> 10000 full-report chain.
+ * Both previousReport references and both full private restart identities must
+ * match before the allowlisted projection. Retain all positive/negative UUIDs
+ * within the existing one-MiB bound; no compact or 100000 schema is accepted.
+ * These guards establish continuity of the supplied data, not provenance.
+ */
+export function projectTenThousandQualificationReceipt(chain) {
+  try {
+    exact(chain, ['small', 'thousand', 'tenThousand']);
+    const small = read(chain, 'small'), thousand = read(chain, 'thousand'), tenThousand = read(chain, 'tenThousand');
+    requireValue(read(tenThousand, 'previousReport') === thousand);
+    const thousandAfter = read(read(thousand, 'restart'), 'after');
+    const tenThousandBefore = read(read(tenThousand, 'restart'), 'before');
+    requireValue(isDeepStrictEqual(thousandAfter, tenThousandBefore));
+    const prefix = projectThousandQualificationReceipt({ small, thousand }).receipt;
+    const receipt = { ...prefix, stages: [...prefix.stages, projectStageReceipt(tenThousand, 10000, 10000).receipt] };
+    validateTenThousandReceipt(receipt);
+    const envelope = { schemaVersion: 1, sha256: hash(receipt), receipt };
+    requireValue(Buffer.byteLength(JSON.stringify(envelope)) <= MAX_RECEIPT_BYTES);
+    return envelope;
+  } catch { invalid(); }
+}
+
+/**
+ * Verify the closed three-stage schema and canonical SHA-256 integrity only.
+ * All five expected bindings require independently trusted owned workflow,
+ * run/attempt, checkout and artifact provenance. This does not authenticate
+ * execution, reconstruct an admission report or authorize the 100000 stage.
+ */
+export function verifyTenThousandQualificationReceipt(input, expected) {
+  try {
+    let envelope = input;
+    if (Buffer.isBuffer(input)) {
+      requireValue(input.length <= MAX_RECEIPT_BYTES);
+      envelope = input.toString('utf8');
+    }
+    if (typeof envelope === 'string') {
+      requireValue(Buffer.byteLength(envelope) <= MAX_RECEIPT_BYTES);
+      envelope = JSON.parse(envelope);
+    }
+    exact(expected, ['code', 'corpus', 'runtime', 'runId', 'sha256']);
+    requireValue(sha(expected.code, 40) && sha(expected.corpus) && sha(expected.runtime) && uuid(expected.runId) && sha(expected.sha256));
+    exact(envelope, ['schemaVersion', 'sha256', 'receipt']);
+    requireValue(envelope.schemaVersion === 1 && sha(envelope.sha256));
+    validateTenThousandReceipt(envelope.receipt);
+    requireValue(Buffer.byteLength(JSON.stringify(envelope)) <= MAX_RECEIPT_BYTES);
+    requireValue(envelope.sha256 === hash(envelope.receipt) && envelope.sha256 === expected.sha256
+      && envelope.receipt.runId === expected.runId
+      && ['code', 'corpus', 'runtime'].every(key => envelope.receipt.fingerprint[key] === expected[key]));
+    return { receipt: JSON.parse(JSON.stringify(envelope.receipt)), integrityVerified: true, authenticityVerified: false };
+  } catch { invalid(); }
+}

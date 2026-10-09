@@ -10,3 +10,13 @@ test('failed stop cannot start new server processes or replace their handles',as
  let started=0,replaced=0;const restart=createLoadRestarter({current:()=>({human:{},agent:{}}),stop:async()=>{throw Error('stop failed');},start:async()=>{started++;},replace:()=>{replaced++;}});
  await assert.rejects(restart(),/stop failed/);assert.equal(started,0);assert.equal(replaced,0);
 });
+test('explicit three-stage restart budget provides three unique generations and refuses a fourth',async()=>{
+ let pair={human:{id:3},agent:{id:2}};const starts=[];
+ const restart=createLoadRestarter({maxStages:3,current:()=>pair,stop:async()=>{},start:async(profile,generation)=>{starts.push([profile,generation]);return{id:generation};},replace:value=>{pair=value;}});
+ await restart();await restart();await restart();
+ assert.deepEqual(starts,[['poc-human',4],['poc-agent',3],['poc-human',5],['poc-agent',4],['poc-human',6],['poc-agent',5]]);
+ await assert.rejects(restart(),/restart limit/);assert.equal(starts.length,6);
+});
+test('restart budget accepts only the existing two stages or explicit three stages',()=>{
+ for(const maxStages of [0,1,4,100000,'3',null,NaN,Infinity])assert.throws(()=>createLoadRestarter({maxStages}),/restart stage limit/i);
+});

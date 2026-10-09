@@ -1,6 +1,6 @@
 import {mkdir,lstat,realpath,open} from 'node:fs/promises';
 import {join} from 'node:path';
-import {MAX_RECEIPT_BYTES,projectQualificationReceipt,projectThousandQualificationReceipt} from './receipt.mjs';
+import {MAX_RECEIPT_BYTES,projectQualificationReceipt,projectThousandQualificationReceipt,projectTenThousandQualificationReceipt} from './receipt.mjs';
 
 /** One fixed successful qualification artifact, never a private source report. */
 export async function writeSmallReceipt(root,report,expectedCode){
@@ -9,6 +9,10 @@ export async function writeSmallReceipt(root,report,expectedCode){
 export async function writeThousandReceipt(root,chain,expectedCode){
  if(chain?.status!=='SUCCEEDED')throw Error('Qualification chain is incomplete');
  return writeEnvelope(root,projectThousandQualificationReceipt({small:chain.small,thousand:chain.thousand}),expectedCode);
+}
+export async function writeTenThousandReceipt(root,chain,expectedHead){
+ if(chain?.status!=='SUCCEEDED')throw Error('Qualification chain is incomplete');
+ return writeEnvelope(root,projectTenThousandQualificationReceipt({small:chain.small,thousand:chain.thousand,tenThousand:chain.tenThousand}),expectedHead);
 }
 async function writeEnvelope(root,envelope,expectedCode){
  if(typeof expectedCode!=='string'||!/^[a-f0-9]{40}$/.test(expectedCode)||envelope.receipt.fingerprint.code!==expectedCode)throw Error('Receipt source code mismatch');
