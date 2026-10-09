@@ -295,9 +295,14 @@ export function DocumentHomePage() {
 
   useEffect(() => {
     if (!panelOpen || selectedRowIndex < 0 || !selected) return;
+    // A delayed list response must not take focus from another operation.
+    // Check again in the frame: the user can move after this effect schedules it.
+    const listOwnsFocus = () => document.activeElement === document.body
+      || Boolean(tableScrollerRef.current?.contains(document.activeElement));
+    if (!listOwnsFocus()) return;
     virtualizer.scrollToIndex(selectedRowIndex, { align: 'auto' });
     const frame = requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>(`[data-document-id="${selected.documentId}"]`)?.focus();
+      if (listOwnsFocus()) document.querySelector<HTMLButtonElement>(`[data-document-id="${selected.documentId}"]`)?.focus();
     });
     return () => cancelAnimationFrame(frame);
   }, [panelOpen, selected?.documentId, selectedRowIndex]);
