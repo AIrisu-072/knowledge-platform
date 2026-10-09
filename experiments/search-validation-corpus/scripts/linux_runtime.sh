@@ -80,7 +80,10 @@ start() {
   # glibc per-thread arenas fragment the Search processes' heap: at 1,000
   # documents the worker peaked at 4.6 GB with the default and 2.5 GB with 2.
   MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} start_one search-worker "$BIN/search_outbox_worker"
-  MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2} start_one search-host "$HOST_BIN"
+  # The host serves concurrent requests: with 2 arenas its threads queued on
+  # glibc's allocator (32 clients at 10,000 documents: 113 requests/s with 2,
+  # 177 with 16). The worker runs on jemalloc, which ignores this variable.
+  MALLOC_ARENA_MAX=${SEARCH_HOST_ARENAS:-16} start_one search-host "$HOST_BIN"
   sleep 3
   status
 }
