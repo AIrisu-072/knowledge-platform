@@ -4,6 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {smallPlan} from './chain.mjs';
 import {runQualification} from './controller.mjs';
 import {createWorkClock} from './job-budget.mjs';
+import {validateLocalResourceBudget} from './local-resource-budget.mjs';
 
 const MINUTE = 60_000;
 const WORK_DURATION_MS = (80*60-15)*MINUTE;
@@ -15,10 +16,12 @@ const STAGES = [
 ];
 
 /** A fresh local chain; the caller fixes its cutoff before build and preparation. */
-export async function runLocalScaleChain({directory,runId,fingerprint,corpus,runtime,probeFactory,workDeadlineAt,now=createWorkClock(),qualify=runQualification}) {
+export async function runLocalScaleChain({directory,runId,fingerprint,corpus,runtime,probeFactory,workDeadlineAt,resourceBudget,now=createWorkClock(),qualify=runQualification}) {
   const result = {status:'FAILED'};
   const refuse = failureCode => ({...result,status:'NOT_ADMITTED',failureCode});
   try {
+    let approvedResourceBudget;
+    try {approvedResourceBudget=validateLocalResourceBudget(resourceBudget);} catch {return refuse('chain-resource-budget-invalid');}
     let current = now();
     if (!Number.isSafeInteger(current)) return refuse('chain-clock-invalid');
     const deadline = typeof workDeadlineAt === 'string' ? Date.parse(workDeadlineAt) : NaN;
@@ -66,6 +69,7 @@ export async function runLocalScaleChain({directory,runId,fingerprint,corpus,run
         if (failureCode) return refuse(failureCode);
       }
       const plan = {...smallPlan(fingerprint,current),stage,documentCount};
+      if (approvedResourceBudget) Object.assign(plan.budgets,approvedResourceBudget);
       plan.budgets.maxWallTimeMs = Math.min(minutes*MINUTE,deadline-current);
       plan.deadlineAt = new Date(Math.min(current+minutes*MINUTE,deadline)).toISOString();
       const stageDirectory = join(directory,String(stage));

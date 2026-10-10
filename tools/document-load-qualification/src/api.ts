@@ -160,8 +160,8 @@ export class DocumentProbe {
     return this.request('detail', 'human', c => payload(getDocument({ ...c, path: { documentId }, query: { view: 'authoring' } })));
   }
 
-  private async pages<T>(read: (cursor?: string) => Promise<{ items: T[]; nextCursor: string | null }>, key: (item: T) => string): Promise<T[]> {
-    const items: T[] = [], cursors = new Set<string>(), ids = new Set<string>();
+  private async pages<T, R>(read: (cursor?: string) => Promise<{ items: T[]; nextCursor: string | null }>, key: (item: T) => string, project: (item: T) => R): Promise<R[]> {
+    const items: R[] = [], cursors = new Set<string>(), ids = new Set<string>();
     let cursor: string | undefined;
     for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex++) {
       const page = await read(cursor);
@@ -169,7 +169,7 @@ export class DocumentProbe {
       for (const item of page.items) {
         const id = key(item);
         if (!id || ids.has(id)) throw new ProbeSafetyError('Duplicate or missing item identity in pagination');
-        ids.add(id); items.push(item);
+        ids.add(id); items.push(project(item));
         if (items.length > MAX_ITEMS) throw new ProbeSafetyError('Pagination item limit exceeded');
       }
       if (page.nextCursor === null) return items;
@@ -181,10 +181,9 @@ export class DocumentProbe {
 
   async list(folderId: string, endpoint: Endpoint = 'human'): Promise<string[]> {
     if (!['human', 'agent'].includes(endpoint)) throw new ProbeSafetyError('Unknown endpoint');
-    const items = await this.pages<{ documentId: string }>(cursor => this.request('list', endpoint, c => payload(listDocuments({ ...c,
+    return this.pages<{ documentId: string }, string>(cursor => this.request('list', endpoint, c => payload(listDocuments({ ...c,
       query: { view: endpoint === 'human' ? 'authoring' : 'published', folderId, includeDescendants: false, pageSize: 100, ...(cursor ? { cursor } : {}) },
-    }))), item => item.documentId);
-    return items.map(item => item.documentId);
+    }))), item => item.documentId, item => item.documentId);
   }
 
   async publish(documentId: string, versionId: string, expectedRevision: number, operationId: string) {
@@ -232,12 +231,12 @@ export class DocumentProbe {
     const detail = await this.detail(documentId);
     const path = { documentId };
     const policy = await this.request('documentPolicy', 'human', c => payload(getDocumentAccessPolicy({ ...c, path })));
-    const revisionSummaries = await this.pages(cursor => this.request('revisions', 'human', c => payload(listDocumentRevisions({ ...c, path, query: { pageSize: 100, ...(cursor ? { cursor } : {}) } }))), item => item.revisionId);
+    const revisionSummaries = await this.pages(cursor => this.request('revisions', 'human', c => payload(listDocumentRevisions({ ...c, path, query: { pageSize: 100, ...(cursor ? { cursor } : {}) } }))), item => item.revisionId, item => item);
     const revisions = [];
     for (const revision of revisionSummaries) {
       revisions.push(await this.request('revisionDetail', 'human', c => payload(getDocumentRevision({ ...c, path: { documentId, revisionId: revision.revisionId } }))));
     }
-    const summaries = await this.pages(cursor => this.request('versions', 'human', c => payload(listDocumentVersions({ ...c, path, query: { purpose, pageSize: 100, ...(cursor ? { cursor } : {}) } }))), item => item.versionId);
+    const summaries = await this.pages(cursor => this.request('versions', 'human', c => payload(listDocumentVersions({ ...c, path, query: { purpose, pageSize: 100, ...(cursor ? { cursor } : {}) } }))), item => item.versionId, item => item);
     const versions = [];
     let totalBytes = 0;
     for (const summary of summaries) {

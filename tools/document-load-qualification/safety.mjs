@@ -166,16 +166,26 @@ async function diskAvailable(root) {
   return available;
 }
 
-async function processTreeRss(pids) {
+const ROLE_KEYS = ['harness', 'human', 'agent', 'database'];
+const HEAP_KEYS = ['rss', 'heapTotal', 'heapUsed', 'external', 'arrayBuffers'];
+
+/** A closed projection of this harness's own memoryUsage(), never a child heap. */
+export function harnessHeapSnapshot(counters) {
+  if (!record(counters) || HEAP_KEYS.some(key => !byteCount(counters[key]))) throw new Error('harness heap counters are unavailable');
+  return Object.fromEntries(HEAP_KEYS.map(key => [key, counters[key]]));
+}
+
+/** Parse only numeric ps columns; role roots own themselves, other descendants form a separate bucket. */
+export function processTreeRssSnapshot(pids, stdout, rolePids) {
   if (!Array.isArray(pids) || pids.length === 0 || pids.some(pid => !Number.isSafeInteger(pid) || pid < 1)) throw new Error('live process root PIDs are required');
-  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid=,rss='], { timeout: 5000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' });
+  if (typeof stdout !== 'string' || stdout.length > 4 * 1024 * 1024 || !stdout.trim()) throw new Error('ps process observation is unavailable');
   const processes = new Map();
   const children = new Map();
   for (const line of stdout.trim().split('\n')) {
     const parts = line.trim().split(/\s+/);
     if (parts.length !== 3 || parts.some(value => !/^\d+$/.test(value))) throw new Error('ps returned an invalid process observation');
     const [pid, ppid, kib] = parts.map(Number);
-    if (!Number.isSafeInteger(pid) || pid < 1 || !byteCount(ppid) || !byteCount(kib * 1024)) throw new Error('ps returned invalid numeric RSS');
+    if (!Number.isSafeInteger(pid) || pid < 1 || !byteCount(ppid) || !byteCount(kib * 1024) || processes.has(pid)) throw new Error('ps returned invalid or duplicate numeric RSS');
     processes.set(pid, { ppid, rssBytes: kib * 1024 });
     if (!children.has(ppid)) children.set(ppid, []);
     children.get(ppid).push(pid);
@@ -188,9 +198,41 @@ async function processTreeRss(pids) {
       if (!included.has(pid)) { included.add(pid); queue.push(pid); }
     }
   }
-  const rssBytes = [...included].reduce((total, pid) => total + processes.get(pid).rssBytes, 0);
-  if (!byteCount(rssBytes) || rssBytes === 0) throw new Error('process-tree RSS is unavailable');
-  return { rssBytes, measuredPids: [...included].sort((a, b) => a - b), rssCoverage: 'process-tree' };
+  // Parent identity is necessary for complete descendant ownership. Missing or
+  // cyclic parent observations are not interpreted as an empty/zero subtree.
+  const verified = new Set();
+  for (const pid of included) {
+    let current = pid; const ancestry = new Set();
+    while (current !== 0 && !verified.has(current)) {
+      if (ancestry.has(current) || !processes.has(current)) throw new Error('process parent observation is incomplete or cyclic');
+      ancestry.add(current); current = processes.get(current).ppid;
+    }
+    for (const ancestor of ancestry) verified.add(ancestor);
+  }
+  let rssByRoleBytes;
+  const ownership = new Map();
+  if (rolePids !== undefined) {
+    if (!record(rolePids) || Object.keys(rolePids).length !== ROLE_KEYS.length || ROLE_KEYS.some(key => !Object.hasOwn(rolePids,key) || !Number.isSafeInteger(rolePids[key]) || rolePids[key] < 1 || !pids.includes(rolePids[key]))) throw new Error('complete role root PIDs are required');
+    for (const role of ROLE_KEYS) {
+      if (ownership.has(rolePids[role])) throw new Error('role root ownership is ambiguous');
+      ownership.set(rolePids[role],role);
+    }
+    rssByRoleBytes = { harness:0, human:0, agent:0, database:0, otherDescendants:0 };
+  }
+  let rssBytes = 0;
+  for (const pid of included) {
+    const bytes = processes.get(pid).rssBytes;
+    rssBytes += bytes;
+    if (!byteCount(rssBytes)) throw new Error('process-tree RSS exceeds safe numeric range');
+    if (rssByRoleBytes) rssByRoleBytes[ownership.get(pid) ?? 'otherDescendants'] += bytes;
+  }
+  if (rssBytes === 0) throw new Error('process-tree RSS is unavailable');
+  return { rssBytes, measuredPids: [...included].sort((a,b)=>a-b), rssCoverage:'process-tree', ...(rssByRoleBytes ? {rssByRoleBytes} : {}) };
+}
+
+async function processTreeRss(pids, rolePids) {
+  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid=,rss='], { timeout: 5000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' });
+  return processTreeRssSnapshot(pids, stdout, rolePids);
 }
 
 /**
@@ -200,7 +242,7 @@ async function processTreeRss(pids) {
  * Prefer databaseRoot so both filesystem capacities are actually measured.
  */
 export async function observeResources({
-  storageRoot, databaseRoot, databaseSharesStorageFilesystem = false, pids, databaseBytes,
+  storageRoot, databaseRoot, databaseSharesStorageFilesystem = false, pids, databaseBytes, rolePids,
   maxStorageEntries = 1_000_000, maxStorageObservationMs = 10_000, includeScanDiagnostics = false,
 } = {}) {
   const limitations = ['RSS and storage are point-in-time samples; short-lived processes and between-sample peaks may be missed.'];
@@ -210,6 +252,10 @@ export async function observeResources({
     storageBytes: null, databaseBytes: byteCount(databaseBytes) ? databaseBytes : null,
     databaseFilesystemVerified: false, limitations,
   };
+  if (rolePids !== undefined) {
+    observation.rssByRoleBytes = null;
+    observation.harnessHeapBytes = null;
+  }
   if(includeScanDiagnostics)observation.storageScan={complete:false,elapsedMs:null,entries:null};
   if (observation.databaseBytes === null) limitations.push('Measured databaseBytes was not supplied by the orchestrator.');
   await Promise.all([
@@ -258,7 +304,12 @@ export async function observeResources({
       catch (error) { limitations.push(`Storage observation unavailable: ${error.message}`); }
     })(),
     (async () => {
-      try { Object.assign(observation, await processTreeRss(pids)); }
+      try {
+        if (rolePids !== undefined && rolePids?.harness !== process.pid) throw new Error('heap observation must belong to this harness');
+        const measured = await processTreeRss(pids, rolePids);
+        const heap = rolePids === undefined ? undefined : harnessHeapSnapshot(process.memoryUsage());
+        Object.assign(observation, measured, heap ? { harnessHeapBytes: heap } : {});
+      }
       catch (error) { limitations.push(`Process-tree RSS observation unavailable: ${error.message}`); }
     })(),
   ]);

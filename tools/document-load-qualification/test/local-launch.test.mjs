@@ -217,3 +217,27 @@ console.log(JSON.stringify(await launchLocalRun(plan)));`,{mode:0o600});
   await delay(1400);
   assert.equal((await launcher.readLocalLaunchStatus(result.launchDirectory)).status,'stopped');
 });
+
+test('launcher retains an explicit approved byte budget in validated context and child environment',async t=>{
+ const input=await fixture(t),budgetEnv={KP_DOCUMENT_LOAD_LOCAL_MAX_RSS_BYTES:'4294967296',KP_DOCUMENT_LOAD_LOCAL_MIN_AVAILABLE_MEMORY_BYTES:'4294967296'};
+ const plan=await launcher.prepareLocalLaunchPlan({...input,expectedHead:sourceHead,runtimeEnvironment:budgetEnv},dependencies);
+ assert.deepEqual(plan.context.resourceBudget,{maxRssBytes:4294967296,minAvailableMemoryBytes:4294967296});
+ for(const [key,value] of Object.entries(budgetEnv))assert.equal(plan.env[key],value);
+ const context=await launcher.validateLocalLaunchContext(plan.env,dependencies);assert.deepEqual(context.resourceBudget,plan.context.resourceBudget);
+});
+test('launcher rejects an incomplete explicit budget before claiming evidence root',async t=>{
+ const input=await fixture(t);
+ await assert.rejects(launcher.prepareLocalLaunchPlan({...input,expectedHead:sourceHead,runtimeEnvironment:{KP_DOCUMENT_LOAD_LOCAL_MAX_RSS_BYTES:'4294967296'}},dependencies),/resource budget/i);
+ await assert.rejects(lstat(join(input.evidenceRoot,'.document-load-owned-root.json')));
+});
+
+test('status rejects startup acknowledgement that substituted the approved resource budget',async t=>{
+ const {env,launchDirectory,evidenceDirectory}=await contextFixture(t);
+ const resourceBudget={maxRssBytes:4294967296,minAvailableMemoryBytes:4294967296};
+ const directory=join(evidenceDirectory,'owned-runtime');await mkdir(directory,{mode:0o700});
+ const record={schemaVersion:1,runId,sourceHead,startedAt:Number(env.KP_DOCUMENT_LOAD_LOCAL_STARTED_AT),launchDirectory,evidenceDirectory,resourceBudget,supervisor:{pid:99999999}};
+ await writeFile(join(launchDirectory,'launcher.json'),JSON.stringify(record),{mode:0o600});
+ await mkdir(join(launchDirectory,'.startup-ack'),{mode:0o700});await mkdir(join(launchDirectory,'.startup-ack','ready'),{mode:0o700});
+ await writeFile(join(launchDirectory,'started.json'),JSON.stringify({schemaVersion:1,runId,sourceHead,startedAt:record.startedAt,directory,pid:99999998,parentPid:99999999,processGroupId:99999999,sessionId:99999999,resourceBudget:{...resourceBudget,maxRssBytes:2147483648}}),{mode:0o600});
+ await assert.rejects(launcher.readLocalLaunchStatus(launchDirectory),/acknowledgement mismatch/i);
+});

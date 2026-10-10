@@ -42,7 +42,7 @@ test('fake transport: exactly100000 identities on1000 terminal pages are accepte
   const offset=page++*100;
   return json({items:Array.from({length:100},(_,i)=>({documentId:`scale-${offset+i}`})),nextCursor:page===1000?null:`cursor-${page}`});
  });
- const ids=await h.probe.list('scale-folder');assert.equal(page,1000);assert.equal(ids.length,100000);assert.equal(ids[0],'scale-0');assert.equal(ids.at(-1),'scale-99999');
+ const ids=await h.probe.list('scale-folder');assert.equal(page,1000);assert.equal(ids.length,100000);assert.equal(ids[0],'scale-0');assert.equal(ids.at(-1),'scale-99999');assert.equal(new Set(ids).size,100000);assert.ok(ids.every((id,index)=>id===`scale-${index}`));
 });
 test('fake transport:100k boundary refuses excess items and a required1001st page',async()=>{
  for(const excess of ['item','page']){
@@ -326,5 +326,32 @@ test('fake transport: metadata probe obeys the normative four-key patch boundary
 test('fake transport: denial requires the exact document-not-found Problem and refuses all other errors',async()=>{
   for(const [status,body] of [[403,{status:403,code:'FORBIDDEN'}],[404,{status:404,code:'FOLDER_NOT_FOUND'}],[404,{status:403,code:'DOCUMENT_NOT_FOUND'}],[404,{title:'Not found'}],[401,{status:401,code:'AUTHENTICATION_REQUIRED'}],[422,{status:422,code:'VALIDATION_FAILED'}],[500,{status:500,code:'INTERNAL_ERROR'}]]){
     const h=await verified(()=>json(body,status));await assert.rejects(h.probe.agentReadStatus('d'));
+  }
+});
+
+
+test('pagination projects each page to IDs before retaining it while preserving ordered identity checks', async () => {
+  const h = harness();
+  const rows = [{ documentId: 'a', metadata: { privatePayload: 'large-page-only' } }, { documentId: 'b', metadata: { privatePayload: 'large-page-only' } }];
+  let reads = 0;
+  const kept = await h.probe.pages(async cursor => {
+    reads++;
+    assert.equal(cursor, reads === 1 ? undefined : 'next');
+    return { items: [rows[reads - 1]], nextCursor: reads === 1 ? 'next' : null };
+  }, item => item.documentId, item => item.documentId);
+  assert.deepEqual(kept, ['a', 'b']);
+  assert.equal(reads, 2);
+});
+
+
+test('fake transport: ID-only listing refuses missing identities and malformed pages', async () => {
+  for (const page of [
+    { items: [{ title: 'no identity' }], nextCursor: null },
+    { items: [{ documentId: '' }], nextCursor: null },
+    { items: null, nextCursor: null },
+    { items: [{ documentId: 'a' }], nextCursor: '' },
+  ]) {
+    const h = await verified(() => json(page));
+    await assert.rejects(h.probe.list('f'), /identity|pagination/i);
   }
 });

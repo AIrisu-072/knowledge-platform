@@ -170,3 +170,16 @@ test('elapsed work deadline after the fourth stage prevents overall success',asy
   options.qualify=async args=>{const value=report(args);if(args.plan.stage===100000)current=Date.parse(options.workDeadlineAt);return value;};
   const result=await chain.runLocalScaleChain(options);assert.equal(result.hundredThousand.status,'SUCCEEDED');assert.equal(result.status,'NOT_ADMITTED');assert.equal(result.failureCode,'chain-deadline-exhausted');
 });
+
+test('explicit local80h4 byte budget applies to all four stages without changing disk time or safety factor',async t=>{
+  const options=await setup(t,{resourceBudget:{maxRssBytes:4*GiB,minAvailableMemoryBytes:4*GiB}});
+  const result=await chain.runLocalScaleChain(options);
+  assert.equal(result.status,'SUCCEEDED');assert.equal(options.calls.length,4);
+  for(const {plan} of options.calls){assert.equal(plan.budgets.maxRssBytes,4*GiB);assert.equal(plan.budgets.minAvailableMemoryBytes,4*GiB);assert.equal(plan.budgets.diskReserveBytes,GiB);assert.equal(plan.safetyFactor,2);}
+});
+test('invalid explicit resource budgets refuse before creating stage directories',async t=>{
+  for(const resourceBudget of [null,{}, {maxRssBytes:4*GiB}, {maxRssBytes:5*GiB,minAvailableMemoryBytes:4*GiB}, {maxRssBytes:4*GiB,minAvailableMemoryBytes:4*GiB,extra:true}]){
+    const options=await setup(t,{resourceBudget});const result=await chain.runLocalScaleChain(options);
+    assert.equal(result.status,'NOT_ADMITTED');assert.equal(result.failureCode,'chain-resource-budget-invalid');assert.equal(options.calls.length,0);await assert.rejects(access(join(options.directory,'small')));
+  }
+});
