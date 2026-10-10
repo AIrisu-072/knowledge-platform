@@ -370,6 +370,11 @@ fn restored_summaries() -> &'static RestoredSummaries {
     CACHE.get_or_init(Default::default)
 }
 
+fn restore_flight() -> &'static tokio::sync::Mutex<()> {
+    static FLIGHT: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    FLIGHT.get_or_init(Default::default)
+}
+
 fn summary_cache() -> &'static Mutex<HashMap<String, Arc<SegmentSummary>>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Arc<SegmentSummary>>>> = OnceLock::new();
     CACHE.get_or_init(Default::default)
@@ -942,14 +947,22 @@ impl PgPayloadStore {
     ) -> Result<RestoredSummaryV1, BundleError> {
         let key = manifest.key();
         // The same generation restored and checked by this process before.
-        if let Some(restored) = restored_summaries()
-            .lock()
-            .map_err(|_| BundleError::StoreUnknown)?
-            .iter()
-            .find(|(at, digest, _)| *at == key && *digest == manifest.digest)
-            .map(|(_, _, restored)| restored.clone())
-        {
-            return Ok((*restored).clone());
+        let cached = || -> Result<Option<RestoredSummaryV1>, BundleError> {
+            Ok(restored_summaries()
+                .lock()
+                .map_err(|_| BundleError::StoreUnknown)?
+                .iter()
+                .find(|(at, digest, _)| *at == key && *digest == manifest.digest)
+                .map(|(_, _, restored)| (**restored).clone()))
+        };
+        if let Some(restored) = cached()? {
+            return Ok(restored);
+        }
+        // One restore at a time: a concurrent reader of the same generation
+        // waits for it and takes its result instead of restoring it again.
+        let _flight = restore_flight().lock().await;
+        if let Some(restored) = cached()? {
+            return Ok(restored);
         }
         let restored = self.restore_summary_uncached(manifest).await?;
         let mut cache = restored_summaries()

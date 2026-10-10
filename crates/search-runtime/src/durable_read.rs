@@ -29,7 +29,7 @@ use search_application::resource_read::{CurrentResourceReadPort, ResourceLocator
 use search_application::scoped::TrustedSearchScope;
 use search_application::search_core::id::ProjectionGenerationId;
 use search_application::search_core::projection::{
-    ProjectionGenerationKey, ProjectionGenerationManifest,
+    CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
 use search_application::search_core::source::DiscoverableSource;
 use search_graph::PostgresGraphStore;
@@ -85,6 +85,16 @@ pub struct LoadedGeneration {
     graph: DurableDocumentGraph,
     /// E: the generation's indexed items and Unit segments for Vector hit
     /// resolution.
+    vector_units: Arc<crate::vector_runtime::VectorUnitSegments>,
+}
+
+/// What [`DurableDocumentReadModel::build`] prepares while a key is
+/// re-verified; the Graph needs the verified owners and loads afterwards.
+struct Built {
+    manifest: ProjectionGenerationManifest,
+    store: MemoryProjectionStore,
+    lexical: Arc<TantivyLexicalIndex>,
+    resources: Vec<CompiledResourceProjection>,
     vector_units: Arc<crate::vector_runtime::VectorUnitSegments>,
 }
 
@@ -245,17 +255,63 @@ impl DurableDocumentReadModel {
     ) -> Result<LoadedGeneration, DurableReadError> {
         let recovery =
             PgStartupRecovery::new(self.pool.clone(), &self.lexical_root, self.source.clone());
-        match recovery
-            .verify_current()
-            .await
-            .map_err(|error| store_error("re-verification", error))?
-        {
-            CurrentState::Verified(bundle) if bundle.key() == key => {}
-            CurrentState::Unusable(unusable, _) if unusable == key => {
-                return Err(DurableReadError::Unusable(key));
+        let verify = async {
+            match recovery
+                .verify_current()
+                .await
+                .map_err(|error| store_error("re-verification", error))?
+            {
+                CurrentState::Verified(bundle) if bundle.key() == key => Ok(()),
+                CurrentState::Unusable(unusable, _) if unusable == key => {
+                    Err(DurableReadError::Unusable(key))
+                }
+                _ => Err(DurableReadError::Moved),
             }
-            _ => return Err(DurableReadError::Moved),
-        }
+        };
+        // Nothing of the key is served before its re-verification passes; the
+        // in-memory projection and the lexical directory are built meanwhile,
+        // and a failed or moved re-verification decides the outcome.
+        let (verified, built) = tokio::join!(verify, self.build(key));
+        verified?;
+        let Built {
+            manifest,
+            store,
+            lexical,
+            resources,
+            vector_units,
+        } = built?;
+
+        // Structural owners come from the verified Graph rows, never RAM: the
+        // ones the re-verification above derived, or the rows read again.
+        let owners = match crate::ready::take_verified_owners(key, &manifest.digest) {
+            Some(owners) => owners,
+            None => {
+                let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
+                    .recover_rows(key, &manifest.digest)
+                    .await
+                    .map_err(|error| store_error("graph rows", error))?;
+                crate::ready::owners(&records)
+            }
+        };
+        let source = self.source.clone();
+        let graph = tokio::task::spawn_blocking(move || {
+            DurableDocumentGraph::load(manifest, &source, resources, owners)
+                .map_err(|error| store_error("graph load", error))
+        })
+        .await
+        .map_err(|_| store_error("graph load", key))??;
+        Ok(LoadedGeneration {
+            key,
+            store,
+            lexical,
+            graph,
+            vector_units,
+        })
+    }
+
+    /// The in-memory parts of `key` built from its stored payloads and
+    /// lexical directory; served only once its re-verification passed.
+    async fn build(&self, key: ProjectionGenerationKey) -> Result<Built, DurableReadError> {
         let manifest = self.manifest(key).await?;
         let payloads = PgPayloadStore::new(self.pool.clone());
         // No Unit text is held: the payloads are checked from per-segment
@@ -271,32 +327,8 @@ impl DurableDocumentReadModel {
             crate::vector_runtime::VectorUnitSegments::none(key)
         });
         let projection = restored.projection;
-
-        // Structural owners come from the verified Graph rows, never RAM: the
-        // ones the re-verification above derived, or the rows read again.
-        let owners = match crate::ready::take_verified_owners(key, &manifest.digest) {
-            Some(owners) => owners,
-            None => {
-                let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
-                    .recover_rows(key, &manifest.digest)
-                    .await
-                    .map_err(|error| store_error("graph rows", error))?;
-                crate::ready::owners(&records)
-            }
-        };
-        // The Graph and the lexical directory load on blocking threads while
-        // the projection is staged.
-        let graph = {
-            let (manifest, source, resources) = (
-                manifest.clone(),
-                self.source.clone(),
-                projection.resources.clone(),
-            );
-            tokio::task::spawn_blocking(move || {
-                DurableDocumentGraph::load(manifest, &source, resources, owners)
-                    .map_err(|error| store_error("graph load", error))
-            })
-        };
+        // The lexical directory opens on a blocking thread while the
+        // projection is staged.
         let lexical = {
             let (manifest, source) = (manifest.clone(), self.source.clone());
             let dir =
@@ -309,6 +341,7 @@ impl DurableDocumentReadModel {
                 Ok::<_, DurableReadError>(lexical)
             })
         };
+        let resources = projection.resources.clone();
 
         let store = MemoryProjectionStore::new();
         let persistable = PersistableGenerationManifest::try_from((manifest.clone(), &self.source))
@@ -338,15 +371,14 @@ impl DurableDocumentReadModel {
             .await
             .map_err(|error| store_error("publish", error))?;
 
-        let graph = graph.await.map_err(|_| store_error("graph load", key))??;
         let lexical = lexical
             .await
             .map_err(|_| store_error("lexical reopen", key))??;
-        Ok(LoadedGeneration {
-            key,
+        Ok(Built {
+            manifest,
             store,
             lexical,
-            graph,
+            resources,
             vector_units,
         })
     }
