@@ -22,7 +22,7 @@ use search_source_document::{
     ArtifactReceipt, BodyUnitManifest, seal_lexical_hashes, unit_manifest_receipt_from_segments,
     unit_seal_entries,
 };
-use search_tantivy::{TantivyLexicalIndex, UnitSealEntry};
+use search_tantivy::{PersistedLexical, TantivyLexicalIndex, UnitSealEntry};
 
 use crate::payload::UnitManifestSummaryV1;
 use sha2::{Digest, Sha256};
@@ -218,6 +218,20 @@ fn sealed_cache() -> &'static SealCache {
 /// Seals kept per process before the cache is emptied.
 const CACHED_SEALS: usize = 64;
 
+/// The directory half of a lexical seal (see
+/// [`LexicalArtifactStore::inspect_final`]).
+pub struct InspectedLexical {
+    key: ProjectionGenerationKey,
+    tree: [u8; 32],
+    /// `None` when this process sealed the same files before.
+    read: Option<PersistedRead>,
+}
+
+struct PersistedRead {
+    persisted: PersistedLexical,
+    unit_seal: Result<[u8; 32], LexicalArtifactError>,
+}
+
 /// `lexical-unit-seal:v2`: every searchable Unit document's ID and the digest
 /// of its stored fields and text, in Unit ID order.
 fn unit_seal(units: &[UnitSealEntry]) -> Result<[u8; 32], LexicalArtifactError> {
@@ -337,8 +351,60 @@ impl LexicalArtifactStore {
         matches: impl FnOnce(&[UnitSealEntry]) -> bool + Send,
     ) -> Result<LexicalSealV1, LexicalArtifactError> {
         let key = manifest.key();
+        let inspected = InspectedLexical {
+            key,
+            tree: tree_digest(&self.final_dir(key))?,
+            read: None,
+        };
+        self.finish_seal(manifest, source, inspected, units, matches)
+    }
+
+    /// The half of a seal read from the final directory alone: its file tree
+    /// digest and, unless this process sealed the same files before, the
+    /// persisted Unit entries and their seal digest. It needs no Unit
+    /// manifest, so a re-verification reads it while restoring the payloads.
+    pub fn inspect_final(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+    ) -> Result<InspectedLexical, LexicalArtifactError> {
+        let key = manifest.key();
         let dir = self.final_dir(key);
         let tree = tree_digest(&dir)?;
+        let sealed = sealed_cache()
+            .lock()
+            .map_err(|_| LexicalArtifactError::Io)?
+            .keys()
+            .any(|(at, files, _)| *at == key && *files == tree);
+        let read = if sealed {
+            None
+        } else {
+            let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
+                .map_err(|_| LexicalArtifactError::Index)?;
+            let unit_seal = unit_seal(&persisted.units);
+            Some(PersistedRead {
+                persisted,
+                unit_seal,
+            })
+        };
+        Ok(InspectedLexical { key, tree, read })
+    }
+
+    /// Completes `inspected` against the Unit manifest whose receipt digest
+    /// is `units`; `matches` compares its Units with the persisted entries.
+    fn finish_seal(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        inspected: InspectedLexical,
+        units: [u8; 32],
+        matches: impl FnOnce(&[UnitSealEntry]) -> bool + Send,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        let key = manifest.key();
+        if inspected.key != key {
+            return Err(LexicalArtifactError::Seal);
+        }
+        let tree = inspected.tree;
         // The same files and the same Unit manifest were sealed in this
         // process: reuse that seal (SD-T11 5).
         if let Some(seal) = sealed_cache()
@@ -348,18 +414,33 @@ impl LexicalArtifactStore {
         {
             return Ok(seal.clone());
         }
-        let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
-            .map_err(|_| LexicalArtifactError::Index)?;
-        // Each side sorts every Unit; the comparison and the seal digest run
-        // side by side.
-        let (same, unit_seal_digest) = std::thread::scope(|scope| {
-            let same = scope.spawn(|| matches(&persisted.units));
-            let digest = unit_seal(&persisted.units);
-            (same.join().unwrap_or(false), digest)
-        });
-        if !same {
-            return Err(LexicalArtifactError::Seal);
-        }
+        let (persisted, unit_seal_digest) = match inspected.read {
+            Some(PersistedRead {
+                persisted,
+                unit_seal,
+            }) => {
+                if !matches(&persisted.units) {
+                    return Err(LexicalArtifactError::Seal);
+                }
+                (persisted, unit_seal)
+            }
+            None => {
+                let persisted =
+                    TantivyLexicalIndex::inspect_persisted(manifest, source, &self.final_dir(key))
+                        .map_err(|_| LexicalArtifactError::Index)?;
+                // Each side sorts every Unit; the comparison and the seal
+                // digest run side by side.
+                let (same, digest) = std::thread::scope(|scope| {
+                    let same = scope.spawn(|| matches(&persisted.units));
+                    let digest = unit_seal(&persisted.units);
+                    (same.join().unwrap_or(false), digest)
+                });
+                if !same {
+                    return Err(LexicalArtifactError::Seal);
+                }
+                (persisted, digest)
+            }
+        };
         let unit_count =
             u64::try_from(persisted.units.len()).map_err(|_| LexicalArtifactError::Seal)?;
         let seal = LexicalSealV1 {
@@ -466,6 +547,28 @@ impl LexicalArtifactStore {
         summary: &UnitManifestSummaryV1,
     ) -> Result<LexicalSealV1, LexicalArtifactError> {
         let seal = self.seal_from_summary(manifest, source, summary)?;
+        self.matches_row(manifest, seal).await
+    }
+
+    /// [`Self::reopen_and_validate_summary`] from the directory half read
+    /// beforehand by [`Self::inspect_final`].
+    pub async fn validate_inspected_summary(
+        &self,
+        manifest: &ProjectionGenerationManifest,
+        source: &DiscoverableSource,
+        inspected: InspectedLexical,
+        summary: &UnitManifestSummaryV1,
+    ) -> Result<LexicalSealV1, LexicalArtifactError> {
+        if summary.key != manifest.key() {
+            return Err(LexicalArtifactError::Seal);
+        }
+        let seal = self.finish_seal(
+            manifest,
+            source,
+            inspected,
+            summary.receipt.digest,
+            |persisted| seal_lexical_hashes(&summary.units, persisted).is_ok(),
+        )?;
         self.matches_row(manifest, seal).await
     }
 

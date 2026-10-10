@@ -283,17 +283,27 @@ impl ReadyCoordinator {
             return Err(ReadyError::Fence);
         }
         let manifest = self.manifest(key).await?;
-        // T12: checked from per-segment summaries; no Unit text is held.
-        // The Graph rows are independent of both and are read meanwhile.
+        // T12: checked from per-segment summaries; no Unit text is held. The
+        // lexical directory is read while the payloads are restored and then
+        // compared with them; the Graph rows are read meanwhile.
         let artifacts = async {
+            let inspect = {
+                let (lexical, manifest, source) =
+                    (self.lexical.clone(), manifest.clone(), self.source.clone());
+                tokio::task::spawn_blocking(move || lexical.inspect_final(&manifest, &source))
+            };
             let restored = self
                 .payloads
                 .restore_without_units(&manifest)
                 .await
                 .map_err(ReadyError::Payload)?;
+            let inspected = inspect
+                .await
+                .map_err(|_| ReadyError::StoreUnknown)?
+                .map_err(ReadyError::Lexical)?;
             let seal = self
                 .lexical
-                .reopen_and_validate_summary(&manifest, &self.source, &restored.units)
+                .validate_inspected_summary(&manifest, &self.source, inspected, &restored.units)
                 .await
                 .map_err(ReadyError::Lexical)?;
             Ok::<_, ReadyError>((restored, seal))
