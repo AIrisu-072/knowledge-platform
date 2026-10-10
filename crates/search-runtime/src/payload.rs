@@ -275,9 +275,14 @@ async fn read_payloads(
     // Payload rows of tens of MiB grow the connection's buffers, which the
     // pool would otherwise keep for the connection's lifetime.
     let mut conn = pool.acquire().await?;
+    // A chunked row is read as its chunk text alone: the whole row as text
+    // as well would double the conversion and the bytes sent (the projection
+    // at 10,000 documents is 78 MB of chunk text).
     let rows = sqlx::query(
-        "SELECT kind, chunk, dto_version, payload::text AS payload, payload ? 'chunk' AS chunked, \
-         payload ->> 'chunk' AS chunk_text, logical_digest, logical_count \
+        "SELECT kind, chunk, dto_version, \
+         CASE WHEN payload ? 'chunk' THEN NULL ELSE payload::text END AS payload, \
+         payload ? 'chunk' AS chunked, payload ->> 'chunk' AS chunk_text, \
+         logical_digest, logical_count \
          FROM search_generation_payload WHERE source_id=$1 AND generation_id=$2 \
          ORDER BY kind, chunk",
     )
@@ -301,7 +306,8 @@ async fn read_payloads(
             row.try_get::<Option<String>, _>("chunk_text")?
                 .ok_or(BundleError::Shape)?
         } else {
-            row.try_get("payload")?
+            row.try_get::<Option<String>, _>("payload")?
+                .ok_or(BundleError::Shape)?
         };
         let digest: String = row.try_get("logical_digest")?;
         let count: i64 = row.try_get("logical_count")?;
