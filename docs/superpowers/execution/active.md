@@ -38,9 +38,14 @@
 
 ## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
-- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
-- 単位A（PR #98、main `643cc85`）と単位B（Store・relay、PR #113、main `dba8168`）はmain統合済み（`dba8168` のmain CIは、Organization受入の既知の断続的な503でFAILURE。単位Bの起因ではなく、`dba8168` を含むPR #115のhead `660670d` では同じ手順がSUCCESS。詳細は状況文書）。単位C（`crates/audit-acceptance` の受入試験、[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)、設計§2.2の最終capability matrix）はDraft [PR #115](https://github.com/AIrisu-072/knowledge-platform/pull/115)（branch `claude/cool-darwin-7xh893`）。最初のexact-head CI（`660670d`、run 37761824323）はrust-testだけがFAILUREで、原因はGitHub runnerでtestcontainersのimage取得がstreamの途中で切れたこと（「bytes remaining on stream」、試験本体の前。他の31試験はPASS）。`b233652` でPullImageの失敗だけを最大3回再試行する。独立確認reviewはGOで、Minor 4件は `facb755`・`591006a`・`df1bd19` と状況文書の更新で閉じた。
-- 次は `audit-unit-c` のHEADを `claude/cool-darwin-7xh893` へpush（PR #115のhead `660670d` からのfast-forward）、exact-head CI、main統合、main CI。現在状態は状況文書の先頭とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+- Status：**単位A〜Cをmainへ統合済み（track完了）**。単位Aは `643cc85`、単位Bは `dba8168`、単位Cは `712af6d`。`712af6d` のmain CI（run 37767198886）はSUCCESS。
+- 再開先：
+  - [状況](audit-infrastructure-v1-status.md)の先頭（完了の記録、判断待ち、引継ぎ）
+  - [設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4。§2.2は最終capability matrix）
+  - [計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)
+  - [運用手順](../../operations/audit-delivery-store.md)
+  - [引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)
+- 次：Audit trackとして進める実装は無い。依頼者の判断待ち4件と、他担当への引継ぎ（Document D4〜D6、Organization O1〜O12、Search）への応答を待つ。Documentが新しい監査typeを追加するときは、引継ぎD4の手順に従う。下のDocument作業pointerはそのまま有効。
 
 ---
 
