@@ -334,7 +334,7 @@ impl LexicalArtifactStore {
         manifest: &ProjectionGenerationManifest,
         source: &DiscoverableSource,
         units: [u8; 32],
-        matches: impl FnOnce(&[UnitSealEntry]) -> bool,
+        matches: impl FnOnce(&[UnitSealEntry]) -> bool + Send,
     ) -> Result<LexicalSealV1, LexicalArtifactError> {
         let key = manifest.key();
         let dir = self.final_dir(key);
@@ -350,7 +350,14 @@ impl LexicalArtifactStore {
         }
         let persisted = TantivyLexicalIndex::inspect_persisted(manifest, source, &dir)
             .map_err(|_| LexicalArtifactError::Index)?;
-        if !matches(&persisted.units) {
+        // Each side sorts every Unit; the comparison and the seal digest run
+        // side by side.
+        let (same, unit_seal_digest) = std::thread::scope(|scope| {
+            let same = scope.spawn(|| matches(&persisted.units));
+            let digest = unit_seal(&persisted.units);
+            (same.join().unwrap_or(false), digest)
+        });
+        if !same {
             return Err(LexicalArtifactError::Seal);
         }
         let unit_count =
@@ -362,7 +369,7 @@ impl LexicalArtifactStore {
             logical_digest: persisted.logical.digest,
             logical_count: persisted.logical.count,
             searchable_doc_count: persisted.resource_docs + unit_count,
-            unit_seal_digest: unit_seal(&persisted.units)?,
+            unit_seal_digest: unit_seal_digest?,
             unit_seal_count: unit_count,
             tree_digest: tree,
             index_relpath: Self::relpath(key),

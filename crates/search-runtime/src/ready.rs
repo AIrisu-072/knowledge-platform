@@ -159,9 +159,31 @@ impl GraphReceiptMappingV1 {
 }
 
 /// Document owners of structural Graph Resources, as P1 records them.
-fn owners(
-    resources: &[GraphResourceRecord],
-) -> Vec<(search_application::search_core::id::ResourceId, DocumentId)> {
+type Owners = Vec<(search_application::search_core::id::ResourceId, DocumentId)>;
+
+/// The structural owners of the generation last re-verified by this process,
+/// from its verified Graph rows: the load that follows takes them instead of
+/// reading the same immutable rows again.
+type VerifiedOwners = std::sync::Mutex<Option<(ProjectionGenerationKey, String, Owners)>>;
+
+fn verified_owners() -> &'static VerifiedOwners {
+    static OWNERS: std::sync::OnceLock<VerifiedOwners> = std::sync::OnceLock::new();
+    OWNERS.get_or_init(Default::default)
+}
+
+/// The owners `reverify` derived from `key`'s verified Graph rows, once.
+pub(crate) fn take_verified_owners(
+    key: ProjectionGenerationKey,
+    manifest_digest: &str,
+) -> Option<Owners> {
+    let mut slot = verified_owners().lock().ok()?;
+    match slot.take() {
+        Some((at, digest, owners)) if at == key && digest == manifest_digest => Some(owners),
+        _ => None,
+    }
+}
+
+pub(crate) fn owners(resources: &[GraphResourceRecord]) -> Owners {
     resources
         .iter()
         .filter_map(|record| match &record.mapping {
@@ -262,24 +284,37 @@ impl ReadyCoordinator {
         }
         let manifest = self.manifest(key).await?;
         // T12: checked from per-segment summaries; no Unit text is held.
-        let RestoredSummaryV1 {
-            projection,
-            units,
-            coverage,
-        } = self
-            .payloads
-            .restore_without_units(&manifest)
-            .await
-            .map_err(ReadyError::Payload)?;
-        let seal = self
-            .lexical
-            .reopen_and_validate_summary(&manifest, &self.source, &units)
-            .await
-            .map_err(ReadyError::Lexical)?;
-        let (graph, resources, relations) =
+        // The Graph rows are independent of both and are read meanwhile.
+        let artifacts = async {
+            let restored = self
+                .payloads
+                .restore_without_units(&manifest)
+                .await
+                .map_err(ReadyError::Payload)?;
+            let seal = self
+                .lexical
+                .reopen_and_validate_summary(&manifest, &self.source, &restored.units)
+                .await
+                .map_err(ReadyError::Lexical)?;
+            Ok::<_, ReadyError>((restored, seal))
+        };
+        let rows = async {
             search_graph::PostgresGraphStore::new(self.pool.clone())
                 .recover_rows(key, &manifest.digest)
-                .await?;
+                .await
+                .map_err(ReadyError::from)
+        };
+        let (
+            (
+                RestoredSummaryV1 {
+                    projection,
+                    units,
+                    coverage,
+                },
+                seal,
+            ),
+            (graph, resources, relations),
+        ) = tokio::try_join!(artifacts, rows)?;
         let report = GraphStageReport {
             key,
             source_snapshot: graph.source_snapshot,
@@ -295,7 +330,8 @@ impl ReadyCoordinator {
             .iter()
             .flat_map(|resource| resource.relations.clone())
             .collect();
-        let p1_graph = graph_receipt(key, &projection.resources, &owners(&resources))
+        let verified = owners(&resources);
+        let p1_graph = graph_receipt(key, &projection.resources, &verified)
             .map_err(|_| ReadyError::Mapping)?;
         GraphReceiptMappingV1::validate(&manifest, &p1_graph, &p1_relations, &report, &relations)?;
         let receipt = summary_bundle_receipt(
@@ -327,6 +363,9 @@ impl ReadyCoordinator {
             ))
         {
             return Err(ReadyError::Payload(BundleError::Digest));
+        }
+        if let Ok(mut slot) = verified_owners().lock() {
+            *slot = Some((key, manifest.digest.clone(), verified));
         }
         Ok(VerifiedBundle {
             key,
