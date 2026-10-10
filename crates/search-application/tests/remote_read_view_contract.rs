@@ -409,6 +409,7 @@ async fn execute(
             body_query: None,
             graph_plan: None,
             vector_query: None,
+            defer_access_to_caller: false,
         },
     )
     .await?;
@@ -676,6 +677,7 @@ async fn remote_executor_ranks_only_accessible_hits() {
             body_query: None,
             graph_plan: None,
             vector_query: None,
+            defer_access_to_caller: false,
         },
     )
     .await;

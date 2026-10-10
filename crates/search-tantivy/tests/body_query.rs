@@ -128,8 +128,8 @@ fn unit(parent: u128, part: &str, ordinal: u32, text: &str) -> KnowledgeUnit {
     let profile = profile();
     KnowledgeUnit {
         unit_id: UnitId::derive(&version, &part, &profile, &locator, ordinal).unwrap(),
-        version,
-        part,
+        version: version.into(),
+        part: part.into(),
         parent_unit_id: None,
         ordinal,
         kind: UnitKind::PlainText,
@@ -148,7 +148,8 @@ fn unit(parent: u128, part: &str, ordinal: u32, text: &str) -> KnowledgeUnit {
             archive_inner_format: None,
             profile,
             parser_build_id: "search-extraction-worker-test".into(),
-        },
+        }
+        .into(),
     }
 }
 
@@ -324,8 +325,8 @@ async fn same_text_separate_part_keeps_ref() {
             .find(|unit| unit.unit_id == unit_hit.unit_id)
             .unwrap();
         assert_eq!(Some(unit_hit.parent_resource), hit.candidate.resource_ref);
-        assert_eq!(unit_hit.version, source_unit.version);
-        assert_eq!(unit_hit.part, source_unit.part);
+        assert_eq!(unit_hit.version, *source_unit.version);
+        assert_eq!(unit_hit.part, *source_unit.part);
         assert_eq!(unit_hit.raw, source_unit.provenance.raw);
         assert_eq!(unit_hit.profile, source_unit.provenance.profile);
         assert_eq!(unit_hit.text_sha256, source_unit.text_sha256);
@@ -504,4 +505,100 @@ async fn cjk_bigram_analyzer_finds_words_inside_unspaced_japanese() {
     let legacy_manifest = self::manifest();
     assert!(TantivyLexicalIndex::inspect_persisted(&legacy_manifest, &source(), &dir).is_err());
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A generation built from an earlier one's Unit index has exactly the new
+/// Units; the earlier directory is unchanged and unchanged segment files are
+/// shared by hard link.
+#[tokio::test]
+async fn unit_index_from_a_base_generation_has_exactly_the_new_units() {
+    let persist = |dir: &std::path::Path,
+                   documents: Vec<LexicalDocument>,
+                   units: Vec<KnowledgeUnit>,
+                   base: Option<&std::path::Path>| {
+        let mut input =
+            LexicalBuildInput::new(source_id(), "snapshot-body", "schema-1", 1, documents)
+                .with_body_units(units);
+        if let Some(base) = base {
+            input = input.with_base_units_dir(base.join("units"));
+        }
+        TantivyLexicalIndex::new()
+            .build_generation_at(manifest(), &source(), input, dir)
+            .unwrap();
+    };
+    let texts = |dir: &std::path::Path| {
+        let reopened = TantivyLexicalIndex::new();
+        reopened
+            .load_generation_at(&manifest(), &source(), dir)
+            .unwrap();
+        let mut out: Vec<String> = reopened
+            .enumerate_unit_docs(key())
+            .unwrap()
+            .into_iter()
+            .map(|doc| doc.text)
+            .collect();
+        out.sort();
+        out
+    };
+
+    let root = std::env::temp_dir().join(format!("kp-unit-base-{}", Uuid::new_v4()));
+    let (first, second) = (root.join("first"), root.join("second"));
+    persist(
+        &first,
+        vec![card(11, "会議室"), card(12, "旧い文書")],
+        vec![
+            unit(11, "primary", 0, "会議室は前日までに申請する。"),
+            unit(11, "primary", 1, "旧い行"),
+            unit(12, "primary", 0, "消える行"),
+        ],
+        None,
+    );
+    persist(
+        &second,
+        vec![card(11, "会議室"), card(13, "新しい文書")],
+        vec![
+            unit(11, "primary", 0, "会議室は前日までに申請する。"),
+            unit(11, "primary", 1, "新しい行"),
+            unit(13, "primary", 0, "増えた行"),
+        ],
+        Some(&first),
+    );
+    assert_eq!(
+        texts(&second),
+        ["会議室は前日までに申請する。", "増えた行", "新しい行"]
+    );
+    assert_eq!(
+        texts(&first),
+        ["会議室は前日までに申請する。", "旧い行", "消える行"]
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let inodes = |dir: &std::path::Path| -> std::collections::BTreeSet<u64> {
+            std::fs::read_dir(dir.join("units"))
+                .unwrap()
+                .map(|entry| entry.unwrap().metadata().unwrap().ino())
+                .collect()
+        };
+        assert!(!inodes(&first).is_disjoint(&inodes(&second)));
+    }
+    let reopened = TantivyLexicalIndex::new();
+    reopened
+        .load_generation_at(&manifest(), &source(), &second)
+        .unwrap();
+    let found = |query: &'static str| {
+        let reopened = &reopened;
+        async move {
+            reopened
+                .retrieve_body(key(), &request(), &LexicalQuery::body_only(query, 10))
+                .await
+                .unwrap()
+                .hits
+                .len()
+        }
+    };
+    assert_eq!(found("増えた行").await, 1);
+    assert_eq!(found("消える行").await, 0);
+    assert_eq!(found("旧い行").await, 0);
+    let _ = std::fs::remove_dir_all(&root);
 }

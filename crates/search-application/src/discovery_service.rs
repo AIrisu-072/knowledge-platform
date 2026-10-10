@@ -610,6 +610,7 @@ impl<'a> DiscoveryService<'a> {
                                         .retrieval_inputs
                                         .vector_query
                                         .as_deref(),
+                                    defer_access_to_caller: false,
                                 },
                             )
                             .await;
@@ -907,6 +908,7 @@ impl<'a> DiscoveryService<'a> {
     /// `PriorityConcat` federation as Discovery, without the evidence loop.
     /// Live remote retrieval needs a Discovery evaluation binding, so a
     /// remote Source contributes only its durable generation here.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search_visible(
         &self,
         actor: &TrustedSearchScope,
@@ -915,6 +917,7 @@ impl<'a> DiscoveryService<'a> {
         request: DiscoveryRequest,
         query: LexicalQuery,
         max_candidates: usize,
+        needed: Option<usize>,
     ) -> Result<SearchOutcome, SearchError> {
         let (sources, routing, mut gaps) = VisibleRouting::prepare(actor, visible, routing)?;
         let routes = SourceRouter::plan(&request.need, &sources, &routing);
@@ -1000,6 +1003,8 @@ impl<'a> DiscoveryService<'a> {
                     body_query: body.then_some(&query),
                     graph_plan: None,
                     vector_query: None,
+                    // The final gate below checks every hit it keeps.
+                    defer_access_to_caller: true,
                 },
             )
             .await;
@@ -1052,15 +1057,53 @@ impl<'a> DiscoveryService<'a> {
             }
         }
         // Final gate: ranks and counts are computed only over hits that are
-        // currently allowed after every Source read finished.
+        // currently allowed after every Source read finished. With `needed`,
+        // hits are checked in rank order until that many Resources would be
+        // returned; a later Resource can only rank after them, so the result
+        // up to `needed` is the same as checking every hit, and a hit of a
+        // Resource already kept is still kept.
         let mut allowed = Vec::with_capacity(records.len());
+        let mut kept = BTreeSet::new();
         for record in records {
-            if self
+            let resource = record
+                .raw
+                .candidate
+                .resource_ref
+                .map(|resource| (record.raw.generation, resource));
+            if needed.is_some_and(|needed| kept.len() >= needed)
+                && !resource.is_some_and(|resource| kept.contains(&resource))
+            {
+                continue;
+            }
+            if !self
                 .currently_allowed(&record.raw.candidate, &request)
                 .await
             {
-                allowed.push(record);
+                continue;
             }
+            if let Some(resource) = resource
+                && needed.is_some()
+            {
+                let pin = pins.get(&record.raw.candidate.source_ref).ok_or_else(|| {
+                    SearchError::OperationFailed("search hit has no pinned Source".into())
+                })?;
+                // Counted only if federation will rank it: every gate
+                // applicable (as `gate_state`) and the candidate qualifies.
+                let gates = self.hard_gates(&record, pin, &request);
+                if [
+                    gates.applicability.state,
+                    gates.structured.state,
+                    gates.access.state,
+                    gates.temporal.state,
+                ]
+                .iter()
+                .all(|state| *state == ApplicabilityState::Applicable)
+                    && gates.applicability.qualify(&record.raw.candidate).is_some()
+                {
+                    kept.insert(resource);
+                }
+            }
+            allowed.push(record);
         }
         let records = allowed;
         let hard_gates = records

@@ -330,3 +330,145 @@ async fn discover_ranks_vector_candidates_through_the_owning_source() {
         rebuilt.body
     );
 }
+
+/// Counts the Units it embeds.
+struct CountingProvider {
+    inner: BigramProvider,
+    embedded: std::sync::atomic::AtomicUsize,
+}
+
+impl EmbeddingProvider for CountingProvider {
+    fn spec(&self) -> &EmbeddingModelSpec {
+        self.inner.spec()
+    }
+
+    fn embed_units<'a>(
+        &'a self,
+        units: &'a [VectorManifestUnit],
+    ) -> BoxFuture<'a, Vec<BoundEmbedding>> {
+        self.embedded
+            .fetch_add(units.len(), std::sync::atomic::Ordering::SeqCst);
+        self.inner.embed_units(units)
+    }
+
+    fn embed_query<'a>(&'a self, query: &'a TrustedVectorQuery) -> BoxFuture<'a, QueryEmbedding> {
+        self.inner.embed_query(query)
+    }
+}
+
+async fn count(pool: &sqlx::PgPool, sql: &'static str) -> i64 {
+    sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
+}
+
+#[tokio::test]
+async fn vector_generations_share_segments_and_values() {
+    use search_application::vector::{VectorGenerationPort, VectorIndexPort, VectorLifecycle};
+    use std::sync::atomic::Ordering;
+
+    let durable = Durable::start_with(true).await;
+    let tokyo = publish(&durable.pool, &durable.storage, "東京本社の就業規程").await;
+    let rooms = publish(&durable.pool, &durable.storage, "会議室の予約手順").await;
+    index(&durable, tokyo).await;
+    index(&durable, rooms).await;
+    let provider = Arc::new(CountingProvider {
+        inner: BigramProvider::new(),
+        embedded: Default::default(),
+    });
+    let dyn_provider: Arc<dyn EmbeddingProvider> = provider.clone();
+    let services = VectorServices {
+        provider: dyn_provider.clone(),
+        index: Arc::new(PgVectorIndex::new(durable.pool.clone(), 0.2)),
+        generations: Arc::new(PgVectorGenerations::new(durable.pool.clone())),
+        activations: Arc::new(RegisteredVectorActivation::new(
+            [durable.source_id],
+            dyn_provider.as_ref(),
+        )),
+    };
+    let maintainer =
+        VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
+    assert!(matches!(
+        maintainer.ensure_current().await.unwrap(),
+        Some(VectorBuildOutcome::Published(_))
+    ));
+    let first = provider.embedded.load(Ordering::SeqCst);
+    let values = count(&durable.pool, "SELECT count(*) FROM search_vector_value").await;
+    assert_eq!(values as usize, first);
+    let segments = count(&durable.pool, "SELECT count(*) FROM search_vector_segment").await;
+
+    // One more document: only its Units are embedded and only its segment
+    // is new; the other segments and values are listed again.
+    let osaka = publish(&durable.pool, &durable.storage, "大阪支社の休暇の申請").await;
+    index(&durable, osaka).await;
+    assert!(matches!(
+        maintainer.ensure_current().await.unwrap(),
+        Some(VectorBuildOutcome::Published(_))
+    ));
+    let added = provider.embedded.load(Ordering::SeqCst) - first;
+    assert!(added > 0);
+    assert_eq!(
+        count(&durable.pool, "SELECT count(*) FROM search_vector_segment").await,
+        segments + 1
+    );
+    let newest: i32 = sqlx::query_scalar(
+        "SELECT entry_count FROM search_vector_segment ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_one(&durable.pool)
+    .await
+    .unwrap();
+    assert_eq!(newest as usize, added);
+    assert_eq!(
+        count(&durable.pool, "SELECT count(*) FROM search_vector_value").await as usize,
+        first + added
+    );
+
+    // A segment whose entries no longer match their digest fails closed in
+    // a process that has not read it yet.
+    let published = services.generations.published().await.unwrap();
+    let current = published
+        .iter()
+        .max_by_key(|manifest| manifest.created_at)
+        .unwrap()
+        .clone();
+    // A restarted worker checks every segment again and keeps the current
+    // generation while they still check.
+    let restarted = VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
+    restarted.recover().await.unwrap();
+    let kept = services.generations.published().await.unwrap();
+    assert!(kept.iter().any(|manifest| manifest.index == current.index));
+    let fresh = PgVectorIndex::new(durable.pool.clone(), 0.2);
+    assert!(fresh.staged_entries(&current.index).await.is_ok());
+    sqlx::query(
+        "UPDATE search_vector_segment SET entries_sha256 = \
+         'sha256:0000000000000000000000000000000000000000000000000000000000000000' \
+         WHERE segment_digest = (SELECT segment_digest FROM search_vector_stage_segment \
+         WHERE index_digest=$1 AND ordinal=0)",
+    )
+    .bind(&current.index.index_digest)
+    .execute(&durable.pool)
+    .await
+    .unwrap();
+    let tampered = PgVectorIndex::new(durable.pool.clone(), 0.2);
+    assert!(tampered.staged_entries(&current.index).await.is_err());
+    let restarted = VectorMaintainer::new(durable.pool.clone(), durable.source(), services.clone());
+    restarted.recover().await.unwrap();
+    let kept = services.generations.published().await.unwrap();
+    assert!(!kept.iter().any(|manifest| manifest.index == current.index));
+
+    // A purge removes the scope's values and segments.
+    let lifecycle = VectorLifecycle {
+        provider: dyn_provider.as_ref(),
+        index: services.index.as_ref(),
+        generations: services.generations.as_ref(),
+        activations: services.activations.as_ref(),
+    };
+    lifecycle.purge(&current.authority_scope_key).await.unwrap();
+    assert_eq!(
+        count(&durable.pool, "SELECT count(*) FROM search_vector_value").await,
+        0
+    );
+    assert_eq!(
+        count(&durable.pool, "SELECT count(*) FROM search_vector_segment").await,
+        0
+    );
+    assert!(services.generations.published().await.unwrap().is_empty());
+}

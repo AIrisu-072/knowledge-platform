@@ -11,12 +11,12 @@ use search_application::SearchError;
 use search_core::id::ResourceId;
 use search_core::knowledge_unit::{KnowledgeUnit, UnitId, text_sha256};
 use search_core::projection::{CompiledResourceProjection, ProjectionGenerationKey};
-use search_tantivy::IndexedUnitDoc;
+use search_tantivy::{IndexedUnitDoc, UnitSealEntry, unit_doc_hash};
 use sha2::{Digest, Sha256};
 
 use crate::body_manifest::{
     ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyUnitManifest,
-    GenerationBundleReceipt, compute_bundle_receipt,
+    GenerationBundleReceipt, compute_bundle_receipt, segment_digest,
 };
 
 fn failed(reason: &str) -> SearchError {
@@ -272,6 +272,119 @@ pub(crate) fn derive_coverage(
     })
 }
 
+/// The same bijective seal from each searchable document's ID and the digest
+/// of its stored fields and text (`unit_doc_hash`): every Unit of the manifest
+/// has exactly one document with the same digest and no other document exists.
+pub fn seal_lexical_entries(
+    manifest: &BodyUnitManifest,
+    documents: &[UnitSealEntry],
+) -> Result<(), SearchError> {
+    let (_, expected) = unit_seal_entries(manifest)?;
+    seal_lexical_hashes(&expected, documents)
+}
+
+/// Item segments whose Unit seal entries this process computed, by segment
+/// digest. A segment digest names every Unit field the entries depend on
+/// except the per-generation Source snapshot, which they leave out.
+type SealEntryCache =
+    std::sync::Mutex<std::collections::HashMap<[u8; 32], std::sync::Arc<Vec<UnitSealEntry>>>>;
+
+fn seal_entry_cache() -> &'static SealEntryCache {
+    static CACHE: std::sync::OnceLock<SealEntryCache> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Each item's segment digest and Unit count.
+pub type SegmentCounts = Vec<([u8; 32], u64)>;
+
+/// Item segments kept per process before the cache is emptied.
+const CACHED_SEAL_SEGMENTS: usize = 200_000;
+
+/// Each item's segment digest and Unit count, in manifest order, and every
+/// Unit's seal entry (its ID and `unit_doc_hash`, its text checked against
+/// its digest). An item segment this process sealed before reuses its
+/// entries (SD-T11 5).
+pub fn unit_seal_entries(
+    manifest: &BodyUnitManifest,
+) -> Result<(SegmentCounts, Vec<UnitSealEntry>), SearchError> {
+    let mut segments = Vec::with_capacity(manifest.entries.len());
+    let mut expected = Vec::new();
+    for entry in &manifest.entries {
+        let digest = segment_digest(entry).map_err(|_| failed("lexical seal: segment digest"))?;
+        segments.push((digest, entry.units.len() as u64));
+        let cached = seal_entry_cache()
+            .lock()
+            .map_err(|_| failed("lexical seal: cache"))?
+            .get(&digest)
+            .cloned();
+        let entries = match cached {
+            Some(entries) if entries.len() == entry.units.len() => entries,
+            _ => {
+                let mut entries = Vec::with_capacity(entry.units.len());
+                for unit in &entry.units {
+                    if text_sha256(&unit.text) != unit.text_sha256 {
+                        return Err(failed("lexical seal: Unit text differs from its digest"));
+                    }
+                    entries.push(UnitSealEntry {
+                        unit_id: unit.unit_id,
+                        hash: unit_doc_hash(unit)
+                            .map_err(|_| failed("lexical seal: Unit encoding"))?,
+                    });
+                }
+                let entries = std::sync::Arc::new(entries);
+                let mut cache = seal_entry_cache()
+                    .lock()
+                    .map_err(|_| failed("lexical seal: cache"))?;
+                if cache.len() >= CACHED_SEAL_SEGMENTS {
+                    cache.clear();
+                }
+                cache.insert(digest, entries.clone());
+                entries
+            }
+        };
+        expected.extend_from_slice(&entries);
+    }
+    Ok((segments, expected))
+}
+
+/// [`seal_lexical_entries`] from the manifest's Unit entries (each Unit's ID
+/// and `unit_doc_hash`, every text already checked against its digest).
+pub fn seal_lexical_hashes(
+    units: &[UnitSealEntry],
+    documents: &[UnitSealEntry],
+) -> Result<(), SearchError> {
+    // Both sides sorted once and walked together: the same checks as a map,
+    // without a tree node per Unit.
+    let mut expected: Vec<&UnitSealEntry> = units.iter().collect();
+    expected.sort_unstable_by_key(|unit| unit.unit_id);
+    if expected
+        .windows(2)
+        .any(|pair| pair[0].unit_id == pair[1].unit_id)
+    {
+        return Err(failed("duplicate Unit in manifest"));
+    }
+    if documents.len() != expected.len() {
+        return Err(failed("lexical seal: document count differs from Units"));
+    }
+    let mut actual: Vec<&UnitSealEntry> = documents.iter().collect();
+    actual.sort_unstable_by_key(|document| document.unit_id);
+    if actual
+        .windows(2)
+        .any(|pair| pair[0].unit_id == pair[1].unit_id)
+    {
+        return Err(failed("lexical seal: duplicate document"));
+    }
+    for (unit, document) in expected.iter().zip(&actual) {
+        if unit.unit_id != document.unit_id {
+            return Err(failed("lexical seal: unknown document"));
+        }
+        if unit.hash != document.hash {
+            return Err(failed("lexical seal: document differs from Unit"));
+        }
+    }
+    Ok(())
+}
+
 /// Bijective seal: every Supported/Partial Unit has exactly one searchable
 /// document with the same identity, binding and text, and no other document
 /// exists. Unsupported and failed items therefore contribute zero documents.
@@ -300,8 +413,8 @@ pub fn seal_lexical(
             return Err(failed("lexical seal: duplicate document"));
         }
         let matches = document.parent_resource == unit.version.resource_id
-            && document.version == unit.version
-            && document.part == unit.part
+            && document.version == *unit.version
+            && document.part == *unit.part
             && document.authoritative_representation_ref
                 == unit.provenance.authoritative_representation_ref
             && document.raw == unit.provenance.raw
@@ -399,8 +512,8 @@ mod tests {
         };
         KnowledgeUnit {
             unit_id: UnitId::derive(&version, &part, &profile(), &locator, ordinal).unwrap(),
-            version,
-            part,
+            version: version.into(),
+            part: part.into(),
             parent_unit_id: None,
             ordinal,
             kind: UnitKind::PlainText,
@@ -419,7 +532,8 @@ mod tests {
                 archive_inner_format: None,
                 profile: profile(),
                 parser_build_id: "build".into(),
-            },
+            }
+            .into(),
         }
     }
 
@@ -429,8 +543,8 @@ mod tests {
             key: key(),
             source_snapshot: "snapshot".into(),
             entries: vec![BodyItemEntry {
-                version: first.version.clone(),
-                part: first.part.clone(),
+                version: (*first.version).clone(),
+                part: (*first.part).clone(),
                 authoritative_representation_ref: "representation".into(),
                 raw: first.provenance.raw.clone(),
                 detected_format: Some(FormatId::Text),
@@ -448,8 +562,8 @@ mod tests {
         IndexedUnitDoc {
             generation: key(),
             parent_resource: unit.version.resource_id,
-            version: unit.version.clone(),
-            part: unit.part.clone(),
+            version: (*unit.version).clone(),
+            part: (*unit.part).clone(),
             authoritative_representation_ref: unit
                 .provenance
                 .authoritative_representation_ref

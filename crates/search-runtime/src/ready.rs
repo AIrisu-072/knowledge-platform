@@ -24,14 +24,15 @@ use search_application::search_core::relation::TypedRelationInstance;
 use search_application::search_core::source::DiscoverableSource;
 use search_graph::{GRAPH_SCHEMA_VERSION, canonical_relation};
 use search_source_document::{
-    ArtifactReceipt, GenerationBundleReceipt, compute_bundle_receipt, graph_receipt,
+    ArtifactReceipt, BodyBuildError, BodyCoverageArtifact, GenerationBundleReceipt,
+    compute_bundle_receipt_from, graph_receipt,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::full_guard::{EventCandidateHandle, ManualBuildHandle};
 use crate::lexical_artifact::{LexicalArtifactError, LexicalArtifactStore, LexicalSealV1};
-use crate::payload::{BundleError, PgPayloadStore, RestoredPayloadV1};
+use crate::payload::{BundleError, PgPayloadStore, RestoredSummaryV1, UnitManifestSummaryV1};
 
 pub const GRAPH_BACKEND: &str = "postgresql";
 
@@ -71,6 +72,32 @@ impl From<search_graph::GraphError> for ReadyError {
 
 /// Proof that one READY commit happened for these exact receipts. Private
 /// fields; it never grants publication or a pin.
+/// `compute_bundle_receipt` over a Unit manifest summary.
+fn summary_bundle_receipt(
+    key: ProjectionGenerationKey,
+    source_snapshot: &str,
+    projection_manifest_digest: &str,
+    units: &UnitManifestSummaryV1,
+    coverage: &BodyCoverageArtifact,
+    lexical: ArtifactReceipt,
+    graph: ArtifactReceipt,
+) -> Result<GenerationBundleReceipt, BodyBuildError> {
+    if units.key != key || units.source_snapshot != source_snapshot {
+        return Err(BodyBuildError::Integrity("bundle key"));
+    }
+    compute_bundle_receipt_from(
+        key,
+        source_snapshot,
+        projection_manifest_digest,
+        units.receipt,
+        units.items,
+        units.profile_set_digest,
+        coverage,
+        lexical,
+        graph,
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedBundle {
     key: ProjectionGenerationKey,
@@ -132,9 +159,31 @@ impl GraphReceiptMappingV1 {
 }
 
 /// Document owners of structural Graph Resources, as P1 records them.
-fn owners(
-    resources: &[GraphResourceRecord],
-) -> Vec<(search_application::search_core::id::ResourceId, DocumentId)> {
+type Owners = Vec<(search_application::search_core::id::ResourceId, DocumentId)>;
+
+/// The structural owners of the generation last re-verified by this process,
+/// from its verified Graph rows: the load that follows takes them instead of
+/// reading the same immutable rows again.
+type VerifiedOwners = std::sync::Mutex<Option<(ProjectionGenerationKey, String, Owners)>>;
+
+fn verified_owners() -> &'static VerifiedOwners {
+    static OWNERS: std::sync::OnceLock<VerifiedOwners> = std::sync::OnceLock::new();
+    OWNERS.get_or_init(Default::default)
+}
+
+/// The owners `reverify` derived from `key`'s verified Graph rows, once.
+pub(crate) fn take_verified_owners(
+    key: ProjectionGenerationKey,
+    manifest_digest: &str,
+) -> Option<Owners> {
+    let mut slot = verified_owners().lock().ok()?;
+    match slot.take() {
+        Some((at, digest, owners)) if at == key && digest == manifest_digest => Some(owners),
+        _ => None,
+    }
+}
+
+pub(crate) fn owners(resources: &[GraphResourceRecord]) -> Owners {
     resources
         .iter()
         .filter_map(|record| match &record.mapping {
@@ -234,24 +283,48 @@ impl ReadyCoordinator {
             return Err(ReadyError::Fence);
         }
         let manifest = self.manifest(key).await?;
-        let RestoredPayloadV1 {
-            projection,
-            unit_manifest,
-            coverage,
-        } = self
-            .payloads
-            .restore(&manifest)
-            .await
-            .map_err(ReadyError::Payload)?;
-        let seal = self
-            .lexical
-            .reopen_and_validate(&manifest, &self.source, &unit_manifest)
-            .await
-            .map_err(ReadyError::Lexical)?;
-        let (graph, resources, relations) =
+        // T12: checked from per-segment summaries; no Unit text is held. The
+        // lexical directory is read while the payloads are restored and then
+        // compared with them; the Graph rows are read meanwhile.
+        let artifacts = async {
+            let inspect = {
+                let (lexical, manifest, source) =
+                    (self.lexical.clone(), manifest.clone(), self.source.clone());
+                tokio::task::spawn_blocking(move || lexical.inspect_final(&manifest, &source))
+            };
+            let restored = self
+                .payloads
+                .restore_without_units(&manifest)
+                .await
+                .map_err(ReadyError::Payload)?;
+            let inspected = inspect
+                .await
+                .map_err(|_| ReadyError::StoreUnknown)?
+                .map_err(ReadyError::Lexical)?;
+            let seal = self
+                .lexical
+                .validate_inspected_summary(&manifest, &self.source, inspected, &restored.units)
+                .await
+                .map_err(ReadyError::Lexical)?;
+            Ok::<_, ReadyError>((restored, seal))
+        };
+        let rows = async {
             search_graph::PostgresGraphStore::new(self.pool.clone())
                 .recover_rows(key, &manifest.digest)
-                .await?;
+                .await
+                .map_err(ReadyError::from)
+        };
+        let (
+            (
+                RestoredSummaryV1 {
+                    projection,
+                    units,
+                    coverage,
+                },
+                seal,
+            ),
+            (graph, resources, relations),
+        ) = tokio::try_join!(artifacts, rows)?;
         let report = GraphStageReport {
             key,
             source_snapshot: graph.source_snapshot,
@@ -267,14 +340,15 @@ impl ReadyCoordinator {
             .iter()
             .flat_map(|resource| resource.relations.clone())
             .collect();
-        let p1_graph = graph_receipt(key, &projection.resources, &owners(&resources))
+        let verified = owners(&resources);
+        let p1_graph = graph_receipt(key, &projection.resources, &verified)
             .map_err(|_| ReadyError::Mapping)?;
         GraphReceiptMappingV1::validate(&manifest, &p1_graph, &p1_relations, &report, &relations)?;
-        let receipt = compute_bundle_receipt(
+        let receipt = summary_bundle_receipt(
             key,
             &manifest.source_snapshot,
             &manifest.digest,
-            &unit_manifest,
+            &units,
             &coverage,
             ArtifactReceipt {
                 key,
@@ -300,6 +374,9 @@ impl ReadyCoordinator {
         {
             return Err(ReadyError::Payload(BundleError::Digest));
         }
+        if let Ok(mut slot) = verified_owners().lock() {
+            *slot = Some((key, manifest.digest.clone(), verified));
+        }
         Ok(VerifiedBundle {
             key,
             receipt,
@@ -315,18 +392,19 @@ impl ReadyCoordinator {
         // Prevalidation outside every lock: payload DTOs, the lexical files and
         // the Graph rows, each recomputed from what is stored.
         let manifest = self.manifest(key).await?;
-        let RestoredPayloadV1 {
+        // T12: checked from per-segment summaries; no Unit text is held.
+        let RestoredSummaryV1 {
             projection,
-            unit_manifest,
+            units,
             coverage,
         } = self
             .payloads
-            .restore(&manifest)
+            .restore_without_units(&manifest)
             .await
             .map_err(ReadyError::Payload)?;
         let seal: LexicalSealV1 = self
             .lexical
-            .reopen_and_validate(&manifest, &self.source, &unit_manifest)
+            .reopen_and_validate_summary(&manifest, &self.source, &units)
             .await
             .map_err(ReadyError::Lexical)?;
         let mut connection = self.pool.acquire().await?;
@@ -352,11 +430,11 @@ impl ReadyCoordinator {
             digest: seal.logical_digest,
             count: seal.logical_count,
         };
-        let receipt = compute_bundle_receipt(
+        let receipt = summary_bundle_receipt(
             key,
             &manifest.source_snapshot,
             &manifest.digest,
-            &unit_manifest,
+            &units,
             &coverage,
             lexical,
             p1_graph,

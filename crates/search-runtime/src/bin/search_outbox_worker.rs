@@ -390,8 +390,19 @@ async fn run() -> Result<(), String> {
         .map_err(|error| format!("worker stopped: {error}"))
 }
 
+// glibc keeps most of what a build frees (at 10,000 documents the worker
+// held 4.9 GB between updates with glibc and 2.5 GB with jemalloc, which
+// returns freed pages from its background threads).
+#[cfg(unix)]
+#[global_allocator]
+static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[tokio::main]
 async fn main() -> ExitCode {
+    #[cfg(unix)]
+    if let Err(error) = tikv_jemalloc_ctl::background_thread::write(true) {
+        eprintln!("search_outbox_worker: jemalloc background threads: {error}");
+    }
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {

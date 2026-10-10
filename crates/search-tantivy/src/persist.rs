@@ -15,8 +15,8 @@ use tantivy::schema::{TantivyDocument, Value};
 use tantivy::{Index, IndexReader};
 
 use crate::body::{
-    BODY_LEXICAL_SCHEMA_VERSION, IndexedUnitDoc, LexicalInputDigest, UnitIndex, enumerate,
-    lexical_input_digest, open_unit_index, stored_units,
+    BODY_LEXICAL_SCHEMA_VERSION, LexicalInputDigest, UnitIndex, UnitSealEntry, lexical_digest,
+    open_unit_index, unit_entries,
 };
 use crate::index::{
     DocumentMetadata, GenerationIndex, LexicalBuildInput, LexicalDocument, LexicalIndexError,
@@ -75,8 +75,9 @@ pub struct PersistedLexical {
     pub schema_version: &'static str,
     pub analyzer_version: &'static str,
     pub resource_docs: u64,
-    /// Searchable Unit documents read back from the committed Unit index.
-    pub units: Vec<IndexedUnitDoc>,
+    /// Each searchable Unit document of the committed Unit index, reduced to
+    /// its ID and the digest of its stored fields and text.
+    pub units: Vec<UnitSealEntry>,
 }
 
 struct Opened {
@@ -161,22 +162,11 @@ fn open(
     } else {
         None
     };
-    let mut input = LexicalBuildInput::new(
-        manifest.source_id,
-        manifest.source_snapshot.clone(),
-        manifest.projection_schema_version.clone(),
-        manifest.lens_version,
-        documents.clone(),
-    )
-    .with_analyzer_version(analyzer_version);
     let unit_docs = match &units {
-        Some(units) => {
-            input = input.with_body_units(stored_units(units)?);
-            enumerate(manifest.key(), units)?
-        }
+        Some(units) => unit_entries(units)?,
         None => Vec::new(),
     };
-    let logical = lexical_input_digest(&input)?;
+    let logical = lexical_digest(sidecar.body_ready, analyzer_version, &documents, &unit_docs)?;
     let metadata = documents
         .iter()
         .map(|document| {

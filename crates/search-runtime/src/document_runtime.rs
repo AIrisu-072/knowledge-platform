@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex};
 use document_domain::DocumentId;
 use search_application::SearchError;
 use search_application::graph_generation::{
-    BuildGuardHandle, ClosureBasis, GraphBatchCursor, GraphBatchPhase, GraphGenerationReceipt,
-    GraphIncrementalDelta, GraphRelationClosureProof, GraphResourceRecord, GraphSourceMapping,
+    BuildGuardHandle, GraphBuildRef, GraphGenerationReceipt, GraphResourceRecord,
+    GraphSourceMapping,
 };
 use search_application::indexing_service::DocumentSourceEvent;
 use search_application::ports::{
@@ -37,9 +37,7 @@ use search_application::ports::{
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection,
 };
-use search_application::search_core::id::{
-    ProjectionGenerationId, RelationId, ResourceId, SourceId,
-};
+use search_application::search_core::id::{ProjectionGenerationId, ResourceId, SourceId};
 use search_application::search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
@@ -92,6 +90,9 @@ struct Pending {
     delivery: Option<(DocumentSourceEvent, SearchDeliveryFence)>,
     handle: Option<Registered>,
     verified: Option<VerifiedBundle>,
+    /// The READY bundle's Unit manifest, kept for the next build once this
+    /// key is published.
+    built_units: Option<BodyUnitManifest>,
 }
 
 /// The P7 target: MANUAL for a rebuild, EVENT for a fenced delivery.
@@ -115,139 +116,6 @@ impl Registered {
     }
 }
 
-/// Graph rows copied from the base per batch.
-const GRAPH_COPY_BATCH: u32 = 1_000;
-
-fn without_relations(record: &GraphResourceRecord) -> GraphResourceRecord {
-    GraphResourceRecord {
-        attached_relations: Vec::new(),
-        ..record.clone()
-    }
-}
-
-/// The closure-proved delta from a base Graph to the target plan. Every
-/// Resource whose own row or any incident relation changed is affected, and
-/// every relation incident to an affected Resource is removed from the copy
-/// and written again when it remains, so the closure holds by construction.
-fn incremental_delta(
-    base: &GraphGenerationReceipt,
-    base_records: &[GraphResourceRecord],
-    base_relations: &[TypedRelationInstance],
-    target_snapshot: &str,
-    plan: &GraphPlan,
-) -> GraphIncrementalDelta {
-    let old: BTreeMap<RelationId, &TypedRelationInstance> = base_relations
-        .iter()
-        .map(|relation| (relation.relation_id, relation))
-        .collect();
-    let new: BTreeMap<RelationId, &TypedRelationInstance> = plan
-        .relations
-        .iter()
-        .map(|relation| (relation.relation_id, relation))
-        .collect();
-    let touched: BTreeSet<RelationId> = old
-        .iter()
-        .filter(|(id, relation)| new.get(id) != Some(relation))
-        .map(|(id, _)| *id)
-        .chain(new.keys().filter(|id| !old.contains_key(id)).copied())
-        .collect();
-    let participants = |relation: &TypedRelationInstance| -> Vec<ResourceId> {
-        relation
-            .participants
-            .iter()
-            .map(|participant| participant.resource_ref)
-            .collect()
-    };
-    let in_touched: BTreeSet<ResourceId> = touched
-        .iter()
-        .flat_map(|id| {
-            old.get(id)
-                .map(|relation| participants(relation))
-                .into_iter()
-                .chain(new.get(id).map(|relation| participants(relation)))
-                .flatten()
-        })
-        .collect();
-    let base_rows: BTreeMap<ResourceId, GraphResourceRecord> = base_records
-        .iter()
-        .map(|record| (record.resource_ref, without_relations(record)))
-        .collect();
-    let target_ids: BTreeSet<ResourceId> = plan
-        .records
-        .iter()
-        .map(|record| record.resource_ref)
-        .collect();
-    let changed_resources: Vec<GraphResourceRecord> = plan
-        .records
-        .iter()
-        .filter(|record| {
-            base_rows.get(&record.resource_ref) != Some(&without_relations(record))
-                || in_touched.contains(&record.resource_ref)
-        })
-        .cloned()
-        .collect();
-    let retired_resources: Vec<ResourceId> = base_rows
-        .keys()
-        .filter(|id| !target_ids.contains(id))
-        .copied()
-        .collect();
-    let affected: BTreeSet<ResourceId> = changed_resources
-        .iter()
-        .map(|record| record.resource_ref)
-        .chain(retired_resources.iter().copied())
-        .collect();
-    let incident: BTreeSet<RelationId> = old
-        .iter()
-        .filter(|(_, relation)| {
-            relation
-                .participants
-                .iter()
-                .any(|participant| affected.contains(&participant.resource_ref))
-        })
-        .map(|(id, _)| *id)
-        .collect();
-    let replacement_relations: Vec<TypedRelationInstance> = new
-        .iter()
-        .filter(|(id, _)| touched.contains(id) || incident.contains(id))
-        .map(|(_, relation)| (*relation).clone())
-        .collect();
-    let changed_relation_ids: Vec<RelationId> = replacement_relations
-        .iter()
-        .map(|relation| relation.relation_id)
-        .filter(|id| old.contains_key(id))
-        .collect();
-    let retired_relation_ids: Vec<RelationId> = old
-        .keys()
-        .filter(|id| !new.contains_key(id))
-        .copied()
-        .collect();
-    let old_relation_ids: BTreeSet<RelationId> = incident
-        .iter()
-        .chain(&changed_relation_ids)
-        .chain(&retired_relation_ids)
-        .copied()
-        .collect();
-    GraphIncrementalDelta {
-        proof: GraphRelationClosureProof {
-            base_snapshot: base.source_snapshot.clone(),
-            target_snapshot: target_snapshot.to_owned(),
-            affected_resources: affected.into_iter().collect(),
-            old_relation_ids: old_relation_ids.into_iter().collect(),
-            new_relation_ids: replacement_relations
-                .iter()
-                .map(|relation| relation.relation_id)
-                .collect(),
-            basis: ClosureBasis::CompleteEnumeration,
-        },
-        changed_resources,
-        retired_resources,
-        changed_relation_ids,
-        retired_relation_ids,
-        replacement_relations,
-        target_source_mapping_digest: plan.mapping_digest.clone(),
-    }
-}
-
 #[derive(Clone)]
 struct GraphPlan {
     records: Vec<GraphResourceRecord>,
@@ -255,6 +123,9 @@ struct GraphPlan {
     mapping_digest: String,
     owners: Vec<(ResourceId, DocumentId)>,
 }
+
+/// READY generations kept behind the current one for in-flight readers.
+const RETAINED_PREVIOUS_GENERATIONS: usize = 1;
 
 pub struct PgDocumentIndexRuntime {
     pool: PgPool,
@@ -265,6 +136,10 @@ pub struct PgDocumentIndexRuntime {
     pending: Mutex<BTreeMap<ProjectionGenerationKey, Pending>>,
     /// Set after an incremental target failed: the next build is full.
     next_full: AtomicBool,
+    /// The Unit manifest of the last generation this process published. The
+    /// next build of the same current generation takes its entries instead
+    /// of restoring every segment (T12).
+    published_units: std::sync::Mutex<Option<BodyUnitManifest>>,
 }
 
 impl PgDocumentIndexRuntime {
@@ -283,6 +158,20 @@ impl PgDocumentIndexRuntime {
             guard_ttl,
             pending: Mutex::new(BTreeMap::new()),
             next_full: AtomicBool::new(false),
+            published_units: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// `key` was published: its pending build ends and its Units are kept.
+    fn published(&self, key: ProjectionGenerationKey) {
+        let built = self
+            .pending
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(&key))
+            .and_then(|pending| pending.built_units);
+        if let (Some(units), Ok(mut published)) = (built, self.published_units.lock()) {
+            *published = Some(units);
         }
     }
 
@@ -344,6 +233,14 @@ impl PgDocumentIndexRuntime {
         }))
     }
 
+    /// Best effort after a publication: superseded READY generations would
+    /// otherwise stay on disk forever; a pinned one is retried next time.
+    async fn retire_superseded(&self, key: ProjectionGenerationKey) {
+        let _ = PgGenerationGc::new(self.pool.clone(), &self.lexical_root)
+            .retire_superseded(key.source_id, RETAINED_PREVIOUS_GENERATIONS)
+            .await;
+    }
+
     /// The guard holder gives up a build; the files and rows go with it.
     async fn abort(&self, key: ProjectionGenerationKey) -> Result<bool, SearchError> {
         let pending = self
@@ -365,19 +262,13 @@ impl PgDocumentIndexRuntime {
         Ok(true)
     }
 
-    /// The READY current base and its Graph rows, when the target may be
-    /// built incrementally from it.
+    /// The READY current base's Graph receipt, when the target may be built
+    /// incrementally from it. Nothing is copied from the base (stage 4), so
+    /// only its receipt is read.
     async fn incremental_base(
         &self,
         key: ProjectionGenerationKey,
-    ) -> Result<
-        Option<(
-            GraphGenerationReceipt,
-            Vec<GraphResourceRecord>,
-            Vec<TypedRelationInstance>,
-        )>,
-        SearchError,
-    > {
+    ) -> Result<Option<GraphGenerationReceipt>, SearchError> {
         if self.next_full.swap(false, Ordering::SeqCst) {
             return Ok(None);
         }
@@ -388,66 +279,34 @@ impl PgDocumentIndexRuntime {
             return Ok(None);
         }
         let manifest = self.stored_manifest(base).await?;
-        // A base whose Graph no longer recovers is rebuilt in full.
         Ok(PostgresGraphStore::new(self.pool.clone())
-            .recover_rows(base, &manifest.digest)
+            .ready_receipt(base, &manifest.digest)
             .await
             .ok())
     }
 
-    /// Copies the base, applies the delta and settles the bundle READY.
+    /// Stages the target Graph as segments and settles the bundle READY.
     #[allow(clippy::too_many_arguments)]
     async fn finish_incremental(
         &self,
         handle: BuildGuardHandle,
         manifest: &ProjectionGenerationManifest,
-        delta: &GraphIncrementalDelta,
         lexical: ArtifactReceipt,
         resources: Vec<CompiledResourceProjection>,
         registry: SemanticRegistrySnapshot,
         graph: &GraphPlan,
         unit_manifest: BodyUnitManifest,
         coverage: BodyCoverageArtifact,
-    ) -> Result<VerifiedBundle, SearchError> {
+    ) -> Result<(VerifiedBundle, BodyUnitManifest), SearchError> {
         let key = manifest.key();
-        let store = PostgresGraphStore::new(self.pool.clone());
-        let mut position = GraphBatchCursor {
-            target_key: key,
-            phase: GraphBatchPhase::Copy,
-            committed_sequence: 0,
-        };
-        loop {
-            let next = store
-                .copy_batch(&handle, &position, GRAPH_COPY_BATCH)
-                .await
-                .map_err(|error| failed("graph copy", error))?;
-            if next == position {
-                break;
-            }
-            position = next;
-        }
-        store
-            .verify_copy(&handle)
-            .await
-            .map_err(|error| failed("graph copy verification", error))?;
-        let size = delta.changed_resources.len()
-            + delta.retired_resources.len()
-            + delta.changed_relation_ids.len()
-            + delta.retired_relation_ids.len()
-            + delta.replacement_relations.len();
-        store
-            .apply_delta_batch(
-                &handle,
-                delta,
-                &GraphBatchCursor {
-                    target_key: key,
-                    phase: GraphBatchPhase::Delta,
-                    committed_sequence: 0,
-                },
-                u32::try_from(size.max(1)).map_err(|_| failed("graph delta size", size))?,
+        PostgresGraphStore::new(self.pool.clone())
+            .stage_segments(
+                &GraphBuildRef::Incremental(handle),
+                &graph.records,
+                &graph.relations,
             )
             .await
-            .map_err(|error| failed("graph delta", error))?;
+            .map_err(|error| failed("graph stage", error))?;
         let artifacts = self.lexical();
         artifacts
             .finalize(
@@ -469,19 +328,21 @@ impl PgDocumentIndexRuntime {
             graph_receipt(key, &resources, &graph.owners)?,
         )
         .map_err(|error| failed("bundle receipt", error))?;
+        let bundle = StoredBundleV1 {
+            manifest: manifest.clone(),
+            projection: ProjectionPayloadV1 {
+                resources,
+                registry,
+            },
+            unit_manifest,
+            coverage,
+            receipt: receipt.clone(),
+        };
         PgPayloadStore::new(self.pool.clone())
-            .store(&StoredBundleV1 {
-                manifest: manifest.clone(),
-                projection: ProjectionPayloadV1 {
-                    resources,
-                    registry,
-                },
-                unit_manifest,
-                coverage,
-                receipt: receipt.clone(),
-            })
+            .store(&bundle)
             .await
             .map_err(|error| failed("payload", error))?;
+        let unit_manifest = bundle.unit_manifest;
         let verified =
             ReadyCoordinator::new(self.pool.clone(), &self.lexical_root, self.source.clone())
                 .ready_incremental(&handle)
@@ -490,7 +351,7 @@ impl PgDocumentIndexRuntime {
         if verified.receipt() != &receipt {
             return Err(failed("READY receipt", key));
         }
-        Ok(verified)
+        Ok((verified, unit_manifest))
     }
 
     async fn settle(&self, key: ProjectionGenerationKey) -> Result<VerifiedBundle, SearchError> {
@@ -502,7 +363,8 @@ impl PgDocumentIndexRuntime {
                     pending.resources.clone(),
                     pending.lexical,
                     pending.graph.clone(),
-                    pending.unit_manifest.clone(),
+                    // Moved, not copied: settling runs once per key.
+                    pending.unit_manifest.take(),
                     pending.coverage.clone(),
                     pending.delivery.clone(),
                 ))
@@ -524,14 +386,7 @@ impl PgDocumentIndexRuntime {
             manifest: manifest.clone(),
             expected_snapshot: manifest.source_snapshot.clone(),
         };
-        if let Some((base, base_records, base_relations)) = self.incremental_base(key).await? {
-            let delta = incremental_delta(
-                &base,
-                &base_records,
-                &base_relations,
-                &manifest.source_snapshot,
-                &graph,
-            );
+        if let Some(base) = self.incremental_base(key).await? {
             let registered = match &delivery {
                 Some((event, fence)) => {
                     self.registrar
@@ -562,11 +417,10 @@ impl PgDocumentIndexRuntime {
                         pending.handle = Some(Registered::Incremental(handle));
                         Ok(())
                     })?;
-                    let verified = match self
+                    let (verified, unit_manifest) = match self
                         .finish_incremental(
                             handle,
                             &manifest,
-                            &delta,
                             lexical,
                             resources,
                             registry,
@@ -584,6 +438,7 @@ impl PgDocumentIndexRuntime {
                     };
                     self.with(key, |pending| {
                         pending.verified = Some(verified.clone());
+                        pending.built_units = Some(unit_manifest);
                         Ok(())
                     })?;
                     return Ok(verified);
@@ -638,24 +493,30 @@ impl PgDocumentIndexRuntime {
             graph_receipt(key, &resources, &graph.owners)?,
         )
         .map_err(|error| failed("bundle receipt", error))?;
+        let bundle = StoredBundleV1 {
+            manifest: manifest.clone(),
+            projection: ProjectionPayloadV1 {
+                resources,
+                registry,
+            },
+            unit_manifest,
+            coverage,
+            receipt: receipt.clone(),
+        };
         PgPayloadStore::new(self.pool.clone())
-            .store(&StoredBundleV1 {
-                manifest: manifest.clone(),
-                projection: ProjectionPayloadV1 {
-                    resources,
-                    registry,
-                },
-                unit_manifest,
-                coverage,
-                receipt: receipt.clone(),
-            })
+            .store(&bundle)
             .await
             .map_err(|error| failed("payload", error))?;
+        let unit_manifest = bundle.unit_manifest;
         let target = handle
             .graph_target()
             .ok_or_else(|| failed("graph target", key))?;
         PostgresGraphStore::new(self.pool.clone())
-            .stage_full(&target, &graph.records, &graph.relations)
+            .stage_segments(
+                &GraphBuildRef::Full(target),
+                &graph.records,
+                &graph.relations,
+            )
             .await
             .map_err(|error| failed("graph stage", error))?;
         let coordinator =
@@ -671,6 +532,7 @@ impl PgDocumentIndexRuntime {
         }
         self.with(key, |pending| {
             pending.verified = Some(verified.clone());
+            pending.built_units = Some(unit_manifest);
             Ok(())
         })?;
         Ok(verified)
@@ -732,9 +594,9 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
 
     fn settled<'a>(&'a self, key: ProjectionGenerationKey) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            if let Ok(mut pending) = self.pending.lock() {
-                pending.remove(&key);
-            }
+            self.published(key);
+            // An event publication settles here; retire what it superseded.
+            self.retire_superseded(key).await;
             Ok(())
         })
     }
@@ -836,9 +698,8 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             if outcome != SearchCompletionOutcome::Published(key) {
                 return Ok(false);
             }
-            if let Ok(mut pending) = self.pending.lock() {
-                pending.remove(&key);
-            }
+            self.published(key);
+            self.retire_superseded(key).await;
             Ok(true)
         })
     }
@@ -863,6 +724,10 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
         let key = manifest.key();
         let logical = search_tantivy::lexical_input_digest(&input)?;
         let dir = self.lexical().staging_dir(key);
+        let input = match self.lexical().latest_units_dir(key.source_id) {
+            Some(base) => input.with_base_units_dir(base),
+            None => input,
+        };
         TantivyLexicalIndex::new().build_generation_at(manifest, source, input, &dir)?;
         self.with(key, |pending| {
             pending.lexical = Some(ArtifactReceipt {
@@ -972,6 +837,16 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
             let Some(key) = self.current_key(source_id).await? else {
                 return Ok(None);
             };
+            // This process built and published the current generation: its
+            // READY-verified Units move into the next build without a restore.
+            let published = self
+                .published_units
+                .lock()
+                .ok()
+                .and_then(|mut published| published.take());
+            if let Some(units) = published.filter(|units| units.key == key) {
+                return Ok(Some(units.entries));
+            }
             let manifest = self.stored_manifest(key).await?;
             // The restore recomputes every digest before an entry is reused.
             match PgPayloadStore::new(self.pool.clone())

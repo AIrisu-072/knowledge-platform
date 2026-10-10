@@ -1,5 +1,5 @@
--- Apply with the database owner after crates/search-runtime/sql/roles.sql and
--- Graph migration 0001. Capability roles only; deployment LOGIN principals are
+-- Apply with the database owner after crates/search-runtime/sql/roles.sql and the
+-- Graph migrations. Capability roles only; deployment LOGIN principals are
 -- granted these roles. Row locks (FOR UPDATE/SHARE) need a column UPDATE grant.
 GRANT USAGE ON SCHEMA search_graph TO search_registration, search_builder,
     search_coordinator, search_reader, search_gc;
@@ -15,6 +15,8 @@ GRANT INSERT ON search_graph.generation, search_graph.build_guard
 -- Builders write children of a BUILDING parent under its live guard.
 GRANT INSERT, DELETE ON search_graph.resource, search_graph.relation,
     search_graph.participant TO search_builder;
+-- Segments are only added; a list row is a child of its BUILDING parent.
+GRANT INSERT ON search_graph.segment, search_graph.generation_segment TO search_builder;
 GRANT UPDATE (batch_phase, batch_sequence) ON search_graph.generation TO search_builder;
 GRANT UPDATE (copy_verified_at) ON search_graph.build_guard TO search_builder;
 

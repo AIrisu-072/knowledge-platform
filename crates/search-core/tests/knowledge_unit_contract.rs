@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use search_core::id::{ProjectionGenerationId, ResourceId, SourceId};
 use search_core::knowledge_unit::{
@@ -6,7 +7,8 @@ use search_core::knowledge_unit::{
     ExtractionProfileDefinitionV1, ExtractionProfileId, FormatId, FormatSettings, KnowledgeUnit,
     NativeLocator, PptxTextSlot, RawBinding, ResourceVersionRef, UnitAuthorityBinding, UnitId,
     UnitKind, UnitProvenance, VectorAuthorityInput, VectorHitRef, cache_key_matches_authority,
-    matches_pinned_unit, validate_archive_member, validate_logical_path, validate_part_units,
+    matches_pinned_unit, restamp_source_snapshot, share_unit_context, validate_archive_member,
+    validate_logical_path, validate_part_units,
 };
 use search_core::knowledge_unit::{TextSpan, normalize_unit_text, text_sha256};
 use search_core::projection::ProjectionGenerationKey;
@@ -660,8 +662,8 @@ fn unit(
     .unwrap();
     KnowledgeUnit {
         unit_id,
-        version: binding.version.clone(),
-        part: binding.part.clone(),
+        version: binding.version.clone().into(),
+        part: binding.part.clone().into(),
         parent_unit_id: None,
         ordinal,
         kind: UnitKind::PlainText,
@@ -676,8 +678,42 @@ fn unit(
             archive_inner_format: binding.archive_inner_format,
             profile: binding.profile.clone(),
             parser_build_id: binding.parser_build_id.clone(),
-        },
+        }
+        .into(),
     }
+}
+
+#[test]
+fn shared_unit_context_keeps_values_and_encoding() {
+    let binding = text_binding();
+    let mut units = vec![
+        unit(&binding, 0, "alpha", text_locator(0)),
+        unit(&binding, 1, "beta", text_locator(1)),
+        unit(&binding, 2, "gamma", text_locator(2)),
+    ];
+    let mut other = binding.clone();
+    other.parser_build_id = "reader-2".into();
+    units[2].provenance = unit(&other, 2, "gamma", text_locator(2)).provenance;
+    let encoded = serde_json::to_string(&units).unwrap();
+    let before = units.clone();
+
+    share_unit_context(&mut units);
+    assert_eq!(units, before);
+    assert_eq!(serde_json::to_string(&units).unwrap(), encoded);
+    assert!(Arc::ptr_eq(&units[0].version, &units[2].version));
+    assert!(Arc::ptr_eq(&units[0].part, &units[2].part));
+    assert!(Arc::ptr_eq(&units[0].provenance, &units[1].provenance));
+    assert!(!Arc::ptr_eq(&units[1].provenance, &units[2].provenance));
+
+    restamp_source_snapshot(&mut units, "snapshot-2");
+    assert!(
+        units
+            .iter()
+            .all(|unit| unit.provenance.source_snapshot == "snapshot-2")
+    );
+    assert!(Arc::ptr_eq(&units[0].provenance, &units[1].provenance));
+    assert_eq!(units[2].provenance.parser_build_id, "reader-2");
+    assert_eq!(before[0].provenance.source_snapshot, "snapshot-1");
 }
 
 #[test]
@@ -736,31 +772,30 @@ fn unit_sequence_rejections() {
     bad_kind.kind = UnitKind::PdfText;
     assert!(validate_part_units(&binding, &[bad_kind]).is_err());
     let mut bad_version = first.clone();
-    bad_version.version.source_native_version = "other".into();
+    Arc::make_mut(&mut bad_version.version).source_native_version = "other".into();
     assert!(validate_part_units(&binding, &[bad_version]).is_err());
     let mut bad_part = first.clone();
-    bad_part.part.ordinal = 1;
+    Arc::make_mut(&mut bad_part.part).ordinal = 1;
     assert!(validate_part_units(&binding, &[bad_part]).is_err());
     let mut bad_representation = first.clone();
-    bad_representation
-        .provenance
-        .authoritative_representation_ref = "other".into();
+    Arc::make_mut(&mut bad_representation.provenance).authoritative_representation_ref =
+        "other".into();
     assert!(validate_part_units(&binding, &[bad_representation]).is_err());
     let mut bad_snapshot = first.clone();
-    bad_snapshot.provenance.source_snapshot = "other".into();
+    Arc::make_mut(&mut bad_snapshot.provenance).source_snapshot = "other".into();
     assert!(validate_part_units(&binding, &[bad_snapshot]).is_err());
     let mut bad_raw = first.clone();
-    bad_raw.provenance.raw.size_bytes += 1;
+    Arc::make_mut(&mut bad_raw.provenance).raw.size_bytes += 1;
     assert!(validate_part_units(&binding, &[bad_raw]).is_err());
     let mut bad_profile = first.clone();
-    bad_profile.provenance.profile =
+    Arc::make_mut(&mut bad_profile.provenance).profile =
         ExtractionProfileId::for_definition(&definition(FormatId::Text)).unwrap();
     assert!(validate_part_units(&binding, &[bad_profile]).is_err());
     let mut bad_format = first.clone();
-    bad_format.provenance.detected_format = FormatId::Csv;
+    Arc::make_mut(&mut bad_format.provenance).detected_format = FormatId::Csv;
     assert!(validate_part_units(&binding, &[bad_format]).is_err());
     let mut bad_build = first.clone();
-    bad_build.provenance.parser_build_id = "other".into();
+    Arc::make_mut(&mut bad_build.provenance).parser_build_id = "other".into();
     assert!(validate_part_units(&binding, &[bad_build]).is_err());
     let mut bad_path_binding = binding.clone();
     bad_path_binding.part.logical_path = "e\u{301}".into();
@@ -820,7 +855,7 @@ fn unit_sequence_rejections() {
             inner: Box::new(text_locator(0)),
         },
     );
-    text_leaf.provenance.archive_inner_format = Some(FormatId::Text);
+    Arc::make_mut(&mut text_leaf.provenance).archive_inner_format = Some(FormatId::Text);
     let mut csv_leaf = unit(
         &mixed_binding,
         1,
@@ -833,11 +868,11 @@ fn unit_sequence_rejections() {
             }),
         },
     );
-    csv_leaf.provenance.archive_inner_format = Some(FormatId::Csv);
+    Arc::make_mut(&mut csv_leaf.provenance).archive_inner_format = Some(FormatId::Csv);
     csv_leaf.kind = UnitKind::CsvField;
     assert!(validate_part_units(&mixed_binding, &[text_leaf.clone(), csv_leaf.clone()]).is_ok());
     let mut false_leaf = csv_leaf.clone();
-    false_leaf.provenance.archive_inner_format = Some(FormatId::Text);
+    Arc::make_mut(&mut false_leaf.provenance).archive_inner_format = Some(FormatId::Text);
     assert!(validate_part_units(&mixed_binding, &[text_leaf, false_leaf]).is_err());
     let mut wrong_chain = archived_unit.clone();
     wrong_chain.locator = NativeLocator::Archive {
@@ -854,7 +889,7 @@ fn unit_sequence_rejections() {
     .unwrap();
     assert!(validate_part_units(&archived_binding, &[wrong_chain]).is_err());
     let mut wrong_inner = archived_unit.clone();
-    wrong_inner.provenance.archive_inner_format = Some(FormatId::Pdf);
+    Arc::make_mut(&mut wrong_inner.provenance).archive_inner_format = Some(FormatId::Pdf);
     assert!(validate_part_units(&archived_binding, &[wrong_inner]).is_err());
     let mut no_plan = archived_binding.clone();
     no_plan.archive_plan = None;
@@ -1063,5 +1098,18 @@ fn vector_binding_inputs() {
         },
     ] {
         assert!(!cache_key_matches_authority(&key, &unit, &changed));
+    }
+}
+
+#[test]
+fn unit_id_text_bytes_equal_its_display() {
+    for text in [
+        format!("ku1:{}", "0".repeat(64)),
+        format!("ku1:{}", "f".repeat(64)),
+        format!("ku1:{}", "0123456789abcdef".repeat(4)),
+    ] {
+        let id = search_core::knowledge_unit::UnitId::parse(&text).unwrap();
+        assert_eq!(id.text_bytes().as_slice(), id.to_string().as_bytes());
+        assert_eq!(id.to_string(), text);
     }
 }

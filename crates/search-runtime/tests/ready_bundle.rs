@@ -111,16 +111,24 @@ async fn graph_lexical_guard_or_payload_drift_leaves_nothing_ready() {
 
     // A stored Unit text changed behind its digest column.
     let tampered = fixture.build(7_823, "document-platform").await;
+    let mut tx = fixture.admin.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     sqlx::query(
-        "UPDATE search_generation_payload \
-         SET payload = jsonb_set(payload, '{body,entries,0,units,0,text}', '\"大阪の本文\"') \
-         WHERE source_id=$1 AND generation_id=$2 AND kind='unit_manifest'",
+        "UPDATE search_unit_segment \
+         SET payload = jsonb_set(payload, '{body,units,0,text}', '\"大阪の本文\"') \
+         WHERE segment_digest = (SELECT segment_digest FROM search_generation_segment \
+         WHERE source_id=$1 AND generation_id=$2 AND ordinal=0)",
     )
     .bind(tampered.key.source_id.as_uuid())
     .bind(tampered.key.generation_id.as_uuid())
-    .execute(&fixture.admin)
+    .execute(&mut *tx)
     .await
     .unwrap();
+    tx.commit().await.unwrap();
+    search_runtime::payload::forget_verified_segments();
     assert!(matches!(
         fixture.coordinator().ready_manual(&tampered.handle).await,
         Err(ReadyError::Payload(_))

@@ -85,6 +85,15 @@ impl PostgresDocumentSnapshotReader {
         version_id: Option<DocumentVersionId>,
         mode: &'static str,
     ) -> Result<(String, Vec<VersionSnapshotRecord>), SnapshotReadError> {
+        self.read_filtered(version_id, None, mode).await
+    }
+
+    async fn read_filtered(
+        &self,
+        version_id: Option<DocumentVersionId>,
+        document_id: Option<uuid::Uuid>,
+        mode: &'static str,
+    ) -> Result<(String, Vec<VersionSnapshotRecord>), SnapshotReadError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
             .execute(&mut *tx)
@@ -108,6 +117,7 @@ impl PostgresDocumentSnapshotReader {
              JOIN documents d ON d.document_id = v.document_id \
              LEFT JOIN document_publication_end_operations e ON e.document_id = d.document_id \
              WHERE ($1::uuid IS NULL OR v.document_version_id = $1) \
+               AND ($3::uuid IS NULL OR d.document_id = $3) \
                AND (\
                    $2::text = 'one' \
                    OR ($2::text = 'live' AND d.current_version_id = v.document_version_id \
@@ -121,6 +131,7 @@ impl PostgresDocumentSnapshotReader {
         )
         .bind(version_id.map(DocumentVersionId::as_uuid))
         .bind(mode)
+        .bind(document_id)
         .fetch_all(&mut *tx)
         .await?;
 
@@ -142,6 +153,18 @@ impl PostgresDocumentSnapshotReader {
         }
         tx.rollback().await?;
         Ok((source_snapshot, records))
+    }
+
+    /// The indexable records (both tiers) of one Document, read like
+    /// `enumerate_outbox_snapshot` restricted to that Document.
+    pub async fn enumerate_document_records(
+        &self,
+        document_id: uuid::Uuid,
+    ) -> Result<Vec<VersionSnapshotRecord>, SnapshotReadError> {
+        Ok(self
+            .read_filtered(None, Some(document_id), "indexable")
+            .await?
+            .1)
     }
 
     pub async fn enumerate_outbox_snapshot(
