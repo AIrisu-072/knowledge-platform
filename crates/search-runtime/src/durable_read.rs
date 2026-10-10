@@ -19,10 +19,8 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use document_domain::DocumentId;
 use search_api_http::router::ApiFuture;
 use search_application::api_scope::ApiError;
-use search_application::graph_generation::GraphSourceMapping;
 use search_application::ports::ProjectionGenerationStore;
 use search_application::projection::{
     PersistableGenerationManifest, PersistableResourceProjection,
@@ -30,7 +28,6 @@ use search_application::projection::{
 use search_application::resource_read::{CurrentResourceReadPort, ResourceLocatorPort};
 use search_application::scoped::TrustedSearchScope;
 use search_application::search_core::id::ProjectionGenerationId;
-use search_application::search_core::id::ResourceId;
 use search_application::search_core::projection::{
     ProjectionGenerationKey, ProjectionGenerationManifest,
 };
@@ -275,28 +272,43 @@ impl DurableDocumentReadModel {
         });
         let projection = restored.projection;
 
-        // Structural owners come from the verified Graph rows, never RAM.
-        let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
-            .recover_rows(key, &manifest.digest)
-            .await
-            .map_err(|error| store_error("graph rows", error))?;
-        let owners: Vec<(ResourceId, DocumentId)> = records
-            .iter()
-            .filter_map(|record| match &record.mapping {
-                GraphSourceMapping::Document { document_id }
-                | GraphSourceMapping::FolderPlacement { document_id, .. } => {
-                    Some((record.resource_ref, DocumentId::from_uuid(*document_id)))
-                }
-                _ => None,
+        // Structural owners come from the verified Graph rows, never RAM: the
+        // ones the re-verification above derived, or the rows read again.
+        let owners = match crate::ready::take_verified_owners(key, &manifest.digest) {
+            Some(owners) => owners,
+            None => {
+                let (_, records, _) = PostgresGraphStore::new(self.pool.clone())
+                    .recover_rows(key, &manifest.digest)
+                    .await
+                    .map_err(|error| store_error("graph rows", error))?;
+                crate::ready::owners(&records)
+            }
+        };
+        // The Graph and the lexical directory load on blocking threads while
+        // the projection is staged.
+        let graph = {
+            let (manifest, source, resources) = (
+                manifest.clone(),
+                self.source.clone(),
+                projection.resources.clone(),
+            );
+            tokio::task::spawn_blocking(move || {
+                DurableDocumentGraph::load(manifest, &source, resources, owners)
+                    .map_err(|error| store_error("graph load", error))
             })
-            .collect();
-        let graph = DurableDocumentGraph::load(
-            manifest.clone(),
-            &self.source,
-            projection.resources.clone(),
-            owners,
-        )
-        .map_err(|error| store_error("graph load", error))?;
+        };
+        let lexical = {
+            let (manifest, source) = (manifest.clone(), self.source.clone());
+            let dir =
+                LexicalArtifactStore::new(&self.lexical_root, self.pool.clone()).final_dir(key);
+            tokio::task::spawn_blocking(move || {
+                let lexical = Arc::new(TantivyLexicalIndex::new());
+                lexical
+                    .load_generation_at(&manifest, &source, &dir)
+                    .map_err(|error| store_error("lexical reopen", error))?;
+                Ok::<_, DurableReadError>(lexical)
+            })
+        };
 
         let store = MemoryProjectionStore::new();
         let persistable = PersistableGenerationManifest::try_from((manifest.clone(), &self.source))
@@ -326,11 +338,10 @@ impl DurableDocumentReadModel {
             .await
             .map_err(|error| store_error("publish", error))?;
 
-        let lexical = Arc::new(TantivyLexicalIndex::new());
-        let artifacts = LexicalArtifactStore::new(&self.lexical_root, self.pool.clone());
-        lexical
-            .load_generation_at(&manifest, &self.source, &artifacts.final_dir(key))
-            .map_err(|error| store_error("lexical reopen", error))?;
+        let graph = graph.await.map_err(|_| store_error("graph load", key))??;
+        let lexical = lexical
+            .await
+            .map_err(|_| store_error("lexical reopen", key))??;
         Ok(LoadedGeneration {
             key,
             store,
