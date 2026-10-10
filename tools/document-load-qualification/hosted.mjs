@@ -7,6 +7,7 @@ import {summarizeAdmission}from'./admission-summary.mjs';
 import {summarizeScans}from'./scan-diagnostics.mjs';
 import {smallPlan,runThousandChain,runTenThousandChain}from'./chain.mjs';
 import {runLocalScaleChain}from'./local-chain.mjs';
+import {parseLocalResourceBudget}from'./local-resource-budget.mjs';
 import {ownedExt4DatabaseEnabled}from'./local-storage.mjs';
 export {smallPlan}from'./chain.mjs';
 import {writeSmallReceipt,writeThousandReceipt,writeTenThousandReceipt}from'./receipt-export.mjs';
@@ -87,7 +88,8 @@ export async function runDocumentLoad({root,directory,runId,sourceHead,artifacts
    const query=postgresVersionArgs(cid);query[query.length-1]='SELECT pg_database_size(current_database())';
    const databaseBytes=integer(await run('document-load-db-size','docker',query,{...process.env,PGPASSWORD:password},10000));
    const databasePid=integer(await run('document-load-db-pid','docker',['inspect','--format','{{.State.Pid}}',cid],process.env,10000));
-   const observation=await observeResources({storageRoot:storage,pids:[process.pid,...getPids(),databasePid],databaseBytes,includeScanDiagnostics:tenThousandRequested||localRequested});
+   const serverPids=getPids();
+   const observation=await observeResources({storageRoot:storage,pids:[process.pid,...serverPids,databasePid],databaseBytes,includeScanDiagnostics:tenThousandRequested||localRequested,...(localRequested?{rolePids:{harness:process.pid,human:serverPids[0],agent:serverPids[1],database:databasePid}}:{})});
    const df=await run('document-load-db-free','docker',['exec',cid,'df','-Pk','/var/lib/postgresql'],process.env,10000);
    const fields=df.trim().split('\n').at(-1).trim().split(/\s+/);if(fields.length<6)throw Error('Database filesystem measurement unavailable');
    const databaseFreeBytes=integer(fields[3])*1024;
@@ -119,7 +121,7 @@ export async function runDocumentLoad({root,directory,runId,sourceHead,artifacts
    const inputs={directory:target,runId,fingerprint,corpus,runtime,probeFactory};
    if((tenThousandRequested||localRequested)&&typeof loadClock!=='function')throw Error('Qualification work clock unavailable');
    if(localRequested&&typeof onLocalChain!=='function')throw Error('Local qualification result sink unavailable');
-   chain=localRequested?await runLocalScaleChain({...inputs,workDeadlineAt:loadBudget?.workDeadlineAt,now:loadClock}):tenThousandRequested?await runTenThousandChain({...inputs,workDeadlineAt:loadBudget?.workDeadlineAt,now:loadClock}):await runThousandChain(inputs);
+   chain=localRequested?await runLocalScaleChain({...inputs,resourceBudget:parseLocalResourceBudget(process.env),workDeadlineAt:loadBudget?.workDeadlineAt,now:loadClock}):tenThousandRequested?await runTenThousandChain({...inputs,workDeadlineAt:loadBudget?.workDeadlineAt,now:loadClock}):await runThousandChain(inputs);
    if(localRequested)onLocalChain(chain);
    report=localRequested?selectLocalScaleReport(chain,fingerprint):tenThousandRequested?selectTenThousandChainReport(chain,fingerprint):selectChainReport(chain,fingerprint);
    await writeFile(join(target,'chain.json'),JSON.stringify(chain)+'\n',{mode:0o600,flag:'wx'});

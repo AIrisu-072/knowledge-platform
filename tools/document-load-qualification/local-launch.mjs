@@ -5,8 +5,9 @@ import {lstat,mkdir,open,readFile,readdir,realpath,writeFile} from 'node:fs/prom
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
-import {promisify} from 'node:util';
+import {isDeepStrictEqual,promisify} from 'node:util';
 import {createLocalRunBudget} from './local-budget.mjs';
+import {LOCAL_RESOURCE_ENV_KEYS,parseLocalResourceBudget} from './local-resource-budget.mjs';
 import {assertLocalLinux,ownedPrivateDirectory,verifyExt4Directory} from './local-storage.mjs';
 
 const executeFile=promisify(execFile);
@@ -15,7 +16,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}
 const SHA=/^[a-f0-9]{40}$/;
 const OTHER_MODES=['KP_DOCUMENT_LOAD_SMALL','KP_DOCUMENT_LOAD_THOUSAND','KP_DOCUMENT_LOAD_TEN_THOUSAND','KP_DOCUMENT_LOAD_PLAN'];
 const ENVIRONMENT_KEYS=['PATH','HOME','USER','LOGNAME','LANG','LC_ALL','TMPDIR','XDG_CACHE_HOME','XDG_CONFIG_HOME',
-  'CARGO_HOME','RUSTUP_HOME','CARGO_TARGET_DIR','PNPM_HOME','PLAYWRIGHT_BROWSERS_PATH','FONTCONFIG_FILE','KP_DSI_PDFIUM_RUNTIME_DIR'];
+  ...LOCAL_RESOURCE_ENV_KEYS,'CARGO_HOME','RUSTUP_HOME','CARGO_TARGET_DIR','PNPM_HOME','PLAYWRIGHT_BROWSERS_PATH','FONTCONFIG_FILE','KP_DSI_PDFIUM_RUNTIME_DIR'];
 const probeOptions={timeout:5000,killSignal:'SIGKILL',maxBuffer:65536,encoding:'utf8'};
 
 export function remainingLocalWatchdogSeconds(startedAt,now=Date.now()) {
@@ -68,6 +69,7 @@ async function ownedLockIdentity(lockPath) {
 /** All deadlines refer to the original start. Validation never restarts a clock. */
 export async function validateLocalLaunchContext(env,dependencies={}) {
   assertLocalLinux(dependencies);assertEnvironment(env);
+  const resourceBudget=parseLocalResourceBudget(env);
   if(env.KP_DOCUMENT_LOAD_HUNDRED_THOUSAND!=='true')throw Error('Explicit local hundred-thousand mode is required');
   const sourceHead=env.KP_DOCUMENT_LOAD_SOURCE_HEAD,runId=env.KP_DOCUMENT_LOAD_LOCAL_RUN_ID;
   if(typeof sourceHead!=='string'||!SHA.test(sourceHead)||typeof runId!=='string'||!UUID.test(runId))throw Error('Invalid local source or run identity');
@@ -79,7 +81,7 @@ export async function validateLocalLaunchContext(env,dependencies={}) {
   if(evidenceDirectory!==join(launchDirectory,'evidence'))throw Error('Evidence must belong to the private launch directory');
   const evidenceStat=ownedPrivateDirectory(evidenceDirectory);
   await verifyExt4Directory(launchDirectory,dependencies);await verifyExt4Directory(evidenceDirectory,dependencies);
-  const context=Object.freeze({startedAt,runId,launchDirectory,evidenceDirectory,sourceHead});
+  const context=Object.freeze({startedAt,runId,launchDirectory,evidenceDirectory,sourceHead,...(resourceBudget?{resourceBudget}:{})});
   contexts.set(context,{launchStat,evidenceStat});verifiedContext(context);return context;
 }
 
@@ -106,7 +108,7 @@ export async function recordLocalStartup(context,{pid,sourceHead,directory}) {
   await mkdir(publicationDirectory,{mode:0o700});
   const publicationStat=ownedPrivateDirectory(publicationDirectory);
   await writePrivateJson(join(context.launchDirectory,'started.json'),{schemaVersion:1,runId:context.runId,
-    sourceHead,startedAt:context.startedAt,directory,...observed});
+    sourceHead,startedAt:context.startedAt,directory,...observed,...(context.resourceBudget?{resourceBudget:context.resourceBudget}:{})});
   verifiedContext(context);
   if(!identityMatches(ownedPrivateDirectory(publicationDirectory),publicationStat))throw Error('Startup publication directory identity changed');
   // mkdir publishes completion atomically without replacing any existing path.
@@ -144,6 +146,7 @@ async function claimEvidenceRoot(root,dependencies) {
 /** Preparation is reviewable and does not launch a runtime or alter services. */
 export async function prepareLocalLaunchPlan({repositoryDirectory,evidenceRoot,expectedHead,runtimeEnvironment=process.env},dependencies={}) {
   assertLocalLinux(dependencies);assertEnvironment(runtimeEnvironment);
+  parseLocalResourceBudget(runtimeEnvironment);
   if(typeof expectedHead!=='string'||!SHA.test(expectedHead))throw Error('Explicit reviewed source HEAD is required');
   if(typeof repositoryDirectory!=='string'||!isAbsolute(repositoryDirectory)||resolve(repositoryDirectory)!==repositoryDirectory
     ||/[\x00-\x1f\x7f]/.test(repositoryDirectory)||(await realpath(repositoryDirectory))!==repositoryDirectory
@@ -169,6 +172,7 @@ export async function prepareLocalLaunchPlan({repositoryDirectory,evidenceRoot,e
 function assertAck(ack,context,supervisor) {
   if(ack?.schemaVersion!==1||ack.runId!==context.runId||ack.sourceHead!==context.sourceHead||ack.startedAt!==context.startedAt
     ||typeof ack.directory!=='string'||dirname(ack.directory)!==context.evidenceDirectory
+    ||!isDeepStrictEqual(ack.resourceBudget,context.resourceBudget)
     ||ack.processGroupId!==supervisor.pid||ack.sessionId!==supervisor.pid||ack.parentPid!==supervisor.pid)throw Error('Runtime startup acknowledgement mismatch');
   ownedPrivateDirectory(ack.directory);
 }
@@ -237,8 +241,8 @@ export async function readLocalLaunchStatus(launchDirectory) {
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   try {
     const [action,...args]=process.argv.slice(2);
-    if(action==='start'&&args.length===3)console.log(JSON.stringify(await launchLocalRun(await prepareLocalLaunchPlan({repositoryDirectory:resolve(args[0]),evidenceRoot:resolve(args[1]),expectedHead:args[2]}))));
+    if(action==='start'&&(args.length===3||args.length===5))console.log(JSON.stringify(await launchLocalRun(await prepareLocalLaunchPlan({repositoryDirectory:resolve(args[0]),evidenceRoot:resolve(args[1]),expectedHead:args[2],runtimeEnvironment:args.length===5?{...process.env,[LOCAL_RESOURCE_ENV_KEYS[0]]:args[3],[LOCAL_RESOURCE_ENV_KEYS[1]]:args[4]}:process.env}))));
     else if(action==='status'&&args.length===1)console.log(JSON.stringify(await readLocalLaunchStatus(resolve(args[0]))));
-    else throw Error('Usage: local-launch.mjs start <checkout> <dedicated-private-ext4-root> <reviewed-head> | status <launch-directory>');
+    else throw Error('Usage: local-launch.mjs start <checkout> <dedicated-private-ext4-root> <reviewed-head> [max-rss-bytes available-memory-reserve-bytes] | status <launch-directory>');
   } catch(error) {console.error(error.message);process.exitCode=1;}
 }
