@@ -537,7 +537,7 @@ fn segment_digests(manifest: &BodyUnitManifest) -> Result<Vec<([u8; 32], u64)>, 
         .iter()
         .map(|entry| {
             segment_digest(entry)
-                .map(|digest| (digest, entry.units.len() as u64))
+                .map(|digest| (digest, entry.unit_count()))
                 .map_err(|_| BundleError::Digest)
         })
         .collect()
@@ -822,6 +822,11 @@ impl PgPayloadStore {
             if present.contains(digest) || !written.insert(digest.clone()) {
                 continue;
             }
+            // An item standing for its Units by a stored segment reuses that
+            // row; without it the build fails and the retry restores the Units.
+            if entry.stored.is_some() {
+                return Err(BundleError::Shape);
+            }
             sqlx::query(
                 "INSERT INTO search_unit_segment \
                  (segment_digest,dto_version,payload,unit_count,verified_build) \
@@ -830,7 +835,7 @@ impl PgPayloadStore {
             .bind(digest)
             .bind(SEGMENT_DTO_VERSION)
             .bind(encode_segment(&unbound(entry)).map_err(|_| BundleError::Shape)?)
-            .bind(i64::try_from(entry.units.len()).map_err(|_| BundleError::Shape)?)
+            .bind(i64::try_from(entry.unit_count()).map_err(|_| BundleError::Shape)?)
             .bind(SEGMENT_VERIFIER)
             .execute(&mut *tx)
             .await?;

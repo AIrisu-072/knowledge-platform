@@ -114,6 +114,9 @@ fn failed(message: &'static str) -> BodyBuildError {
 
 /// The stored text of `entry` as a `v2` segment.
 pub fn encode_segment(entry: &BodyItemEntry) -> Result<String, BodyBuildError> {
+    if entry.stored.is_some() {
+        return Err(failed("segment of a stored item"));
+    }
     let mut contexts: Vec<ContextRef<'_>> = Vec::new();
     let mut units = Vec::with_capacity(entry.units.len());
     for unit in &entry.units {
@@ -215,6 +218,7 @@ pub fn decode_segment(text: &str) -> Result<BodyItemEntry, BodyBuildError> {
         operation: segment.operation,
         coverage: segment.coverage,
         units,
+        stored: None,
     })
 }
 
@@ -298,6 +302,7 @@ mod tests {
             operation: ItemOperationState::Completed,
             coverage: Some(BodyCoverage::Supported),
             units,
+            stored: None,
         }
     }
 

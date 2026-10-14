@@ -126,6 +126,13 @@ impl LexicalBuildInput {
         self.body_units.as_ref().map(|units| units.0.units())
     }
 
+    /// Whether [`Self::body_units`] holds every body Unit.
+    pub(crate) fn body_units_complete(&self) -> bool {
+        self.body_units
+            .as_ref()
+            .is_none_or(|units| units.0.complete())
+    }
+
     /// The body Units' seal entries their source already holds, read from
     /// the source once per input.
     pub(crate) fn body_seal_entries(&self) -> Option<Arc<Vec<crate::UnitSealEntry>>> {
@@ -147,6 +154,13 @@ pub trait UnitSource: Send + Sync {
     /// Units it has hashed before; `None` makes the build hash every Unit.
     fn seal_entries(&self) -> Option<Vec<crate::UnitSealEntry>> {
         None
+    }
+
+    /// Whether [`Self::units`] holds every Unit. A source that holds only
+    /// some keeps every Unit's seal entry, and the build adds the Units it
+    /// holds to a base Unit index that already has every other one.
+    fn complete(&self) -> bool {
+        true
     }
 }
 
@@ -214,6 +228,8 @@ pub enum LexicalIndexError {
     UnitParentMissing,
     #[error("body Unit occurs more than once in generation")]
     DuplicateUnit,
+    #[error("body Units are held only in part and no base Unit index has the others")]
+    IncompleteUnits,
     #[error("body Unit document cannot be encoded or decoded")]
     UnitEncoding,
     #[error("lexical generation is not body-ready")]
@@ -355,8 +371,9 @@ impl TantivyLexicalIndex {
             }
         }
         let body_units = input.body_units();
+        let complete = input.body_units_complete();
         if let Some(units) = &body_units {
-            if !units.is_empty()
+            if (!units.is_empty() || !complete)
                 && (source.retention_mode != RetentionMode::PersistentResource
                     || !source.supports(DiscoveryMode::LocalContentSearch))
             {
@@ -375,7 +392,16 @@ impl TantivyLexicalIndex {
                 if !parents.contains(&unit.version.resource_id) {
                     return Err(LexicalIndexError::UnitParentMissing);
                 }
-                if !seen.insert(unit.unit_id) {
+                if complete && !seen.insert(unit.unit_id) {
+                    return Err(LexicalIndexError::DuplicateUnit);
+                }
+            }
+            if !complete {
+                let entries = input
+                    .body_seal_entries()
+                    .ok_or(LexicalIndexError::IncompleteUnits)?;
+                let mut seen = std::collections::HashSet::with_capacity(entries.len());
+                if entries.iter().any(|entry| !seen.insert(entry.unit_id)) {
                     return Err(LexicalIndexError::DuplicateUnit);
                 }
             }
@@ -392,6 +418,7 @@ impl TantivyLexicalIndex {
                         Some(base) => crate::body::build_unit_index_from_base(
                             units,
                             input.body_seal_entries(),
+                            complete,
                             base,
                             &target,
                             tokenizer,
@@ -400,10 +427,14 @@ impl TantivyLexicalIndex {
                     };
                     match from_base {
                         Some(index) => Ok(index),
-                        None => crate::body::build_unit_index_at(units, &target, tokenizer),
+                        None if complete => {
+                            crate::body::build_unit_index_at(units, &target, tokenizer)
+                        }
+                        None => Err(LexicalIndexError::IncompleteUnits),
                     }
                 }
-                None => build_unit_index(units, tokenizer),
+                None if complete => build_unit_index(units, tokenizer),
+                None => Err(LexicalIndexError::IncompleteUnits),
             })
             .transpose()?;
         let mut documents = input.documents;
