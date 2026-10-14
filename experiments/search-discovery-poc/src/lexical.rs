@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs;
 use std::time::Instant;
@@ -5,7 +6,6 @@ use std::time::Instant;
 use lindera::dictionary::load_dictionary;
 use lindera::mode::Mode;
 use lindera::segmenter::Segmenter;
-use lindera_analysis::tokenizer::Tokenizer as LinderaTokenizer;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
@@ -69,6 +69,14 @@ pub struct LexicalEvaluation {
     pub cases: Vec<LexicalCaseResult>,
 }
 
+/// The no-filter lexical path borrows input directly from the fixed IPADIC segmenter.
+pub fn segment_lindera_text<'a>(
+    segmenter: &'a Segmenter,
+    text: &'a str,
+) -> lindera::LinderaResult<Vec<lindera::token::Token<'a>>> {
+    segmenter.segment(Cow::Borrowed(text))
+}
+
 pub fn evaluate_lexical(
     analyzer: AnalyzerKind,
     resources: &[LexicalResource],
@@ -85,17 +93,16 @@ pub fn evaluate_lexical(
     let build_start = Instant::now();
     let lindera = match analyzer {
         AnalyzerKind::TantivyDefault => None,
-        AnalyzerKind::LinderaIpadic => Some(LinderaTokenizer::new(Segmenter::new(
+        AnalyzerKind::LinderaIpadic => Some(Segmenter::new(
             Mode::Normal,
             load_dictionary("embedded://ipadic")?,
             None,
-        ))),
+        )),
     };
     let analyze = |text: &str| -> Result<String, Box<dyn std::error::Error>> {
         match &lindera {
             None => Ok(text.to_owned()),
-            Some(tokenizer) => Ok(tokenizer
-                .tokenize(text)?
+            Some(segmenter) => Ok(segment_lindera_text(segmenter, text)?
                 .iter()
                 .map(|token| token.surface.as_ref())
                 .collect::<Vec<&str>>()

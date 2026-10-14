@@ -1,7 +1,6 @@
 {
   "candidate_versions": {
     "lindera": "6.2.0",
-    "lindera-analysis": "6.2.0",
     "lindera-ipadic": "6.2.0",
     "lru": "0.18.2",
     "postgres": "18.6-bookworm",
@@ -161,21 +160,21 @@
   "lexical_metrics": [
     {
       "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
-      "build_ms": 100.175375,
+      "build_ms": 93.28170800000001,
       "index_bytes": 5939,
       "missing_cases": [
         "compound-corporate-loan"
       ],
       "mrr": 0.823076923076923,
       "ndcg_at_10": 0.8475217354466154,
-      "query_p50_ms": 0.150041,
-      "query_p95_ms": 0.196416,
+      "query_p50_ms": 0.19837500000000002,
+      "query_p95_ms": 0.259208,
       "recall_at_10": 0.9230769230769231,
       "runs": 5
     },
     {
       "analyzer_id": "tantivy-default-0.26.2",
-      "build_ms": 96.163583,
+      "build_ms": 80.37887500000001,
       "index_bytes": 5035,
       "missing_cases": [
         "compound-corporate-loan",
@@ -183,8 +182,8 @@
       ],
       "mrr": 0.8076923076923077,
       "ndcg_at_10": 0.8177638271978045,
-      "query_p50_ms": 0.072333,
-      "query_p95_ms": 0.159,
+      "query_p50_ms": 0.08529199999999999,
+      "query_p95_ms": 0.186334,
       "recall_at_10": 0.8461538461538461,
       "runs": 5
     }

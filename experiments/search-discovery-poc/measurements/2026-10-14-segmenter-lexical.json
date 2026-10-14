@@ -1,0 +1,2618 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "373941fbfbcdd2cb85ecae0d5b9530ae85160241",
+  "newSourceSha256": {
+    "experiments/search-discovery-poc/src/lexical.rs": "681d64f2c0d61f630722f8d9a1fb63d7e2543aaeff897e8833d407a4f6082de2",
+    "experiments/search-discovery-poc/Cargo.toml": "ffe66e73191e4c084e4084b7fb775bee2b859a0f3ea3528037d0e678cc983f53",
+    "experiments/search-discovery-poc/Cargo.lock": "b7cf19932338d86d35f0acc10b515cfdd5ababaef103275fe4d522b1abbcbfc2"
+  },
+  "platform": "macOS arm64",
+  "rust": "1.98.1",
+  "buildProfile": "unoptimized + debuginfo",
+  "recordedAt": "2026-10-14T01:53:05.560423+00:00",
+  "latencyQualification": "reference only; other compilation may contend; no performance SLO or improvement claim",
+  "oldEvaluations": [
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 97.72699999999999,
+        "query_p50_ms": 0.083625,
+        "query_p95_ms": 0.187125
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 102.241,
+        "query_p50_ms": 0.150084,
+        "query_p95_ms": 0.196375
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 90.98625,
+        "query_p50_ms": 0.064584,
+        "query_p95_ms": 0.14383300000000002
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 107.811833,
+        "query_p50_ms": 0.279667,
+        "query_p95_ms": 1.524167
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 143.901291,
+        "query_p50_ms": 0.096459,
+        "query_p95_ms": 0.421083
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 157.387958,
+        "query_p50_ms": 0.172625,
+        "query_p95_ms": 0.40045800000000004
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 121.908958,
+        "query_p50_ms": 0.086166,
+        "query_p95_ms": 0.188541
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 144.581709,
+        "query_p50_ms": 0.192417,
+        "query_p95_ms": 0.340584
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 116.44525,
+        "query_p50_ms": 0.087084,
+        "query_p95_ms": 0.188291
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 138.45499999999998,
+        "query_p50_ms": 0.181959,
+        "query_p95_ms": 0.30704099999999995
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    }
+  ],
+  "newEvaluations": [
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 159.930083,
+        "query_p50_ms": 0.054042,
+        "query_p95_ms": 0.213708
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 130.94691699999998,
+        "query_p50_ms": 0.11474999999999999,
+        "query_p95_ms": 0.209458
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 75.729375,
+        "query_p50_ms": 0.084417,
+        "query_p95_ms": 0.183834
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 90.017042,
+        "query_p50_ms": 0.11916700000000001,
+        "query_p95_ms": 0.260417
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 79.608917,
+        "query_p50_ms": 0.08566700000000001,
+        "query_p95_ms": 0.183375
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 95.877292,
+        "query_p50_ms": 0.198666,
+        "query_p95_ms": 0.257458
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 80.37887500000001,
+        "query_p50_ms": 0.08625,
+        "query_p95_ms": 0.186334
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 87.05458300000001,
+        "query_p50_ms": 0.19837500000000002,
+        "query_p95_ms": 0.259208
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "tantivy-default-0.26.2",
+        "recall_at_10": 0.8461538461538461,
+        "mrr": 0.8076923076923077,
+        "ndcg_at_10": 0.8177638271978045,
+        "index_bytes": 5035,
+        "build_ms": 81.397209,
+        "query_p50_ms": 0.08529199999999999,
+        "query_p95_ms": 0.187125
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        }
+      ]
+    },
+    {
+      "measurement": {
+        "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+        "recall_at_10": 0.9230769230769231,
+        "mrr": 0.823076923076923,
+        "ndcg_at_10": 0.8475217354466154,
+        "index_bytes": 5939,
+        "build_ms": 93.28170800000001,
+        "query_p50_ms": 0.33425000000000005,
+        "query_p95_ms": 1.225042
+      },
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "retrieved_ids": [
+            "loan-personal"
+          ],
+          "qualified_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "retrieved_ids": [
+            "address-personal"
+          ],
+          "qualified_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "retrieved_ids": [
+            "loan-corp"
+          ],
+          "qualified_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "retrieved_ids": [
+            "credit-policy"
+          ],
+          "qualified_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "retrieved_ids": [
+            "credit-procedure"
+          ],
+          "qualified_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "retrieved_ids": [
+            "credit-manual"
+          ],
+          "qualified_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "retrieved_ids": [
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ],
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ],
+          "qualified_ids": [
+            "deposit-corp"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "retrieved_ids": [],
+          "qualified_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "retrieved_ids": [
+            "address-corp"
+          ],
+          "qualified_ids": [
+            "address-corp"
+          ]
+        }
+      ]
+    }
+  ]
+}
