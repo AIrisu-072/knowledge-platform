@@ -15,17 +15,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use search_application::ports::SemanticRegistrySnapshot;
-use search_application::search_core::knowledge_unit::{
-    restamp_source_snapshot, share_unit_context,
-};
+use search_application::search_core::knowledge_unit::restamp_source_snapshot;
 use search_application::search_core::projection::{
     CompiledResourceProjection, ProjectionGenerationKey, ProjectionGenerationManifest,
 };
 use search_projection_memory::generation_digest;
 use search_source_document::{
     BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
-    GenerationBundleReceipt, compute_bundle_receipt_from, profile_set_digest, segment_digest,
-    unit_manifest_receipt_from_segments, validate_restored_manifest_skipping,
+    GenerationBundleReceipt, SEGMENT_DTO_VERSION, compute_bundle_receipt_from, decode_segment,
+    encode_segment, profile_set_digest, segment_digest, unit_manifest_receipt_from_segments,
+    validate_restored_manifest_skipping,
 };
 use search_tantivy::{UnitSealEntry, unit_doc_hash};
 use serde::de::DeserializeOwned;
@@ -96,9 +95,12 @@ pub fn stored_segment_digest(entry: &BodyItemEntry) -> Result<String, BundleErro
 /// Checks a segment read from the database before it is cached: its digest,
 /// Unit count and every Unit's text digest.
 fn verified_segment(digest: &str, count: i64, text: &str) -> Result<BodyItemEntry, BundleError> {
-    let mut entry = restore::<BodyItemEntry>(text)?;
-    // Decoding gives each Unit its own copy of the Part's shared fields.
-    share_unit_context(&mut entry.units);
+    if text.len() > MAX_PAYLOAD_BYTES {
+        return Err(BundleError::Shape);
+    }
+    // Decoding recomputes each Unit's text digest from its text, so the
+    // segment digest below covers every stored text.
+    let entry = decode_segment(text).map_err(|_| BundleError::Shape)?;
     if sha256_text(&segment_digest(&entry).map_err(|_| BundleError::Digest)?) != digest
         || u64::try_from(count).ok() != Some(entry.units.len() as u64)
     {
@@ -408,7 +410,7 @@ async fn summarize_batch(
     tokio::task::spawn_blocking(move || {
         rows.into_iter()
             .map(|(digest, version, text, count)| {
-                if version != PAYLOAD_DTO_VERSION {
+                if version != SEGMENT_DTO_VERSION {
                     return Err(BundleError::Shape);
                 }
                 let summary = summarize_segment(&digest, count, &text, &header)?;
@@ -685,7 +687,7 @@ impl PgPayloadStore {
                 return Err(BundleError::Shape);
             }
             for (digest, version, text, count) in rows {
-                if version != PAYLOAD_DTO_VERSION {
+                if version != SEGMENT_DTO_VERSION {
                     return Err(BundleError::Shape);
                 }
                 let entry = verified_segment(&digest, count, &text)?;
@@ -826,8 +828,8 @@ impl PgPayloadStore {
                  VALUES ($1,$2,$3,$4,$5) ON CONFLICT (segment_digest) DO NOTHING",
             )
             .bind(digest)
-            .bind(PAYLOAD_DTO_VERSION)
-            .bind(envelope(&unbound(entry))?)
+            .bind(SEGMENT_DTO_VERSION)
+            .bind(encode_segment(&unbound(entry)).map_err(|_| BundleError::Shape)?)
             .bind(i64::try_from(entry.units.len()).map_err(|_| BundleError::Shape)?)
             .bind(SEGMENT_VERIFIER)
             .execute(&mut *tx)
@@ -1104,7 +1106,7 @@ impl PgPayloadStore {
         .await?;
         let mut out = HashMap::with_capacity(rows.len());
         for (digest, version, text, count) in rows {
-            if version != PAYLOAD_DTO_VERSION {
+            if version != SEGMENT_DTO_VERSION {
                 return Err(BundleError::Shape);
             }
             let entry = verified_segment(&digest, count, &text)?;

@@ -17,6 +17,7 @@ mod model;
 mod outbox;
 mod postgres;
 mod relations;
+mod segment_codec;
 mod translate;
 
 pub use api_read::DocumentApiRead;
@@ -64,6 +65,7 @@ pub use relations::{
     DocumentRelationProjection, DocumentRelationProjector, RelationProjectionError,
     document_resource_id, folder_resource_id,
 };
+pub use segment_codec::{SEGMENT_DTO_VERSION, decode_segment, encode_segment};
 pub use translate::{
     DocumentIndexInputs, DocumentSourceTranslation, DocumentSourceTranslator,
     DocumentVisibilityClass, TranslationError,

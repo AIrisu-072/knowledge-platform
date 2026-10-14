@@ -118,7 +118,7 @@ async fn graph_lexical_guard_or_payload_drift_leaves_nothing_ready() {
         .unwrap();
     sqlx::query(
         "UPDATE search_unit_segment \
-         SET payload = jsonb_set(payload, '{body,units,0,text}', '\"大阪の本文\"') \
+         SET payload = jsonb_set(payload::jsonb, '{body,units,0,text}', '\"大阪の本文\"')::text \
          WHERE segment_digest = (SELECT segment_digest FROM search_generation_segment \
          WHERE source_id=$1 AND generation_id=$2 AND ordinal=0)",
     )
