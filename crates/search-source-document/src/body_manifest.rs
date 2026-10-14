@@ -6,6 +6,7 @@
 //! digests, so a full and an incremental rebuild of the same items agree.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use search_core::id::SourceId;
 use search_core::knowledge_unit::{
@@ -42,9 +43,33 @@ pub struct BodyItemEntry {
     pub operation: ItemOperationState,
     pub coverage: Option<BodyCoverage>,
     pub units: Vec<KnowledgeUnit>,
+    /// Set instead of `units` for an unchanged item of the generation this
+    /// process built and published; never stored.
+    #[serde(skip)]
+    pub stored: Option<StoredUnits>,
+}
+
+/// The stored segment that stands for an unchanged item's Units: the process
+/// that verified and published the item keeps its segment digest, Unit count
+/// and each Unit's seal entry, not the Units. The next build reuses the stored
+/// segment row and the lexical Unit index as they are; any step that needs
+/// the Units themselves fails, and the retry restores every item from storage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredUnits {
+    pub digest: [u8; 32],
+    pub count: u64,
+    pub seal: Arc<Vec<search_tantivy::UnitSealEntry>>,
 }
 
 impl BodyItemEntry {
+    /// The item's Unit count, from its Units or its stored segment.
+    pub fn unit_count(&self) -> u64 {
+        match &self.stored {
+            Some(stored) => stored.count,
+            None => self.units.len() as u64,
+        }
+    }
+
     /// Bind one extraction result to the Source-owned item it was read from.
     pub fn from_extracted(
         source_id: SourceId,
@@ -65,6 +90,7 @@ impl BodyItemEntry {
             operation: result.operation,
             coverage: result.coverage,
             units: result.units,
+            stored: None,
         }
     }
 
@@ -103,6 +129,11 @@ pub struct BodyUnitManifest {
 impl search_tantivy::UnitSource for BodyUnitManifest {
     fn units(&self) -> Vec<&search_core::knowledge_unit::KnowledgeUnit> {
         self.entries.iter().flat_map(|entry| &entry.units).collect()
+    }
+
+    /// Items standing for their Units by a stored segment hold none.
+    fn complete(&self) -> bool {
+        self.entries.iter().all(|entry| entry.stored.is_none())
     }
 
     /// From the per-process entries of item segments sealed before.
@@ -219,7 +250,7 @@ pub fn validate_manifest(
             operation: entry.operation,
             coverage: entry.coverage.clone(),
             raw: entry.raw.clone(),
-            unit_count: u32::try_from(entry.units.len()).map_err(|_| integrity("unit count"))?,
+            unit_count: u32::try_from(entry.unit_count()).map_err(|_| integrity("unit count"))?,
         });
     }
     Ok(BodyCoverageArtifact {
@@ -267,7 +298,7 @@ pub fn validate_restored_manifest_skipping(
             operation: entry.operation,
             coverage: entry.coverage.clone(),
             raw: entry.raw.clone(),
-            unit_count: u32::try_from(entry.units.len()).map_err(|_| integrity("unit count"))?,
+            unit_count: u32::try_from(entry.unit_count()).map_err(|_| integrity("unit count"))?,
         });
     }
     Ok(BodyCoverageArtifact {
@@ -281,18 +312,18 @@ fn validate_entry(entry: &BodyItemEntry, source_snapshot: &str) -> Result<(), Bo
         (ItemOperationState::Retryable { .. }, _) => {
             return Err(integrity("retryable item is not publishable"));
         }
-        (ItemOperationState::FailedPermanent { .. }, None) if entry.units.is_empty() => {}
+        (ItemOperationState::FailedPermanent { .. }, None) if entry.unit_count() == 0 => {}
         (ItemOperationState::FailedPermanent { .. }, _) => {
             return Err(integrity("failed item output"));
         }
         (ItemOperationState::Completed, None) => return Err(integrity("completed coverage")),
         (ItemOperationState::Completed, Some(BodyCoverage::Unsupported { .. })) => {
-            if !entry.units.is_empty() {
+            if entry.unit_count() != 0 {
                 return Err(integrity("unsupported item units"));
             }
         }
         (ItemOperationState::Completed, Some(BodyCoverage::Partial { reasons })) => {
-            if reasons.is_empty() || entry.units.is_empty() {
+            if reasons.is_empty() || entry.unit_count() == 0 {
                 return Err(integrity("partial witness"));
             }
         }
@@ -307,7 +338,9 @@ fn validate_entry(entry: &BodyItemEntry, source_snapshot: &str) -> Result<(), Bo
     {
         return Err(integrity("undetected format outcome"));
     }
-    if entry.units.is_empty() {
+    // A stored segment's Units passed these checks in the build that
+    // published it, in this process.
+    if entry.unit_count() == 0 || entry.stored.is_some() {
         return Ok(());
     }
     let (Some(format), Some(profile)) = (entry.detected_format, entry.profile.clone()) else {
@@ -483,8 +516,12 @@ const fn permanent_tag(code: PermanentFailureCode) -> u8 {
 /// `body-unit-segment:v1`: one item's identity, raw, profile/format, parser
 /// build, outcome and each Unit's ID, parent, kind, locator and text digest.
 /// Text bodies and the Source snapshot are excluded, so an unchanged item has
-/// the same digest in every generation.
+/// the same digest in every generation. An item standing for its Units by a
+/// stored segment has that segment's digest.
 pub fn segment_digest(entry: &BodyItemEntry) -> Result<[u8; 32], BodyBuildError> {
+    if let Some(stored) = &entry.stored {
+        return Ok(stored.digest);
+    }
     let mut out = Canonical::default();
     out.text(&entry.parser_build_id)?;
     out.version(&entry.version)?;
@@ -539,7 +576,7 @@ pub fn unit_manifest_receipt(
     let segments = manifest
         .entries
         .iter()
-        .map(|entry| Ok((segment_digest(entry)?, entry.units.len() as u64)))
+        .map(|entry| Ok((segment_digest(entry)?, entry.unit_count())))
         .collect::<Result<Vec<_>, BodyBuildError>>()?;
     unit_manifest_receipt_from_segments(manifest.key, &segments)
 }

@@ -15,8 +15,8 @@ use search_tantivy::{IndexedUnitDoc, UnitSealEntry, unit_doc_hash};
 use sha2::{Digest, Sha256};
 
 use crate::body_manifest::{
-    ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyUnitManifest,
-    GenerationBundleReceipt, compute_bundle_receipt, segment_digest,
+    ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
+    GenerationBundleReceipt, StoredUnits, compute_bundle_receipt, segment_digest,
 };
 
 fn failed(reason: &str) -> SearchError {
@@ -262,7 +262,7 @@ pub(crate) fn derive_coverage(
                 operation: entry.operation,
                 coverage: entry.coverage.clone(),
                 raw: entry.raw.clone(),
-                unit_count: u32::try_from(entry.units.len()).map_err(|_| failed("unit count"))?,
+                unit_count: u32::try_from(entry.unit_count()).map_err(|_| failed("unit count"))?,
             })
         })
         .collect::<Result<Vec<_>, SearchError>>()?;
@@ -311,40 +311,76 @@ pub fn unit_seal_entries(
     let mut expected = Vec::new();
     for entry in &manifest.entries {
         let digest = segment_digest(entry).map_err(|_| failed("lexical seal: segment digest"))?;
-        segments.push((digest, entry.units.len() as u64));
-        let cached = seal_entry_cache()
-            .lock()
-            .map_err(|_| failed("lexical seal: cache"))?
-            .get(&digest)
-            .cloned();
-        let entries = match cached {
-            Some(entries) if entries.len() == entry.units.len() => entries,
-            _ => {
-                let mut entries = Vec::with_capacity(entry.units.len());
-                for unit in &entry.units {
-                    if text_sha256(&unit.text) != unit.text_sha256 {
-                        return Err(failed("lexical seal: Unit text differs from its digest"));
-                    }
-                    entries.push(UnitSealEntry {
-                        unit_id: unit.unit_id,
-                        hash: unit_doc_hash(unit)
-                            .map_err(|_| failed("lexical seal: Unit encoding"))?,
-                    });
-                }
-                let entries = std::sync::Arc::new(entries);
-                let mut cache = seal_entry_cache()
-                    .lock()
-                    .map_err(|_| failed("lexical seal: cache"))?;
-                if cache.len() >= CACHED_SEAL_SEGMENTS {
-                    cache.clear();
-                }
-                cache.insert(digest, entries.clone());
-                entries
-            }
-        };
-        expected.extend_from_slice(&entries);
+        segments.push((digest, entry.unit_count()));
+        expected.extend_from_slice(&entry_seal(entry, digest)?);
     }
     Ok((segments, expected))
+}
+
+/// One item's seal entries: its stored segment's, the ones this process
+/// sealed before for the same segment, or each Unit hashed here.
+fn entry_seal(
+    entry: &BodyItemEntry,
+    digest: [u8; 32],
+) -> Result<std::sync::Arc<Vec<UnitSealEntry>>, SearchError> {
+    if let Some(stored) = &entry.stored {
+        return Ok(stored.seal.clone());
+    }
+    let cached = seal_entry_cache()
+        .lock()
+        .map_err(|_| failed("lexical seal: cache"))?
+        .get(&digest)
+        .cloned();
+    if let Some(entries) = cached.filter(|entries| entries.len() == entry.units.len()) {
+        return Ok(entries);
+    }
+    let mut entries = Vec::with_capacity(entry.units.len());
+    for unit in &entry.units {
+        if text_sha256(&unit.text) != unit.text_sha256 {
+            return Err(failed("lexical seal: Unit text differs from its digest"));
+        }
+        entries.push(UnitSealEntry {
+            unit_id: unit.unit_id,
+            hash: unit_doc_hash(unit).map_err(|_| failed("lexical seal: Unit encoding"))?,
+        });
+    }
+    let entries = std::sync::Arc::new(entries);
+    let mut cache = seal_entry_cache()
+        .lock()
+        .map_err(|_| failed("lexical seal: cache"))?;
+    if cache.len() >= CACHED_SEAL_SEGMENTS {
+        cache.clear();
+    }
+    cache.insert(digest, entries.clone());
+    Ok(entries)
+}
+
+/// `manifest` with every item standing for its Units by its stored segment:
+/// what the process that verified and published it keeps for its next build.
+pub fn stored_unit_manifest(manifest: BodyUnitManifest) -> Result<BodyUnitManifest, SearchError> {
+    let entries = manifest
+        .entries
+        .into_iter()
+        .map(|mut entry| {
+            if entry.stored.is_none() {
+                let digest =
+                    segment_digest(&entry).map_err(|_| failed("stored Units: segment digest"))?;
+                let seal = entry_seal(&entry, digest)?;
+                entry.stored = Some(StoredUnits {
+                    digest,
+                    count: entry.units.len() as u64,
+                    seal,
+                });
+                entry.units = Vec::new();
+            }
+            Ok(entry)
+        })
+        .collect::<Result<_, SearchError>>()?;
+    Ok(BodyUnitManifest {
+        key: manifest.key,
+        source_snapshot: manifest.source_snapshot,
+        entries,
+    })
 }
 
 /// [`seal_lexical_entries`] from the manifest's Unit entries (each Unit's ID
@@ -392,6 +428,9 @@ pub fn seal_lexical(
     manifest: &BodyUnitManifest,
     documents: &[IndexedUnitDoc],
 ) -> Result<(), SearchError> {
+    if manifest.entries.iter().any(|entry| entry.stored.is_some()) {
+        return Err(failed("lexical seal needs every Unit"));
+    }
     let mut units: BTreeMap<UnitId, &KnowledgeUnit> = BTreeMap::new();
     for unit in manifest.entries.iter().flat_map(|entry| &entry.units) {
         if units.insert(unit.unit_id, unit).is_some() {
@@ -554,6 +593,7 @@ mod tests {
                 operation: ItemOperationState::Completed,
                 coverage: Some(BodyCoverage::Supported),
                 units,
+                stored: None,
             }],
         }
     }
@@ -589,6 +629,32 @@ mod tests {
 
     const PROJECTION: &str =
         "sha256:0202020202020202020202020202020202020202020202020202020202020202";
+
+    #[test]
+    fn stored_units_keep_every_receipt_and_seal_entry() {
+        let held = manifest(vec![unit(0, "東京"), unit(1, "同文。")]);
+        let stored = stored_unit_manifest(held.clone()).unwrap();
+        let entry = &stored.entries[0];
+        assert!(entry.units.is_empty());
+        assert_eq!(entry.unit_count(), 2);
+        assert_eq!(
+            crate::unit_manifest_receipt(&stored).unwrap(),
+            crate::unit_manifest_receipt(&held).unwrap()
+        );
+        assert_eq!(
+            derive_coverage(&stored).unwrap(),
+            derive_coverage(&held).unwrap()
+        );
+        assert_eq!(
+            unit_seal_entries(&stored).unwrap(),
+            unit_seal_entries(&held).unwrap()
+        );
+        // Nothing that needs the Units themselves accepts a stored item.
+        assert!(crate::encode_segment(entry).is_err());
+        assert!(seal_lexical(&stored, &[]).is_err());
+        assert!(!search_tantivy::UnitSource::complete(&stored));
+        assert!(search_tantivy::UnitSource::complete(&held));
+    }
 
     #[test]
     fn lexical_seal_requires_a_bijection_with_matching_text() {

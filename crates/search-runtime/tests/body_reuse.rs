@@ -50,9 +50,39 @@ async fn unchanged_items_are_not_extracted_again() {
     );
     assert_eq!(body.extractor().calls(), 2 * per_item);
 
+    // Tokyo stood for its Units by its stored segment: the new generation
+    // binds that segment, which still holds Tokyo's text.
+    let current_payloads = || async {
+        sqlx::query_scalar::<_, String>(
+            "SELECT u.payload FROM search_source_coordination c \
+             JOIN search_generation_segment g \
+               ON g.source_id = c.source_id AND g.generation_id = c.current_generation_id \
+             JOIN search_unit_segment u ON u.segment_digest = g.segment_digest \
+             WHERE c.source_id = $1 ORDER BY g.ordinal",
+        )
+        .bind(durable.source_id.as_uuid())
+        .fetch_all(&durable.pool)
+        .await
+        .unwrap()
+    };
+    let payloads = current_payloads().await;
+    assert_eq!(payloads.len(), 2);
+    assert!(payloads.iter().any(|payload| payload.contains("東京")));
+    assert!(payloads.iter().any(|payload| payload.contains("大阪")));
+
+    // A third Document: both earlier items stand by their stored segments.
+    let nagoya = publish(&durable.pool, &durable.storage, "名古屋 規程 本文").await;
+    let third = indexer
+        .handle(discovery_support::event("DocumentVersionPublished", nagoya))
+        .await
+        .unwrap();
+    assert!(matches!(third, IndexingOutcome::Published(_)), "{third:?}");
+    assert_eq!(body.extractor().calls(), 3 * per_item);
+    assert_eq!(current_payloads().await.len(), 3);
+
     // Nothing changed: the bundle is unchanged and nothing is read.
     let again = indexer
-        .handle(discovery_support::event("DocumentVersionPublished", osaka))
+        .handle(discovery_support::event("DocumentVersionPublished", nagoya))
         .await
         .unwrap();
     assert!(
@@ -62,9 +92,9 @@ async fn unchanged_items_are_not_extracted_again() {
         ),
         "{again:?}"
     );
-    assert_eq!(body.extractor().calls(), 2 * per_item);
+    assert_eq!(body.extractor().calls(), 3 * per_item);
 
-    // The manual rebuild reads both items again.
+    // The manual rebuild reads every item again.
     let rebuilt = indexer.rebuild().await.unwrap();
     assert!(
         matches!(
@@ -73,5 +103,5 @@ async fn unchanged_items_are_not_extracted_again() {
         ),
         "{rebuilt:?}"
     );
-    assert_eq!(body.extractor().calls(), 4 * per_item);
+    assert_eq!(body.extractor().calls(), 6 * per_item);
 }

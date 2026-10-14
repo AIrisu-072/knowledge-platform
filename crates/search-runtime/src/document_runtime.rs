@@ -48,7 +48,7 @@ use search_projection_memory::generation_digest;
 use search_source_document::{
     ArtifactReceipt, BodyCoverageArtifact, BodyUnitManifest, DocumentIndexRuntime,
     DocumentOutboxSnapshot, GenerationBundleReceipt, compute_bundle_receipt,
-    document_graph_records, graph_receipt, graph_relations,
+    document_graph_records, graph_receipt, graph_relations, stored_unit_manifest,
 };
 use search_tantivy::{LexicalBuildInput, LexicalIndexError, TantivyLexicalIndex};
 use sqlx::PgPool;
@@ -136,9 +136,9 @@ pub struct PgDocumentIndexRuntime {
     pending: Mutex<BTreeMap<ProjectionGenerationKey, Pending>>,
     /// Set after an incremental target failed: the next build is full.
     next_full: AtomicBool,
-    /// The Unit manifest of the last generation this process published. The
-    /// next build of the same current generation takes its entries instead
-    /// of restoring every segment (T12).
+    /// The Unit manifest of the last generation this process published, each
+    /// item by its stored segment. The next build of the same current
+    /// generation takes its entries instead of restoring every segment (T12).
     published_units: std::sync::Mutex<Option<BodyUnitManifest>>,
 }
 
@@ -162,14 +162,16 @@ impl PgDocumentIndexRuntime {
         }
     }
 
-    /// `key` was published: its pending build ends and its Units are kept.
+    /// `key` was published: its pending build ends and each item's stored
+    /// segment is kept in place of its Units.
     fn published(&self, key: ProjectionGenerationKey) {
         let built = self
             .pending
             .lock()
             .ok()
             .and_then(|mut pending| pending.remove(&key))
-            .and_then(|pending| pending.built_units);
+            .and_then(|pending| pending.built_units)
+            .and_then(|units| stored_unit_manifest(units).ok());
         if let (Some(units), Ok(mut published)) = (built, self.published_units.lock()) {
             *published = Some(units);
         }

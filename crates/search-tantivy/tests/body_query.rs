@@ -21,7 +21,10 @@ use search_core::projection::{ProjectionGenerationKey, ProjectionGenerationManif
 use search_core::resource::ResourceKind;
 use search_core::source::{DiscoverableSource, DiscoveryMode, EnumerationSemantics, RetentionMode};
 use search_core::temporal::TemporalEvaluationContext;
-use search_tantivy::{LexicalBuildInput, LexicalDocument, TantivyLexicalIndex};
+use search_tantivy::{
+    LexicalBuildInput, LexicalDocument, LexicalIndexError, TantivyLexicalIndex, UnitSealEntry,
+    UnitSource, unit_doc_hash,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -600,5 +603,121 @@ async fn unit_index_from_a_base_generation_has_exactly_the_new_units() {
     assert_eq!(found("増えた行").await, 1);
     assert_eq!(found("消える行").await, 0);
     assert_eq!(found("旧い行").await, 0);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Holds only the changed Units and every Unit's seal entry.
+struct HeldInPart {
+    held: Vec<KnowledgeUnit>,
+    every: Vec<UnitSealEntry>,
+}
+
+impl UnitSource for HeldInPart {
+    fn units(&self) -> Vec<&KnowledgeUnit> {
+        self.held.iter().collect()
+    }
+
+    fn seal_entries(&self) -> Option<Vec<UnitSealEntry>> {
+        Some(self.every.clone())
+    }
+
+    fn complete(&self) -> bool {
+        false
+    }
+}
+
+/// Units held only in part build from a base Unit index that has every other
+/// Unit, and fail without one or when the base lacks a Unit not held.
+#[test]
+fn units_held_in_part_build_only_from_a_base_with_every_other_unit() {
+    let seal = |units: &[&KnowledgeUnit]| -> Vec<UnitSealEntry> {
+        units
+            .iter()
+            .map(|unit| UnitSealEntry {
+                unit_id: unit.unit_id,
+                hash: unit_doc_hash(unit).unwrap(),
+            })
+            .collect()
+    };
+    let documents = || vec![card(11, "会議室"), card(13, "新しい文書")];
+    let build = |dir: &std::path::Path, units: HeldInPart, base: Option<&std::path::Path>| {
+        let mut input =
+            LexicalBuildInput::new(source_id(), "snapshot-body", "schema-1", 1, documents())
+                .with_body_unit_source(std::sync::Arc::new(units));
+        if let Some(base) = base {
+            input = input.with_base_units_dir(base.join("units"));
+        }
+        TantivyLexicalIndex::new().build_generation_at(manifest(), &source(), input, dir)
+    };
+
+    let root = std::env::temp_dir().join(format!("kp-unit-part-{}", Uuid::new_v4()));
+    let first = root.join("first");
+    let kept = unit(11, "primary", 0, "会議室は前日までに申請する。");
+    let input = LexicalBuildInput::new(
+        source_id(),
+        "snapshot-body",
+        "schema-1",
+        1,
+        vec![card(11, "会議室"), card(12, "旧い文書")],
+    )
+    .with_body_units(vec![
+        kept.clone(),
+        unit(11, "primary", 1, "旧い行"),
+        unit(12, "primary", 0, "消える行"),
+    ]);
+    TantivyLexicalIndex::new()
+        .build_generation_at(manifest(), &source(), input, &first)
+        .unwrap();
+
+    let changed = unit(11, "primary", 1, "新しい行");
+    let added = unit(13, "primary", 0, "増えた行");
+    let every = seal(&[&kept, &changed, &added]);
+    build(
+        &root.join("second"),
+        HeldInPart {
+            held: vec![changed.clone(), added.clone()],
+            every: every.clone(),
+        },
+        Some(&first),
+    )
+    .unwrap();
+    let reopened = TantivyLexicalIndex::new();
+    reopened
+        .load_generation_at(&manifest(), &source(), &root.join("second"))
+        .unwrap();
+    let mut texts: Vec<String> = reopened
+        .enumerate_unit_docs(key())
+        .unwrap()
+        .into_iter()
+        .map(|doc| doc.text)
+        .collect();
+    texts.sort();
+    assert_eq!(
+        texts,
+        ["会議室は前日までに申請する。", "増えた行", "新しい行"]
+    );
+
+    let without_base = build(
+        &root.join("third"),
+        HeldInPart {
+            held: vec![changed.clone(), added.clone()],
+            every: every.clone(),
+        },
+        None,
+    );
+    assert!(matches!(
+        without_base,
+        Err(LexicalIndexError::IncompleteUnits)
+    ));
+    // The base lacks the added Unit and this build does not hold it.
+    let lacking = build(
+        &root.join("fourth"),
+        HeldInPart {
+            held: vec![changed],
+            every,
+        },
+        Some(&first),
+    );
+    assert!(matches!(lacking, Err(LexicalIndexError::IncompleteUnits)));
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -106,5 +106,6 @@ pub fn entry(source: SourceId, lines: &[&str]) -> BodyItemEntry {
         operation: ItemOperationState::Completed,
         coverage: Some(BodyCoverage::Supported),
         units,
+        stored: None,
     }
 }

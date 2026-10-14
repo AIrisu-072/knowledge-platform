@@ -315,6 +315,7 @@ pub(crate) fn build_unit_index_at(
 pub(crate) fn build_unit_index_from_base(
     units: &[&KnowledgeUnit],
     entries: Option<Arc<Vec<UnitSealEntry>>>,
+    complete: bool,
     base: &Path,
     dir: &Path,
     tokenizer: &str,
@@ -325,6 +326,47 @@ pub(crate) fn build_unit_index_from_base(
     let Ok(previous_units) = unit_entries(&previous) else {
         return Ok(None);
     };
+    let before: HashMap<UnitId, [u8; 32]> = previous_units
+        .iter()
+        .map(|entry| (entry.unit_id, entry.hash))
+        .collect();
+    // The entries the Unit source keeps, else every Unit hashed here. A
+    // source holding only some Units keeps every entry.
+    let after: HashMap<UnitId, [u8; 32]> = match entries {
+        Some(entries) if !complete || entries.len() == units.len() => {
+            let after: HashMap<_, _> = entries
+                .iter()
+                .map(|entry| (entry.unit_id, entry.hash))
+                .collect();
+            if after.len() != entries.len() {
+                return Err(LexicalIndexError::DuplicateUnit);
+            }
+            after
+        }
+        _ if !complete => return Err(LexicalIndexError::IncompleteUnits),
+        _ => {
+            let after: HashMap<_, _> = units
+                .iter()
+                .map(|unit| Ok((unit.unit_id, unit_doc_hash(unit)?)))
+                .collect::<Result<_, LexicalIndexError>>()?;
+            if after.len() != units.len() {
+                return Err(LexicalIndexError::DuplicateUnit);
+            }
+            after
+        }
+    };
+    // Every Unit the base lacks or holds with another document must be one
+    // this build holds; otherwise this base cannot serve.
+    if !complete {
+        let held: std::collections::HashSet<UnitId> =
+            units.iter().map(|unit| unit.unit_id).collect();
+        if after
+            .iter()
+            .any(|(unit_id, hash)| before.get(unit_id) != Some(hash) && !held.contains(unit_id))
+        {
+            return Ok(None);
+        }
+    }
     std::fs::create_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
     let linked = (|| -> std::io::Result<()> {
         for entry in std::fs::read_dir(base)? {
@@ -347,24 +389,6 @@ pub(crate) fn build_unit_index_from_base(
         std::fs::remove_dir_all(dir).map_err(|_| LexicalIndexError::Io)?;
         return Ok(None);
     };
-    let before: HashMap<UnitId, [u8; 32]> = previous_units
-        .iter()
-        .map(|entry| (entry.unit_id, entry.hash))
-        .collect();
-    // The entries the Unit source keeps, else every Unit hashed here.
-    let after: HashMap<UnitId, [u8; 32]> = match entries {
-        Some(entries) if entries.len() == units.len() => entries
-            .iter()
-            .map(|entry| (entry.unit_id, entry.hash))
-            .collect(),
-        _ => units
-            .iter()
-            .map(|unit| Ok((unit.unit_id, unit_doc_hash(unit)?)))
-            .collect::<Result<_, LexicalIndexError>>()?,
-    };
-    if after.len() != units.len() {
-        return Err(LexicalIndexError::DuplicateUnit);
-    }
     let mut writer: tantivy::IndexWriter = index.index.writer(15_000_000)?;
     writer.set_merge_policy(Box::new(NoMergePolicy));
     for (unit_id, hash) in &before {
@@ -565,6 +589,7 @@ pub fn lexical_input_digest(
     let units = input.body_units();
     let entries = match input.body_seal_entries() {
         Some(entries) => entries,
+        None if !input.body_units_complete() => return Err(LexicalIndexError::IncompleteUnits),
         None => Arc::new(
             units
                 .as_deref()
