@@ -62,7 +62,7 @@ impl QualificationReport {
     pub fn verify_evidence(&self) -> Result<(), Box<dyn Error>> {
         if self.fixture_set != "search-discovery-synthetic-v0"
             || self.fixture_sha256.len() != 6
-            || self.candidate_versions.len() != 8
+            || self.candidate_versions.len() != 7
             || self.lexical_metrics.len() != 2
             || self.graph_correctness_metrics.len() != 1
             || self.graph_traversal_measurements.len() != 5
@@ -136,7 +136,6 @@ impl QualificationReport {
             .collect::<Vec<_>>()
             != [
                 "lindera",
-                "lindera-analysis",
                 "lindera-ipadic",
                 "lru",
                 "postgres",
