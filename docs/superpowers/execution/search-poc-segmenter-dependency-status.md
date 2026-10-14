@@ -15,3 +15,5 @@ PR123 CI38494330119は12成功/security+required-check失敗。mainとPR123のSe
 追記: Mac固定Rustで旧mainから基準59入力/257tokenと両13ケースを取得。RED→GREENで実装し、token/offset/ID/品質bits/indexbytes完全一致、旧新各10評価の安定値一致、新measure-lexical実測・lexical timings更新。cargo-deny/原本root再帰OSV成功（既存除外維持、追加なし）、verify/fmt成功。全PoCは27pass/1Docker環境fail。UbuntuSSHは接続timeout、実DB試験未実施がblocker。[証拠と測定](search-poc-segmenter-measurement-20261014.md)。次は独立レビュー・最終保存・単一Draft公開と全CI。実DB未資格を合格にしない。
 
 この保守の全CI成功後Ready/期待head指定main統合/postCIを確認。そのmainをPR123へ安全に取り込み、組合せ再レビュー・必要試験・新head全CI/postCIまで確認。長pipeline起動前に親へ統合結果を返し、未承認デモとの同ホスト時間調整をする。時間予測128.9分>120分未達と予算/分類を保持。デモ起動は未承認・未実施。
+
+2026-10-14 02:08 UTC追記: 既存標準Docker daemonが利用可能になった読み取り証拠を確認し、保存head32a91f72の全PoC28成功/0失敗/0skipを実施。所有testcontainersのPostgreSQL18.6だけを使用し、daemon/serviceを起動・設定変更していない。初回の27pass/1環境failは履歴として保持。実DBblockはMacで解消し、UbuntuSSHtimeoutは残る。Draft PR124、最初headCI38498843937のsecurityは成功。正確な最終head全CI・Ready/main統合/postCIはこれから。

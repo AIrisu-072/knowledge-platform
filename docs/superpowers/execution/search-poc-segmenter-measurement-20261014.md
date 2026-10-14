@@ -29,6 +29,6 @@ JSON小数の読取りで1ULP変化する境界は、許容誤差を追加せず
 
 候補7件と新helper不在のRED確認後に実装。新golden/harness9件成功、verify成功、cargo fmt/diff成功。PoC cargo-deny0.20.2はadvisories/bans/licenses/sources成功、root OSV2.5.1の原本再帰scanはexit0/No issues found（既存5除外を保持、追加なし）。
 
-全PoC試験は27成功・1失敗。失敗は `postgres_incidence_matches_reference_paths_and_reports_feasibility` のDocker socket不在で、試験DB作成前。旧新の互換差ではない。Ubuntuへの既存SSHも接続timeoutで実DB確認は未実施。Docker/既存serviceを勝手に起動せず、未成功を隠さない。実DB環境で同じ最終sourceを確認する必要がある。独立レビュー・正確head全CI・main統合はこれから。
+最初の全PoC試験は27成功・1失敗。失敗は `postgres_incidence_matches_reference_paths_and_reports_feasibility` のDocker socket不在で、試験DB作成前。旧新の互換差ではない。その後、既存の標準Docker daemonが利用可能になったことを読み取り確認し、同じ保存sourceで全試験28成功・0失敗を確認した。新serviceを起動したり設定を変更したりせず、testcontainers所有のPostgreSQL18.6だけを使用した。初回の失敗記録は保持する。Ubuntuへの既存SSHはtimeoutのままであり、この結果はMac上の実DB試験であってUbuntu資格ではない。正確head全CI・main統合はこれから。
 
 時間予測PR123の128.9分>120分未達は維持する。新長pipeline・デモの起動は行っていない。
