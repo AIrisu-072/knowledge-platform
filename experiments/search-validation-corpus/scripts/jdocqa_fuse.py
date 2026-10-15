@@ -16,6 +16,7 @@ Strategies scored on the test questions once, after choosing on validation:
   concat        the runtime's PriorityConcat: gated list, then dense hits
   rrf_k60       RRF of lexical and dense, equal weight, k 60
   rrf_tuned     weighted RRF, (w, k) chosen on validation by MRR then r@10
+  gated_rrf     the gated list first, then rrf_tuned for the remaining places
 
 The runtime ranks Units (lines), not pages; this ranks whole pages.
 
@@ -160,6 +161,8 @@ def main():
         "concat": evaluate(pages, test, [concat(a, b) for a, b in zip(gated["test"], dense["test"])]),
         "rrf_k60": evaluate(pages, test, [rrf(a, b, 0.5, 60) for a, b in zip(lex["test"], dense["test"])]),
         "rrf_tuned": evaluate(pages, test, [rrf(a, b, best["w"], best["k"]) for a, b in zip(lex["test"], dense["test"])]),
+        "gated_rrf": evaluate(pages, test, [concat(g, rrf(a, b, best["w"], best["k"]))
+                                            for g, a, b in zip(gated["test"], lex["test"], dense["test"])]),
     }
     record = {"dense": args.dense, "label": args.label, "validation_questions": len(val),
               "test_questions": len(test), "chosen": best, "grid": grid, "test": test_scores,
@@ -174,6 +177,8 @@ def main():
             "concat": [concat(a, b) for a, b in zip(gated["test"], dense["test"])],
             "rrf_k60": [rrf(a, b, 0.5, 60) for a, b in zip(lex["test"], dense["test"])],
             "rrf_tuned": [rrf(a, b, best["w"], best["k"]) for a, b in zip(lex["test"], dense["test"])],
+            "gated_rrf": [concat(g, rrf(a, b, best["w"], best["k"]))
+                          for g, a, b in zip(gated["test"], lex["test"], dense["test"])],
         }
         with open(args.dump, "a") as out:
             for n, q in enumerate(test):
@@ -187,4 +192,5 @@ def main():
                       "test": {k: v["ALL"] for k, v in test_scores.items()}}, ensure_ascii=False), flush=True)
 
 
-main()
+if __name__ == "__main__":
+    main()

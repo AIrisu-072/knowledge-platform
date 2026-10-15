@@ -60,6 +60,10 @@ for label in rows:
     compare(f"{label}: rrf_tuned - concat(現行)", label, "rrf_tuned", label, "concat")
     compare(f"{label}: concat(現行) - lexical", label, "concat", label, "lexical")
     compare(f"{label}: rrf_tuned - rrf_k60", label, "rrf_tuned", label, "rrf_k60")
+    if "gated_rrf" in next(iter(rows[label].values())):
+        compare(f"{label}: gated_rrf - rrf_tuned", label, "gated_rrf", label, "rrf_tuned")
+        compare(f"{label}: gated_rrf - concat(現行)", label, "gated_rrf", label, "concat")
+        compare(f"{label}: gated_rrf - lexical", label, "gated_rrf", label, "lexical")
 compare("rrf_tuned: eg2-base - ruri", "eg2-base", "rrf_tuned", "ruri-v3-310m", "rrf_tuned")
 compare("rrf_tuned: merge-l050 - eg2-base", "merge-Aft-l050", "rrf_tuned", "eg2-base", "rrf_tuned")
 compare("dense: merge-l050 - eg2-base", "merge-Aft-l050", "dense", "eg2-base", "dense")

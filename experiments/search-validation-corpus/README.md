@@ -63,6 +63,10 @@ python3 scripts/jdocqa_eval.py --data <annotation_files> --config bigram-bm25 --
 python3 scripts/jdocqa_fuse.py --data <annotation_files> --dense ruri-v3-310m --label ruri-v3-310m \
   --out jdocqa-fuse.jsonl --dump jdocqa-perq.jsonl
 python3 scripts/jdocqa_paired.py jdocqa-perq.jsonl
+#    検証コーパスで同じ比較（重みはJDocQAで選んだ値を渡す。--title で文書名を付けて埋め込む）
+EG2_MODEL=google/embeddinggemma-2 python3 scripts/corpus_fuse.py --data <embed_compareと同じdata> \
+  --dense eg2-768-none --label eg2-base --w 0.6 --k 1 --out corpus-fuse.jsonl --dump corpus-perq.jsonl
+python3 scripts/corpus_paired.py corpus-perq.jsonl
 ```
 
 ## 出典と帰属
