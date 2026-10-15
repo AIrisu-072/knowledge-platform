@@ -1,5 +1,14 @@
 # 最初の画面と主ナビゲーション（案A）：実行状況
 
+## 2026-10-15 — PR112のmain統合を確認
+
+- head `00cc744085e57ceddfe69c45e33609cdcb5ff748` の通常CI `38770158108`・DSI `38770158296`・Sandbox `38770158096` はすべてSUCCESS。PR112はmain `7f8edd211a4d1168af546c3b8e35c9e440de693a` へ統合済みとGitHubで確認した。公開・統合準備という以下の節は過去の記録。
+- 前提PR128はmain `29026cc7`、PR123はmain `71d757b0` に統合済み。PR128のhead CI `38762449749` とmain CI `38765965535`、PR123のhead CI `38766162617` とmain CI `38769861407` はSUCCESS。
+- PR112の統合後の最新結果は[main CI run 38773621821](https://github.com/AIrisu-072/knowledge-platform/actions/runs/38773621821)を参照する。公開時に観測した状態をこのheadの成功資格として先取りしない。次は親がこのrunの終端結果と、文書整理PR116の最終headの資格を確認する。
+- 本番認証・実LLM・全サービス監査接続の完了を示さない。1万件runの成功とUbuntu10万件未資格は別であり、デモ・新しい長時間runは開始していない。
+
+以下の作業履歴を保持する。
+
 再開先：[計画](../plans/2026-10-08-work-landing-navigation.md)。branch `claude/upbeat-tesla-qcu94x`（main `6a34de3` から作成）。
 
 ## 2026-10-15 — PR123統合後mainへの最終追従境界

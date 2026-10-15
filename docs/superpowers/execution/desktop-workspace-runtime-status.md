@@ -1,5 +1,11 @@
 # Desktop Workspace Runtime：実行状況
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR103はmain `8d4b94a912f9ac2e8079fc1c13b4efa4ce6d7538` に統合済み。以下のpush・Draft解除・統合待ちは当時の記録。現行資格は[判断書](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)、旧PR50〜53の扱いは[履歴索引](../../research/organization-tauri-legacy-pr-index.md)を参照する。Windows実機・本番配備・実認証/TLSの完了を示さない。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 ## 2026-10-08 08:40 UTC — 統合と、その後の対応
 
 - [PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103) はexact-head CIの全job成功の後、main `8d4b94a` へ統合した（squash）。統合直後のmain CIは、Document runtimeの既存の試験（`metadata-editor.spec.ts`、PR #106由来）の一時的な失敗で1回失敗した。再実行の権限が無かったため、依頼者へ再実行を依頼。その後のmain（PR #108統合後の `6a34de3`）のCIは全job成功し、#103の変更を含むmainが通ることを確認した。

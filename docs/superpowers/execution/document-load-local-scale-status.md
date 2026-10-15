@@ -1,5 +1,15 @@
 # Document local 10万件検証の状況
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR119（local段階検証）はmain `e15be9c3`、PR120（focus）は `818e8b07`、PR121（ext4/PG18）は `408b68d4`、PR122（メモリ）は `373941fb` に統合済み。Draft保存・統合待ちという以下の記録は過去の状態。
+
+[実1万件run 37887357388](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37887357388) はhead `d996f8012ef7ebe57e5fc47b49bd85d26d02441a`、qualify jobとrunがSUCCESS。small→1,000→10,000の3段階が成功した。大量段階の原本・履歴・再起動snapshotの詳細照合は各段階3件の標本で、繰り返した公式PDFによる合成負荷である。全原本の品質・全件hash照合・製品SLO・本番資格を示さない。
+
+専用Ubuntuは別の実行場所・証拠であり、10万件の成功は未確認。workspaceのメモリ検証記録では旧runは1万件成功・10万件NOT_ADMITTED/0件で終了し、後続のmain `373941fb` fresh runも開始記録だけで合格を示さない。時間予測修正の短期資格は別head `777e4604` の記録であり、このmainの資格へ付け替えない。現在の長時間runの状態・最終receipt・exit・cleanupは再確認してから判断する。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 Status: ACTIVE / local実装・独立レビュー完了、正確headのCI準備中
 
 - branch: `test/document-load-hundred-thousand-20261009`

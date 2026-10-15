@@ -1,5 +1,13 @@
 # text/PDF 原本ビューアの実行状況
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR111はmain `2ac401fb83ad3324f41b3ecd2bc47fc61a272578` に統合済み。GitHubのMERGED状態と、このcommitが照合mainの祖先であることを確認した。以下のhosted CI・main統合未実施という記録は、各節の日付時点の履歴である。PR110は公式PDF・段階負荷検証の別PRであり、viewerの統合PRとは区別する。
+
+現在の機能範囲はtext/PDFの限定表示と既存の認可付き原本取得である。全PDFの完全描画・読了証明・本番配備・本番identity/directoryの資格を示さない。既知の描画制約は[操作手順](../../operations/document-original-viewer.md)を参照。新しいmainの組合せに過去headのCI結果を付け替えず、後続変更の資格はその正確なheadで確認する。
+
+以下の歴史本文を保持する。
+
 2026-10-08 UTC。承認済みtext+PDF方針、既読はdetail正常表示trigger維持。branch `feat/document-viewer-20261008`、基点6440e026からPR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82`へfast-forward。両commitのtree差分は空。directoryはクラウド親所有、原本追加・一括登録は別worktree所有。upload/API schema/Directory/実アカウント設定は変更していない。
 
 計画: [原本ビューア](../plans/2026-10-08-document-original-viewer.md)。依存判断: [PDF依存と実行境界](../../decisions/2026-10-08-document-original-viewer-dependency.md)。操作: [原本を画面で確認する](../../operations/document-original-viewer.md)。設計追補のPROPOSEDから、ユーザーが2026-10-08 06:23:37 UTCに親へ承認したtext+PDF部分を実装する。新directory設計はこの承認へ混ぜない。

@@ -1,5 +1,16 @@
 # Active Execution Pointer
 
+
+## 2026-10-15 — 現在状態の再開入口
+
+- main `7f8edd211a4d1168af546c3b8e35c9e440de693a` とGitHubの現在状態を照合。PR103・108・109・112・115・117〜123・128は統合済み。以下の各日付の未統合・CI進行中・未実行の節は履歴として保持し、現在状態は各状況文書の2026-10-15追補を先に読む。
+- [1万件](document-load-ten-thousand-status.md)：run `37887357388` は正確head `d996f801` でSUCCESS。[Ubuntuの10万件](document-load-local-scale-status.md)は別の実行・資格であり、成功未確認。旧runのadmissionや標本確認を本番資格へ広げない。
+- [時間予測](document-load-phase-time-status.md)：PR123のhead `6b58bd06` CI `38766162617` はSUCCESS、main `71d757b0` に統合済み。統合後CI `38769861407` もSUCCESS。PR128の統合後CI `38765965535` はSUCCESS。1,000件予測128.93分 > 上限120分の未達は維持し、デモ・新長時間runは未開始。新規実負荷は親の調整後の別工程。
+- [最初の画面・主ナビゲーション](work-landing-navigation-status.md)：PR112はhead `00cc7440` のCI `38770158108`・DSI `38770158296`・Sandbox `38770158096` がSUCCESS後、main `7f8edd21` へ統合済み。統合後の最新結果は[main CI](https://github.com/AIrisu-072/knowledge-platform/actions/runs/38773621821)を読む。検索PR85・86・99・127はこの文書整理の実装・統合対象外。
+- [Audit](audit-infrastructure-v1-status.md)は単位A〜Cが統合済み。Documentの実producerからStoreへの受入範囲であり、Search・Organization等の全サービスの監査接続完了ではない。本番認証・実LLM接続・本番配備の完了も示さない。
+- 予約公開の実行時主体解決は `crates/document-publication-scheduler/src/identity.rs` の `StaticRequesterResolver` によりruntime mode `poc`、provider `poc` の `poc-human` / `poc-agent` に限定される。任意の本番主体を解決するadapterが完成したとは扱わない。
+- 次はPR116の最新main追従・正確headレビュー/必須CI・統合後CIと、各trackの未確認証拠の確認。旧PR50〜53の整理条件は[履歴索引](../../research/organization-tauri-legacy-pr-index.md)を参照。
+
 ## 2026-10-08 — 最初の画面と主ナビゲーション（案A。Runtime担当）
 
 - 再開先は[状況](work-landing-navigation-status.md)と[計画](../plans/2026-10-08-work-landing-navigation.md)。branch `claude/upbeat-tesla-qcu94x`（main `6a34de3` から作成）、Draft [PR #112](https://github.com/AIrisu-072/knowledge-platform/pull/112)。下の文書管理残タスクのPointerは変更していない。
@@ -51,9 +62,14 @@
 
 ## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
-- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
-- 単位A（PR #98、main `643cc85`）と単位B（Store・relay、PR #113、main `dba8168`）はmain統合済み（`dba8168` のmain CIは、Organization受入の既知の断続的な503でFAILURE。単位Bの起因ではなく、`dba8168` を含むPR #115のhead `660670d` では同じ手順がSUCCESS。詳細は状況文書）。単位C（`crates/audit-acceptance` の受入試験、[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)、設計§2.2の最終capability matrix）はDraft [PR #115](https://github.com/AIrisu-072/knowledge-platform/pull/115)（branch `claude/cool-darwin-7xh893`）。最初のexact-head CI（`660670d`、run 37761824323）はrust-testだけがFAILUREで、原因はGitHub runnerでtestcontainersのimage取得がstreamの途中で切れたこと（「bytes remaining on stream」、試験本体の前。他の31試験はPASS）。`b233652` でPullImageの失敗だけを最大3回再試行する。独立確認reviewはGOで、Minor 4件は `facb755`・`591006a`・`df1bd19` と状況文書の更新で閉じた。
-- 次は `audit-unit-c` のHEADを `claude/cool-darwin-7xh893` へpush（PR #115のhead `660670d` からのfast-forward）、exact-head CI、main統合、main CI。現在状態は状況文書の先頭とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+- Status：**単位A〜Cをmainへ統合済み（track完了）**。単位Aは `643cc85`、単位Bは `dba8168`、単位Cは `712af6d`。`712af6d` のmain CI（run 37767198886）はSUCCESS。
+- 再開先：
+  - [状況](audit-infrastructure-v1-status.md)の先頭（完了の記録、判断待ち、引継ぎ）
+  - [設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4。§2.2は最終capability matrix）
+  - [計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)
+  - [運用手順](../../operations/audit-delivery-store.md)
+  - [引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)
+- 次：Audit trackとして進める実装は無い。依頼者の判断待ち4件と、他担当への引継ぎ（Document D4〜D6、Organization O1〜O12、Search）への応答を待つ。Documentが新しい監査typeを追加するときは、引継ぎD4の手順に従う。下のDocument作業pointerはそのまま有効。
 
 ---
 
