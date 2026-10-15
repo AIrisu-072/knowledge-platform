@@ -336,7 +336,8 @@ impl LexicalArtifactStore {
             return Err(LexicalArtifactError::Seal);
         }
         self.seal_with(manifest, source, summary.receipt.digest, |persisted| {
-            seal_lexical_hashes(&summary.units, persisted).is_ok()
+            seal_lexical_hashes(summary.units.iter().flat_map(|item| item.iter()), persisted)
+                .is_ok()
         })
     }
 
@@ -567,7 +568,10 @@ impl LexicalArtifactStore {
             source,
             inspected,
             summary.receipt.digest,
-            |persisted| seal_lexical_hashes(&summary.units, persisted).is_ok(),
+            |persisted| {
+                seal_lexical_hashes(summary.units.iter().flat_map(|item| item.iter()), persisted)
+                    .is_ok()
+            },
         )?;
         self.matches_row(manifest, seal).await
     }

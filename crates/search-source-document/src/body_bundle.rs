@@ -344,13 +344,27 @@ fn entry_seal(
             hash: unit_doc_hash(unit).map_err(|_| failed("lexical seal: Unit encoding"))?,
         });
     }
-    let entries = std::sync::Arc::new(entries);
+    shared_seal_entries(digest, entries)
+}
+
+/// The seal entries of the segment `digest` as the process keeps them: the
+/// ones already kept when equal to `entries`, else `entries`, kept from now
+/// on. Every holder of a segment's entries then shares one allocation; at
+/// 10,000 documents a copy of every Unit's entries is 108 MB.
+pub fn shared_seal_entries(
+    digest: [u8; 32],
+    entries: Vec<UnitSealEntry>,
+) -> Result<std::sync::Arc<Vec<UnitSealEntry>>, SearchError> {
     let mut cache = seal_entry_cache()
         .lock()
         .map_err(|_| failed("lexical seal: cache"))?;
+    if let Some(kept) = cache.get(&digest).filter(|kept| ***kept == entries) {
+        return Ok(kept.clone());
+    }
     if cache.len() >= CACHED_SEAL_SEGMENTS {
         cache.clear();
     }
+    let entries = std::sync::Arc::new(entries);
     cache.insert(digest, entries.clone());
     Ok(entries)
 }
@@ -385,13 +399,13 @@ pub fn stored_unit_manifest(manifest: BodyUnitManifest) -> Result<BodyUnitManife
 
 /// [`seal_lexical_entries`] from the manifest's Unit entries (each Unit's ID
 /// and `unit_doc_hash`, every text already checked against its digest).
-pub fn seal_lexical_hashes(
-    units: &[UnitSealEntry],
+pub fn seal_lexical_hashes<'a>(
+    units: impl IntoIterator<Item = &'a UnitSealEntry>,
     documents: &[UnitSealEntry],
 ) -> Result<(), SearchError> {
     // Both sides sorted once and walked together: the same checks as a map,
     // without a tree node per Unit.
-    let mut expected: Vec<&UnitSealEntry> = units.iter().collect();
+    let mut expected: Vec<&UnitSealEntry> = units.into_iter().collect();
     expected.sort_unstable_by_key(|unit| unit.unit_id);
     if expected
         .windows(2)
