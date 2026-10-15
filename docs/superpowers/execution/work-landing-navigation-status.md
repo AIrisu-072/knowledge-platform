@@ -8,8 +8,19 @@
 - 判定要求だけに10秒の期限とAbortControllerを追加し、ヘッダー待ち・本文待ちのどちらも「分からない」として既存の10秒再確認へ進める。3秒のlanding、404判定、10秒以内に遅れて成功した結果の共有、通常タスク画面のsession読取契約は保持する。新しい製品機能や設計承認は追加しない。
 - 反例2件を先に追加し、修正前は両方 `Expected: error / Received: pending` で失敗。修正後は同じ文書画面のメニューが再確認で復帰し、期限後の旧応答が新しい結果を上書きしないことも確認した。
 - 作業先は専用detached worktree `knowledge-platform-work-nav`。push・mergeなし。検証結果と次のexact actionは本節の追記を参照。
-- 旧base `07f572be`＋補修の検証（固定Node 24.21.0）：関連3 suites59件とタスク・担当/委任2 suites104件成功。schemas check、画面・organization-runtime・desktop-bridgeの型検査、本番webpack build成功（既存3 warning）。全画面は75 suites1776件中1775成功、`document-move.test.tsx:175`「閉じた移動の遅いfocus復帰はreopen-idle後のfocusを上書きしない」1件失敗（366.553秒）。この失敗は保持し、mainの既存focus修正を含む組合せで別に再確認する。
+- 旧base `07f572be`＋補修の検証（固定Node 24.21.0）：関連3 suites59件とタスク・担当/委任2 suites104件成功。schemas check、画面・organization-runtime・desktop-bridgeの型検査、本番webpack build成功（既存3 warning）。全画面は75 suites1776件中1775成功、`document-move.test.tsx:175`「閉じた移動の遅いfocus復帰はreopen-idle後のfocusを上書きしない」1件失敗（366.553秒）。この失敗は保持し、mainとの組合せで別に再確認する。mainの一覧focus修正との関連を推測したが、別のダイアログ試験なのでその推測は撤回した。
 - 次のexact action：この補修をローカルcommitに保全 → 承認されたmain `ead6830e` を通常merge（双方activeとmain製品を保持）→ 組合せの画面試験/型検査 → 親へ引渡し。最終main追従・独立review・exact-head CI・push/merge判断は親が行う。旧baseの成功を組合せheadへ転用しない。
+
+### main追従と文書移動試験の切分け
+
+- 補修 `d59c2f2b`、main `ead6830e` の通常merge `7001f589`。競合はactive先頭だけで双方の節を保持。main比の製品差分はPR112と補修の6fileだけで、mainの文書原本・viewer・focus・Desktop proxyを巻き戻していない。
+- `7001f589` の全画面は79 suites1838件中1837成功、同じfocus試験1件失敗（312.885秒）。schemas check・画面/organization-runtime/desktop-bridgeの型検査・本番build成功（3 warning）。旧baseの結果とは別の証拠。
+- 実main `ead6830e` の参照checkoutで同じ依存・固定Nodeを使い `reopen-idle` 単体を1回実行すると成功（5.456秒）。PR組合せも同じ単体指定を1回実行して成功（3.705秒）。したがってmain対照だけではPR起因と断定しない。hook無効controlも1回成功したが、補助根拠としてだけ保持する。全体失敗を成功扱いへ置き換えない。
+- 独立診断と照合し、旧harnessがwindow RAF全体を捕捉しcancelも再現せず、旧close処理とReact Ariaのfocus containmentをまとめて再生する点を補修。close操作が最初に登録するRAFだけを保持し、他のRAFとcancelは本来のschedulerへ渡す。再open-idleでは旧triggerのfocus呼出しを監視し、ライブラリが新dialogへfocusを収める正常動作と区別する。
+- harness補修後は文書移動全87件成功（15.358秒）。本番close callbackの世代ガード `isCurrent(closing, key)` だけを一時除去すると、旧trigger.focusが1回呼ばれ `Expected calls: 0 / Received: 1` で単体RED（2.764秒）。世代ガードを完全復元し本番ファイルがHEADと同一であることを確認してから、最終全画面・型検査を開始した。assert緩和やskipで失敗を隠していない。
+- ログ：`/tmp/pr112-work-nav-jest.log`（旧base）、`/tmp/pr112-work-nav-main-jest.log`（組合せ・旧harness）、`/tmp/pr112-main-reference-focus.log`（実main対照）、`/tmp/pr112-main-combination-focus.log`（PR単体対照）、`/tmp/pr112-move-harness-green.log`（87件）、`/tmp/pr112-move-harness-mutation-red.log`（世代ガード除去RED）。これらはローカル証拠でありCIやWindows実機の資格ではない。
+- 最終harness補修後の全画面は79 suites1838件すべて成功（240.348秒、`/tmp/pr112-work-nav-final-jest.log`）。同じ最終sourceで画面・organization-runtime・desktop-bridgeの型検査も成功。製品sourceは本番build成功時から変更していない。
+- 次のexact action（更新）：harnessとこの証拠をローカルcommitへ保存し親へ引渡す。親が独立review結果を確認し、必要な最終main追従とexact-head CIを行う。push・PRのmain統合・CI削減は本作業では行わない。Windows実機と実server E2Eの新head再資格も未実施。
 
 ## 2026-10-08 — 実装と検証
 

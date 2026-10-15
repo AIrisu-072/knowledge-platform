@@ -7,6 +7,7 @@
 - 実装 `ced8ed6`、独立reviewのImportant（判定の失敗後に確かめ直さない）の修正 `4233c71`、実GUI確認の手順の修正 `89c2858`・`b0aae6e`。画面試験は全1774件・型検査・本番build成功。デスクトップの実GUIは `b0aae6e` で26シナリオ・227項目が連続3回 `qualifying: true`。実serverのE2E（organization-server・document-server）はCIで成功。新しい判断3点（判定の規則、3秒の上限、「編集作業」「文書履歴」を残す）は承認済みとして扱わない。Windows実機は依頼者の指示で後回し。
 - 次のexact action：PR #112のCIと独立reviewの結果を確認して修正 → CI成功 → 統合 → 統合後のmain CI → 依頼者へ報告。
 - 2026-10-15追補：session要求が応答しない場合の復帰P2を `d59c2f2b` で補修。詳細と旧baseのGUI focus1件失敗は状況文書へ記録。main `ead6830e` を双方のactive・製品sourceを保持して通常mergeし、組合せを別途検証する。最終main追従・exact-head資格・push/統合判断は親が行う。
+- 同日再確認：main追従 `7001f589` の旧harnessは全1838件中focus1件失敗。旧close RAFだけを保持しcancelを尊重する試験へ補修し、世代ガード除去RED（旧trigger.focus1回）→製品復元後全79 suites1838件成功、型3種成功を確認。各失敗と実main/PR単体対照は状況文書に保持。次は親による独立review・最終main追従・正確headの通常CIであり、まだpush/main統合していない。
 
 ---
 

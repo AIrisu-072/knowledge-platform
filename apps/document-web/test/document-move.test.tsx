@@ -71,13 +71,25 @@ function fill(dialog: HTMLElement) { fireEvent.change(within(dialog).getByLabelT
 function submit(dialog: HTMLElement) { fireEvent.submit(within(dialog).getByRole('button', { name: '移動する' }).closest('form')!); }
 async function goList(h: ReturnType<typeof setup>, extra: Record<string, unknown> = {}) { await act(async () => { await h.router.navigate({ to: '/documents', search: validateListSearch(extra) }); }); }
 async function closeWithHeldFrames(dialog: HTMLElement, name = 'キャンセル') {
-  const frames: FrameRequestCallback[] = [];
-  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  const frames = new Map<number, FrameRequestCallback>();
+  const request = window.requestAnimationFrame.bind(window);
+  const cancel = window.cancelAnimationFrame.bind(window);
+  // close() registers its callback synchronously, before React renders the
+  // closed dialog. Hold that one callback, not React Aria's later focus work.
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementationOnce(callback => {
+    const id = request(() => undefined); cancel(id); frames.set(id, callback); return id;
+  });
+  const caf = jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => {
+    if (!frames.delete(id)) cancel(id);
+  });
   fireEvent.click(within(dialog).getByRole('button', { name }));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument());
   raf.mockRestore();
-  expect(frames.length).toBeGreaterThan(0);
-  return async () => { await act(async () => { frames.splice(0).forEach(callback => callback(performance.now())); }); };
+  expect(frames.size).toBe(1);
+  return async () => {
+    try { act(() => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(performance.now())); }); }
+    finally { caf.mockRestore(); }
+  };
 }
 
 test('移動後の文書と版の遅い再取得は通常版observerの一時解除で更新失敗にしない', async () => {
@@ -160,7 +172,8 @@ test('pendingの移動は閉じる操作を受け付けず同じ要求を保持�
 });
 
 test.each(['reopen', 'reopen-idle', 'tab', 'other-document', 'unmount'])('閉じた移動の遅いfocus復帰は%s後のfocusを上書きしない', async change => {
-  const h = setup(); const dialog = await openMove(); const runFrames = await closeWithHeldFrames(dialog);
+  const h = setup(); const original = await screen.findByRole('button', { name: title });
+  const dialog = await openMove(); const runFrames = await closeWithHeldFrames(dialog);
   let focus: HTMLElement = document.body;
   if (change === 'reopen' || change === 'reopen-idle') {
     const again = await openMove();
@@ -172,7 +185,14 @@ test.each(['reopen', 'reopen-idle', 'tab', 'other-document', 'unmount'])('閉じ
     await act(async () => { await h.router.navigate({ to: '/documents/$documentId', params: { documentId: change === 'tab' ? documentId : otherId }, search: validateDetailSearch({ tab: change === 'tab' ? 'versions' : 'overview' }) }); });
     (document.activeElement as HTMLElement).blur();
   }
-  expect(focus).toHaveFocus(); await runFrames(); expect(focus).toHaveFocus();
+  expect(focus).toHaveFocus();
+  const restoreFocus = jest.spyOn(original, 'focus');
+  await runFrames();
+  if (change === 'reopen-idle') {
+    // React Aria may contain idle focus inside the new dialog. The old close
+    // callback must never focus its original trigger outside that dialog.
+    expect(restoreFocus).not.toHaveBeenCalled();
+  } else expect(focus).toHaveFocus();
   expect(h.api.moveDocument).not.toHaveBeenCalled();
 });
 
