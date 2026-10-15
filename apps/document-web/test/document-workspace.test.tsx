@@ -1447,3 +1447,57 @@ test.each(['基準原本を確認', '対象原本を確認'])('Document ACL送�
   await act(async () => { resolveReceipt({ operationId: 'policy', resourceId: documentId, resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }); resolveBlob(new Blob(['late'])); await running; });
   expect(documentAccessPolicyOperations(client).get()?.status).toBe('succeeded'); expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); client.clear();
 });
+
+test.each(['registration-trigger', 'registration-form', 'filter'] as const)('late list response preserves user focus in %s', async destination => {
+  const api = mockApi();
+  api.getRootFolder.mockResolvedValue({ folderId, name: 'ルート', revision: 1, parentFolderId: null, capabilities: { createDocument: operationAvailable } });
+  let resolveList!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(() => new Promise<DocumentList>(resolve => { resolveList = resolve; }));
+  renderAt('/documents?view=published');
+  const user = userEvent.setup();
+  const trigger = await screen.findByRole('button', { name: '文書を登録' });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  let target: HTMLElement = trigger;
+  if (destination === 'registration-form') {
+    await user.click(trigger);
+    target = within(await screen.findByRole('dialog', { name: '文書を登録' })).getByLabelText('文書名');
+  } else if (destination === 'filter') target = screen.getByRole('searchbox', { name: '文書名で絞り込み' });
+  target.focus();
+  expect(target).toHaveFocus();
+  await act(async () => { resolveList({ view: 'published', items: [listItem('published') as Extract<DocumentList, { view: 'published' }>['items'][number]], nextCursor: null }); });
+  await waitFor(() => expect(document.querySelector('button[data-document-id]')).toBeInTheDocument());
+  await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+  expect(target).toHaveFocus();
+  if (destination === 'registration-trigger') {
+    await user.keyboard('{Enter}');
+    const dialog = await screen.findByRole('dialog', { name: '文書を登録' });
+    await user.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+  }
+});
+
+test('initial list response focuses its selected row when no other control owns focus', async () => {
+  mockApi(); renderAt('/documents?view=published');
+  await waitFor(() => expect(screen.getByRole('button', { name: /受入手順/ })).toHaveFocus());
+});
+
+test('scheduled list frame preserves focus moved to registration after the effect', async () => {
+  const api = mockApi();
+  api.getRootFolder.mockResolvedValue({ folderId, name: 'ルート', revision: 1, parentFolderId: null, capabilities: { createDocument: operationAvailable } });
+  let resolveList!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(() => new Promise<DocumentList>(resolve => { resolveList = resolve; }));
+  renderAt('/documents?view=published');
+  const trigger = await screen.findByRole('button', { name: '文書を登録' });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  const frames: FrameRequestCallback[] = [];
+  const frame = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  try {
+    expect(document.body).toHaveFocus();
+    await act(async () => { resolveList({ view: 'published', items: [listItem('published') as Extract<DocumentList, { view: 'published' }>['items'][number]], nextCursor: null }); });
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(frames.length).toBeGreaterThan(0);
+    trigger.focus();
+    await act(async () => { for (const callback of frames.splice(0)) callback(performance.now()); });
+    expect(trigger).toHaveFocus();
+  } finally { frame.mockRestore(); }
+});

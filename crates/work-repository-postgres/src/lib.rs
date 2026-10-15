@@ -2,6 +2,72 @@
 //! Separate Work schema, migration ledger and atomic workflow/operation/event transaction.
 mod agent;
 mod files;
+mod finding_diagnostics;
+use finding_diagnostics::{Dependency, Diagnostic, Failure, Phase, SqlClass};
+
+tokio::task_local! { static FINDING_DIAGNOSTIC: std::cell::RefCell<Diagnostic>; }
+
+fn diagnostic_phase(phase: Phase, dependency: Dependency) {
+    let _ = FINDING_DIAGNOSTIC.try_with(|state| {
+        let mut state = state.borrow_mut();
+        state.phase = phase;
+        state.dependency = dependency;
+    });
+}
+
+async fn diagnose_finding<T>(
+    list: bool,
+    future: impl std::future::Future<Output = Result<T, WorkError>>,
+) -> Result<T, WorkError> {
+    diagnose_finding_with(list, future, |line| {
+        // A broken diagnostic sink must not change the original HTTP result.
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr().lock(), "KP_FINDING_DIAGNOSTIC {line}");
+    })
+    .await
+}
+async fn diagnose_finding_with<T>(
+    list: bool,
+    future: impl std::future::Future<Output = Result<T, WorkError>>,
+    report: impl FnOnce(String),
+) -> Result<T, WorkError> {
+    FINDING_DIAGNOSTIC
+        .scope(std::cell::RefCell::new(Diagnostic::default()), async {
+            let started = Instant::now();
+            let result = future.await;
+            if let Err(error) = &result {
+                let failure = match error {
+                    WorkError::DependencyUnavailable => Failure::DependencyUnavailable,
+                    WorkError::CommitOutcomeUnknown => Failure::CommitUnknown,
+                    WorkError::WorkArtifactUnavailable => Failure::ArtifactUnavailable,
+                    WorkError::Forbidden => Failure::Forbidden,
+                    WorkError::EvidenceNotFound
+                    | WorkError::FindingNotFound
+                    | WorkError::WorkItemNotFound
+                    | WorkError::OrganizationRecordNotFound
+                    | WorkError::WorkContextNotFound
+                    | WorkError::WorkArtifactNotFound => Failure::NotFound,
+                    WorkError::ValidationFailed => Failure::Validation,
+                    WorkError::IntegrityViolation => Failure::Integrity,
+                    WorkError::RevisionConflict
+                    | WorkError::OperationConflict
+                    | WorkError::WorkAssignmentConflict
+                    | WorkError::WorkContextStale
+                    | WorkError::AgentResultNotReady
+                    | WorkError::HandoffNotReady
+                    | WorkError::CursorStale => Failure::Conflict,
+                };
+                let line = FINDING_DIAGNOSTIC.with(|state| {
+                    state
+                        .borrow()
+                        .json(list, failure, started.elapsed().as_millis())
+                });
+                report(line);
+            }
+            result
+        })
+        .await
+}
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row, types::Json};
 use std::{
@@ -66,6 +132,7 @@ impl PostgresWorkRepository {
         }
     }
     async fn load_policy(&self) -> Result<OrganizationPolicy, WorkError> {
+        diagnostic_phase(Phase::Policy, Dependency::Work);
         let Json(policy): Json<OrganizationPolicy> =
             sqlx::query_scalar("SELECT body FROM work.organization_policies WHERE id = $1")
                 .bind(ORGANIZATION_POLICY_ID)
@@ -83,6 +150,7 @@ impl PostgresWorkRepository {
         actor: VerifiedActor,
         workflow_id: Option<Uuid>,
     ) -> Result<std::collections::BTreeSet<Uuid>, WorkError> {
+        diagnostic_phase(Phase::Acknowledgements, Dependency::Work);
         let ids: Vec<Uuid> = sqlx::query_scalar(
             "SELECT work_assignment_id FROM work.attention_acknowledgements WHERE principal_id=$1 AND ($2::uuid IS NULL OR workflow_id=$2)",
         )
@@ -97,6 +165,7 @@ impl PostgresWorkRepository {
     /// instant; a stored workflow never carries its own authorization. The PoC
     /// reads every (bounded) instance for one projection.
     async fn load_all(&self, actor: VerifiedActor) -> Result<Vec<Workflow>, WorkError> {
+        diagnostic_phase(Phase::Load, Dependency::Work);
         let rows: Vec<Json<Workflow>> =
             sqlx::query_scalar("SELECT body FROM work.workflow_instances ORDER BY id LIMIT $1")
                 .bind(
@@ -115,6 +184,7 @@ impl PostgresWorkRepository {
         let policy = Arc::new(self.load_policy().await?);
         let acknowledged = self.acknowledgements(actor, None).await?;
         let now = OffsetDateTime::now_utc();
+        diagnostic_phase(Phase::Load, Dependency::Work);
         rows.into_iter()
             .map(|Json(mut workflow)| {
                 workflow.validate_integrity()?;
@@ -136,6 +206,7 @@ impl PostgresWorkRepository {
         Ok(all.swap_remove(index))
     }
     async fn load_id(&self, actor: VerifiedActor, id: Uuid) -> Result<Workflow, WorkError> {
+        diagnostic_phase(Phase::Authority, Dependency::Work);
         let Json(mut workflow): Json<Workflow> =
             sqlx::query_scalar("SELECT body FROM work.workflow_instances WHERE id = $1")
                 .bind(id)
@@ -147,6 +218,7 @@ impl PostgresWorkRepository {
         let policy = self.load_policy().await?;
         workflow.attach_authority(Arc::new(policy), OffsetDateTime::now_utc());
         workflow.attach_acknowledgements(actor, self.acknowledgements(actor, Some(id)).await?);
+        diagnostic_phase(Phase::Authority, Dependency::Work);
         Ok(workflow)
     }
     async fn authorize_sources(
@@ -170,10 +242,13 @@ impl PostgresWorkRepository {
         // boundary; elapsed checks prevent N * timeout waits and stale receipts.
         for source in sources {
             if started.elapsed() > PREFLIGHT_LIFETIME {
+                diagnostic_phase(Phase::Freshness, Dependency::None);
                 return Err(WorkError::DependencyUnavailable);
             }
+            diagnostic_phase(Phase::Evidence, Dependency::Document);
             provider.authorize(actor, source.clone(), purpose).await?;
             if started.elapsed() > PREFLIGHT_LIFETIME {
+                diagnostic_phase(Phase::Freshness, Dependency::None);
                 return Err(WorkError::DependencyUnavailable);
             }
         }
@@ -194,9 +269,11 @@ impl PostgresWorkRepository {
             .await?;
         // Providers are checked outside Work locks; immediately recheck current
         // local authority by revision before disclosure, never use the snapshot as ACL.
-        if self.load_id(actor, workflow_id).await?.revision != workflow_revision
-            || started.elapsed() > PREFLIGHT_LIFETIME
-        {
+        if self.load_id(actor, workflow_id).await?.revision != workflow_revision {
+            return Err(WorkError::DependencyUnavailable);
+        }
+        if started.elapsed() > PREFLIGHT_LIFETIME {
+            diagnostic_phase(Phase::Freshness, Dependency::None);
             return Err(WorkError::DependencyUnavailable);
         }
         Ok(())
@@ -684,6 +761,7 @@ fn validate_collection_bytes(
 const PREFLIGHT_LIFETIME: Duration = Duration::from_secs(5);
 fn validate_disclosure_freshness(started: Instant, completed: Instant) -> Result<(), WorkError> {
     if completed.duration_since(started) > PREFLIGHT_LIFETIME {
+        diagnostic_phase(Phase::Freshness, Dependency::None);
         Err(WorkError::DependencyUnavailable)
     } else {
         Ok(())
@@ -726,7 +804,18 @@ impl EvidencePreflight {
         Ok(())
     }
 }
-fn database_error(_: sqlx::Error) -> WorkError {
+fn database_error(error: sqlx::Error) -> WorkError {
+    let _ = FINDING_DIAGNOSTIC.try_with(|state| {
+        let class = match &error {
+            sqlx::Error::Io(_) | sqlx::Error::Tls(_) => SqlClass::Connection,
+            sqlx::Error::PoolTimedOut => SqlClass::AcquireTimeout,
+            sqlx::Error::PoolClosed => SqlClass::PoolClosed,
+            sqlx::Error::Decode(_) | sqlx::Error::ColumnDecode { .. } => SqlClass::Decode,
+            sqlx::Error::Database(database) => SqlClass::database(database.code().as_deref()),
+            _ => SqlClass::Other,
+        };
+        state.borrow_mut().sql = class;
+    });
     WorkError::DependencyUnavailable
 }
 fn ledger_error(error: sqlx::Error) -> WorkError {
@@ -936,38 +1025,45 @@ impl WorkRepository for PostgresWorkRepository {
         })
     }
     fn list_findings(&self, actor: VerifiedActor, task_id: Uuid) -> WorkFuture<'_, Vec<Finding>> {
-        Box::pin(async move {
+        Box::pin(diagnose_finding(true, async move {
             let started = Instant::now();
             let w = self.load_for(actor, WorkTarget::Task(task_id)).await?;
             let findings = w.list_findings(actor, task_id)?;
+            diagnostic_phase(Phase::Agent, Dependency::Agent);
             self.verify_agent_origins(&w, &findings, observed(&w))
                 .await?;
             let mut evidence = vec![];
             for f in &findings {
                 evidence.extend(w.resolve_evidence(actor, &f.evidence_revision_refs)?);
             }
+            diagnostic_phase(Phase::Evidence, Dependency::Document);
             self.verify_read_sources(actor, observed(&w), evidence)
                 .await?;
+            diagnostic_phase(Phase::Freshness, Dependency::None);
             validate_disclosure_freshness(started, Instant::now())?;
             Ok(findings)
-        })
+        }))
     }
     fn finding(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, Finding> {
-        Box::pin(async move {
+        Box::pin(diagnose_finding(false, async move {
             let started = Instant::now();
             let w = self.load_for(actor, WorkTarget::Finding(id)).await?;
+            diagnostic_phase(Phase::Load, Dependency::Work);
             let finding = w.finding(actor, id)?;
+            diagnostic_phase(Phase::Agent, Dependency::Agent);
             self.verify_agent_origins(&w, std::slice::from_ref(&finding), observed(&w))
                 .await?;
+            diagnostic_phase(Phase::Evidence, Dependency::Document);
             self.verify_read_sources(
                 actor,
                 observed(&w),
                 w.resolve_evidence(actor, &finding.evidence_revision_refs)?,
             )
             .await?;
+            diagnostic_phase(Phase::Freshness, Dependency::None);
             validate_disclosure_freshness(started, Instant::now())?;
             Ok(finding)
-        })
+        }))
     }
     fn list_decisions(
         &self,
@@ -1418,5 +1514,89 @@ mod tests {
             validate_disclosure_freshness(start, start + PREFLIGHT_LIFETIME),
             Ok(())
         );
+    }
+}
+
+#[cfg(test)]
+mod finding_diagnostic_tests {
+    use super::*;
+    #[tokio::test]
+    async fn success_and_unscoped_calls_are_silent() {
+        diagnostic_phase(Phase::Evidence, Dependency::Document);
+        let result = diagnose_finding_with(false, async { Ok::<_, WorkError>(7) }, |_| {
+            panic!("success emitted diagnostics")
+        })
+        .await;
+        assert_eq!(result, Ok(7));
+        assert!(FINDING_DIAGNOSTIC.try_with(|_| ()).is_err());
+    }
+    #[tokio::test]
+    async fn failure_preserves_error_and_projects_sql_provenance() {
+        let mut lines = vec![];
+        let result = diagnose_finding_with(
+            false,
+            async {
+                diagnostic_phase(Phase::Policy, Dependency::Work);
+                Err::<(), _>(database_error(sqlx::Error::PoolTimedOut))
+            },
+            |line| lines.push(line),
+        )
+        .await;
+        assert_eq!(result, Err(WorkError::DependencyUnavailable));
+        assert_eq!(lines.len(), 1);
+        let value: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+        assert_eq!(value["phase"], "policy");
+        assert_eq!(value["dependency"], "work");
+        assert_eq!(value["sql_class"], "acquire_timeout");
+        assert_eq!(value["failure"], "dependency_unavailable");
+        assert!(FINDING_DIAGNOSTIC.try_with(|_| ()).is_err());
+    }
+    #[tokio::test]
+    async fn cancelled_pending_read_emits_nothing_and_restores_scope() {
+        use std::future::Future;
+        let mut future = Box::pin(diagnose_finding_with(
+            false,
+            async {
+                diagnostic_phase(Phase::Agent, Dependency::Agent);
+                std::future::pending::<()>().await;
+                Ok::<(), WorkError>(())
+            },
+            |_| panic!("cancelled read emitted diagnostics"),
+        ));
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(future.as_mut().poll(&mut context).is_pending());
+        assert!(FINDING_DIAGNOSTIC.try_with(|_| ()).is_err());
+        drop(future);
+        assert!(FINDING_DIAGNOSTIC.try_with(|_| ()).is_err());
+    }
+    #[tokio::test]
+    async fn concurrent_futures_do_not_share_diagnostic_state() {
+        let first = diagnose_finding_with(
+            false,
+            async {
+                diagnostic_phase(Phase::Agent, Dependency::Agent);
+                tokio::task::yield_now().await;
+                assert_eq!(FINDING_DIAGNOSTIC.with(|s| s.borrow().phase), Phase::Agent);
+                Err::<(), _>(WorkError::DependencyUnavailable)
+            },
+            |line| assert!(line.contains("\"phase\":\"agent\"")),
+        );
+        let second = diagnose_finding_with(
+            true,
+            async {
+                diagnostic_phase(Phase::Evidence, Dependency::Document);
+                tokio::task::yield_now().await;
+                assert_eq!(
+                    FINDING_DIAGNOSTIC.with(|s| s.borrow().phase),
+                    Phase::Evidence
+                );
+                Err::<(), _>(WorkError::FindingNotFound)
+            },
+            |line| assert!(line.contains("\"operation\":\"finding_list\"")),
+        );
+        let (first, second) = tokio::join!(first, second);
+        assert_eq!(first, Err(WorkError::DependencyUnavailable));
+        assert_eq!(second, Err(WorkError::FindingNotFound));
+        assert!(FINDING_DIAGNOSTIC.try_with(|_| ()).is_err());
     }
 }

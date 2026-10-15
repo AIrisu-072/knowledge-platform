@@ -1,0 +1,11 @@
+# Finding再起動前後の限定読取実験
+
+PR114の追加Document診断を含む試験で未再現が続いたため、親が同じ保存済み合成fixtureに対する限定実験を承認した。元のpersistence受入は一度だけ実行し、そのassertion・replay・非開示・保存oracleを保持する。通常受入の繰り返しで原因が解決したとは扱わない。
+
+追加は最大2サイクル。各サイクルで、保存済みstateを読んでsession、captureFinalとstate.finalの完全一致、evidence/finding、agent状態をGETで確認する。次に所有するsales/office両processを停止し、同じDB・storage・fixture・固定profileで起動して既存health/ready条件を待ち、同じGET確認を行う。追加のHTTP write、seed、fixture再生成、sleep、自動HTTP retryは行わない。最初の失敗で元のerrorをthrowして停止し、次のサイクルへ進まない。追加generationは3、4であり、元受入の再起動generation2を上書きしない。
+
+probeは `e2e-organization/finding-read-diagnostic/persistence.spec.ts` を明示して選択する。通常persistenceはroot直下の既存fileだけを明示し、nested basenameが通常suiteへ混ざらないようにする。既存Playwright config・support・production browser診断は変更しない。captureは画像・trace・videoすべてoff。
+
+各cycleのbefore/afterに0700の別private出力baseを作り、その下のbrowser-persistenceにJSONを保存する。失敗readerも同じbaseを使うので、元受入・別pointの結果を上書きせず参照を混ぜない。公開する進捗は固定cycle/point/statusだけでID・URL・本文を含めない。backend診断は既存の503 Finding失敗限定、phase開始後のownedprocess出力、closed schema・size/count bound、原assertion/rethrowを保持する。複数記録の相関は曖昧と扱う。
+
+全4pointが成功した場合は `no_reproduction` と記録する。これはこの限定実験で未再現という意味で、原因特定・原因修正・本番配備の合格ではない。Linuxの既存runtime CIで実行する。MacのNode制御flow試験・file collection・型チェックは実backend再起動の実測に代えない。実測は実行後に親がexecution statusへ記録する。

@@ -515,3 +515,21 @@ test('working loss save milestones are finite and survive both privacy boundarie
     assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
   }
 });
+
+
+test('focus failure diagnostics disclose only the fixed source and location, never paths or payloads', () => {
+  const input = report([{ status: 'failed', error: {
+    message: 'Error: expect(locator).toBeFocused() failed PRIVATE_PAYLOAD',
+    stack: 'at /private/PRIVATE_PATH/document-list-focus.spec.ts:42:9',
+  } }], { file: '/private/PRIVATE_NAME.ts' });
+  const actual = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+  assert.equal(actual.tests[0].source, 'document-list-focus.spec.ts');
+  assert.equal(actual.tests[0].line, 42);
+  assert.equal(actual.tests[0].column, 9);
+  assert.equal(actual.tests[0].matcher, 'toBeFocused');
+  assert.ok(!JSON.stringify(actual).includes('PRIVATE'));
+  input.suites[0].specs[0].tests[0].results[0].error.stack = 'at /private/PRIVATE_SOURCE.spec.ts:42:9';
+  const unknown = sanitizeBrowserDiagnostics(browserDiagnostics(input));
+  assert.equal(Object.hasOwn(unknown.tests[0], 'source'), false);
+  assert.ok(!JSON.stringify(unknown).includes('PRIVATE'));
+});
