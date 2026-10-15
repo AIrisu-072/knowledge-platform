@@ -167,8 +167,9 @@ pub struct UnitManifestSummaryV1 {
     pub receipt: search_source_document::ArtifactReceipt,
     pub items: usize,
     pub profile_set_digest: [u8; 32],
-    /// Every Unit's ID and `unit_doc_hash`, in manifest order.
-    pub units: Vec<UnitSealEntry>,
+    /// Every Unit's ID and `unit_doc_hash`, by item in manifest order; each
+    /// item's are the ones the process shares for its segment.
+    pub units: Vec<Arc<Vec<UnitSealEntry>>>,
     /// Each item's stored Unit segment digest, in coverage item order.
     pub segments: Vec<String>,
 }
@@ -355,11 +356,11 @@ struct SegmentSummary {
     digest: [u8; 32],
     /// The item's profile and parser build, when it has a profile.
     profile: Option<(String, String)>,
-    units: Vec<UnitSealEntry>,
+    units: Arc<Vec<UnitSealEntry>>,
 }
 
-/// Summaries kept per process (a few hundred bytes each plus 48 bytes per
-/// Unit); above this the cache keeps only the segments of the generation
+/// Summaries kept per process (a few hundred bytes each; their Units' seal
+/// entries are shared with the rest of the process); above this the cache keeps only the segments of the generation
 /// being read.
 const SUMMARY_CACHE_ITEMS: usize = 1_000_000;
 /// Segments read per query by `restore_without_units`.
@@ -447,6 +448,8 @@ fn summarize_segment(
             })
         })
         .collect::<Result<Vec<_>, BundleError>>()?;
+    let units = search_source_document::shared_seal_entries(segment, units)
+        .map_err(|_| BundleError::StoreUnknown)?;
     restamp_source_snapshot(&mut entry.units, &header.source_snapshot);
     let single = BodyUnitManifest {
         key: header.key,
@@ -1058,7 +1061,7 @@ impl PgPayloadStore {
             }
             items.push(summary.item.clone());
             segments.push((summary.digest, u64::from(summary.item.unit_count)));
-            units.extend_from_slice(&summary.units);
+            units.push(summary.units.clone());
             profiles.extend(summary.profile.clone());
         }
         if cache.len() > SUMMARY_CACHE_ITEMS {
