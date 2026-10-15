@@ -2,6 +2,14 @@
 
 再開先：[計画](../plans/2026-10-08-work-landing-navigation.md)。branch `claude/upbeat-tesla-qcu94x`（main `6a34de3` から作成）。
 
+## 2026-10-15 — PR128統合後mainへの追従境界
+
+- ローカル保存head `f6437bbc` に、PR128統合後のmain `29026cc7486070410eb0b892e63c43eb7d1f5de5` を通常mergeし `1f2b1ff0` とした。競合なし。親からPR128 exact-headの14 CI成功と統合後CI `38765965535` 実行中の引継ぎを受けたが、この作業ではGitHubの結果を独自取得しておらず、統合後CI成功とは記録しない。
+- 追従による変更は `Cargo.lock`、`experiments/search-discovery-poc/Cargo.lock`、`experiments/search-http-client-poc/Cargo.lock` の3fileのみ。それぞれrustls `0.23.45` → `0.23.46` とchecksum更新。Searchの機能sourceは取り込んでいない。
+- `f6437bbc` と追従headの `apps/`・`packages/`・Node lock/workspace差分は空で、GUI製品・試験・依存は同一。したがって全画面1838件の無意味な再実行は行わず、そのsourceに対する前節の証拠を保持する。新しいRust依存の組合せ資格を旧GUI成功から主張しない。
+- 追従headで固定Node 24.21.0のschemas check、画面・organization-runtime・desktop-bridgeの型検査がすべて成功。差分・空白検査も成功。push・PRのmain統合・CI削減なし。
+- 次のexact action：親へこの保存headを引き渡す。PR123のmain統合後にさらに通常追従し、双方の変更とactiveを保持した最終headを独立review・正規CIで資格化して、同じPR112へ公開する。ここではまだpushしない。
+
 ## 2026-10-15 — 初回判定が応答しない場合の復帰補修
 
 - PR112 head `07f572be` の独立reviewでP2を確認。3秒後に文書一覧を開いても元のsession要求はpendingのままで、errorだけを対象とする再確認へ進めない。Desktopのproxyは180秒、Browserは画面側の有限上限が無かった。
