@@ -11,6 +11,7 @@
 | 自動生成した評価質問 | `~/kp-validation-data/eval/` | 入れない（生成手順だけ） |
 | LLMが書いた評価質問（未確認）、アシスタントが本文で確認した質問（`assistant_verified`、人は未確認） | `questions/` | 入れる（短い引用だけ） |
 | 実行環境（DB、原本保存、索引、秘密） | OrbStack Linux machine `kpval` の `~/kpval/` | 入れない |
+| 外部の評価データ（JDocQA、JDocQA Reasoning Bench） | GPUマシンの `/srv/llm/eval-data/` | 入れない |
 | 手順と集計結果 | `scripts/`、`host/`、状態記録 | 入れる |
 
 秘密値（DB password、合成利用者のtoken）は `~/kpval/secrets/` と `~/kpval/config/actors.json`（0600）にだけ置き、表示しない。
@@ -55,6 +56,13 @@ AGENT_LLM_ENDPOINT=<base URL> python3 agent/agent_loop.py --variant <名前> \
 # 8. ページ画像の読取り（画像を扱えるLLM）
 python3 scripts/vlm_ocr_probe.py --endpoint <base URL> --model <名前> --no-thinking \
   --image <page.png> --reference <書き起こし.txt> --out <result.json>
+
+# 9. 業務文書（JDocQA）での字句・Vector・組合せの比較（GPUマシン、torch・sentence-transformers）
+#    注釈：https://github.com/mizuumi/JDocQA の dataset/annotation_files/jdocqa_{train,validation,test}_all.json
+python3 scripts/jdocqa_eval.py --data <annotation_files> --config bigram-bm25 --config ruri-v3-310m --out jdocqa.jsonl
+python3 scripts/jdocqa_fuse.py --data <annotation_files> --dense ruri-v3-310m --label ruri-v3-310m \
+  --out jdocqa-fuse.jsonl --dump jdocqa-perq.jsonl
+python3 scripts/jdocqa_paired.py jdocqa-perq.jsonl
 ```
 
 ## 出典と帰属
@@ -62,3 +70,5 @@ python3 scripts/vlm_ocr_probe.py --endpoint <base URL> --model <名前> --no-thi
 - 日本語版ウィキペディアの記事（2026年10月1日のダンプ）。CC BY-SA 4.0 / GFDL。著作者はウィキペディアの執筆者。リンク先・カテゴリ・テンプレート・表を除いた本文に変換して使い、本文は再配布しない。`questions/` の短い引用も同じ条件に従う。
 - e-Gov法令検索（デジタル庁）の法令データ（法令API Version 2）。出典：e-Gov法令検索（https://laws.e-gov.go.jp/）。本文テキストへ変換して使う。
 - 金融庁ウェブサイトの資料（公共データ利用規約 第1.0版）。初期段階では未取得（PDF経路の資格がこの環境に無いため、状態記録を参照）。
+- JDocQA（Onami, Kurita, Miyanishi, Watanabe. LREC-COLING 2024、https://github.com/mizuumi/JDocQA）。注釈はCC BY-SA 4.0。評価にだけ使い、本文は再配布しない。
+- JDocQA Reasoning Bench（株式会社リコー、https://huggingface.co/datasets/ricoh-ai/JDocQA-Reasoning）。QA注釈はCC BY-SA 4.0、評価コードはApache 2.0。文書画像はJDocQAの条件に従う。
