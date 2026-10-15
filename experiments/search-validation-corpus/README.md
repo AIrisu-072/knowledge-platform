@@ -33,9 +33,9 @@ cargo build --release --locked -p document-server -p document-semantic-inspectio
 cargo build --release --locked -p search-runtime --bin search_outbox_worker
 (cd host && cargo build --release)
 
-# 4. 使い捨ての実行環境
-scripts/linux_runtime.sh init     # DB、migration、bootstrap、role
-scripts/linux_runtime.sh start    # document-server、Search worker、検証用Search API host
+# 4. 使い捨ての実行環境（MODEL は固定revisionのe5モデルのディレクトリ。REPO は省略時このrepository）
+MODEL=<e5モデルのディレクトリ> scripts/linux_runtime.sh init     # DB、migration、bootstrap、role
+MODEL=<e5モデルのディレクトリ> scripts/linux_runtime.sh start    # document-server、Search worker、検証用Search API host
 
 # 5. 投入（Common Document API）と監視
 python3 scripts/ingest.py --corpus <corpus> --manifest ~/kpval/ingest/<name>.jsonl

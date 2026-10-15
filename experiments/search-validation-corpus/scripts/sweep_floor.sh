@@ -4,15 +4,15 @@
 # scored here. Usage: sweep_floor.sh 0.89 0.87 0.85 ...
 set -euo pipefail
 ROOT=${ROOT:-$HOME/kpval}
-REPO=${REPO:-/Users/airisu/.claude/worktrees/kp-search-validation}
+REPO=${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}
 S=$REPO/experiments/search-validation-corpus/scripts
-DATA=/Users/airisu/kp-validation-data
+DATA=${DATA:?set DATA to the validation data directory (corpus/, eval/)}
 source "$ROOT/secrets/db.env"
 export SEARCH_API_DATABASE_URL=$DATABASE_URL SEARCH_WORKER_CONFIG=$ROOT/config/source.json SEARCH_VALIDATION_ACTORS=$ROOT/config/actors.json
 for floor in "$@"; do
-  python3 - "$floor" <<'EOF'
+  python3 - "$floor" "$ROOT" <<'EOF'
 import json, sys
-path = "/home/airisu/kpval/config/source.json"
+path = f"{sys.argv[2]}/config/source.json"
 config = json.load(open(path))
 config["vector"]["similarity_floor"] = float(sys.argv[1])
 json.dump(config, open(path, "w"), indent=2)
@@ -27,9 +27,9 @@ EOF
     --corpus "$DATA/corpus/jawiki-970" "$DATA/corpus/laws-20261006" \
     --ingest "$ROOT/ingest/jawiki-970.jsonl" "$ROOT/ingest/laws.jsonl" \
     --out "$ROOT/eval/floor-$floor.jsonl" > "$ROOT/eval/floor-$floor-summary.json"
-  python3 - "$floor" <<'EOF'
+  python3 - "$floor" "$ROOT" <<'EOF'
 import json, sys
-s = json.load(open(f"/home/airisu/kpval/eval/floor-{sys.argv[1]}-summary.json"))
+s = json.load(open(f"{sys.argv[2]}/eval/floor-{sys.argv[1]}-summary.json"))
 a = s["discover/tuning/ALL"]
 print(sys.argv[1], "recall@10", a.get("recall@10"), "fp", a.get("false_positive_rate"), "p50", a.get("p50_ms"))
 EOF

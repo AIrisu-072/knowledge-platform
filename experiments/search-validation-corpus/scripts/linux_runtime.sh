@@ -8,11 +8,12 @@
 # and never printed. Nothing here touches a non-disposable database.
 set -euo pipefail
 
-REPO=${REPO:-/Users/airisu/.claude/worktrees/kp-search-validation}
+REPO=${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}
 ROOT=${ROOT:-$HOME/kpval}
 BIN=${BIN:-$HOME/kp-target/release}
 HOST_BIN=${HOST_BIN:-$HOME/kp-target-host/release/search-validation-host}
-MODEL=${MODEL:-/Users/airisu/.cache/knowledge-platform-vector/e5}
+# The pinned e5 model directory (see the vector selection); no default.
+MODEL=${MODEL:-}
 SOURCE_ID=${SOURCE_ID:-0192f4a0-7a5e-7c10-8b6e-5a1d0c0ffee1}
 
 secrets_file="$ROOT/secrets/db.env"
@@ -50,7 +51,7 @@ init() {
   fi
   python3 "$REPO/experiments/search-validation-corpus/scripts/runtime_config.py" \
     --root "$ROOT" --worker "$BIN/search-extraction-worker" --source-id "$SOURCE_ID" \
-    --formats text --vector-model "$MODEL" --analyzer "${ANALYZER:-tantivy-default-0.26.2}"
+    --formats text --vector-model "${MODEL:?set MODEL to the pinned e5 model directory}" --analyzer "${ANALYZER:-tantivy-default-0.26.2}"
   load_env
   "$BIN/document-server" migrate
   KP_IDENTITY_PROFILE=poc-human "$BIN/document-server" bootstrap-poc
@@ -122,7 +123,7 @@ status() {
 configure() {
   python3 "$REPO/experiments/search-validation-corpus/scripts/runtime_config.py" \
     --root "$ROOT" --worker "$BIN/search-extraction-worker" --source-id "$SOURCE_ID" \
-    --formats text --vector-model "$MODEL" --analyzer "${ANALYZER:-tantivy-default-0.26.2}"
+    --formats text --vector-model "${MODEL:?set MODEL to the pinned e5 model directory}" --analyzer "${ANALYZER:-tantivy-default-0.26.2}"
 }
 
 # One full rebuild of the Source (manual retry), timed, with the worker config.
