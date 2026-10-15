@@ -1,5 +1,11 @@
 # 文書管理残タスク 2026-10-08：状況
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR108はmain `6a34de3f0904949daca304b9178ef5125ea13d82` に統合済み。以下の未統合・Draft・CI進行中は当時の記録であり、現時点の未統合を示さない。本番配備・実認証/TLS・実データ環境での受入はこの統合だけで完了とはしない。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 状態: IN PROGRESS / 未統合 / 未配備。main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`、branch `feat/document-remaining-20261008`。
 
 保存先は同一の **[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)**。製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45` で独立レビューGOを再確認した。本節のPR記録追記は文書のみで、製品source/試験/画像は変えない。最新保存headとhosted資格はPRのChecksと説明を参照し、読み直した正確なheadで判定する。
