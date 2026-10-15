@@ -2,6 +2,13 @@
 
 再開先：[計画](../plans/2026-10-08-work-landing-navigation.md)。branch `claude/upbeat-tesla-qcu94x`（main `6a34de3` から作成）。
 
+## 2026-10-15 — PR123統合後mainへの最終追従境界
+
+- `e0fe1500` に、PR123統合後main `71d757b049e48594ee4964aa5c01db54f3e17fd2` を取得して通常mergeし `fe427268` とした。競合なしで双方の記録を保持。親からPR123 head `6b58bd06` の独立GO・14 CI成功（`38766162617`）、PR128統合後CI `38765965535` の14成功を引き継いだ。本作業でGitHub結果を独自取得したとは記録しない。
+- 追従差分はphase計測のtoolsと文書11fileのみで、全11fileがmainと同一。`apps/`・`packages/`・Node lock/workspaceは追従前と差分がなく、GUI製品・試験・Node依存は全1838件成功時と同一。全GUIの再実行は行わない。phase計測や長時間runの起動も行っていない。
+- 追従headで固定Node 24.21.0のschemas check、画面・organization-runtime・desktop-bridgeの型検査がすべて成功。mainのphase変更の保持、GUI同一性、空白検査を確認した。push・PR統合・CI削減なし。
+- 次のexact action：親がこの保存headの独立final reviewとlive base/headを確認し、同じPR112へ公開して正確headの正規CIを確認する。公開・統合判断は親が行う。
+
 ## 2026-10-15 — PR128統合後mainへの追従境界
 
 - ローカル保存head `f6437bbc` に、PR128統合後のmain `29026cc7486070410eb0b892e63c43eb7d1f5de5` を通常mergeし `1f2b1ff0` とした。競合なし。親からPR128 exact-headの14 CI成功と統合後CI `38765965535` 実行中の引継ぎを受けたが、この作業ではGitHubの結果を独自取得しておらず、統合後CI成功とは記録しない。

@@ -9,6 +9,7 @@
 - 2026-10-15追補：session要求が応答しない場合の復帰P2を `d59c2f2b` で補修。詳細と旧baseのGUI focus1件失敗は状況文書へ記録。main `ead6830e` を双方のactive・製品sourceを保持して通常mergeし、組合せを別途検証する。最終main追従・exact-head資格・push/統合判断は親が行う。
 - 同日再確認：main追従 `7001f589` の旧harnessは全1838件中focus1件失敗。旧close RAFだけを保持しcancelを尊重する試験へ補修し、世代ガード除去RED（旧trigger.focus1回）→製品復元後全79 suites1838件成功、型3種成功を確認。各失敗と実main/PR単体対照は状況文書に保持。次は親による独立review・最終main追従・正確headの通常CIであり、まだpush/main統合していない。
 - PR128追従：main `29026cc7` を `1f2b1ff0` へ通常merge。変更はrustls更新のCargo.lock3fileだけでGUI製品・試験・Node依存は同一、schemas check・型3種・diff検査成功。次はPR123統合後mainへさらに追従し、最終headの独立review/通常CIと同じPR112への公開を親が行う。pushはまだ実施しない。
+- PR123追従：main `71d757b0` を `fe427268` へ通常merge。phase計測のtools/文書11fileをmainと同一に保持、GUI製品・試験・Node依存も同一、schemas check・型3種・diff検査成功。全1838件成功のGUI sourceは不変のため再実行せず、長時間runも起動していない。次は親による独立final review・livehead確認と同じPR112への公開/正規CI。pushは親が行う。
 
 ---
 
