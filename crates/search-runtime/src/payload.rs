@@ -370,7 +370,8 @@ const SUMMARY_FETCH_BATCH: usize = 64;
 const SUMMARY_FETCH_PARALLEL: usize = 8;
 
 /// Whole restored summaries kept per process, newest last: the one a load
-/// re-verified and then reads (each holds every Unit's seal entry).
+/// re-verified and then reads (each holds every Unit's seal entry). They are
+/// shared, never copied: at 10,000 documents one took 0.37 GB.
 const RESTORED_SUMMARIES: usize = 1;
 
 type RestoredSummaries = Mutex<Vec<(ProjectionGenerationKey, String, Arc<RestoredSummaryV1>)>>;
@@ -959,16 +960,16 @@ impl PgPayloadStore {
     pub async fn restore_without_units(
         &self,
         manifest: &ProjectionGenerationManifest,
-    ) -> Result<RestoredSummaryV1, BundleError> {
+    ) -> Result<Arc<RestoredSummaryV1>, BundleError> {
         let key = manifest.key();
         // The same generation restored and checked by this process before.
-        let cached = || -> Result<Option<RestoredSummaryV1>, BundleError> {
+        let cached = || -> Result<Option<Arc<RestoredSummaryV1>>, BundleError> {
             Ok(restored_summaries()
                 .lock()
                 .map_err(|_| BundleError::StoreUnknown)?
                 .iter()
                 .find(|(at, digest, _)| *at == key && *digest == manifest.digest)
-                .map(|(_, _, restored)| (**restored).clone()))
+                .map(|(_, _, restored)| restored.clone()))
         };
         if let Some(restored) = cached()? {
             return Ok(restored);
@@ -979,11 +980,17 @@ impl PgPayloadStore {
         if let Some(restored) = cached()? {
             return Ok(restored);
         }
-        let restored = self.restore_summary_uncached(manifest).await?;
+        // Summaries of other generations are let go first, so that this
+        // process never holds them and this one together.
+        restored_summaries()
+            .lock()
+            .map_err(|_| BundleError::StoreUnknown)?
+            .clear();
+        let restored = Arc::new(self.restore_summary_uncached(manifest).await?);
         let mut cache = restored_summaries()
             .lock()
             .map_err(|_| BundleError::StoreUnknown)?;
-        cache.push((key, manifest.digest.clone(), Arc::new(restored.clone())));
+        cache.push((key, manifest.digest.clone(), restored.clone()));
         if cache.len() > RESTORED_SUMMARIES {
             cache.remove(0);
         }

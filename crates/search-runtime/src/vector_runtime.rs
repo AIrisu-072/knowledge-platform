@@ -273,7 +273,7 @@ impl VectorMaintainer {
             .coverage
             .items
             .iter()
-            .zip(summary.units.segments)
+            .zip(summary.units.segments.iter().cloned())
             .filter_map(|(item, unit_segment)| {
                 let coverage = indexed_coverage(item.operation, item.coverage.as_ref())?;
                 Some(IndexedItem {

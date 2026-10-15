@@ -326,7 +326,8 @@ impl DurableDocumentReadModel {
         } else {
             crate::vector_runtime::VectorUnitSegments::none(key)
         });
-        let projection = restored.projection;
+        let projection = Arc::try_unwrap(restored)
+            .map_or_else(|shared| shared.projection.clone(), |owned| owned.projection);
         // The lexical directory opens on a blocking thread while the
         // projection is staged.
         let lexical = {

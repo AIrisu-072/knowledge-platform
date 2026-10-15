@@ -314,17 +314,12 @@ impl ReadyCoordinator {
                 .await
                 .map_err(ReadyError::from)
         };
-        let (
-            (
-                RestoredSummaryV1 {
-                    projection,
-                    units,
-                    coverage,
-                },
-                seal,
-            ),
-            (graph, resources, relations),
-        ) = tokio::try_join!(artifacts, rows)?;
+        let ((restored, seal), (graph, resources, relations)) = tokio::try_join!(artifacts, rows)?;
+        let RestoredSummaryV1 {
+            projection,
+            units,
+            coverage,
+        } = &*restored;
         let report = GraphStageReport {
             key,
             source_snapshot: graph.source_snapshot,
@@ -348,8 +343,8 @@ impl ReadyCoordinator {
             key,
             &manifest.source_snapshot,
             &manifest.digest,
-            &units,
-            &coverage,
+            units,
+            coverage,
             ArtifactReceipt {
                 key,
                 digest: seal.logical_digest,
@@ -393,18 +388,19 @@ impl ReadyCoordinator {
         // the Graph rows, each recomputed from what is stored.
         let manifest = self.manifest(key).await?;
         // T12: checked from per-segment summaries; no Unit text is held.
-        let RestoredSummaryV1 {
-            projection,
-            units,
-            coverage,
-        } = self
+        let restored = self
             .payloads
             .restore_without_units(&manifest)
             .await
             .map_err(ReadyError::Payload)?;
+        let RestoredSummaryV1 {
+            projection,
+            units,
+            coverage,
+        } = &*restored;
         let seal: LexicalSealV1 = self
             .lexical
-            .reopen_and_validate_summary(&manifest, &self.source, &units)
+            .reopen_and_validate_summary(&manifest, &self.source, units)
             .await
             .map_err(ReadyError::Lexical)?;
         let mut connection = self.pool.acquire().await?;
@@ -434,8 +430,8 @@ impl ReadyCoordinator {
             key,
             &manifest.source_snapshot,
             &manifest.digest,
-            &units,
-            &coverage,
+            units,
+            coverage,
             lexical,
             p1_graph,
         )
