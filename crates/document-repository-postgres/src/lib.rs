@@ -7,6 +7,7 @@ mod access_policy;
 mod action_capability;
 mod authorized_repository;
 mod create_outcome;
+mod current_read_state;
 mod document_diff_access;
 mod document_diff_cache;
 mod document_diff_snapshot;

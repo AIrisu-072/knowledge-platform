@@ -1,35 +1,62 @@
+import { DocumentReadStateRecovery } from '../components/document/DocumentReadState';
+import { DocumentAccessPolicyRecovery } from '../components/document/DocumentAccessPolicy';
+import { documentAccessPolicyOperations } from '../application/document-access-policy';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router';
+import { useNavigate, useRouter, useRouterState, useSearch } from '@tanstack/react-router';
+import { problemFromUnknown } from '../application/problem-mapping';
 import { documentApi, type DocumentList, type Folder } from '../application/document-workspace';
 import { ApiFeedback, LoadingState } from '../components/shared/ApiFeedback';
 import { AppShell } from '../components/app-shell/AppShell';
 import { OriginalVersionDownload } from '../components/shared/OriginalVersionDownload';
+import { DocumentHistoryPanel } from '../components/document/DocumentHistoryPanel';
 import { DocumentRegistration } from '../components/document/DocumentRegistration';
 import type { SelectedFolderContext } from '../application/document-root-folder';
+import { FolderNode } from '../components/document/FolderNode';
 import { FolderRename } from '../components/document/FolderRename';
 import { folderRenameOperations } from '../application/document-folder-rename';
+import { DocumentMove } from '../components/document/DocumentMove';
+import { documentMoveOperations } from '../application/document-move';
+import { FolderAccessPolicy } from '../components/document/FolderAccessPolicy';
+import { folderAccessPolicyOperations } from '../application/document-folder-access-policy';
+import { FolderMove } from '../components/document/FolderMove';
+import { folderMoveOperations } from '../application/document-folder-move';
 import { RootFolderCreate } from '../components/document/RootFolderCreate';
-import type { ListSearch } from '../application/search-state';
+import { createdRangeFields, createdRangeLocalValue, createdRangeRouteError, initialCreatedRangeDraft, currentCreatedRangeDraft, resolveCreatedRangeDraft, documentListUrlError } from '../application/document-created-range';
+import { validateListSearch, type ListSearch } from '../application/search-state';
 import { metadataFilterFields, metadataFilterValidation, type MetadataFilters } from '../application/document-metadata-filters';
 import { documentListStatusLabel } from '../view-model/document-status';
 import { formatDateTime as formatDate } from '../view-model/date-time';
 import styles from './DocumentWorkspace.module.css';
 
 type DocumentRow = DocumentList['items'][number];
-type FolderItem = Folder;
 
 export function DocumentHomePage() {
   const search = useSearch({ from: '/documents' }) as ListSearch;
   const navigate = useNavigate({ from: '/documents' });
   const currentUrl = useRouterState({ select: (state) => state.location.href });
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [chosenFolder, setChosenFolder] = useState<Folder | undefined>();
   const [folderContext, setFolderContext] = useState<SelectedFolderContext>();
   const renameStore = folderRenameOperations(queryClient);
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
+  const documentMoveStore = documentMoveOperations(queryClient);
+  const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
+  const documentPolicyStore = documentAccessPolicyOperations(queryClient);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
+  const policyStore = folderAccessPolicyOperations(queryClient);
+  const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get);
+  const moveStore = folderMoveOperations(queryClient);
+  const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
+  useEffect(() => {
+    if (move?.status !== 'succeeded' && documentMove?.status !== 'succeeded' && policyOperation?.status !== 'succeeded' && documentPolicyOperation?.status !== 'succeeded') return;
+    // Global authorization revision invalidates every query-external selection provenance.
+    // Leave the current URL/navigation alone and require another actual tree selection.
+    setChosenFolder(undefined); setFolderContext(undefined);
+  }, [move?.status, move?.request.operationId, documentMove?.status, documentMove?.request.operationId, policyOperation?.status, policyOperation?.request.operationId, documentPolicyOperation?.status, documentPolicyOperation?.request.operationId]);
   useEffect(() => {
     if (rename?.status !== 'succeeded') return;
     const targetId = rename.targetFolderId;
@@ -38,6 +65,8 @@ export function DocumentHomePage() {
     setFolderContext(current => current?.folderId === targetId ? undefined : current);
   }, [rename?.status, rename?.request.operationId]);
   const [selectionGeneration, setSelectionGeneration] = useState(0);
+  const [draftUnread, setDraftUnread] = useState(search.unreadOnly === true);
+  useEffect(() => setDraftUnread(search.unreadOnly === true), [search.unreadOnly]);
   const [draftTitle, setDraftTitle] = useState(search.titleContains ?? '');
   useEffect(() => setDraftTitle(search.titleContains ?? ''), [search.titleContains]);
   const [draftMetadata, setDraftMetadata] = useState<MetadataFilters>({ documentType: search.documentType ?? '', owningDepartment: search.owningDepartment ?? '', category: search.category ?? '' });
@@ -46,34 +75,101 @@ export function DocumentHomePage() {
     setDraftMetadata({ documentType: search.documentType ?? '', owningDepartment: search.owningDepartment ?? '', category: search.category ?? '' });
     setFilterError(null);
   }, [search.documentType, search.owningDepartment, search.category]);
-  const appliedFilterError = metadataFilterValidation(search);
+  const [createdDraft, setCreatedDraft] = useState(() => initialCreatedRangeDraft(search));
+  useEffect(() => {
+    setCreatedDraft(initialCreatedRangeDraft(search));
+    setFilterError(null);
+  }, [search.createdFrom, search.createdBefore]);
+  // A changed URL pair invalidates both drafts during render, before effect synchronization.
+  const currentCreatedDraft = currentCreatedRangeDraft(search, createdDraft);
+  const appliedFilterError = metadataFilterValidation(search) ?? createdRangeRouteError(search) ?? documentListUrlError(currentUrl);
+  const listKey = ['documents', {
+    view: search.view,
+    unreadOnly: search.unreadOnly === true ? true : undefined,
+    titleContains: search.titleContains,
+    documentType: search.documentType || undefined,
+    owningDepartment: search.owningDepartment || undefined,
+    category: search.category || undefined,
+    createdFrom: search.createdFrom || undefined,
+    createdBefore: search.createdBefore || undefined,
+    folderId: search.folderId,
+    includeDescendants: search.includeDescendants,
+    sort: search.sort,
+    pageSize: search.pageSize,
+    cursor: search.cursor,
+  }] as const;
+  const historyList = search.view === 'history';
+  // Keep only the refusal across normal read resets; successful rows are never an authorization cache.
+  const refusalKey = ['document-history-list-refusal', listKey[1]] as const;
+  const refusal = useQuery<{ error: unknown } | null>({ queryKey: refusalKey, queryFn: skipToken, initialData: null, gcTime: Infinity });
+  const listIdentity = JSON.stringify(listKey);
+  useEffect(() => {
+    if (!historyList) return;
+    return () => {
+      void queryClient.cancelQueries({ queryKey: listKey, exact: true }, { revert: false });
+      queryClient.removeQueries({ queryKey: listKey, exact: true });
+    };
+  }, [queryClient, historyList, listIdentity]);
   const listQuery = useQuery({
-    enabled: !appliedFilterError,
-    queryKey: ['documents', {
-      view: search.view,
-      titleContains: search.titleContains,
-      documentType: search.documentType || undefined,
-      owningDepartment: search.owningDepartment || undefined,
-      category: search.category || undefined,
-      folderId: search.folderId,
-      includeDescendants: search.includeDescendants,
-      sort: search.sort,
-      pageSize: search.pageSize,
-      cursor: search.cursor,
-    }],
-    queryFn: () => documentApi.listDocuments({
-      view: search.view,
-      sort: search.sort,
-      pageSize: search.pageSize,
-      ...(search.titleContains ? { titleContains: search.titleContains } : {}),
-      ...(search.documentType ? { documentType: search.documentType } : {}),
-      ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
-      ...(search.category ? { category: search.category } : {}),
-      ...(search.folderId ? { folderId: search.folderId } : {}),
-      ...(search.includeDescendants ? { includeDescendants: true } : {}),
-      ...(search.cursor ? { cursor: search.cursor } : {}),
-    }),
+    enabled: !appliedFilterError && (!historyList || !refusal.data),
+    queryKey: listKey,
+    ...(historyList ? { retry: false, refetchOnMount: 'always' as const } : {}),
+    queryFn: async ({ signal }) => {
+      const blocked = historyList && queryClient.getQueryData<{ error: unknown }>(refusalKey);
+      if (blocked) throw blocked.error;
+      try {
+        const result = await documentApi.listDocuments({
+          view: search.view,
+          sort: search.sort,
+          pageSize: search.pageSize,
+          ...(search.unreadOnly === true ? { unreadOnly: true } : {}),
+          ...(search.titleContains ? { titleContains: search.titleContains } : {}),
+          ...(search.documentType ? { documentType: search.documentType } : {}),
+          ...(search.owningDepartment ? { owningDepartment: search.owningDepartment } : {}),
+          ...(search.category ? { category: search.category } : {}),
+          ...(search.createdFrom ? { createdFrom: search.createdFrom } : {}),
+          ...(search.createdBefore ? { createdBefore: search.createdBefore } : {}),
+          ...(search.folderId ? { folderId: search.folderId } : {}),
+          ...(search.includeDescendants ? { includeDescendants: true } : {}),
+          ...(search.cursor ? { cursor: search.cursor } : {}),
+        });
+        if (historyList && result.view !== 'history') throw new Error('履歴一覧の応答を確認できません。');
+        return result;
+      } catch (error) {
+        const problem = problemFromUnknown(error);
+        if (historyList && !signal.aborted && problem && [401, 403, 404].includes(problem.status)) {
+          queryClient.setQueryData(refusalKey, { error });
+        }
+        throw error;
+      }
+    },
   });
+  const listState = useSyncExternalStore(
+    listener => queryClient.getQueryCache().subscribe(listener),
+    () => historyList ? queryClient.getQueryState<DocumentList>(listKey) : undefined,
+  );
+  const listError = historyList ? refusal.data?.error ?? listQuery.error : listQuery.error;
+  const historyListReady = !appliedFilterError && !listError && listQuery.isSuccess && listQuery.fetchStatus === 'idle'
+    && listQuery.isFetchedAfterMount && !listState?.isInvalidated && listQuery.data.view === 'history';
+  function historySelectionReadable() {
+    const state = queryClient.getQueryState<DocumentList>(listKey);
+    let liveSearch: ListSearch;
+    try { liveSearch = validateListSearch(router.state.location.search); } catch { return false; }
+    const sameSelection = [...new Set([...Object.keys(search), ...Object.keys(liveSearch)])]
+      .every(key => search[key as keyof ListSearch] === liveSearch[key as keyof ListSearch]);
+    return sameSelection && liveSearch.view === 'history' && liveSearch.panel === 'open' && router.history.location.href === currentUrl && !queryClient.getQueryData(refusalKey)
+      && state?.status === 'success' && !state.isInvalidated && state.fetchStatus === 'idle'
+      && state.data === listQuery.data && state.data?.view === 'history'
+      && state.data.items.some(item => item.documentId === search.selectedDocumentId);
+  }
+  function restartHistoryList() {
+    if (queryClient.getQueryState(listKey)?.fetchStatus === 'fetching') return;
+    void queryClient.cancelQueries({ queryKey: listKey, exact: true }, { revert: false });
+    // Reset the successful data before clearing the barrier, never revive old rows.
+    void queryClient.resetQueries({ queryKey: listKey, exact: true });
+    queryClient.setQueryData(refusalKey, null);
+  }
+
   const rootQuery = useQuery({ queryKey: ['folder-tree', 'root'], queryFn: documentApi.getRootFolder });
   const registrationFolderQuery = useQuery({
     queryKey: ['folder-tree', search.folderId],
@@ -84,28 +180,32 @@ export function DocumentHomePage() {
     ? { folderId: search.folderId, name: chosenFolder?.folderId === search.folderId ? chosenFolder.name : `選択中のフォルダー（${search.folderId}）` }
     : rootQuery.data;
   const registrationCapability = search.folderId ? registrationFolderQuery.data?.capabilities.createDocument : rootQuery.data?.capabilities.createDocument;
-  const items = useMemo(() => appliedFilterError ? [] : listQuery.data?.items ?? [], [listQuery.data?.items, appliedFilterError]);
-  const panelOpen = search.panel === 'open' && search.view !== 'history';
-  const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen ? items[0] : undefined);
+  const items = useMemo(() => appliedFilterError || historyList && !historyListReady ? [] : listQuery.data?.items ?? [], [listQuery.data?.items, appliedFilterError, historyList, historyListReady]);
+  const panelOpen = search.panel === 'open';
+  const selected = items.find((item) => item.documentId === search.selectedDocumentId) ?? (panelOpen && search.view !== 'history' ? items[0] : undefined);
   const detailView = search.view === 'authoring' ? 'authoring' : 'published';
   const selectedDetailQuery = useQuery({
     queryKey: ['document', selected?.documentId, detailView],
     queryFn: () => documentApi.getDocument(selected!.documentId, detailView),
-    enabled: Boolean(selected && panelOpen),
+    enabled: Boolean(selected && panelOpen && search.view !== 'history'),
   });
   const selectedVersionQuery = useQuery({
     queryKey: ['document-version', selected?.documentId, selected?.displayVersion.versionId, detailView],
     queryFn: () => documentApi.getDocumentVersion(selected!.documentId, selected!.displayVersion.versionId, detailView),
-    enabled: Boolean(selected && panelOpen),
+    enabled: Boolean(selected && panelOpen && search.view !== 'history'),
   });
 
   function updateSearch(patch: Partial<ListSearch>) {
     void navigate({
       search: (previous) => {
         const next = { ...previous, ...patch } as ListSearch;
+        if (historyList && Object.keys(patch).some(key => key !== 'panel' && key !== 'selectedDocumentId')) {
+          next.panel = 'closed';
+        }
+        if (patch.unreadOnly === undefined && Object.prototype.hasOwnProperty.call(patch, 'unreadOnly')) delete next.unreadOnly;
         if (patch.cursor === undefined && Object.prototype.hasOwnProperty.call(patch, 'cursor')) delete next.cursor;
         if (patch.folderId === undefined && Object.prototype.hasOwnProperty.call(patch, 'folderId')) delete next.folderId;
-        for (const { key } of metadataFilterFields) {
+        for (const { key } of [...metadataFilterFields, ...createdRangeFields]) {
           if (patch[key] === undefined && Object.prototype.hasOwnProperty.call(patch, key)) delete next[key];
         }
         if (patch.titleContains === undefined && Object.prototype.hasOwnProperty.call(patch, 'titleContains')) delete next.titleContains;
@@ -139,12 +239,14 @@ export function DocumentHomePage() {
     {
       id: 'state',
       header: '状態',
-      cell: ({ row }) => <span className={styles.stateBadge}>{documentListStatusLabel(row.original)}</span>,
+      cell: ({ row }) => historyList && 'ended' in row.original
+        ? <><span className={styles.stateBadge}>{row.original.ended ? '公開終了済み' : '公開終了していません'}</span><span>代表版: {row.original.displayVersion.lifecycleState}</span></>
+        : <span className={styles.stateBadge}>{documentListStatusLabel(row.original)}</span>,
     },
     {
       id: 'folder',
       header: 'フォルダー',
-      cell: ({ row }) => row.original.folderName ?? 'すべての文書',
+      cell: ({ row }) => row.original.folderName ?? (search.view === 'history' ? '表示できません' : 'すべての文書'),
     },
     {
       id: 'version',
@@ -153,7 +255,7 @@ export function DocumentHomePage() {
     },
     {
       id: 'timestamp',
-      header: search.view === 'authoring' ? '更新日時' : '公開日時',
+      header: historyList ? '表示日時' : search.view === 'authoring' ? '更新日時' : '公開日時',
       cell: ({ row }) => (
         <time dateTime={row.original.displayTimestamp.value}>
           {formatDate(row.original.displayTimestamp.value)}
@@ -193,14 +295,21 @@ export function DocumentHomePage() {
 
   useEffect(() => {
     if (!panelOpen || selectedRowIndex < 0 || !selected) return;
+    // A delayed list response must not take focus from another operation.
+    // Check again in the frame: the user can move after this effect schedules it.
+    const listOwnsFocus = () => document.activeElement === document.body
+      || Boolean(tableScrollerRef.current?.contains(document.activeElement));
+    if (!listOwnsFocus()) return;
     virtualizer.scrollToIndex(selectedRowIndex, { align: 'auto' });
     const frame = requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>(`[data-document-id="${selected.documentId}"]`)?.focus();
+      if (listOwnsFocus()) document.querySelector<HTMLButtonElement>(`[data-document-id="${selected.documentId}"]`)?.focus();
     });
     return () => cancelAnimationFrame(frame);
   }, [panelOpen, selected?.documentId, selectedRowIndex]);
 
   function openDetail(documentId: string) {
+    const error = documentListUrlError(currentUrl);
+    if (error) { setFilterError(error); return; }
     void navigate({
       to: '/documents/$documentId',
       params: { documentId },
@@ -212,7 +321,12 @@ export function DocumentHomePage() {
     });
   }
 
-  const panel = selected ? (
+  const panel = selected && historyList && 'ended' in selected && panelOpen ? (
+    <DocumentHistoryPanel key={selected.documentId} document={selected} isDocumentReadable={historySelectionReadable} onClose={() => {
+      updateSearch({ panel: 'closed' });
+      document.querySelector<HTMLButtonElement>(`[data-document-id="${selected.documentId}"]`)?.focus();
+    }} />
+  ) : selected && !historyList ? (
     <div className={styles.panelContent}>
       <div className={styles.panelHeader}>
         <div><small>選択中の文書</small><h2>{selected.title}</h2></div>
@@ -251,6 +365,7 @@ export function DocumentHomePage() {
   const navigationContent = (
     <section className={styles.folderRail} aria-label="フォルダー">
       <h2>フォルダー</h2>
+      <DocumentMove contextKey={currentUrl} />
       <RootFolderCreate root={rootQuery.data} readReady={rootQuery.isSuccess && !rootQuery.isFetching} contextKey={`${currentUrl}:${selectionGeneration}`} selectedFolderId={search.folderId}
         selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
           context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
@@ -262,6 +377,18 @@ export function DocumentHomePage() {
         return result.data;
       }} />
       <FolderRename root={!search.folderId ? rootQuery.data : undefined} contextKey={`${currentUrl}:${selectionGeneration}`}
+        selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
+          context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
+            capabilities: registrationFolderQuery.data?.capabilities },
+          readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
+        } : undefined} />
+      <FolderAccessPolicy root={rootQuery.data} contextKey={`${currentUrl}:${selectionGeneration}`}
+        selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
+          context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
+            capabilities: registrationFolderQuery.data?.capabilities },
+          readReady: registrationFolderQuery.isSuccess && !registrationFolderQuery.isFetching,
+        } : undefined} />
+      <FolderMove root={rootQuery.data} contextKey={`${currentUrl}:${selectionGeneration}`}
         selected={folderContext && folderContext.folderId === search.folderId && chosenFolder ? {
           context: folderContext, folder: { ...chosenFolder, parentFolderId: folderContext.sourceParentId,
             capabilities: registrationFolderQuery.data?.capabilities },
@@ -288,16 +415,16 @@ export function DocumentHomePage() {
 
   return (
     <AppShell
-      activeNavigation={search.view === 'authoring' ? 'editing' : 'documents'}
+      activeNavigation={search.view === 'history' ? 'history' : search.view === 'authoring' ? 'editing' : 'documents'}
       contextPanel={panel}
-      contextPanelLabel="選択中の文書"
+      contextPanelLabel={search.view === 'history' ? '文書履歴パネル' : '選択中の文書'}
       headerContext={<><span>文書</span>{selected?.folderName && <>　/　{selected.folderName}</>}</>}
       navigationContent={navigationContent}
       showContextPanel={Boolean(selected && panelOpen)}
     >
       <div className={styles.pageHeader}>
         <div>
-          <h1>{selected?.folderName ? `${selected.folderName}の文書` : search.view === 'authoring' ? '編集作業' : '文書一覧'}</h1>
+          <h1>{search.view === 'history' ? '文書履歴' : selected?.folderName ? `${selected.folderName}の文書` : search.view === 'authoring' ? '編集作業' : '文書一覧'}</h1>
         </div>
         <DocumentRegistration folder={registrationFolder} capabilityKnown={Boolean(registrationCapability)} canCreate={registrationCapability?.status === 'available'} contextKey={currentUrl} onCreated={result => {
           void queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -305,14 +432,17 @@ export function DocumentHomePage() {
         }} />
       </div>
 
+      <DocumentAccessPolicyRecovery />
+      <DocumentReadStateRecovery />
       <div className={styles.listLayout}>
         <section className={styles.listMain} aria-label="文書">
           <form className={styles.filterBar} onSubmit={(event) => {
             event.preventDefault();
-            const error = metadataFilterValidation(draftMetadata);
+            const created = resolveCreatedRangeDraft(currentCreatedDraft);
+            const error = metadataFilterValidation(draftMetadata) ?? created.error;
             setFilterError(error);
-            if (error) return;
-            updateSearch({ titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
+            if (error || created.error !== null) return;
+            updateSearch({ ...created.range, unreadOnly: search.view === 'published' && draftUnread ? true : undefined, titleContains: draftTitle || undefined, documentType: draftMetadata.documentType || undefined, owningDepartment: draftMetadata.owningDepartment || undefined, category: draftMetadata.category || undefined, cursor: undefined });
           }}>
             <label className={styles.searchField}>
               <span>文書名で絞り込み</span>
@@ -324,6 +454,37 @@ export function DocumentHomePage() {
                 <input type="text" aria-label={label} aria-describedby="metadata-filter-help" value={draftMetadata[key] ?? ''} onChange={event => { setDraftMetadata(previous => ({ ...previous, [key]: event.target.value })); setFilterError(null); }} />
               </label>
             ))}
+            {createdRangeFields.map(({ key, label, name }) => {
+              const endpoint = currentCreatedDraft[key];
+              const local = endpoint.intent === 'set' ? endpoint.local : endpoint.intent === 'clear' ? '' : createdRangeLocalValue(currentCreatedDraft.base[key]);
+              return <div key={key} className={styles.searchField}>
+                <label className={styles.searchField}>
+                  <span>{label}</span>
+                  {local === null
+                    ? <input type="text" aria-label={label} aria-describedby="created-range-help" value={currentCreatedDraft.base[key] ?? ''} readOnly />
+                    : <input type="datetime-local" step="60" aria-label={label} aria-describedby="created-range-help" value={local} onChange={event => {
+                      setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'set', local: event.target.value } }); setFilterError(null);
+                    }} />}
+                </label>
+                {local === null && <button type="button" onClick={() => {
+                  setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'set', local: '' } }); setFilterError(null);
+                }}>{name}を指定し直す</button>}
+                {endpoint.intent !== 'keep' && <button type="button" onClick={() => {
+                  setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'keep' } }); setFilterError(null);
+                }}>{name}の指定し直しを取消</button>}
+                <button type="button" onClick={() => {
+                  setCreatedDraft({ ...currentCreatedDraft, [key]: { intent: 'clear' } }); setFilterError(null);
+                }}>{name}を解除</button>
+              </div>;
+            })}
+            <button className={styles.secondaryButton} type="button" onClick={() => {
+              setCreatedDraft(initialCreatedRangeDraft({})); setFilterError(null);
+              updateSearch({ createdFrom: undefined, createdBefore: undefined, cursor: undefined });
+            }}>日時の条件を解除</button>
+            {search.view === 'published' && <label className={styles.checkLine}>
+              <input type="checkbox" checked={draftUnread} onChange={event => setDraftUnread(event.target.checked)} />
+              未読のみ
+            </label>}
             <button className={styles.secondaryButton} type="submit">絞り込む</button>
             <button className={styles.secondaryButton} type="button" onClick={() => {
               setDraftMetadata({ documentType: '', owningDepartment: '', category: '' }); setFilterError(null);
@@ -340,10 +501,12 @@ export function DocumentHomePage() {
           </form>
 
           <p id="metadata-filter-help" className={styles.muted}>属性は完全一致で、複数の条件はすべて一致する文書を表示します。空欄は未指定です。空白も値として扱います。</p>
+          <p id="created-range-help" className={styles.muted}>文書自体の作成日時で絞り込みます。JST / UTC+09:00・分単位。開始を含み、終了を含みません。</p>
           {(filterError || appliedFilterError) && <p role="alert">{filterError || appliedFilterError}</p>}
-          {!appliedFilterError && listQuery.isPending && <LoadingState label="文書を読み込み中" />}
-          {!appliedFilterError && listQuery.error && <ApiFeedback error={listQuery.error} onRetry={() => void listQuery.refetch()} />}
-          {!appliedFilterError && listQuery.data && items.length === 0 && (
+          {!appliedFilterError && (!historyList || !listError) && listQuery.isPending && <LoadingState label="文書を読み込み中" />}
+          {!appliedFilterError && Boolean(listError) && <ApiFeedback error={listError} {...(!historyList ? { onRetry: () => void listQuery.refetch() } : {})} />}
+          {historyList && <button type="button" disabled={listQuery.isFetching} onClick={restartHistoryList}>文書履歴一覧を読み直す</button>}
+          {!appliedFilterError && listQuery.data && (!historyList || historyListReady) && items.length === 0 && (
             <div className={styles.emptyState}>
               <h2>文書がありません</h2>
               <p>検索条件やフォルダーを変更してください。</p>
@@ -385,73 +548,6 @@ export function DocumentHomePage() {
   );
 }
 
-function FolderNode({
-  folder,
-  selectedFolderId,
-  onSelect,
-  isRoot = false,
-  sourceParentId,
-  sourcePageLimit,
-}: {
-  folder: FolderItem;
-  selectedFolderId?: string;
-  onSelect: (folderId?: string, folder?: Folder, context?: SelectedFolderContext) => void;
-  isRoot?: boolean;
-  sourceParentId?: string;
-  sourcePageLimit?: number;
-}) {
-  const [expanded, setExpanded] = useState(isRoot);
-  const queryClient = useQueryClient();
-  // Keep paged data separate from the ordinary registration-capability query.
-  // The existing parent prefix still invalidates both after a Root create.
-  const queryKey = ['folder-tree', folder.folderId, 'pages'];
-  const childrenQuery = useInfiniteQuery({
-    queryKey,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => documentApi.listFolderChildren(folder.folderId, pageParam),
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    enabled: expanded,
-  });
-  const children = useMemo(() => {
-    const unique = new Map<string, Folder>();
-    // Live pages are not a snapshot: a moved/renamed row can reappear later.
-    for (const page of childrenQuery.data?.pages ?? []) {
-      for (const child of page.items) unique.set(child.folderId, child);
-    }
-    return [...unique.values()];
-  }, [childrenQuery.data]);
-  function restartChildren() {
-    if (queryClient.getQueryState(queryKey)?.fetchStatus === 'fetching') return;
-    // Reset only this read; never clear the QueryClient or unresolved mutations.
-    void queryClient.resetQueries({ queryKey, exact: true });
-  }
-  return (
-    <li>
-      <div className={styles.folderEntry}>
-        <button type="button" className={styles.expandButton} aria-label={`${folder.name}の子フォルダーを${expanded ? '閉じる' : '開く'}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? '▾' : '▸'}</button>
-        <button type="button" className={styles.folderButton} aria-current={(isRoot ? !selectedFolderId : selectedFolderId === folder.folderId) ? 'location' : undefined} onClick={() => onSelect(isRoot ? undefined : folder.folderId, folder, !isRoot && sourceParentId && sourcePageLimit ? { kind: 'selected', folderId: folder.folderId, name: folder.name, sourceParentId, pageLimit: sourcePageLimit } : undefined)}>{folder.name}</button>
-      </div>
-      {childrenQuery.error && expanded && <ApiFeedback error={childrenQuery.error} onRetry={childrenQuery.isFetchNextPageError ? undefined : () => void childrenQuery.refetch({ cancelRefetch: false })} />}
-      {expanded && children.length > 0 && (
-        <ul className={styles.folderChildren}>
-          {children.map((child) => <FolderNode key={child.folderId} folder={child} selectedFolderId={selectedFolderId} onSelect={onSelect} sourceParentId={folder.folderId} sourcePageLimit={childrenQuery.data?.pages.length} />)}
-        </ul>
-      )}
-      {expanded && childrenQuery.hasNextPage && (!childrenQuery.error || childrenQuery.isFetchNextPageError) && (
-        <button type="button" className={styles.secondaryButton} disabled={childrenQuery.isFetching}
-          aria-label={`${folder.name}の子フォルダー${childrenQuery.isFetchNextPageError ? 'の続きを再試行' : 'をさらに表示'}`}
-          onClick={() => { if (!childrenQuery.isFetching) void childrenQuery.fetchNextPage({ cancelRefetch: false }); }}>
-          {childrenQuery.isFetchNextPageError ? '続きを再試行' : 'さらに表示'}
-        </button>
-      )}
-      {expanded && (childrenQuery.hasNextPage || (childrenQuery.data?.pages.length ?? 0) > 1 || childrenQuery.error) && (
-        <button type="button" className={styles.secondaryButton} disabled={childrenQuery.isFetching}
-          aria-label={`${folder.name}の子フォルダーを最初から読み直す`} onClick={restartChildren}>最初から読み直す</button>
-      )}
-      {expanded && childrenQuery.isFetching && <span className={styles.folderLoading} role="status">読み込み中</span>}
-    </li>
-  );
-}
 
 function CapabilitySummary({ document }: { document: Awaited<ReturnType<typeof documentApi.getDocument>> }) {
   const capabilities = document.capabilities;

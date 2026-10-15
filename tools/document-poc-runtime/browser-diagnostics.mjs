@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 
 export const MAX_BROWSER_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_RECORDS = 20, MAX_NODES = 1000, MAX_DEPTH = 8, MAX_TEXT = 16 * 1024;
-const sources = new Set(['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts', 'document-schedule-cancellation.spec.ts', 'lifecycle-operations.spec.ts', 'lifecycle-operations-persistence.spec.ts', 'working-version-editor.spec.ts', 'working-version-editor-persistence.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
+const sources = new Set(['document-runtime.spec.ts', 'initial-registration.spec.ts', 'document-list-focus.spec.ts', 'metadata-editor.spec.ts', 'document-schedule-cancellation.spec.ts', 'lifecycle-operations.spec.ts', 'lifecycle-operations-persistence.spec.ts', 'working-version-editor.spec.ts', 'working-version-editor-persistence.spec.ts', 'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'persistence.spec.ts', 'timestamp-layout.spec.ts', 'support.ts', 'japanese-font.ts']);
 const statuses = new Set(['passed', 'failed', 'timedOut', 'skipped', 'interrupted', 'unavailable']);
 const categories = new Set(['strict-locator', 'locator-timeout', 'test-timeout', 'HTTP-status-assertion', 'assertion', 'response-loss', 'unavailable']);
 const responseLossCodes = new Set(['configuration', 'admission', 'unarmed-retry', 'payload', 'upstream-status', 'upstream-result',
@@ -44,7 +44,13 @@ const journeyStages = new Set(['context-read', 'sessions-verified', 'api-preflig
   'gui-initial-working-verified', 'gui-initial-published-shared', 'gui-initial-snapshot-saved',
   'gui-metadata-created', 'gui-metadata-cancel-verified', 'gui-metadata-working-verified',
   'gui-metadata-published-verified', 'gui-metadata-minor-verified', 'gui-metadata-noop-verified',
+  'gui-metadata-list-return-pressed', 'gui-metadata-created-from-verified', 'gui-metadata-unread-list-verified',
+  'gui-unread-readonly-verified', 'gui-metadata-revision-entry-ready', 'gui-metadata-revision-first-page-verified',
+  'gui-metadata-comparison-pair-verified', 'gui-metadata-comparison-tab-pressed', 'gui-metadata-comparison-response-verified',
+  'gui-metadata-revision-first-comparison-verified', 'gui-metadata-revision-reload-page-verified',
   'gui-metadata-snapshot-saved', 'gui-metadata-restart-verified',
+  'gui-document-move-verified', 'gui-document-move-replay-verified',
+  'gui-formal-revisions-readonly-verified', 'gui-formal-revisions-restart-readonly-verified',
   'gui-lifecycle-fixture-ready', 'gui-lifecycle-cancel-verified', 'gui-withdraw-fallback-verified',
   'gui-withdraw-null-verified', 'gui-publication-end-verified', 'gui-lifecycle-snapshot-saved', 'gui-lifecycle-restart-verified',
   'gui-schedule-created', 'gui-schedule-dismissed', 'gui-schedule-cancelled',
@@ -102,7 +108,7 @@ function location(value) {
   return { source, ...(integer(value.line) ? { line: value.line } : {}), ...(integer(value.column) ? { column: value.column } : {}) };
 }
 function stackLocation(value) {
-  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|initial-registration|metadata-editor|document-schedule-cancellation|lifecycle-operations(?:-persistence)?|working-version-editor(?:-persistence)?|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
+  const match = text(value).match(/(?:^|[\\/\s(])((?:document-runtime|initial-registration|document-list-focus|metadata-editor|document-schedule-cancellation|lifecycle-operations(?:-persistence)?|working-version-editor(?:-persistence)?|human-agent-consistency|worker-failure|persistence|timestamp-layout)\.spec\.ts|support\.ts):(\d{1,7}):(\d{1,7})(?:\D|$)/u);
   return match ? location({ file: match[1], line: Number(match[2]), column: Number(match[3]) }) : undefined;
 }
 // Node util.inspect uses unquoted property names and quoted string values. Accept
@@ -245,9 +251,13 @@ export async function readBrowserDiagnostics(runDirectory, phase) {
 export function sanitizeBrowserPhases(value) {
   const journey = sanitizeBrowserDiagnostics(value?.journey);
   const persistence = sanitizeBrowserDiagnostics(value?.persistence);
-  const remaining = Math.max(0, MAX_RECORDS - journey.tests.length);
-  if (persistence.tests.length > remaining) {
-    persistence.tests = persistence.tests.slice(0, remaining); persistence.truncated = true;
+  const candidates = [...journey.tests, ...persistence.tests];
+  const unsuccessful = record => !['passed', 'skipped'].includes(record.status);
+  const selected = new Set([...candidates.filter(unsuccessful), ...candidates.filter(record => !unsuccessful(record))].slice(0, MAX_RECORDS));
+  for (const phase of [journey, persistence]) {
+    const retained = phase.tests.filter(record => selected.has(record));
+    if (retained.length < phase.tests.length) phase.truncated = true;
+    phase.tests = retained;
   }
   return { journey, persistence };
 }

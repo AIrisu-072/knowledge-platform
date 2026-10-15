@@ -1,10 +1,11 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type Request } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import {
-  getDocument, getDocumentVersion, type CommandsEndPublication, type CommandsWithdrawVersion,
-  type ModelsEndPublicationResult, type ModelsWithdrawResult,
+  getDocument, getDocumentVersion, listDocuments, listDocumentVersions, type CommandsEndPublication, type CommandsWithdrawVersion,
+  type ModelsEndPublicationResult, type ModelsWithdrawResult, type ModelsDocumentList, type ModelsHistory, type VersionList, type VersionDetail, type FileList,
 } from '@knowledge-platform/document-api-client';
 import { startDiagnostics, finishDiagnostics } from './startup-diagnostics';
-import { options, runtime } from './support';
+import { hash, options, runtime } from './support';
 import { createLifecycleFixture, lifecycleSnapshot, saveLifecycleSnapshot } from './lifecycle-support';
 
 // This additional acceptance slice never records images, trace or video, even on failure.
@@ -45,6 +46,163 @@ async function confirmOperation(page: Page, action: string, title: string, confi
   return response;
 }
 
+async function verifyHistoryWorkspace(page: Page, context: Awaited<ReturnType<typeof runtime>>, snapshot: Awaited<ReturnType<typeof lifecycleSnapshot>>, ended: boolean) {
+  const { documentId } = snapshot;
+  const readState = async (baseUrl: string) => {
+    const common = options(baseUrl), path = { documentId };
+    const list = (await listDocuments({ ...common, query: { view: 'history', pageSize: 100 } })).data;
+    expect(list.view).toBe('history');
+    if (list.view !== 'history') throw Error('Expected the history projection');
+    const document = list.items.find(item => item.documentId === documentId);
+    expect(document).toBeDefined();
+    const versions = (await listDocumentVersions({ ...common, path, query: { purpose: 'history', pageSize: 100 } })).data;
+    return { document: document!, versions: versions.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt })) };
+  };
+  const before = await readState(context.human), agentBefore = await readState(context.agent);
+  // Version summaries omit title; the current HistoryDocument projection owns the representative title.
+  const title = before.document.title;
+  expect(before.document.ended).toBe(ended);
+  expect(before.document.lifecycleState).toBe(ended ? 'published' : 'withdrawn');
+  // Normal-detail 404 may leave both refusal markers. Recovery uses fresh GUI history reads.
+  await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません');
+  const forbidden: string[] = [];
+  const recordRequest = (request: Request) => {
+    const url = new URL(request.url());
+    if (!url.pathname.startsWith('/v1/')) return;
+    if (url.origin !== context.human || request.method() !== 'GET' || url.pathname === `/v1/documents/${documentId}`
+      || url.pathname.startsWith(`/v1/documents/${documentId}/versions`) && url.searchParams.get('purpose') !== 'history') {
+      forbidden.push(`${request.method()} ${url.pathname}`);
+    }
+  };
+  page.on('request', recordRequest);
+  const listResponse = (filtered: boolean) => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === context.human && url.pathname === '/v1/documents' && url.searchParams.get('view') === 'history'
+      && (!filtered || url.searchParams.get('titleContains') === title) && response.request().method() === 'GET';
+  });
+  const navigationRead = listResponse(false);
+  await page.getByRole('navigation', { name: 'メインナビゲーション', exact: true }).getByRole('link', { name: '文書履歴', exact: true }).click();
+  expect((await navigationRead).status()).toBe(200);
+  await expect(page.getByRole('heading', { name: '文書履歴', exact: true, level: 1 })).toBeVisible();
+  await page.getByRole('searchbox', { name: '文書名で絞り込み', exact: true }).fill(title);
+  const filteredRead = listResponse(true);
+  await page.getByRole('button', { name: '絞り込む', exact: true }).click();
+  const filteredResult = await filteredRead;
+  expect(filteredResult.status()).toBe(200);
+  const list = await filteredResult.json() as ModelsDocumentList;
+  expect(list.items.find(item => item.documentId === documentId)).toEqual(before.document);
+  // The title button also contains its unread badge; the existing ID identifies the exact row.
+  await page.getByRole('table', { name: '文書一覧', exact: true }).locator(`button[data-document-id="${documentId}"]`).click();
+  const workspace = page.getByRole('region', { name: '選択した文書の履歴', exact: true });
+  await expect(workspace).toBeVisible();
+  await expect(workspace.locator('dt').filter({ hasText: /^代表版の文書名$/ }).locator('+ dd')).toHaveText(title);
+  await expect(workspace.locator('dt').filter({ hasText: /^文書の公開終了$/ }).locator('+ dd')).toHaveText(ended ? '公開終了済み' : '公開終了していません');
+  await expect(workspace.locator('dt').filter({ hasText: /^代表版の状態$/ }).locator('+ dd')).toHaveText(ended ? 'PUBLISHED' : 'WITHDRAWN');
+  const historyResponse = (suffix: string) => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === context.human && url.pathname === `/v1/documents/${documentId}/versions${suffix}`
+      && url.searchParams.get('purpose') === 'history' && response.request().method() === 'GET';
+  });
+  await workspace.getByRole('button', { name: 'コンテンツ版の履歴を開く', exact: true }).click();
+  const content = workspace.getByRole('region', { name: 'コンテンツ版の履歴（閲覧専用）', exact: true });
+  const restart = content.getByRole('button', { name: 'コンテンツ版の履歴を最初から読み直す', exact: true });
+  await expect(restart).toBeEnabled();
+  const versionRead = historyResponse('');
+  await restart.click();
+  const versionResult = await versionRead;
+  expect(versionResult.status()).toBe(200);
+  expect(Object.fromEntries(new URL(versionResult.url()).searchParams)).toEqual({ purpose: 'history', pageSize: '100' });
+  const versions = await versionResult.json() as VersionList;
+  expect(versions.items.map(version => version.versionId)).toEqual(snapshot.versions.map(version => version.versionId));
+  expect(versions.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt }))).toEqual(before.versions);
+  expect(versions.nextCursor).toBeNull();
+  const oldVersion = snapshot.versions.find(version => version.versionNo === 1)!;
+  const selection = content.getByRole('combobox', { name: '履歴のコンテンツ版を選択', exact: true });
+  await expect(selection).toHaveValue('');
+  const detailRead = historyResponse(`/${oldVersion.versionId}`), filesRead = historyResponse(`/${oldVersion.versionId}/files`);
+  await selection.selectOption(oldVersion.versionId);
+  const detailResult = await detailRead, filesResult = await filesRead;
+  expect(detailResult.status()).toBe(200); expect(filesResult.status()).toBe(200);
+  const detail = await detailResult.json() as VersionDetail, files = await filesResult.json() as FileList;
+  expect(detail).toMatchObject({ versionId: oldVersion.versionId, versionNo: 1, lifecycleState: ended ? 'published' : 'withdrawn', isCurrent: false,
+    firstReadAt: before.versions.find(version => version.versionId === oldVersion.versionId)!.firstReadAt });
+  expect(detail.capabilities.download.status).toBe('available');
+  const selected = content.getByRole('region', { name: '選択したコンテンツ版の詳細', exact: true });
+  await expect(selected.getByRole('heading', { name: 'Version 1', exact: true })).toBeVisible();
+  await expect(selected).toContainText(detail.title);
+  const originals = files.items.filter(file => file.role === 'AUTHORITATIVE');
+  expect(originals.length).toBeGreaterThan(0);
+  const originalDownloads = selected.getByRole('button', { name: /^履歴の原本を取得: / });
+  await expect(originalDownloads).toHaveCount(originals.length);
+  // These owned fixtures intentionally contain a UTF-8 authoritative original.
+  expect(originals.some(file => file.mediaType === 'text/plain')).toBe(true);
+  for (const file of originals) {
+    let viewerText: string | null = null;
+    if (file.mediaType === 'text/plain') {
+      const viewerRead = historyResponse(`/${oldVersion.versionId}/files/${file.contentItemId}/${file.representationId}`);
+      await selected.getByRole('button', { name: `${file.displayName}を表示`, exact: true }).click();
+      const viewerResult = await viewerRead;
+      expect(viewerResult.status()).toBe(200);
+      expect(viewerResult.request().headers()['x-knowledge-viewer-max-bytes']).toBe('10485760');
+      expect(viewerResult.headers()['content-length']).toBe(String(file.sizeBytes));
+      const plaintext = selected.getByTestId('original-viewer-text');
+      await expect(plaintext).toBeVisible();
+      // DevTools response.body() can transcode charset-less text/plain; use the
+      // rendered UTF-8 text and the existing raw download as byte/hash oracles.
+      viewerText = await plaintext.textContent();
+      expect(viewerText).not.toBeNull();
+      const renderedBytes = Buffer.from(viewerText!, 'utf8');
+      expect(renderedBytes.byteLength).toBe(file.sizeBytes);
+      expect(hash(renderedBytes)).toBe(oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!.hash);
+      await selected.getByRole('button', { name: '原本表示を閉じる', exact: true }).click();
+      await expect(plaintext).toHaveCount(0);
+      await expect(originalDownloads).toHaveCount(originals.length);
+      expect(await readState(context.human)).toEqual(before);
+      expect(await readState(context.agent)).toEqual(agentBefore);
+    }
+    const downloadRead = historyResponse(`/${oldVersion.versionId}/files/${file.contentItemId}/${file.representationId}`);
+    const download = page.waitForEvent('download');
+    await selected.getByRole('button', { name: `履歴の原本を取得: ${file.displayName}`, exact: true }).click();
+    expect((await downloadRead).status()).toBe(200);
+    const saved = await download, bytes = await readFile((await saved.path())!);
+    expect(saved.suggestedFilename()).toBe(file.displayName);
+    expect(bytes.byteLength).toBe(file.sizeBytes);
+    expect(hash(bytes)).toBe(oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!.hash);
+    if (viewerText !== null) {
+      expect(viewerText).toBe(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      expect(Buffer.from(viewerText, 'utf8').equals(bytes)).toBe(true);
+    }
+  }
+  const events = workspace.getByRole('region', { name: '変更履歴', exact: true });
+  const eventRestart = events.getByRole('button', { name: '変更履歴を最初から読み直す', exact: true });
+  await expect(eventRestart).toBeEnabled();
+  const eventRead = page.waitForResponse(response => new URL(response.url()).origin === context.human
+    && new URL(response.url()).pathname === `/v1/documents/${documentId}/history` && response.request().method() === 'GET');
+  await eventRestart.click();
+  const eventResult = await eventRead;
+  expect(eventResult.status()).toBe(200);
+  expect([...new URL(eventResult.url()).searchParams]).toEqual([['pageSize', '100']]);
+  const history = await eventResult.json() as ModelsHistory;
+  expect(history.nextCursor).toBeNull();
+  expect(history.items.filter(item => ['document.version.published', 'document.version.withdrawn', 'document.publication.ended'].includes(item.actionCode))
+    .map(item => ({ sourceKey: item.sourceKey, actionCode: item.actionCode, actor: item.actor?.principalId,
+      occurredAt: item.occurredAt, details: item.details, provenanceQuality: item.provenanceQuality }))).toEqual(snapshot.history);
+  await expect(events.getByRole('listitem')).toHaveCount(history.items.length);
+  await expect(events.getByRole('listitem').locator('strong')).toHaveText(history.items.map(item => item.actionCode));
+  await expect(events.getByRole('button', { name: '変更履歴をさらに表示', exact: true })).toBeHidden();
+  await expect(selection).toHaveValue(oldVersion.versionId);
+  expect(new URL(page.url()).pathname).toBe('/documents');
+  expect(new URL(page.url()).searchParams.get('view')).toBe('history');
+  expect(new URL(page.url()).searchParams.get('selectedDocumentId')).toBe(documentId);
+  expect(await readState(context.human)).toEqual(before);
+  expect(await readState(context.agent)).toEqual(agentBefore);
+  // This includes the original published-detail 404, Version/Revision IDs and authoritative hashes.
+  expect(await lifecycleSnapshot(context.human, documentId)).toEqual(snapshot);
+  expect(await lifecycleSnapshot(context.agent, documentId)).toEqual(snapshot);
+  expect(forbidden).toEqual([]);
+  page.off('request', recordRequest);
+}
+
 test('GUI現行公開版の取下げは直前の公開版へ復帰し、最後の公開版取下げ後は公開なしとなる', async ({ page }) => {
   const context = await runtime(), common = options(context.human);
   const fixture = await createLifecycleFixture(context, '【合成データ】GUI版取下げ');
@@ -69,7 +227,8 @@ test('GUI現行公開版の取下げは直前の公開版へ復帰し、最後�
   const fallbackResult = await fallbackResponse.json() as ModelsWithdrawResult;
   expect(fallbackResult).toMatchObject({ operationId: withdrawals[0]!.operationId, documentId, targetVersionId: secondVersionId,
     formerCurrentVersionId: secondVersionId, resultingCurrentVersionId: firstVersionId, resultingRevision: before.published.revision! + 1 });
-  await expect(page.getByRole('status')).toContainText('版を取下げました。');
+  const lifecycle = page.getByRole('region', { name: '公開状態の操作', exact: true });
+  await expect(lifecycle.getByRole('status')).toHaveText('版を取下げました。直前の公開版へ復帰しました。');
   const fallback = await lifecycleSnapshot(context.human, documentId);
   expect(withdrawals).toHaveLength(1);
   expect(withdrawals[0]!.expectedRevision).toBe(before.published.revision);
@@ -88,7 +247,7 @@ test('GUI現行公開版の取下げは直前の公開版へ復帰し、最後�
   const nullResult = await nullResponse.json() as ModelsWithdrawResult;
   expect(nullResult).toMatchObject({ operationId: withdrawals[1]!.operationId, documentId, targetVersionId: firstVersionId,
     formerCurrentVersionId: firstVersionId, resultingCurrentVersionId: null, resultingRevision: fallback.published.revision! + 1 });
-  await expect(page.getByRole('status')).toContainText('版を取下げました。');
+  await expect(lifecycle.getByRole('status')).toHaveText('版を取下げました。現行の公開版はありません。');
   expect(withdrawals).toHaveLength(2);
   expect(withdrawals[1]!.expectedRevision).toBe(fallback.published.revision);
   expect(new Set(withdrawals.map(item => item.operationId)).size).toBe(2);
@@ -106,6 +265,7 @@ test('GUI現行公開版の取下げは直前の公開版へ復帰し、最後�
   expect(await lifecycleSnapshot(context.agent, documentId)).toEqual(withdrawn);
   expect(origins).toEqual(new Set([context.human]));
   completed('gui-withdraw-null-verified');
+  await verifyHistoryWorkspace(page, context, withdrawn, false);
   await saveLifecycleSnapshot(context, 'withdrawn', withdrawn);
   completed('gui-lifecycle-snapshot-saved');
 });
@@ -135,12 +295,13 @@ test('GUI公開終了は過去PUBLISHED版と原本を保持し、通常readを�
     resultingCurrentVersionId: null, resultingDocumentRevision: before.published.revision! + 1 });
   expect(endings).toHaveLength(1);
   expect(endings[0]).toMatchObject({ expectedRevision: before.published.revision, expectedCurrentVersionId: secondVersionId });
-  await expect(page.getByRole('status')).toContainText('文書の公開を終了しました。');
+  const lifecycle = page.getByRole('region', { name: '公開状態の操作', exact: true });
+  await expect(lifecycle.getByRole('status')).toHaveText('文書の公開を終了しました。原本と過去版は保持されています。');
   // The refresh is expected to fail closed after T10; the successful operation notice must survive it.
   const authoring = await getDocument({ ...common, throwOnError: false, path, query: { view: 'authoring' } });
   expect(authoring.response?.status).toBe(404); expect(authoring.error?.code).toBe('DOCUMENT_NOT_FOUND');
   await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません');
-  await expect(page.getByRole('status')).toContainText('文書の公開を終了しました。');
+  await expect(lifecycle.getByRole('status')).toHaveText('文書の公開を終了しました。原本と過去版は保持されています。');
   const ended = await lifecycleSnapshot(context.human, documentId);
   expect(ended.published).toEqual({ status: 404, code: 'DOCUMENT_NOT_FOUND' });
   expect(ended.versions.map(version => version.lifecycleState)).toEqual(['published', 'published']);
@@ -156,6 +317,7 @@ test('GUI公開終了は過去PUBLISHED版と原本を保持し、通常readを�
   expect(endings).toHaveLength(1);
   expect(origins).toEqual(new Set([context.human]));
   completed('gui-publication-end-verified');
+  await verifyHistoryWorkspace(page, context, ended, true);
   await saveLifecycleSnapshot(context, 'ended', ended);
   completed('gui-lifecycle-snapshot-saved');
 });

@@ -161,6 +161,8 @@ pub struct CreateRecovery {
     pub document_id: String,
     pub document_version_id: String,
     pub file_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_ids: Option<Vec<String>>,
     pub recovery_endpoint: String,
 }
 
@@ -236,7 +238,9 @@ impl ApiProblem {
             ApplicationError::StaleVersion => ErrorCode::StaleVersion,
             ApplicationError::CursorStale => ErrorCode::CursorStale,
             ApplicationError::StaleComparisonInput => ErrorCode::StaleComparisonInput,
-            ApplicationError::Conflict => ErrorCode::RevisionConflict,
+            ApplicationError::Conflict | ApplicationError::ReadStateRevisionConflict => {
+                ErrorCode::RevisionConflict
+            }
             ApplicationError::OperationConflict => ErrorCode::OperationConflict,
             ApplicationError::BusinessRule => ErrorCode::BusinessRuleRejected,
             ApplicationError::Management(code) => management_code(*code),
@@ -263,6 +267,7 @@ impl ApiProblem {
             | ApplicationError::VersionCommitOutcomeUnknown { .. }
             | ApplicationError::PublicationEndCommitOutcomeUnknown { .. }
             | ApplicationError::ManagementCommitOutcomeUnknown { .. }
+            | ApplicationError::CurrentReadStateCommitOutcomeUnknown { .. }
             | ApplicationError::ReadStateCommitOutcomeUnknown { .. }
             | ApplicationError::FileAccessAuditCommitOutcomeUnknown { .. } => {
                 ErrorCode::CommitOutcomeUnknown
@@ -274,15 +279,22 @@ impl ApiProblem {
         };
         let mut problem = Self::new(code, instance, trace_id);
         match error {
+            ApplicationError::ReadStateRevisionConflict => {
+                problem.detail =
+                    "Expected read-state revision does not match the current read-state revision";
+            }
             ApplicationError::CommitOutcomeUnknown {
                 document_id,
                 document_version_id,
                 file_id,
+                file_ids,
             } => {
                 problem.recovery = Some(CreateRecovery {
                     document_id: document_id.as_uuid().to_string(),
                     document_version_id: document_version_id.as_uuid().to_string(),
                     file_id: file_id.as_uuid().to_string(),
+                    file_ids: file_ids
+                        .map(|ids| ids.into_iter().map(|id| id.as_uuid().to_string()).collect()),
                     recovery_endpoint: format!(
                         "/v1/document-creation-outcomes/{}",
                         document_id.as_uuid()
@@ -294,6 +306,7 @@ impl ApiProblem {
             | ApplicationError::VersionCommitOutcomeUnknown { .. }
             | ApplicationError::PublicationEndCommitOutcomeUnknown { .. }
             | ApplicationError::ManagementCommitOutcomeUnknown { .. }
+            | ApplicationError::CurrentReadStateCommitOutcomeUnknown { .. }
             | ApplicationError::ReadStateCommitOutcomeUnknown { .. } => {
                 problem.exact_retry = Some(true);
                 problem.retryable = true;

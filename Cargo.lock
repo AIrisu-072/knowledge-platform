@@ -288,6 +288,78 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "audit-acceptance"
+version = "0.0.0"
+dependencies = [
+ "audit-core",
+ "audit-relay",
+ "audit-store-postgres",
+ "document-application",
+ "document-diff-core",
+ "document-domain",
+ "document-publication-scheduler",
+ "document-repository-postgres",
+ "document-semantic-inspection-core",
+ "document-storage-fs",
+ "outbox-delivery",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "testcontainers",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "audit-core"
+version = "0.0.0"
+dependencies = [
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "time",
+ "uuid",
+]
+
+[[package]]
+name = "audit-relay"
+version = "0.0.0"
+dependencies = [
+ "audit-core",
+ "audit-store-postgres",
+ "document-repository-postgres",
+ "outbox-delivery",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "testcontainers",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "audit-store-postgres"
+version = "0.0.0"
+dependencies = [
+ "audit-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "testcontainers",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3238,6 +3310,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
+name = "local-workspace-runtime"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3779,8 +3864,10 @@ dependencies = [
  "document-domain",
  "document-repository-postgres",
  "document-server",
+ "document-storage-fs",
  "serde_json",
  "sqlx",
+ "tempfile",
  "time",
  "tokio",
  "tower",
@@ -7236,6 +7323,7 @@ dependencies = [
  "axum",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tower",
  "uuid",
@@ -7261,6 +7349,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "time",
  "uuid",
 ]
 

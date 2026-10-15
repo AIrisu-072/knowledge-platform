@@ -154,11 +154,8 @@ fn is_textual(bytes: &[u8]) -> bool {
 
 const HTML_MARKERS: [&[u8]; 3] = [b"<!doctype html", b"<html", b"<body"];
 
-/// Content declared HTML is HTML when a marker appears anywhere. Other
-/// declared text is HTML only when it *starts* as an HTML document (after a
-/// BOM and whitespace), so plain text that quotes markup, e.g. an article
-/// about XHTML, keeps its declared format while a disguised HTML document is
-/// still a format mismatch.
+// HTML宣言では従来どおり本文全域を調べる。ほかのテキストはBOMと空白を
+// 除いた先頭で判断し、説明文中のマークアップ引用をHTML文書と誤認しない。
 fn looks_like_html(bytes: &[u8], anywhere: bool) -> bool {
     let lower: Vec<u8> = bytes.iter().map(u8::to_ascii_lowercase).collect();
     if anywhere {

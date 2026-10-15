@@ -40,6 +40,10 @@ export type CreateRecovery = {
     documentId: IdentifiersUuid;
     documentVersionId: IdentifiersUuid;
     fileId: IdentifiersUuid;
+    /**
+     * Complete ordered initial File IDs for atomic items creation recovery.
+     */
+    fileIds?: Array<IdentifiersUuid>;
     recoveryEndpoint: string;
 };
 
@@ -108,6 +112,16 @@ export type SchedulePublicationResult = ModelsSchedulePublicationResult;
 export type CancelPublicationResult = ModelsCancelPublicationResult;
 
 export type EndPublicationResult = ModelsEndPublicationResult;
+
+export type CurrentReadProjection = ModelsCurrentReadProjection;
+
+export type CurrentReadState = ModelsCurrentReadState;
+
+export type ReadStateReceiptState = ModelsReadStateReceiptState;
+
+export type ReadStateMutationResult = ModelsReadStateMutationResult;
+
+export type ReadStateMutationRequest = CommandsReadStateMutationRequest;
 
 export type ReadStateResult = ModelsReadStateResult;
 
@@ -219,6 +233,10 @@ export type CommandsCreateDocument = {
     versionMetadata: {
         [key: string]: unknown;
     };
+    /**
+     * Atomic initial originals. Uses files parts; cannot be mixed with legacy file.
+     */
+    items?: Array<InitialContentItem>;
 };
 
 export type CommandsCreateFolder = {
@@ -235,6 +253,14 @@ export type CommandsEndPublication = {
     expectedRevision: number;
     expectedCurrentVersionId: string;
     reason: string;
+};
+
+export type InitialContentItem = {
+    logicalPath: string;
+    ordinal: number;
+    partId: string;
+    mediaType: string;
+    originalFilename: string;
 };
 
 export type CommandsMetadataPatch = {
@@ -281,6 +307,14 @@ export type CommandsPolicyInherit = {
 export type CommandsPublishVersion = {
     operationId: OperationId;
     expectedRevision: number;
+};
+
+export type CommandsReadStateMutationRequest = {
+    /**
+     * 完全再送でも固定するUUIDv7。
+     */
+    operationId: string;
+    expectedReadStateRevision: number;
 };
 
 export type CommandsRebaseVersion = {
@@ -458,6 +492,32 @@ export type ModelsCreateDocumentResult = {
     documentId: string;
     documentVersionId: string;
     fileId: string;
+    /**
+     * All initial original File IDs in ordinal then logicalPath order. Present for atomic items creation.
+     */
+    fileIds?: Array<string>;
+};
+
+export type ModelsCurrentReadProjection = {
+    firstReadAt: string | null;
+    needsRecheck: boolean;
+    readStateRevision: number;
+    /**
+     * firstReadAtがnullではなく、needsRecheckがfalseの場合にtrue。
+     */
+    isRead: boolean;
+};
+
+export type ModelsCurrentReadState = {
+    documentId: string;
+    versionId: string;
+    firstReadAt: string | null;
+    needsRecheck: boolean;
+    readStateRevision: number;
+    /**
+     * firstReadAtがnullではなく、needsRecheckがfalseの場合にtrue。
+     */
+    isRead: boolean;
 };
 
 export type ModelsDiffChange = {
@@ -838,6 +898,30 @@ export type PublishedDocumentDetail = {
     capabilities: ModelsDocumentCapabilities;
 };
 
+export type ModelsReadStateMutationResult = {
+    operationId: string;
+    documentId: string;
+    versionId: string;
+    kind: 'VIEW' | 'RESET';
+    expectedReadStateRevision: number;
+    changed: boolean;
+    occurredAt: string;
+    resultingReadState: ModelsReadStateReceiptState;
+};
+
+export type ModelsReadStateReceiptState = {
+    /**
+     * 成功した操作の初回記録日時。nullは返さない。
+     */
+    firstReadAt: string;
+    needsRecheck: boolean;
+    readStateRevision: number;
+    /**
+     * needsRecheckがfalseの場合にtrue。
+     */
+    isRead: boolean;
+};
+
 export type ModelsReadStateResult = {
     documentId: string;
     versionId: string;
@@ -1186,9 +1270,15 @@ export type ComparisonRequest2 = CommandsComparisonRequest;
 
 export type RevisionComparisonRequest2 = CommandsRevisionComparisonRequest;
 
-export type CreateDocumentMultipart = {
+export type CreateDocumentMultipart = (unknown | {
+    request?: unknown;
+}) & {
     request: CommandsCreateDocument;
-    file: Blob | File;
+    /**
+     * One binary per request.items partId using X-Part-Id, same framing as VersionMultipart. Cannot be mixed with legacy file.
+     */
+    files?: Array<Blob | File>;
+    file?: Blob | File;
 };
 
 export type VersionMultipart = {
@@ -1347,6 +1437,10 @@ export type RecoverDocumentCreationData = {
     query: {
         documentVersionId: IdentifiersUuid;
         fileId: IdentifiersUuid;
+        /**
+         * Comma-separated ordered full original File IDs; required to recover an atomic items create. Legacy three-ID recovery only accepts a single primary original.
+         */
+        fileIds?: string;
     };
     url: '/v1/document-creation-outcomes/{documentId}';
 };
@@ -2035,6 +2129,44 @@ export type SetDocumentAccessPolicyResponses = {
 
 export type SetDocumentAccessPolicyResponse = SetDocumentAccessPolicyResponses[keyof SetDocumentAccessPolicyResponses];
 
+export type GetCurrentDocumentVersionReadStateData = {
+    body?: never;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query?: never;
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state';
+};
+
+export type GetCurrentDocumentVersionReadStateErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type GetCurrentDocumentVersionReadStateError = GetCurrentDocumentVersionReadStateErrors[keyof GetCurrentDocumentVersionReadStateErrors];
+
+export type GetCurrentDocumentVersionReadStateResponses = {
+    /**
+     * 本人の現在状態を新たに取得した結果。操作資格のヒントであり、変更が必ず成功することを保証しない。
+     */
+    200: ModelsCurrentReadState;
+};
+
+export type GetCurrentDocumentVersionReadStateResponse = GetCurrentDocumentVersionReadStateResponses[keyof GetCurrentDocumentVersionReadStateResponses];
+
 export type MarkDocumentVersionReadData = {
     body?: never;
     path: {
@@ -2072,6 +2204,82 @@ export type MarkDocumentVersionReadResponses = {
 };
 
 export type MarkDocumentVersionReadResponse = MarkDocumentVersionReadResponses[keyof MarkDocumentVersionReadResponses];
+
+export type RecordDocumentVersionViewData = {
+    body: CommandsReadStateMutationRequest;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query?: never;
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state/view';
+};
+
+export type RecordDocumentVersionViewErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type RecordDocumentVersionViewError = RecordDocumentVersionViewErrors[keyof RecordDocumentVersionViewErrors];
+
+export type RecordDocumentVersionViewResponses = {
+    /**
+     * 操作確定時の変更しないreceipt。このsnapshotは現在状態ではない。
+     */
+    200: ModelsReadStateMutationResult;
+};
+
+export type RecordDocumentVersionViewResponse = RecordDocumentVersionViewResponses[keyof RecordDocumentVersionViewResponses];
+
+export type ResetDocumentVersionReadStateData = {
+    body: CommandsReadStateMutationRequest;
+    path: {
+        /**
+         * Document identifier.
+         */
+        documentId: IdentifiersUuid;
+        /**
+         * Version identifier.
+         */
+        versionId: IdentifiersUuid;
+    };
+    query?: never;
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state/reset';
+};
+
+export type ResetDocumentVersionReadStateErrors = {
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem with stable machine code.
+     */
+    default: Problem;
+};
+
+export type ResetDocumentVersionReadStateError = ResetDocumentVersionReadStateErrors[keyof ResetDocumentVersionReadStateErrors];
+
+export type ResetDocumentVersionReadStateResponses = {
+    /**
+     * 操作確定時の変更しないreceipt。このsnapshotは現在状態ではない。
+     */
+    200: ModelsReadStateMutationResult;
+};
+
+export type ResetDocumentVersionReadStateResponse = ResetDocumentVersionReadStateResponses[keyof ResetDocumentVersionReadStateResponses];
 
 export type GetDocumentHistoryData = {
     body?: never;

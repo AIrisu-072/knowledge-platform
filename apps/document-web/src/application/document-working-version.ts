@@ -6,6 +6,20 @@ import { problemFromUnknown } from './problem-mapping';
 import { refreshLifecycleQueries } from './document-lifecycle-operations';
 
 export type EditManifest = ModelsEditManifest;
+export type AddedWorkingOriginal = { id: string; logicalPath: string; file: File };
+export type WorkingStructure = { itemIds: string[]; additions: AddedWorkingOriginal[] };
+export function addedOriginalPathError(path: string, existingPaths: readonly string[]): string | null {
+  const normalized = path.normalize('NFC');
+  if (!normalized || normalized.startsWith('/') || /[\\\u0000-\u001f\u007f-\u009f]/.test(normalized)
+    || normalized.split('/').some(segment => !segment || segment === '.' || segment === '..')) return '原本パスは曖昧な要素のない相対パスを入力してください。';
+  if (existingPaths.some(existing => existing.normalize('NFC') === normalized)) return '原本パスが重複しています。';
+  return null;
+}
+export function addedOriginalFileError(file: File): string | null {
+  if (file.size > 256 * 1024 * 1024) return '1ファイルあたり256 MiB以下のファイルを選択してください。';
+  if (!file.type) return '追加原本のファイル形式を確認できません。';
+  return null;
+}
 type Representation = EditManifest['items'][number]['representations'][number];
 export type WorkingWriteIntent = {
   kind: 'create' | 'update'; documentId: string; sourceVersionId: string; body: CommandsVersionWrite;
@@ -44,17 +58,44 @@ function checkCancelled(signal: AbortSignal) {
   if (signal.aborted) throw new Error('保存の準備をキャンセルしました。');
 }
 export async function prepareWorkingVersion(input: {
-  mode: 'create' | 'update'; manifest: EditManifest; title: string; replacements: ReadonlyMap<string, File>; signal: AbortSignal;
+  mode: 'create' | 'update'; manifest: EditManifest; title: string; replacements: ReadonlyMap<string, File>; signal: AbortSignal; structure?: WorkingStructure;
 }): Promise<WorkingWriteIntent> {
   const { manifest, replacements, signal } = input;
   checkCancelled(signal);
   if (!input.title.trim() || !manifest.items.length) throw new Error('文書名と原本を確認してください。');
   if (manifest.purpose !== (input.mode === 'update' ? 'authoring' : 'published')) throw new Error('編集元の用途が一致しません。');
+  const structure = input.structure;
+  if (structure && input.mode !== 'update') throw new Error('原本の構成変更は作業版で行ってください。');
+  const orderedIds = structure?.itemIds ?? manifest.items.map(item => item.contentItemId);
+  if (!orderedIds.length) throw new Error('原本は1件以上必要です。');
+  const additions = new Map<string, AddedWorkingOriginal>();
+  const existingItems = new Map(manifest.items.map(item => [item.contentItemId, item]));
+  if (new Set(orderedIds).size !== orderedIds.length || existingItems.size !== manifest.items.length) throw new Error('原本の構成を確認できません。');
+  const paths = orderedIds.flatMap(id => existingItems.has(id) ? [existingItems.get(id)!.logicalPath] : []);
+  for (const addition of structure?.additions ?? []) {
+    if (existingItems.has(addition.id) || additions.has(addition.id) || !orderedIds.includes(addition.id)) throw new Error('追加原本の構成を確認できません。');
+    const error = addedOriginalPathError(addition.logicalPath, paths) ?? addedOriginalFileError(addition.file);
+    if (error) throw new Error(error);
+    const normalized = addition.logicalPath.normalize('NFC'); paths.push(normalized);
+    additions.set(addition.id, { ...addition, logicalPath: normalized });
+  }
+  if (orderedIds.some(id => !existingItems.has(id) && !additions.has(id))) throw new Error('原本の構成を確認できません。');
+  const structuralChange = additions.size > 0 || orderedIds.length !== manifest.items.length
+    || orderedIds.some((id, index) => id !== manifest.items[index]!.contentItemId);
   const ids = new Set<string>();
   const planned: Array<{ partId: string; file?: File; itemId: string; representation: Representation }> = [];
   const body: CommandsVersionWrite = {
     operationId: createOperationId(), targetVersionId: input.mode === 'update' ? manifest.sourceVersionId : createOperationId(),
-    expectedRevision: manifest.documentRevision, title: input.title.trim(), items: manifest.items.map(item => {
+    expectedRevision: manifest.documentRevision, title: input.title.trim(), items: orderedIds.map((itemId, index) => {
+      const addition = additions.get(itemId);
+      if (addition) {
+        const fileId = createOperationId(); const partId = createOperationId(); ids.add(fileId);
+        const representation: Representation = { fileId, representationId: '', role: 'authoritative', mediaType: addition.file.type,
+          originalFilename: addition.file.name, sizeBytes: addition.file.size };
+        planned.push({ partId, file: addition.file, itemId, representation });
+        return { logicalPath: addition.logicalPath, ordinal: index, fileId, partId, mediaType: addition.file.type, originalFilename: addition.file.name, renditions: [] };
+      }
+      const item = existingItems.get(itemId)!;
       const original = originalOf(item);
       const replacement = replacements.get(item.contentItemId);
       if (replacement) { const error = replacementError(original, replacement); if (error) throw new Error(error); }
@@ -70,7 +111,7 @@ export async function prepareWorkingVersion(input: {
         return { fileId, partId, mediaType: part.mediaType, originalFilename: isReplacement ? replacement!.name : part.originalFilename };
       });
       const authoritativeIndex = parts.findIndex(part => part.role === 'authoritative');
-      return { logicalPath: item.logicalPath, ordinal: item.ordinal, ...mapped[authoritativeIndex]!, renditions: mapped.filter((_, index) => index !== authoritativeIndex) };
+      return { logicalPath: item.logicalPath, ordinal: structuralChange ? index : item.ordinal, ...mapped[authoritativeIndex]!, renditions: mapped.filter((_, index) => index !== authoritativeIndex) };
     }),
   };
   if (planned.length > 63) throw new Error('原本と補助ファイルの合計は63件以下である必要があります。');

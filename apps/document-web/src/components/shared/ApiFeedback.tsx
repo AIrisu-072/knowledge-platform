@@ -1,6 +1,8 @@
+import { useId } from 'react';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
 
 export function ApiFeedback({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const headingId = useId();
   const problem = problemFromUnknown(error);
   const presentation = problem ? mapApiProblem(problem) : {
     state: 'error' as const,
@@ -16,8 +18,8 @@ export function ApiFeedback({ error, onRetry }: { error: unknown; onRetry?: () =
         : '読み込みに失敗しました';
 
   return (
-    <section className="notice notice-error" role="alert" aria-labelledby="api-feedback-title">
-      <h2 id="api-feedback-title">{heading}</h2>
+    <section className="notice notice-error" role="alert" aria-labelledby={headingId}>
+      <h2 id={headingId}>{heading}</h2>
       <p>{presentation.message}</p>
       {presentation.traceId && <small>照会ID: {presentation.traceId}</small>}
       {onRetry && <button type="button" onClick={onRetry}>再読み込み</button>}

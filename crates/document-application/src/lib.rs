@@ -9,6 +9,7 @@ mod action_capability;
 mod authorized_document;
 mod command;
 mod create_outcome;
+mod current_read_state;
 mod document_detail;
 pub mod document_diff;
 mod document_history;
@@ -51,11 +52,16 @@ pub use action_capability::{
 };
 pub use authorized_document::{AuthorizationScope, AuthorizedDocumentService};
 pub use command::{
-    CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
-    PublishOperationId,
+    CreateDocumentCommand, CreateDocumentItem, CreateDocumentItemsCommand, CreateDocumentResult,
+    PublishDocumentCommand, PublishDocumentResult, PublishOperationId,
 };
 pub use create_outcome::{
     CreateOutcomeProbe, CreateOutcomeRecoveryService, CreateOutcomeRepository,
+};
+pub use current_read_state::{
+    CurrentReadProjection, CurrentReadState, CurrentReadStateRepository, CurrentReadStateService,
+    MAX_READ_STATE_REVISION, ReadStateMutation, ReadStateMutationKind, ReadStateMutationResult,
+    ReadStateOperationId, read_state_command_digest,
 };
 pub use document_detail::{DocumentDetailPurpose, DocumentDetailRead, DocumentDetailReadService};
 pub use document_history::{

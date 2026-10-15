@@ -1,0 +1,2419 @@
+{
+  "evaluations": [
+    {
+      "analyzer_id": "tantivy-default-0.26.2",
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "qualified_ids": [
+            "loan-corp"
+          ],
+          "retrieved_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "qualified_ids": [
+            "loan-personal"
+          ],
+          "retrieved_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "qualified_ids": [
+            "address-corp"
+          ],
+          "retrieved_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "qualified_ids": [
+            "address-personal"
+          ],
+          "retrieved_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "qualified_ids": [
+            "loan-corp"
+          ],
+          "retrieved_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "qualified_ids": [
+            "credit-policy"
+          ],
+          "retrieved_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "qualified_ids": [
+            "credit-procedure"
+          ],
+          "retrieved_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "qualified_ids": [
+            "credit-manual"
+          ],
+          "retrieved_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "qualified_ids": [
+            "api-manual"
+          ],
+          "retrieved_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "qualified_ids": [
+            "loan-corp"
+          ],
+          "retrieved_ids": [
+            "loan-personal",
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "qualified_ids": [
+            "deposit-corp"
+          ],
+          "retrieved_ids": [
+            "deposit-corp",
+            "deposit-personal"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "qualified_ids": [],
+          "retrieved_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "qualified_ids": [],
+          "retrieved_ids": []
+        }
+      ],
+      "index_bytes": 5035,
+      "mrr": 0.8076923076923077,
+      "ndcg_at_10": 0.8177638271978045,
+      "quality_bits": {
+        "mrr": 4605450265097182602,
+        "ndcg_at_10": 4605540981280166622,
+        "recall_at_10": 4605796695837749563
+      },
+      "recall_at_10": 0.8461538461538461
+    },
+    {
+      "analyzer_id": "lindera-ipadic-6.2.0-tantivy-0.26.2",
+      "cases": [
+        {
+          "case_id": "corp-loan-exact",
+          "qualified_ids": [
+            "loan-corp"
+          ],
+          "retrieved_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "personal-loan-exact",
+          "qualified_ids": [
+            "loan-personal"
+          ],
+          "retrieved_ids": [
+            "loan-personal"
+          ]
+        },
+        {
+          "case_id": "corp-address-alias",
+          "qualified_ids": [
+            "address-corp"
+          ],
+          "retrieved_ids": [
+            "address-corp"
+          ]
+        },
+        {
+          "case_id": "personal-address-alias",
+          "qualified_ids": [
+            "address-personal"
+          ],
+          "retrieved_ids": [
+            "address-personal"
+          ]
+        },
+        {
+          "case_id": "business-loan-alias",
+          "qualified_ids": [
+            "loan-corp"
+          ],
+          "retrieved_ids": [
+            "loan-corp"
+          ]
+        },
+        {
+          "case_id": "policy-vs-procedure",
+          "qualified_ids": [
+            "credit-policy"
+          ],
+          "retrieved_ids": [
+            "credit-policy"
+          ]
+        },
+        {
+          "case_id": "procedure-vs-policy",
+          "qualified_ids": [
+            "credit-procedure"
+          ],
+          "retrieved_ids": [
+            "credit-procedure"
+          ]
+        },
+        {
+          "case_id": "manual-vs-policy",
+          "qualified_ids": [
+            "credit-manual"
+          ],
+          "retrieved_ids": [
+            "credit-manual"
+          ]
+        },
+        {
+          "case_id": "mixed-ascii-date-number",
+          "qualified_ids": [
+            "api-manual"
+          ],
+          "retrieved_ids": [
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-loan",
+          "qualified_ids": [
+            "credit-procedure",
+            "loan-corp"
+          ],
+          "retrieved_ids": [
+            "credit-manual",
+            "credit-policy",
+            "credit-procedure",
+            "loan-personal",
+            "loan-corp",
+            "api-manual"
+          ]
+        },
+        {
+          "case_id": "ambiguous-deposit",
+          "qualified_ids": [
+            "deposit-corp"
+          ],
+          "retrieved_ids": [
+            "deposit-manual",
+            "deposit-corp",
+            "deposit-personal"
+          ]
+        },
+        {
+          "case_id": "compound-corporate-loan",
+          "qualified_ids": [],
+          "retrieved_ids": []
+        },
+        {
+          "case_id": "compound-location-change",
+          "qualified_ids": [
+            "address-corp"
+          ],
+          "retrieved_ids": [
+            "address-corp"
+          ]
+        }
+      ],
+      "index_bytes": 5939,
+      "mrr": 0.823076923076923,
+      "ndcg_at_10": 0.8475217354466154,
+      "quality_bits": {
+        "mrr": 4605588837393409386,
+        "ndcg_at_10": 4605809016689167962,
+        "recall_at_10": 4606489557318883486
+      },
+      "recall_at_10": 0.9230769230769231
+    }
+  ],
+  "schemaVersion": 1,
+  "tokenCases": [
+    {
+      "id": "resource:loan-corp:title",
+      "text": "法人向け融資の申込手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "向け"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 18,
+          "position": 3,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "申込"
+        },
+        {
+          "byte_end": 33,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-corp:summary",
+      "text": "法人の事業性融資を申し込むための手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "事業"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "性"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 4,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 24,
+          "position": 5,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 27,
+          "position": 6,
+          "position_length": 1,
+          "surface": "申し込む"
+        },
+        {
+          "byte_end": 45,
+          "byte_start": 39,
+          "position": 7,
+          "position_length": 1,
+          "surface": "ため"
+        },
+        {
+          "byte_end": 48,
+          "byte_start": 45,
+          "position": 8,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 54,
+          "byte_start": 48,
+          "position": 9,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 57,
+          "byte_start": 54,
+          "position": 10,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-corp:alias:0",
+      "text": "法人融資申込",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "申込"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-corp:alias:1",
+      "text": "事業性融資手続",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "事業"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "性"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "手続"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-corp:alias:2",
+      "text": "融資",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-personal:title",
+      "text": "個人向け融資の申込手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "向け"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 18,
+          "position": 3,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "申込"
+        },
+        {
+          "byte_end": 33,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-personal:summary",
+      "text": "個人の融資申込手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "申込"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-personal:alias:0",
+      "text": "個人融資申込",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "申込"
+        }
+      ]
+    },
+    {
+      "id": "resource:loan-personal:alias:1",
+      "text": "融資",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-corp:title",
+      "text": "法人向け預金口座の管理手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "向け"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 3,
+          "position_length": 1,
+          "surface": "口座"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 24,
+          "position": 4,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 33,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "管理"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 33,
+          "position": 6,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-corp:summary",
+      "text": "法人の預金口座を管理する手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "口座"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 24,
+          "position": 5,
+          "position_length": 1,
+          "surface": "管理"
+        },
+        {
+          "byte_end": 36,
+          "byte_start": 30,
+          "position": 6,
+          "position_length": 1,
+          "surface": "する"
+        },
+        {
+          "byte_end": 42,
+          "byte_start": 36,
+          "position": 7,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 45,
+          "byte_start": 42,
+          "position": 8,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-corp:alias:0",
+      "text": "法人預金",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "預金"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-corp:alias:1",
+      "text": "預金",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "預金"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-personal:title",
+      "text": "個人向け預金口座の管理手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "向け"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 3,
+          "position_length": 1,
+          "surface": "口座"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 24,
+          "position": 4,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 33,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "管理"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 33,
+          "position": 6,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-personal:summary",
+      "text": "個人の預金口座を管理する手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "口座"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 24,
+          "position": 5,
+          "position_length": 1,
+          "surface": "管理"
+        },
+        {
+          "byte_end": 36,
+          "byte_start": 30,
+          "position": 6,
+          "position_length": 1,
+          "surface": "する"
+        },
+        {
+          "byte_end": 42,
+          "byte_start": 36,
+          "position": 7,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 45,
+          "byte_start": 42,
+          "position": 8,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-personal:alias:0",
+      "text": "個人預金",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "預金"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-personal:alias:1",
+      "text": "預金",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "預金"
+        }
+      ]
+    },
+    {
+      "id": "resource:address-corp:title",
+      "text": "法人の所在地変更手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "所在地"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 3,
+          "position_length": 1,
+          "surface": "変更"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 24,
+          "position": 4,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:address-corp:summary",
+      "text": "法人の住所と所在地を変更する手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "と"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 18,
+          "position": 4,
+          "position_length": 1,
+          "surface": "所在地"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 36,
+          "byte_start": 30,
+          "position": 6,
+          "position_length": 1,
+          "surface": "変更"
+        },
+        {
+          "byte_end": 42,
+          "byte_start": 36,
+          "position": 7,
+          "position_length": 1,
+          "surface": "する"
+        },
+        {
+          "byte_end": 48,
+          "byte_start": 42,
+          "position": 8,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 51,
+          "byte_start": 48,
+          "position": 9,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:address-corp:alias:0",
+      "text": "法人住所変更",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "変更"
+        }
+      ]
+    },
+    {
+      "id": "resource:address-personal:title",
+      "text": "個人の住所変更手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "変更"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:address-personal:summary",
+      "text": "個人の住所変更を届け出る手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "変更"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 36,
+          "byte_start": 24,
+          "position": 5,
+          "position_length": 1,
+          "surface": "届け出る"
+        },
+        {
+          "byte_end": 42,
+          "byte_start": 36,
+          "position": 6,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 45,
+          "byte_start": 42,
+          "position": 7,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:address-personal:alias:0",
+      "text": "個人住所変更",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "変更"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-policy:title",
+      "text": "融資審査規程",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "規程"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-policy:summary",
+      "text": "融資審査の規程。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "規程"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-policy:alias:0",
+      "text": "融資審査規程",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "規程"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-procedure:title",
+      "text": "融資審査手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-procedure:summary",
+      "text": "融資審査の作業手順。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "作業"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "手順"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-procedure:alias:0",
+      "text": "融資審査手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-manual:title",
+      "text": "融資マニュアル",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-manual:summary",
+      "text": "融資業務の参照マニュアル。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "業務"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "参照"
+        },
+        {
+          "byte_end": 36,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "マニュアル"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 36,
+          "position": 5,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:credit-manual:alias:0",
+      "text": "融資マニュアル",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "resource:api-manual:title",
+      "text": "API 2026-04 融資連携マニュアル",
+      "tokens": [
+        {
+          "byte_end": 3,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "API"
+        },
+        {
+          "byte_end": 8,
+          "byte_start": 4,
+          "position": 1,
+          "position_length": 1,
+          "surface": "2026"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 8,
+          "position": 2,
+          "position_length": 1,
+          "surface": "-"
+        },
+        {
+          "byte_end": 11,
+          "byte_start": 9,
+          "position": 3,
+          "position_length": 1,
+          "surface": "04"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 4,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 5,
+          "position_length": 1,
+          "surface": "連携"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 24,
+          "position": 6,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "resource:api-manual:summary",
+      "text": "API版番号と日付を含む連携仕様のマニュアル。",
+      "tokens": [
+        {
+          "byte_end": 3,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "API"
+        },
+        {
+          "byte_end": 6,
+          "byte_start": 3,
+          "position": 1,
+          "position_length": 1,
+          "surface": "版"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 2,
+          "position_length": 1,
+          "surface": "番号"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 12,
+          "position": 3,
+          "position_length": 1,
+          "surface": "と"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 4,
+          "position_length": 1,
+          "surface": "日付"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 21,
+          "position": 5,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 24,
+          "position": 6,
+          "position_length": 1,
+          "surface": "含む"
+        },
+        {
+          "byte_end": 36,
+          "byte_start": 30,
+          "position": 7,
+          "position_length": 1,
+          "surface": "連携"
+        },
+        {
+          "byte_end": 42,
+          "byte_start": 36,
+          "position": 8,
+          "position_length": 1,
+          "surface": "仕様"
+        },
+        {
+          "byte_end": 45,
+          "byte_start": 42,
+          "position": 9,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 60,
+          "byte_start": 45,
+          "position": 10,
+          "position_length": 1,
+          "surface": "マニュアル"
+        },
+        {
+          "byte_end": 63,
+          "byte_start": 60,
+          "position": 11,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:api-manual:alias:0",
+      "text": "API 2026-04 融資連携マニュアル",
+      "tokens": [
+        {
+          "byte_end": 3,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "API"
+        },
+        {
+          "byte_end": 8,
+          "byte_start": 4,
+          "position": 1,
+          "position_length": 1,
+          "surface": "2026"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 8,
+          "position": 2,
+          "position_length": 1,
+          "surface": "-"
+        },
+        {
+          "byte_end": 11,
+          "byte_start": 9,
+          "position": 3,
+          "position_length": 1,
+          "surface": "04"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 4,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 5,
+          "position_length": 1,
+          "surface": "連携"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 24,
+          "position": 6,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "resource:katakana-guide:title",
+      "text": "コーポレート表記ガイド",
+      "tokens": [
+        {
+          "byte_end": 18,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "コーポレート"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 1,
+          "position_length": 1,
+          "surface": "表記"
+        },
+        {
+          "byte_end": 33,
+          "byte_start": 24,
+          "position": 2,
+          "position_length": 1,
+          "surface": "ガイド"
+        }
+      ]
+    },
+    {
+      "id": "resource:katakana-guide:summary",
+      "text": "カタカナとASCIIを混ぜた表記のガイド。",
+      "tokens": [
+        {
+          "byte_end": 12,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "カタカナ"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 12,
+          "position": 1,
+          "position_length": 1,
+          "surface": "と"
+        },
+        {
+          "byte_end": 20,
+          "byte_start": 15,
+          "position": 2,
+          "position_length": 1,
+          "surface": "ASCII"
+        },
+        {
+          "byte_end": 23,
+          "byte_start": 20,
+          "position": 3,
+          "position_length": 1,
+          "surface": "を"
+        },
+        {
+          "byte_end": 29,
+          "byte_start": 23,
+          "position": 4,
+          "position_length": 1,
+          "surface": "混ぜ"
+        },
+        {
+          "byte_end": 32,
+          "byte_start": 29,
+          "position": 5,
+          "position_length": 1,
+          "surface": "た"
+        },
+        {
+          "byte_end": 38,
+          "byte_start": 32,
+          "position": 6,
+          "position_length": 1,
+          "surface": "表記"
+        },
+        {
+          "byte_end": 41,
+          "byte_start": 38,
+          "position": 7,
+          "position_length": 1,
+          "surface": "の"
+        },
+        {
+          "byte_end": 50,
+          "byte_start": 41,
+          "position": 8,
+          "position_length": 1,
+          "surface": "ガイド"
+        },
+        {
+          "byte_end": 53,
+          "byte_start": 50,
+          "position": 9,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:katakana-guide:alias:0",
+      "text": "カタカナ表記",
+      "tokens": [
+        {
+          "byte_end": 12,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "カタカナ"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 1,
+          "position_length": 1,
+          "surface": "表記"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-manual:title",
+      "text": "預金窓口マニュアル",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "窓口"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-manual:summary",
+      "text": "預金窓口で使う参照マニュアル。",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "窓口"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "で"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "使う"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 21,
+          "position": 4,
+          "position_length": 1,
+          "surface": "参照"
+        },
+        {
+          "byte_end": 42,
+          "byte_start": 27,
+          "position": 5,
+          "position_length": 1,
+          "surface": "マニュアル"
+        },
+        {
+          "byte_end": 45,
+          "byte_start": 42,
+          "position": 6,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "resource:deposit-manual:alias:0",
+      "text": "預金マニュアル",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "預金"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "query:corp-loan-exact",
+      "text": "法人融資申込",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "申込"
+        }
+      ]
+    },
+    {
+      "id": "query:personal-loan-exact",
+      "text": "個人融資申込",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "申込"
+        }
+      ]
+    },
+    {
+      "id": "query:corp-address-alias",
+      "text": "法人住所変更",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "法人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "変更"
+        }
+      ]
+    },
+    {
+      "id": "query:personal-address-alias",
+      "text": "個人住所変更",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "個人"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "住所"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "変更"
+        }
+      ]
+    },
+    {
+      "id": "query:business-loan-alias",
+      "text": "事業性融資手続",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "事業"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "性"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 2,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 15,
+          "position": 3,
+          "position_length": 1,
+          "surface": "手続"
+        }
+      ]
+    },
+    {
+      "id": "query:policy-vs-procedure",
+      "text": "融資審査規程",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "規程"
+        }
+      ]
+    },
+    {
+      "id": "query:procedure-vs-policy",
+      "text": "融資審査手順",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 12,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "審査"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 2,
+          "position_length": 1,
+          "surface": "手順"
+        }
+      ]
+    },
+    {
+      "id": "query:manual-vs-policy",
+      "text": "融資マニュアル",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 21,
+          "byte_start": 6,
+          "position": 1,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "query:mixed-ascii-date-number",
+      "text": "API 2026-04 融資連携マニュアル",
+      "tokens": [
+        {
+          "byte_end": 3,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "API"
+        },
+        {
+          "byte_end": 8,
+          "byte_start": 4,
+          "position": 1,
+          "position_length": 1,
+          "surface": "2026"
+        },
+        {
+          "byte_end": 9,
+          "byte_start": 8,
+          "position": 2,
+          "position_length": 1,
+          "surface": "-"
+        },
+        {
+          "byte_end": 11,
+          "byte_start": 9,
+          "position": 3,
+          "position_length": 1,
+          "surface": "04"
+        },
+        {
+          "byte_end": 18,
+          "byte_start": 12,
+          "position": 4,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 5,
+          "position_length": 1,
+          "surface": "連携"
+        },
+        {
+          "byte_end": 39,
+          "byte_start": 24,
+          "position": 6,
+          "position_length": 1,
+          "surface": "マニュアル"
+        }
+      ]
+    },
+    {
+      "id": "query:ambiguous-loan",
+      "text": "融資",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        }
+      ]
+    },
+    {
+      "id": "query:ambiguous-deposit",
+      "text": "預金",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "預金"
+        }
+      ]
+    },
+    {
+      "id": "query:compound-corporate-loan",
+      "text": "コーポレート融資",
+      "tokens": [
+        {
+          "byte_end": 18,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "コーポレート"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 18,
+          "position": 1,
+          "position_length": 1,
+          "surface": "融資"
+        }
+      ]
+    },
+    {
+      "id": "query:compound-location-change",
+      "text": "所在地変更",
+      "tokens": [
+        {
+          "byte_end": 9,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "所在地"
+        },
+        {
+          "byte_end": 15,
+          "byte_start": 9,
+          "position": 1,
+          "position_length": 1,
+          "surface": "変更"
+        }
+      ]
+    },
+    {
+      "id": "edge:0",
+      "text": "",
+      "tokens": []
+    },
+    {
+      "id": "edge:1",
+      "text": "ABC123",
+      "tokens": [
+        {
+          "byte_end": 3,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "ABC"
+        },
+        {
+          "byte_end": 6,
+          "byte_start": 3,
+          "position": 1,
+          "position_length": 1,
+          "surface": "123"
+        }
+      ]
+    },
+    {
+      "id": "edge:2",
+      "text": "! ? / ()",
+      "tokens": [
+        {
+          "byte_end": 1,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "!"
+        },
+        {
+          "byte_end": 3,
+          "byte_start": 2,
+          "position": 1,
+          "position_length": 1,
+          "surface": "?"
+        },
+        {
+          "byte_end": 5,
+          "byte_start": 4,
+          "position": 2,
+          "position_length": 1,
+          "surface": "/"
+        },
+        {
+          "byte_end": 8,
+          "byte_start": 6,
+          "position": 3,
+          "position_length": 1,
+          "surface": "()"
+        }
+      ]
+    },
+    {
+      "id": "edge:3",
+      "text": "令和8年 AI検索 2026-10-14。",
+      "tokens": [
+        {
+          "byte_end": 3,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "令"
+        },
+        {
+          "byte_end": 6,
+          "byte_start": 3,
+          "position": 1,
+          "position_length": 1,
+          "surface": "和"
+        },
+        {
+          "byte_end": 7,
+          "byte_start": 6,
+          "position": 2,
+          "position_length": 1,
+          "surface": "8"
+        },
+        {
+          "byte_end": 10,
+          "byte_start": 7,
+          "position": 3,
+          "position_length": 1,
+          "surface": "年"
+        },
+        {
+          "byte_end": 13,
+          "byte_start": 11,
+          "position": 4,
+          "position_length": 1,
+          "surface": "AI"
+        },
+        {
+          "byte_end": 19,
+          "byte_start": 13,
+          "position": 5,
+          "position_length": 1,
+          "surface": "検索"
+        },
+        {
+          "byte_end": 24,
+          "byte_start": 20,
+          "position": 6,
+          "position_length": 1,
+          "surface": "2026"
+        },
+        {
+          "byte_end": 25,
+          "byte_start": 24,
+          "position": 7,
+          "position_length": 1,
+          "surface": "-"
+        },
+        {
+          "byte_end": 27,
+          "byte_start": 25,
+          "position": 8,
+          "position_length": 1,
+          "surface": "10"
+        },
+        {
+          "byte_end": 28,
+          "byte_start": 27,
+          "position": 9,
+          "position_length": 1,
+          "surface": "-"
+        },
+        {
+          "byte_end": 30,
+          "byte_start": 28,
+          "position": 10,
+          "position_length": 1,
+          "surface": "14"
+        },
+        {
+          "byte_end": 33,
+          "byte_start": 30,
+          "position": 11,
+          "position_length": 1,
+          "surface": "。"
+        }
+      ]
+    },
+    {
+      "id": "edge:4",
+      "text": "融資\n相談\t窓口",
+      "tokens": [
+        {
+          "byte_end": 6,
+          "byte_start": 0,
+          "position": 0,
+          "position_length": 1,
+          "surface": "融資"
+        },
+        {
+          "byte_end": 13,
+          "byte_start": 7,
+          "position": 1,
+          "position_length": 1,
+          "surface": "相談"
+        },
+        {
+          "byte_end": 20,
+          "byte_start": 14,
+          "position": 2,
+          "position_length": 1,
+          "surface": "窓口"
+        }
+      ]
+    }
+  ]
+}

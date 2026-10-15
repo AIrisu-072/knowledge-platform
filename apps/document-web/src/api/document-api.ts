@@ -1,14 +1,26 @@
 import {
   BinaryTransportBridge,
+  getCurrentDocumentVersionReadState,
+  recordDocumentVersionView,
+  resetDocumentVersionReadState,
+  type CurrentReadState,
+  type CreateDocumentItemsUpload,
+  type ReadStateMutationRequest,
+  type ReadStateMutationResult,
   cancelPublicationSchedule,
   createFolder,
   renameFolder,
+  moveFolder,
+  moveDocument,
   withdrawVersion,
   endDocumentPublication,
   compareDocumentRevisions,
   compareDocumentVersions,
   getDocument,
+  getDocumentRevision,
   getDocumentAccessPolicy,
+  getFolderAccessPolicy,
+  setFolderAccessPolicy,
   getDocumentHistory,
   getDocumentVersion,
   getVersionEditManifest,
@@ -31,6 +43,8 @@ import {
   type CommandsCreateDocument,
   type CommandsCreateFolder,
   type CommandsRenameFolder,
+  type CommandsMoveFolder,
+  type CommandsMoveDocument,
   type CommandsMetadataPatch,
   type CreateDocumentResult,
   type CommandsPolicyExplicit,
@@ -71,7 +85,31 @@ function apiSort(sort: string | undefined): string | undefined {
   }
 }
 
+type PreparedInitialCreation = { upload: CreateDocumentItemsUpload; multipart: ReturnType<BinaryTransportBridge['prepareDocumentItemsUpload']> };
+
 export const documentApi = {
+  getCurrentDocumentVersionReadState(documentId: string, versionId: string, options?: { signal?: AbortSignal }): Promise<CurrentReadState> {
+    return payload(getCurrentDocumentVersionReadState({ ...data, path: { documentId, versionId }, ...(options?.signal ? { signal: options.signal } : {}) }));
+  },
+  recordDocumentVersionView(documentId: string, versionId: string, body: ReadStateMutationRequest): Promise<ReadStateMutationResult> {
+    return payload(recordDocumentVersionView({ ...data, path: { documentId, versionId }, body }));
+  },
+  resetDocumentVersionReadState(documentId: string, versionId: string, body: ReadStateMutationRequest): Promise<ReadStateMutationResult> {
+    return payload(resetDocumentVersionReadState({ ...data, path: { documentId, versionId }, body }));
+  },
+  getFolderAccessPolicy(folderId: string): Promise<ModelsAccessPolicyRead> {
+    return payload(getFolderAccessPolicy({ ...data, path: { folderId } }));
+  },
+  setFolderAccessPolicy(folderId: string, body: CommandsPolicyExplicit | CommandsPolicyInherit) {
+    // Preserve the normative wire discriminators despite the generated synthetic union.
+    return payload(setFolderAccessPolicy({ ...data, path: { folderId }, body: body as unknown as CommandsSetAccessPolicy }));
+  },
+  moveDocument(documentId: string, body: CommandsMoveDocument) {
+    return payload(moveDocument({ ...data, path: { documentId }, body }));
+  },
+  moveFolder(folderId: string, body: CommandsMoveFolder) {
+    return payload(moveFolder({ ...data, path: { folderId }, body }));
+  },
   renameFolder(folderId: string, body: CommandsRenameFolder) {
     return payload(renameFolder({ ...data, path: { folderId }, body }));
   },
@@ -84,9 +122,22 @@ export const documentApi = {
   createDocument(request: CommandsCreateDocument, file: File): Promise<CreateDocumentResult> {
     return binary.createDocument({ request, file, originalFilename: file.name, mediaType: file.type || 'application/octet-stream' });
   },
+  prepareDocumentWithOriginals(request: CommandsCreateDocument, originals: readonly { file: File; logicalPath: string; ordinal: number }[]): PreparedInitialCreation {
+    const files = new Map<string, File>();
+    const items = originals.map(original => {
+      const partId = crypto.randomUUID(); files.set(partId, original.file);
+      return { logicalPath: original.logicalPath, ordinal: original.ordinal, partId, mediaType: original.file.type || 'application/octet-stream', originalFilename: original.file.name };
+    });
+    const upload = { request: { ...request, items }, files };
+    return { upload, multipart: binary.prepareDocumentItemsUpload(upload) };
+  },
+  createDocumentWithOriginals(request: CommandsCreateDocument, originals: readonly { file: File; logicalPath: string; ordinal: number }[], prepared?: PreparedInitialCreation): Promise<CreateDocumentResult> {
+    const fixed = prepared ?? documentApi.prepareDocumentWithOriginals(request, originals);
+    return binary.createDocumentItems(fixed.upload, fixed.multipart);
+  },
   recoverDocumentCreation(ids: CreateDocumentResult): Promise<CreateDocumentResult> {
     return payload(recoverDocumentCreation({ ...data, path: { documentId: ids.documentId },
-      query: { documentVersionId: ids.documentVersionId, fileId: ids.fileId } }));
+      query: { documentVersionId: ids.documentVersionId, fileId: ids.fileId, ...(ids.fileIds ? { fileIds: ids.fileIds.join(',') } : {}) } }));
   },
   getSession(): Promise<ModelsSession> {
     return payload(getSession(data));
@@ -116,6 +167,9 @@ export const documentApi = {
   },
   getDocumentVersion(documentId: string, versionId: string, purpose: View): Promise<VersionDetail> {
     return payload(getDocumentVersion({ ...data, path: { documentId, versionId }, query: { purpose } }));
+  },
+  getDocumentRevision(documentId: string, revisionId: string, signal?: AbortSignal) {
+    return payload(getDocumentRevision({ ...data, path: { documentId, revisionId }, signal }));
   },
   listDocumentRevisions(documentId: string, cursor?: string): Promise<DocumentRevisionPage> {
     return payload(listDocumentRevisions({
@@ -183,7 +237,7 @@ export const documentApi = {
     contentItemId: string;
     representationId: string;
     purpose: View;
-  }, options?: { signal?: AbortSignal }) {
+  }, options?: { signal?: AbortSignal; maxBytes?: number }) {
     return binary.downloadVersionFileBlob(input, options);
   },
 };

@@ -1,0 +1,43 @@
+[package]
+name = "knowledge-platform-desktop"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+description = "Single-window Tauri v2 shell for the existing Document web UI and the local Workspace broker"
+
+# Separate Cargo workspace: the root workspace (CI rust-static/rust-test/
+# cargo-deny) never builds or resolves Tauri. Policy for this lockfile lives in
+# deny.toml / osv-scanner.toml next to it (owner approval 2026-10-07).
+[workspace]
+
+[[bin]]
+name = "knowledge-platform-desktop"
+path = "src/main.rs"
+
+[dependencies]
+local-workspace-runtime = { path = "../../../crates/local-workspace-runtime" }
+# Embedded production assets only (no devUrl, no dev server, no tauri-cli).
+# No plugins: no fs/shell/dialog/http plugin is exposed to the page.
+tauri = { version = "=2.12.1", default-features = false, features = ["wry", "x11", "common-controls-v6", "custom-protocol"] }
+# Single-folder native picker; GTK3 backend on Linux (no xdg-portal/async-std).
+rfd = { version = "=0.16.0", default-features = false, features = ["gtk3", "common-controls-v6"] }
+# Loopback-only forwarding of same-origin /v1 requests: no TLS, no system proxy.
+reqwest = { version = "=0.13.5", default-features = false }
+serde_json = "1"
+url = "2"
+
+# Closing the window runs the page's leave confirmation (webkit_web_view_try_close)
+# and asks it in a modal GTK dialog. Already in the tree through wry; pinned to
+# the locked versions.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", default-features = false }
+gtk = { version = "=0.18.2", default-features = false }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", default-features = false }
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = "debuginfo"

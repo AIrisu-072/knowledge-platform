@@ -157,6 +157,12 @@
   font: inherit;
 }
 
+.filterBar .checkLine input[type='checkbox'] {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+}
+
 .primaryButton {
   min-height: var(--control-height);
   padding: 0 var(--space-3);

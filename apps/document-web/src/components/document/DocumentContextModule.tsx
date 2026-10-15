@@ -19,7 +19,7 @@ export function DocumentContextModule({ session, task }: { session: WorkSession;
     if (transient.selectedDocumentId === undefined) setTransient((previous) => ({ ...previous, selectedDocumentId: selectedId }));
   }, [transient.selectedDocumentId, selectedId, setTransient]);
   const selected = task.inputResources.find((input) => input.documentId === selectedId);
-  const scope = ['organization', session.principalId, session.actingAssignmentId, 'document-context', task.id, task.attemptId];
+  const scope = ['organization', session.principalId, session.actingAssignmentId ?? 'none', 'document-context', task.id, task.attemptId];
   return <section className={styles.module} aria-label="共有の入力文書">
     <h2>共有の入力文書</h2><p>文書側の現在の権限で確認します。作業文案とは別の共有資料です。</p>
     {task.inputResources.length === 0 ? <p>入力文書はありません</p> : <>

@@ -5,6 +5,17 @@ The two instances expose the existing Common Document API and share PostgreSQL a
 FileSystemStorage. Anyone who can reach an instance acts as that instance's fixed profile.
 Do not expose either port to untrusted clients.
 
+## 固定source・既読方式と更新時の注意（2026-10-07）
+
+本書の固定sourceは[PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の受入済み製品head `cbe65d140852cbacd7fea4a8fed7830f0757ea4b` / tree `b2cb1cba60bfc29c4407335faec8f30a6d1c9740`。[通常CI37692284389](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37692284389)は全14jobs成功、19checksは16success・既存条件の3skip、公開artifact0。Document runtimeの公式step8/9/10は成功した。大きなruntime stdoutはTransport closedで未取得のため、実測件数や個別receipt・画素を直接確認したとはしない。同一sourceのrunner/summaryの失敗伝播と公式成功stepを対応させた資格であり、Rustの同一tree merge refを含む根拠は[Linux手動導入](linux-manual-installation.md#この手順でできること)を参照する。main統合・対象PC導入・本番利用を完了した記録ではない。
+
+- 本人が意図して通常詳細へ入場し、現行公開版の概要が表示中の画面に正常表示されたときだけ自動既読にする。「未読に戻す」は再確認の目印で、初回日時と過去Auditは保持する。読了・理解・同意の証明には使わない
+- 先読み、Agent/Service、原本ダウンロード、編集・旧版履歴・workflow文脈内の参照だけでは自動既読にしない。同画面再取得・タブ往復・旧PUT/古いVIEW要求の再送は未読戻しを解除しない。新しい公開版は本人について未読から始まる。詳細は[文書GUI手順](document-gui-v0.md#文書詳細の表示による既読と未読に戻す)へ
+- このDocument専用runtimeの `migrate` はDocument 0001〜0012を適用する。0012は初回日時を保持して既存行を再確認false/revision1へ移行し、操作結果の保存を追加する。旧migration本文/checksumは変えない。Workのmigrationはこのコマンドの対象外である
+- 以下のDB準備は**初回の新しい使い捨て環境**用。既存環境の更新は全書込process（schedulerを含む）を停止し、DB・storage全体・設定・元releaseを保存して、別DB・別storageで復元と新releaseへの更新を先に確認する。同sourceのmigration/server/worker/生成client/GUIを組み合わせ、旧serverと混在させない。`serve` はmigrationを実行せず、旧binaryへ戻すだけではDB復旧にならない
+- Organization環境の手順は別である。Document 0001〜0012とWork 0001〜0009を `organization-server migrate` で適用し、既存Workがある更新では**同じ入力Document IDで `seed-work` を実行してから `serve`** する。初回の空Workだけは起動→Document作成・公開→seedの順が使える。[Organization手順](organization-browser-poc.md#既存workの更新)に従い、`KP_STORAGE_ROOT/work-artifacts/` を含む全storageをDBと一組で保存・復元する。最小導入はsales/officeの2profileで、追加4profileの常設は不要
+- 対象PCでの手順実行・backup/restore、PostgreSQLプロセス再起動、本番Identity/TLS、全画素比較は未資格。実通信のstatus/headers全喪失等の既存制限も保持する
+
 ## Build and supported environment
 
 Use the repository-pinned Rust, Node and pnpm toolchains. Linux is required for the production

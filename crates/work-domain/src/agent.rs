@@ -45,6 +45,13 @@ pub struct AgentResult {
     pub body_analyzed: bool,
     pub live_llm: bool,
     pub mcp_wire_executed: bool,
+    /// U4 structured output. Absent in earlier results, whose JSON is unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_outcomes: Vec<AgentSourceOutcome>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generated_artifact_ids: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggested_action_ids: Vec<Uuid>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,15 +91,10 @@ fn deserialize_requester_principal<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<VerifiedActor, D::Error> {
     let principal = String::deserialize(deserializer)?;
-    match principal.as_str() {
-        // Only this stored Agent field accepts the previous serde spellings.
-        "sales-01" | "sales01" => Ok(VerifiedActor::Sales01),
-        "office-01" | "office01" => Ok(VerifiedActor::Office01),
-        _ => Err(serde::de::Error::unknown_variant(
-            &principal,
-            &["sales-01", "office-01"],
-        )),
-    }
+    // Only this stored Agent field accepts the previous serde spellings.
+    VerifiedActor::from_principal_id(&principal)
+        .or_else(|| VerifiedActor::from_legacy_encoding(&principal))
+        .ok_or_else(|| serde::de::Error::custom("unknown synthetic principal"))
 }
 
 /// Trusted application-only input/output, deliberately not an HTTP request DTO.
@@ -107,12 +109,6 @@ pub enum AgentReadTool {
     DocumentRevision,
     DocumentVersionFiles,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentFindingOutput {
-    pub summary: String,
-    pub claim: String,
-    pub uncertainty: Vec<String>,
-}
 impl AgentDispatchContext {
     pub fn validate_scope(&self) -> Result<(), WorkError> {
         let e = &self.execution;
@@ -123,17 +119,12 @@ impl AgentDispatchContext {
                 AgentReadTool::DocumentRevision,
                 AgentReadTool::DocumentVersionFiles,
             ]
-            || e.work_item_id
-                != match e.requested_by {
-                    VerifiedActor::Sales01 => SALES_TASK_ID,
-                    VerifiedActor::Office01 => OFFICE_TASK_ID,
-                }
             || e.attempt_id.is_nil()
             || e.task_revision < 0
             || e.effective_context_revision < 0
             || e.id.get_version_num() != 7
-            || e.context_id != CONTEXT_ID
-            || e.requester_responsibility != e.requested_by.assignment_id()
+            || context_fixture_for_context(e.context_id).is_none()
+            || e.requester_responsibility.is_nil()
             || e.executed_by != SYNTHETIC_EXECUTOR
             || e.executor_invocation_kind != "agent"
             || e.provider_principal_bindings
@@ -200,26 +191,50 @@ impl Workflow {
             .validate_scope()
             .map_err(|_| WorkError::IntegrityViolation)?;
             if let Some(result) = &e.result {
-                if result.finding_revision_refs.len() != 1
+                // Earlier results have no per-source outcomes and exactly one
+                // finding over every selected source; structured ones list one
+                // outcome per selected source and cite only usable sources.
+                let legacy = result.source_outcomes.is_empty();
+                let usable = super::agent_result::usable_sources(result);
+                if result.finding_revision_refs.len() > 1
+                    || (legacy && result.finding_revision_refs.len() != 1)
+                    || (!legacy
+                        && (result.source_outcomes.len() != e.evidence_revision_refs.len()
+                            || result
+                                .source_outcomes
+                                .iter()
+                                .zip(&e.evidence_revision_refs)
+                                .any(|(o, r)| &o.evidence_revision_ref != r)
+                            || usable.is_empty()))
                     || result.evidence_revision_refs != e.evidence_revision_refs
                     || !result.simulated
                     || result.body_analyzed
+                    || result
+                        .source_outcomes
+                        .iter()
+                        .any(|o| o.outcome == AgentSourceUse::Analyzed)
                     || result.live_llm
                     || result.mcp_wire_executed
                 {
                     return Err(WorkError::IntegrityViolation);
                 }
-                let r = &result.finding_revision_refs[0];
-                if !self.findings.iter().any(|f| {
-                    f.id == r.id
-                        && f.revision == r.revision
-                        && f.origin_execution_id == Some(e.id)
-                        && f.author == SYNTHETIC_EXECUTOR
-                        && f.evidence_revision_refs == e.evidence_revision_refs
-                        && f.task_id == e.work_item_id
-                        && f.attempt_id == e.attempt_id
-                }) {
-                    return Err(WorkError::IntegrityViolation);
+                for r in &result.finding_revision_refs {
+                    if !self.findings.iter().any(|f| {
+                        f.id == r.id
+                            && f.revision == r.revision
+                            && f.origin_execution_id == Some(e.id)
+                            && f.author == SYNTHETIC_EXECUTOR
+                            && if legacy {
+                                f.evidence_revision_refs == e.evidence_revision_refs
+                            } else {
+                                !f.evidence_revision_refs.is_empty()
+                                    && f.evidence_revision_refs.iter().all(|r| usable.contains(r))
+                            }
+                            && f.task_id == e.work_item_id
+                            && f.attempt_id == e.attempt_id
+                    }) {
+                        return Err(WorkError::IntegrityViolation);
+                    }
                 }
             }
         }
@@ -282,7 +297,7 @@ impl Workflow {
         if e.requested_by != actor
             || e.context_id != self.context_id
             || e.attempt_id != item.attempt_id
-            || e.requester_responsibility != actor.assignment_id()
+            || item.acting_assignment_id != Some(e.requester_responsibility)
             || !self.can_read(actor, item)
         {
             return Err(WorkError::WorkItemNotFound);
@@ -381,7 +396,7 @@ impl Workflow {
                     work_item_id: task_id,
                     attempt_id: item.attempt_id,
                     requested_by: actor,
-                    requester_responsibility: actor.assignment_id(),
+                    requester_responsibility: command.context().acting_assignment_id,
                     executed_by: SYNTHETIC_EXECUTOR.into(),
                     executor_invocation_kind: "agent".into(),
                     provider_principal_bindings: vec![ProviderPrincipalBinding {
@@ -474,7 +489,7 @@ impl Workflow {
     pub fn finish_agent_execution(
         &mut self,
         context: &AgentDispatchContext,
-        output: AgentFindingOutput,
+        output: AgentOutput,
         now: &str,
     ) -> Result<AgentExecution, WorkError> {
         context.validate_scope()?;
@@ -483,41 +498,47 @@ impl Workflow {
         if self.build_agent_context(actor, id)? != *context {
             return Err(WorkError::WorkContextStale);
         }
-        super::evidence::bounded_text(&output.summary)?;
-        if output.uncertainty.is_empty() || output.uncertainty.len() > 4 {
-            return Err(WorkError::ValidationFailed);
-        }
-        for text in &output.uncertainty {
-            super::evidence::bounded_text(text)?;
-        }
+        output.validate(context)?;
         let mut next = self.clone();
         let task = context.execution.work_item_id;
-        let mut finding = next.create_finding(
-            actor,
-            task,
-            super::evidence::FindingInput {
-                claim: &output.claim,
-                evidence_revision_refs: &context.execution.evidence_revision_refs,
-                supersedes_finding_id: None,
-            },
-            Some(id),
-            now,
-        )?;
-        finding.uncertainty = output.uncertainty.clone();
+        let finding = match &output.finding {
+            Some(candidate) => {
+                let mut finding = next.create_finding(
+                    actor,
+                    task,
+                    super::evidence::FindingInput {
+                        claim: &candidate.claim,
+                        evidence_revision_refs: &candidate.evidence_revision_refs,
+                        supersedes_finding_id: None,
+                    },
+                    Some(id),
+                    now,
+                )?;
+                finding.uncertainty = output.uncertainty.clone();
+                let reference = RevisionRef {
+                    id: finding.id,
+                    revision: finding.revision,
+                };
+                next.findings.push(finding);
+                Some(reference)
+            }
+            None => None,
+        };
+        let (generated_artifact_ids, suggested_action_ids) =
+            next.record_candidates(context, &output, finding.clone(), now)?;
         let result = AgentResult {
             summary: output.summary,
-            finding_revision_refs: vec![RevisionRef {
-                id: finding.id,
-                revision: finding.revision,
-            }],
-            evidence_revision_refs: finding.evidence_revision_refs.clone(),
+            finding_revision_refs: finding.into_iter().collect(),
+            evidence_revision_refs: context.execution.evidence_revision_refs.clone(),
             uncertainty: output.uncertainty,
             simulated: true,
             body_analyzed: false,
             live_llm: false,
             mcp_wire_executed: false,
+            source_outcomes: output.source_outcomes,
+            generated_artifact_ids,
+            suggested_action_ids,
         };
-        next.findings.push(finding);
         next.next_record_revision(task)?;
         next.revision = next
             .revision

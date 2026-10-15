@@ -14,7 +14,10 @@ export type TextValue = {
 export type WorkSession = {
     principalId: string;
     displayName: string;
-    actingAssignmentId: string;
+    /**
+     * 既定の実行担当。現在有効な責任がなければnull。
+     */
+    actingAssignmentId: string | null;
     capabilities: {
         nativeWorkspace: boolean;
         agent: boolean;
@@ -22,11 +25,23 @@ export type WorkSession = {
         fileUpload: boolean;
         return: boolean;
     };
+    /**
+     * nullはpolicyを現在評価できないことを示す（空の許可ではない）。
+     */
+    responsibilities: Array<Responsibility> | null;
+    canManageOrganization: boolean;
+    /**
+     * 担当・委任操作のexpectedRevision。policyを評価できない場合null。
+     */
+    policyRevision: number | null;
 };
 
 export type TaskSummary = {
     id: string;
-    contextId: string;
+    /**
+     * 文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。
+     */
+    contextId: string | null;
     attemptId: string;
     revision: number;
     title: string;
@@ -50,16 +65,33 @@ export type TaskSummary = {
     holdActionId: string | null;
     canResume: boolean;
     resumeActionId: string | null;
+    requiredRoleId: string | null;
+    claimAssignmentId: string | null;
+    canAssign: boolean;
+    assignment: TaskAssignmentView | null;
+    workTypeId: string;
+    workTypeLabel: string;
+    dueAt: string | null;
+    attention: Array<Attention>;
+    /**
+     * 文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。
+     */
+    contextTitle: string | null;
 };
 
+/**
+ * 現在の試行の非公開成果物。文案（value）またはファイル（file）のどちらか一方。
+ */
 export type WorkingArtifact = {
     id: string;
     taskId: string;
     attemptId: string;
     revision: number;
-    schemaId: 'organization.text-draft.v1';
-    value: TextValue;
+    schemaId: 'organization.text-draft.v1' | 'organization.work-file.v1';
+    value?: TextValue;
     visibility: 'work_item_private';
+    file?: WorkFile;
+    derivedFrom?: DerivedFrom;
 };
 
 export type InputResource = {
@@ -75,7 +107,10 @@ export type HistoryEntry = {
 
 export type TaskDetail = {
     id: string;
-    contextId: string;
+    /**
+     * 文脈の不透明なID。contextTitleと同じ相手（owner unitのcontext.read保有者と、未完了の試行の担当者本人）にだけ開示し、それ以外はnull。
+     */
+    contextId: string | null;
     attemptId: string;
     revision: number;
     title: string;
@@ -103,6 +138,18 @@ export type TaskDetail = {
     holdActionId: string | null;
     canResume: boolean;
     resumeActionId: string | null;
+    requiredRoleId: string | null;
+    claimAssignmentId: string | null;
+    canAssign: boolean;
+    assignment: TaskAssignmentView | null;
+    workTypeId: string;
+    workTypeLabel: string;
+    dueAt: string | null;
+    attention: Array<Attention>;
+    /**
+     * 文脈の表示名。owner unitのcontext.read保有者と、未完了の試行の担当者本人にだけ開示。完了した試行だけの担当者・担当可能なだけの利用者・管理担当にはnull。操作結果の再照会は確定時の受領内容をそのまま返す。
+     */
+    contextTitle: string | null;
 };
 
 export type TaskPage = {
@@ -110,11 +157,15 @@ export type TaskPage = {
     nextCursor: null;
 };
 
+/**
+ * 提出で固定した成果物。ファイルは提出時の不変世代を固定する。
+ */
 export type PinnedArtifact = {
     artifactId: string;
     revision: number;
-    schemaId: 'organization.text-draft.v1';
-    value: TextValue;
+    schemaId: 'organization.text-draft.v1' | 'organization.work-file.v1';
+    value?: TextValue;
+    file?: WorkFile;
 };
 
 export type HandoffSnapshot = {
@@ -127,7 +178,7 @@ export type HandoffSnapshot = {
     workflowId: string;
     contextId: string;
     actingAssignmentId: string;
-    submittedBy: 'sales-01' | 'office-01';
+    submittedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
     submissionNumber: number;
     previousSubmissionId?: string;
     returnInstructionId?: string;
@@ -184,13 +235,13 @@ export type Submitted = {
     nextTask: TaskSummary;
 };
 
-export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed | Held | Resumed;
+export type WorkResult = DraftSaved | Claimed | Submitted | Returned | EvidenceRegistered | FindingRegistered | DecisionRecorded | AgentExecutionRequested | AgentExecutionCancelled | Completed | Held | Resumed | Assigned | RoleAssignmentCreated | RoleAssignmentRevoked | DelegationCreated | DelegationRevoked | ArtifactCreated | ArtifactContentWritten | ArtifactDiscarded | SubmissionImported;
 
 export type Problem = {
     type: string;
     title: string;
     status: number;
-    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE';
+    code: 'VALIDATION_FAILED' | 'FORBIDDEN' | 'WORK_ITEM_NOT_FOUND' | 'WORK_ARTIFACT_NOT_FOUND' | 'REVISION_CONFLICT' | 'OPERATION_CONFLICT' | 'WORK_ASSIGNMENT_CONFLICT' | 'HANDOFF_NOT_READY' | 'DEPENDENCY_UNAVAILABLE' | 'COMMIT_OUTCOME_UNKNOWN' | 'INTEGRITY_VIOLATION' | 'CURSOR_STALE' | 'EVIDENCE_NOT_FOUND' | 'FINDING_NOT_FOUND' | 'AGENT_RESULT_NOT_READY' | 'WORK_CONTEXT_STALE' | 'ORGANIZATION_RECORD_NOT_FOUND' | 'WORK_CONTEXT_NOT_FOUND' | 'WORK_ARTIFACT_UNAVAILABLE';
     traceId: string;
 };
 
@@ -220,7 +271,7 @@ export type ReturnInstruction = {
      * 空白のみ不可、最大8192 UTF-8 bytes。
      */
     reason: string;
-    returnedBy: 'office-01';
+    returnedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
     createdAt: string;
 };
 
@@ -432,15 +483,28 @@ export type AgentResult = {
      * UTF-8 encoded length is limited to 8192 bytes by the server.
      */
     summary: string;
-    findingRevisionRefs: [
-        RevisionRef
-    ];
+    /**
+     * 0〜1件。根拠の無い提案はFindingにしない。U4以前の結果は常に1件。
+     */
+    findingRevisionRefs: Array<RevisionRef>;
     evidenceRevisionRefs: Array<RevisionRef>;
     uncertainty: Array<string>;
     simulated: true;
     bodyAnalyzed: false;
     liveLlm: false;
     mcpWireExecuted: false;
+    /**
+     * 選択した根拠ごとの利用結果（同じ順序）。U4以前の結果には無い。unavailable/unsupportedを含む結果は一部の根拠だけで作成した結果であり、全体の検証済みを意味しない。
+     */
+    sourceOutcomes?: Array<AgentSourceOutcome>;
+    /**
+     * 非公開の下書き候補。空なら省略。
+     */
+    generatedArtifactIds?: Array<string>;
+    /**
+     * 実行権限の無い型付き提案。空なら省略。
+     */
+    suggestedActionIds?: Array<string>;
 };
 
 export type AgentExecution = {
@@ -448,7 +512,7 @@ export type AgentExecution = {
     contextId: string;
     workItemId: string;
     attemptId: string;
-    requestedBy: 'sales-01' | 'office-01';
+    requestedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
     requesterResponsibility: string;
     executedBy: 'organization-synthetic/agent-01';
     executorInvocationKind: 'agent';
@@ -528,6 +592,472 @@ export type Resumed = {
     task: TaskSummary;
 };
 
+export type PolicyAction = 'context.read' | 'context.progress.read' | 'context.history.read' | 'queue.read' | 'work.read' | 'work.claim' | 'work.assign' | 'work.edit' | 'work.submit' | 'work.return' | 'work.complete' | 'work.hold' | 'work.resume' | 'evidence.register' | 'finding.register' | 'decision.record' | 'agent.request' | 'organization.manage';
+
+/**
+ * 評価時点で有効な責任の説明。再利用できる許可ではない。
+ */
+export type Responsibility = {
+    id: string;
+    kind: 'role_assignment' | 'delegation';
+    principal: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    roleId: string;
+    roleLabel: string;
+    unitId: string;
+    unitLabel: string;
+    actions: Array<PolicyAction>;
+    validFrom: string;
+    validUntil: string | null;
+    sourceAssignmentId: string | null;
+    delegator: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    /**
+     * 役割の上書き→組織単位の既定で選ぶ表示Profile。権限ではない。
+     */
+    workViewProfileId: string;
+};
+
+export type OrganizationalUnit = {
+    id: string;
+    label: string;
+    defaultArchetype: 'context' | 'queue';
+    roleIds: Array<string>;
+};
+
+export type BusinessRole = {
+    id: string;
+    key: string;
+    label: string;
+    actions: Array<PolicyAction>;
+};
+
+export type RoleAssignment = {
+    id: string;
+    principal: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    roleId: string;
+    unitId: string;
+    validFrom: string;
+    validUntil: string | null;
+    reason: string;
+    createdBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    createdAt: string;
+    revokedAt: string | null;
+    revokedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    revokeReason: string | null;
+};
+
+export type Delegation = {
+    id: string;
+    sourceAssignmentId: string;
+    delegator: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    recipient: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    actions: Array<PolicyAction>;
+    validFrom: string;
+    validUntil: string;
+    reason: string;
+    createdBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    createdAt: string;
+    revokedAt: string | null;
+    revokedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    revokeReason: string | null;
+};
+
+/**
+ * 現在の担当者本人と現在のwork.assign保有者にだけ返す。
+ */
+export type TaskAssignmentView = {
+    principalId: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    displayName: string;
+    actingAssignmentId: string;
+    actingKind: 'role_assignment' | 'delegation' | null;
+    roleLabel: string | null;
+    delegatorPrincipalId: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    responsibilityEffective: boolean;
+};
+
+export type WorkAssignmentRecord = {
+    id: string;
+    taskId: string;
+    attemptId: string;
+    principal: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    actingAssignmentId: string;
+    assignedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+    managerAssignmentId: string | null;
+    reason: string | null;
+    startedAt: string;
+    endedAt: string | null;
+    endedBy: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01' | null;
+};
+
+export type UnitPage = {
+    items: Array<OrganizationalUnit>;
+    nextCursor: null;
+};
+
+export type RolePage = {
+    items: Array<BusinessRole>;
+    nextCursor: null;
+};
+
+export type RoleAssignmentPage = {
+    items: Array<RoleAssignment>;
+    nextCursor: null;
+    /**
+     * 記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。
+     */
+    evaluatedAt: string;
+};
+
+export type DelegationPage = {
+    items: Array<Delegation>;
+    nextCursor: null;
+    /**
+     * 記録の状態（開始前・有効・期限切れ）を判定するサーバーの評価時刻。
+     */
+    evaluatedAt: string;
+};
+
+/**
+ * expectedRevisionはOrganization policyのrevision。actingAssignmentIdは現在有効な業務管理の正式割当。
+ */
+export type RoleAssignmentCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    principalId: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    roleId: string;
+    unitId: string;
+    validFrom?: string;
+    validUntil?: string;
+    /**
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
+     */
+    reason: string;
+};
+
+export type RevokePolicyRecordCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    /**
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
+     */
+    reason: string;
+};
+
+/**
+ * 委任元の正式割当より広い操作・長い期限・再委任は拒否。organization.manageとwork.assignは委任不可。
+ */
+export type DelegationCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    sourceAssignmentId: string;
+    recipientPrincipalId: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    actions: Array<PolicyAction>;
+    validFrom?: string;
+    validUntil: string;
+    /**
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
+     */
+    reason: string;
+};
+
+/**
+ * expectedRevisionはタスクのrevision。新担当者の責任は工程の役割とwork.claimを含み現在有効であること。
+ */
+export type AssignmentCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    assigneePrincipalId: 'sales-01' | 'office-01' | 'review-01' | 'approver-01' | 'multi-role-01' | 'delegate-01';
+    assigneeResponsibilityId: string;
+    /**
+     * 空白のみ不可、最大1024 UTF-8 bytes。改行・タブ以外の制御文字は不可。
+     */
+    reason: string;
+};
+
+export type Assigned = {
+    kind: 'assigned';
+    task: TaskSummary;
+    assignment: WorkAssignmentRecord;
+};
+
+export type RoleAssignmentCreated = {
+    kind: 'role_assignment_created';
+    assignment: RoleAssignment;
+    policyRevision: number;
+};
+
+export type RoleAssignmentRevoked = {
+    kind: 'role_assignment_revoked';
+    assignment: RoleAssignment;
+    policyRevision: number;
+};
+
+export type DelegationCreated = {
+    kind: 'delegation_created';
+    delegation: Delegation;
+    policyRevision: number;
+};
+
+export type DelegationRevoked = {
+    kind: 'delegation_revoked';
+    delegation: Delegation;
+    policyRevision: number;
+};
+
+/**
+ * 記録から導出した注意。lifecycleではない。waiting_for_confirmation/blockedは根拠の記録が無いため出さない。
+ */
+export type AttentionKind = 'newly_assigned' | 'returned' | 'due_soon' | 'overdue';
+
+export type Attention = {
+    kind: AttentionKind;
+    /**
+     * 根拠記録のID（割当期間・差戻指示）。担当者本人にだけ開示。
+     */
+    sourceId: string | null;
+    dueAt: string | null;
+};
+
+export type TaskAttention = {
+    taskId: string;
+    attemptId: string;
+    evaluatedAt: string;
+    items: Array<Attention>;
+};
+
+export type AttentionSeenCommand = {
+    /**
+     * 本人の現在の割当期間。Work操作ではなく冪等な確認済み記録。
+     */
+    workAssignmentId: string;
+};
+
+export type ContextProgressItem = {
+    taskId: string;
+    stepLabel: string;
+    workTypeId: string;
+    state: 'ready' | 'active' | 'held' | 'completed';
+    attemptNumber: number;
+    dueAt: string | null;
+    assigned: boolean;
+};
+
+export type WorkContext = {
+    id: string;
+    kind: 'case' | 'routine_run' | 'batch' | 'request';
+    title: string;
+    ownerUnitId: string;
+    /**
+     * owner unitのcontext.progress.readがある場合だけ。担当者識別・理由・本文を含まない。
+     */
+    progress: Array<ContextProgressItem> | null;
+    canReadHistory: boolean;
+    ownTaskIds: Array<string>;
+    attentionCount: number;
+};
+
+export type WorkContextPage = {
+    items: Array<WorkContext>;
+    nextCursor: null;
+};
+
+/**
+ * 業務状態の推移（種類と時刻）だけ。理由・本文・識別を含まない。
+ */
+export type WorkContextHistory = {
+    contextId: string;
+    entries: Array<{
+        kind: string;
+        occurredAt: string;
+    }>;
+};
+
+/**
+ * 表示だけを変える定義。権限・操作を変えない。
+ */
+export type WorkViewProfile = {
+    id: string;
+    key: string;
+    label: string;
+    archetype: 'context' | 'queue';
+    primaryGrouping: 'context' | 'work_type';
+    defaultSort: 'due_at';
+    initialModule: 'document' | 'history' | 'evidence' | 'agent' | 'search' | 'resources' | 'return';
+    modules: Array<{
+        module: 'document' | 'history' | 'evidence' | 'agent' | 'search' | 'resources' | 'return';
+        presentation: 'hidden' | 'available' | 'visible' | 'prominent';
+    }>;
+};
+
+export type WorkViewProfilePage = {
+    items: Array<WorkViewProfile>;
+    nextCursor: null;
+};
+
+/**
+ * Work所有の共有保存領域に保存した不変の世代。大きさとSHA-256はserverが受け取ったbytesから計算する。IDは内容登録の操作IDと同じ。
+ */
+export type FileGeneration = {
+    id: string;
+    sizeBytes: number;
+    sha256: string;
+    storedAt: string;
+    providerId: 'organization.work-artifacts';
+};
+
+/**
+ * 表示名と申告media type（取得時の応答には使わない）。ローカルのパスではない。
+ */
+export type WorkFile = {
+    /**
+     * 255 bytes以内。パス区切り・制御文字・.・..は不可
+     */
+    fileName: string;
+    mediaType: string;
+    generation: FileGeneration | null;
+};
+
+/**
+ * 差戻し後に前回の提出から明示的に取り込んだ成果物の出典
+ */
+export type DerivedFrom = {
+    snapshotId: string;
+    artifactId: string;
+};
+
+/**
+ * ファイル成果物の作成。内容は別途登録する。
+ */
+export type FileArtifactCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    file: {
+        fileName: string;
+        mediaType: string;
+    };
+};
+
+export type DiscardArtifactCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedArtifactRevision: number;
+};
+
+export type ImportSubmissionCommand = {
+    operationId: string;
+    expectedRevision: number;
+    actingAssignmentId: string;
+    expectedAttemptId: string;
+    snapshotId: string;
+};
+
+export type ArtifactCreated = {
+    kind: 'artifact_created';
+    task: TaskSummary;
+    artifact: WorkingArtifact;
+};
+
+export type ArtifactContentWritten = {
+    kind: 'artifact_content_written';
+    task: TaskSummary;
+    artifact: WorkingArtifact;
+};
+
+export type ArtifactDiscarded = {
+    kind: 'artifact_discarded';
+    task: TaskSummary;
+    artifactId: string;
+};
+
+export type SubmissionImported = {
+    kind: 'submission_imported';
+    task: TaskSummary;
+    artifacts: Array<WorkingArtifact>;
+};
+
+export type AgentSourceOutcome = {
+    evidenceRevisionRef: RevisionRef;
+    /**
+     * executorが利用できた範囲。認可はWorkが別に再確認する。合成executorはanalyzedを返さない。
+     */
+    outcome: 'referenced' | 'analyzed' | 'unavailable' | 'unsupported';
+};
+
+/**
+ * Agentの非公開の下書き候補。Workの作業成果物ではなく、提出・次工程の対象にならない。担当者が既存の文案保存で保存したときだけ作業に入る。
+ */
+export type GeneratedArtifact = {
+    id: string;
+    executionId: string;
+    contextId: string;
+    workItemId: string;
+    attemptId: string;
+    schemaId: 'organization.text-draft.v1';
+    /**
+     * UTF-8で200 bytes以内、制御文字なし。
+     */
+    title: string;
+    value: {
+        /**
+         * UTF-8 encoded length is limited to 8192 bytes by the server.
+         */
+        text: string;
+    };
+    sourceRevisionRefs: Array<RevisionRef>;
+    /**
+     * 実際のexecutorの識別
+     */
+    author: string;
+    simulated: boolean;
+    visibility: 'agent_execution_private';
+    createdAt: string;
+};
+
+export type ProposedAction = ({
+    kind: 'review_finding';
+} & ReviewFindingAction) | ({
+    kind: 'use_generated_artifact';
+} & UseGeneratedArtifactAction);
+
+/**
+ * 実行権限の無い型付き提案。実行するAPIは無く、人間が選ぶと画面は対象を現在の権限で読み直して通常の操作画面を開く。HumanDecisionでも工程操作でもない。
+ */
+export type SuggestedAction = {
+    id: string;
+    executionId: string;
+    contextId: string;
+    workItemId: string;
+    attemptId: string;
+    action: ProposedAction;
+    /**
+     * UTF-8で1024 bytes以内。
+     */
+    rationale: string;
+    supportingRevisionRefs: Array<RevisionRef>;
+    /**
+     * 実際のexecutorの識別
+     */
+    author: string;
+    visibility: 'agent_execution_private';
+    createdAt: string;
+};
+
+export type ReviewFindingAction = {
+    kind: 'review_finding';
+    findingRevisionRef: RevisionRef;
+};
+
+export type UseGeneratedArtifactAction = {
+    kind: 'use_generated_artifact';
+    generatedArtifactId: string;
+};
+
 export type GetOrganizationSessionData = {
     body?: never;
     path?: never;
@@ -567,6 +1097,18 @@ export type ListWorkItemsData = {
          * この固定2step PoCはcursor非対応。指定するとCURSOR_STALE。
          */
         cursor?: string;
+        /**
+         * 表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。
+         */
+        actingAssignmentId?: string;
+        /**
+         * 同じ認可済みprojectionを文脈で絞る表示用filter。
+         */
+        contextId?: string;
+        /**
+         * 同じ認可済みprojectionをWorkTypeで絞る表示用filter。
+         */
+        workTypeId?: string;
     };
     url: '/v1/organization/tasks';
 };
@@ -656,7 +1198,7 @@ export type ListWorkingArtifactsResponses = {
 export type ListWorkingArtifactsResponse = ListWorkingArtifactsResponses[keyof ListWorkingArtifactsResponses];
 
 export type CreateWorkingArtifactData = {
-    body: DraftCommand;
+    body: DraftCommand | FileArtifactCommand;
     path: {
         id: string;
     };
@@ -1345,3 +1887,693 @@ export type ExecuteOrganizationWorkflowActionResponses = {
 };
 
 export type ExecuteOrganizationWorkflowActionResponse = ExecuteOrganizationWorkflowActionResponses[keyof ExecuteOrganizationWorkflowActionResponses];
+
+export type ListOrganizationalUnitsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/units';
+};
+
+export type ListOrganizationalUnitsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListOrganizationalUnitsError = ListOrganizationalUnitsErrors[keyof ListOrganizationalUnitsErrors];
+
+export type ListOrganizationalUnitsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: UnitPage;
+};
+
+export type ListOrganizationalUnitsResponse = ListOrganizationalUnitsResponses[keyof ListOrganizationalUnitsResponses];
+
+export type ListBusinessRolesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/roles';
+};
+
+export type ListBusinessRolesErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListBusinessRolesError = ListBusinessRolesErrors[keyof ListBusinessRolesErrors];
+
+export type ListBusinessRolesResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: RolePage;
+};
+
+export type ListBusinessRolesResponse = ListBusinessRolesResponses[keyof ListBusinessRolesResponses];
+
+export type ListRoleAssignmentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/role-assignments';
+};
+
+export type ListRoleAssignmentsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListRoleAssignmentsError = ListRoleAssignmentsErrors[keyof ListRoleAssignmentsErrors];
+
+export type ListRoleAssignmentsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: RoleAssignmentPage;
+};
+
+export type ListRoleAssignmentsResponse = ListRoleAssignmentsResponses[keyof ListRoleAssignmentsResponses];
+
+export type CreateRoleAssignmentData = {
+    body: RoleAssignmentCommand;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/role-assignments';
+};
+
+export type CreateRoleAssignmentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type CreateRoleAssignmentError = CreateRoleAssignmentErrors[keyof CreateRoleAssignmentErrors];
+
+export type CreateRoleAssignmentResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type CreateRoleAssignmentResponse = CreateRoleAssignmentResponses[keyof CreateRoleAssignmentResponses];
+
+export type RevokeRoleAssignmentData = {
+    body: RevokePolicyRecordCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/role-assignments/{id}/revoke';
+};
+
+export type RevokeRoleAssignmentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type RevokeRoleAssignmentError = RevokeRoleAssignmentErrors[keyof RevokeRoleAssignmentErrors];
+
+export type RevokeRoleAssignmentResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type RevokeRoleAssignmentResponse = RevokeRoleAssignmentResponses[keyof RevokeRoleAssignmentResponses];
+
+export type ListDelegationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/delegations';
+};
+
+export type ListDelegationsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListDelegationsError = ListDelegationsErrors[keyof ListDelegationsErrors];
+
+export type ListDelegationsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: DelegationPage;
+};
+
+export type ListDelegationsResponse = ListDelegationsResponses[keyof ListDelegationsResponses];
+
+export type CreateDelegationData = {
+    body: DelegationCommand;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/delegations';
+};
+
+export type CreateDelegationErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type CreateDelegationError = CreateDelegationErrors[keyof CreateDelegationErrors];
+
+export type CreateDelegationResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type CreateDelegationResponse = CreateDelegationResponses[keyof CreateDelegationResponses];
+
+export type RevokeDelegationData = {
+    body: RevokePolicyRecordCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/delegations/{id}/revoke';
+};
+
+export type RevokeDelegationErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type RevokeDelegationError = RevokeDelegationErrors[keyof RevokeDelegationErrors];
+
+export type RevokeDelegationResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type RevokeDelegationResponse = RevokeDelegationResponses[keyof RevokeDelegationResponses];
+
+export type AssignWorkItemData = {
+    body: AssignmentCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/assignment';
+};
+
+export type AssignWorkItemErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type AssignWorkItemError = AssignWorkItemErrors[keyof AssignWorkItemErrors];
+
+export type AssignWorkItemResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type AssignWorkItemResponse = AssignWorkItemResponses[keyof AssignWorkItemResponses];
+
+export type ListWorkViewProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/organization/work-view-profiles';
+};
+
+export type ListWorkViewProfilesErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListWorkViewProfilesError = ListWorkViewProfilesErrors[keyof ListWorkViewProfilesErrors];
+
+export type ListWorkViewProfilesResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkViewProfilePage;
+};
+
+export type ListWorkViewProfilesResponse = ListWorkViewProfilesResponses[keyof ListWorkViewProfilesResponses];
+
+export type ListWorkContextsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 表示範囲とする本人の現在有効な責任。省略時は全有効責任の和。本人のものでなければFORBIDDEN。
+         */
+        actingAssignmentId?: string;
+    };
+    url: '/v1/organization/work-contexts';
+};
+
+export type ListWorkContextsErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ListWorkContextsError = ListWorkContextsErrors[keyof ListWorkContextsErrors];
+
+export type ListWorkContextsResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkContextPage;
+};
+
+export type ListWorkContextsResponse = ListWorkContextsResponses[keyof ListWorkContextsResponses];
+
+export type GetWorkContextData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/work-contexts/{id}';
+};
+
+export type GetWorkContextErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetWorkContextError = GetWorkContextErrors[keyof GetWorkContextErrors];
+
+export type GetWorkContextResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkContext;
+};
+
+export type GetWorkContextResponse = GetWorkContextResponses[keyof GetWorkContextResponses];
+
+export type GetWorkflowHistoryData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/work-contexts/{id}/history';
+};
+
+export type GetWorkflowHistoryErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetWorkflowHistoryError = GetWorkflowHistoryErrors[keyof GetWorkflowHistoryErrors];
+
+export type GetWorkflowHistoryResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkContextHistory;
+};
+
+export type GetWorkflowHistoryResponse = GetWorkflowHistoryResponses[keyof GetWorkflowHistoryResponses];
+
+export type GetWorkAttentionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/attention';
+};
+
+export type GetWorkAttentionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetWorkAttentionError = GetWorkAttentionErrors[keyof GetWorkAttentionErrors];
+
+export type GetWorkAttentionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: TaskAttention;
+};
+
+export type GetWorkAttentionResponse = GetWorkAttentionResponses[keyof GetWorkAttentionResponses];
+
+export type MarkWorkAttentionSeenData = {
+    body: AttentionSeenCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/attention-seen';
+};
+
+export type MarkWorkAttentionSeenErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type MarkWorkAttentionSeenError = MarkWorkAttentionSeenErrors[keyof MarkWorkAttentionSeenErrors];
+
+export type MarkWorkAttentionSeenResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: TaskAttention;
+};
+
+export type MarkWorkAttentionSeenResponse = MarkWorkAttentionSeenResponses[keyof MarkWorkAttentionSeenResponses];
+
+export type ReadWorkingArtifactContentData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/working-artifacts/{id}/content';
+};
+
+export type ReadWorkingArtifactContentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ReadWorkingArtifactContentError = ReadWorkingArtifactContentErrors[keyof ReadWorkingArtifactContentErrors];
+
+export type ReadWorkingArtifactContentResponses = {
+    /**
+     * Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない
+     */
+    200: Blob | File;
+};
+
+export type ReadWorkingArtifactContentResponse = ReadWorkingArtifactContentResponses[keyof ReadWorkingArtifactContentResponses];
+
+export type WriteWorkingArtifactContentData = {
+    body: Blob | File;
+    headers: {
+        /**
+         * 操作ID（UUIDv7）。新しい世代のIDになる
+         */
+        'x-operation-id': string;
+        /**
+         * タスクのrevision
+         */
+        'x-expected-revision': number;
+        /**
+         * 実行する責任
+         */
+        'x-acting-assignment-id': string;
+        /**
+         * 成果物のrevision
+         */
+        'x-expected-artifact-revision': number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/working-artifacts/{id}/content';
+};
+
+export type WriteWorkingArtifactContentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type WriteWorkingArtifactContentError = WriteWorkingArtifactContentErrors[keyof WriteWorkingArtifactContentErrors];
+
+export type WriteWorkingArtifactContentResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type WriteWorkingArtifactContentResponse = WriteWorkingArtifactContentResponses[keyof WriteWorkingArtifactContentResponses];
+
+export type DiscardWorkingArtifactData = {
+    body: DiscardArtifactCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/working-artifacts/{id}/discard';
+};
+
+export type DiscardWorkingArtifactErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type DiscardWorkingArtifactError = DiscardWorkingArtifactErrors[keyof DiscardWorkingArtifactErrors];
+
+export type DiscardWorkingArtifactResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type DiscardWorkingArtifactResponse = DiscardWorkingArtifactResponses[keyof DiscardWorkingArtifactResponses];
+
+export type ImportSubmissionData = {
+    body: ImportSubmissionCommand;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/tasks/{id}/working-artifacts/import';
+};
+
+export type ImportSubmissionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ImportSubmissionError = ImportSubmissionErrors[keyof ImportSubmissionErrors];
+
+export type ImportSubmissionResponses = {
+    /**
+     * 現在の認可で評価した結果
+     */
+    200: WorkResult;
+};
+
+export type ImportSubmissionResponse = ImportSubmissionResponses[keyof ImportSubmissionResponses];
+
+export type ReadHandoffSnapshotContentData = {
+    body?: never;
+    path: {
+        id: string;
+        artifactId: string;
+    };
+    query?: never;
+    url: '/v1/organization/handoff-snapshots/{id}/artifacts/{artifactId}/content';
+};
+
+export type ReadHandoffSnapshotContentErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type ReadHandoffSnapshotContentError = ReadHandoffSnapshotContentErrors[keyof ReadHandoffSnapshotContentErrors];
+
+export type ReadHandoffSnapshotContentResponses = {
+    /**
+     * Work APIの現在の認可と保存領域での大きさ・SHA-256照合を経た内容。常に添付（Content-Disposition: attachment）で、ブラウザ内で表示しない
+     */
+    200: Blob | File;
+};
+
+export type ReadHandoffSnapshotContentResponse = ReadHandoffSnapshotContentResponses[keyof ReadHandoffSnapshotContentResponses];
+
+export type GetGeneratedArtifactData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/generated-artifacts/{id}';
+};
+
+export type GetGeneratedArtifactErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetGeneratedArtifactError = GetGeneratedArtifactErrors[keyof GetGeneratedArtifactErrors];
+
+export type GetGeneratedArtifactResponses = {
+    /**
+     * 現在の権限で読んだ非公開の下書き候補（実行の依頼者本人・同じ担当・同じ試行だけ）
+     */
+    200: GeneratedArtifact;
+};
+
+export type GetGeneratedArtifactResponse = GetGeneratedArtifactResponses[keyof GetGeneratedArtifactResponses];
+
+export type GetSuggestedActionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/organization/suggested-actions/{id}';
+};
+
+export type GetSuggestedActionErrors = {
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    422: Problem;
+    /**
+     * 安全なRFC9457エラー。外部状態不明を成功としない
+     */
+    default: Problem;
+};
+
+export type GetSuggestedActionError = GetSuggestedActionErrors[keyof GetSuggestedActionErrors];
+
+export type GetSuggestedActionResponses = {
+    /**
+     * 現在の権限で読んだ型付き提案（実行の依頼者本人・同じ担当・同じ試行だけ）
+     */
+    200: SuggestedAction;
+};
+
+export type GetSuggestedActionResponse = GetSuggestedActionResponses[keyof GetSuggestedActionResponses];

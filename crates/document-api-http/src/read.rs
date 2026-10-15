@@ -1190,7 +1190,7 @@ fn optional_timestamp(value: Option<OffsetDateTime>) -> Result<Option<String>, A
 }
 
 fn gui_fields_dto(value: GuiDocumentReadModel) -> Result<GuiDocumentFieldsDto, ApplicationError> {
-    let first_read_at = optional_timestamp(value.first_read_at)?;
+    let first_read_at = optional_timestamp(value.read_state.first_read_at)?;
     let display_timestamp = GuiDisplayTimestampDto {
         kind: match value.display_timestamp.kind {
             DisplayTimestampKind::RevisionCreatedAt => "revisionCreatedAt",
@@ -1205,7 +1205,7 @@ fn gui_fields_dto(value: GuiDocumentReadModel) -> Result<GuiDocumentFieldsDto, A
             .map(revision_summary_dto)
             .transpose()?,
         read_state: GuiReadStateDto {
-            is_read: first_read_at.is_some(),
+            is_read: value.read_state.is_read(),
             first_read_at,
         },
         display_timestamp,
@@ -1301,7 +1301,7 @@ fn published_dto(
         folder_name: value.folder_name,
         current_version_id: value.document_version_id.as_uuid(),
         revision: value.document_revision,
-        unread: Some(value.first_read_at.is_none()),
+        unread: Some(!value.gui.read_state.is_read()),
         metadata: value.document_metadata,
         created_at: timestamp(value.created_at)?,
         published_at: timestamp(value.published_at)?,

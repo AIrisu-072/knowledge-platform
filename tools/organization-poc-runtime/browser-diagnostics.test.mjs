@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
+import { isDeepStrictEqual } from 'node:util';
 import { browserFailureDiagnostics, readBrowserFailureDiagnostics } from './browser-diagnostics.mjs';
 
 const titles = {
@@ -138,7 +139,15 @@ test('Root folder tests retain only their fixed case and action without disclosi
 
 test('existing phase selection collects the separate Root folder cases with explicit capture off and actual GUI receipts', async () => {
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
-  assert.match(config, /testMatch: phase === 'journey' \? 'journey\.spec\.ts' : 'persistence\.spec\.ts'/u);
+  // Each phase selects exactly one spec basename; `journey` never also selects `policy-journey`.
+  assert.match(config, /testMatch: specs\[phase\]!,/u);
+  const specs = config.match(/const specs: Record<string, RegExp> = \{ journey: \/(.+?)\/u, persistence: \/(.+?)\/u, 'policy-journey': \/(.+?)\/u, 'policy-persistence': \/(.+?)\/u, 'context-journey': \/(.+?)\/u, 'context-persistence': \/(.+?)\/u, 'files-journey': \/(.+?)\/u, 'files-persistence': \/(.+?)\/u, 'agent-chat-journey': \/(.+?)\/u, 'agent-chat-persistence': \/(.+?)\/u \};/u);
+  assert.ok(specs);
+  const patterns = specs.slice(1).map(source => new RegExp(source, 'u'));
+  const files = ['journey', 'persistence', 'policy-journey', 'policy-persistence', 'context-journey', 'context-persistence', 'files-journey', 'files-persistence', 'agent-chat-journey', 'agent-chat-persistence'].map(name => `e2e-organization/${name}.spec.ts`);
+  for (const [pattern, expected] of patterns.map((value, index) => [value, index])) {
+    assert.deepEqual(files.filter(file => pattern.test(file)), [files[expected]]);
+  }
   for (const phase of ['journey', 'persistence']) {
     const source = await readFile(new URL(`../../apps/document-web/e2e-organization/${phase}.spec.ts`, import.meta.url), 'utf8');
     assert.equal((source.match(/\btest\('/gu) ?? []).length, 2);
@@ -186,14 +195,18 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
   const body = source.slice(source.indexOf('export type RootFolderState'), source.indexOf('export type EvidenceReceipt'));
   const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  runInNewContext(output, { exports, readFile, writeFile, expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
+  runInNewContext(output, { exports, readFile, writeFile, isDeepStrictEqual, expect: actual => ({ toBe: expected => assert.equal(actual, expected) }) });
   const directory = await mkdtemp(join(tmpdir(), 'organization-root-folder-'));
   const context = { statePath: join(directory, 'state.json'), documentId: 'synthetic-run-document' };
   const originalChild = { folderId: 'child', parentFolderId: 'tail', name: 'PRIVATE_OLD', revision: 0 };
-  const state = { schemaVersion: 4, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [],
+  const renamedChild = { ...originalChild, name: 'PRIVATE_NEW', revision: 1 };
+  const movedChild = { ...renamedChild, parentFolderId: 'destination', revision: 2 };
+  const state = { schemaVersion: 5, documentId: context.documentId, request: { name: 'PRIVATE_NAME', reason: 'PRIVATE_REASON' }, paginationChildren: [],
     selectedCreate: { request: { parentFolderId: 'tail', name: originalChild.name }, receipt: { resourceId: 'child', resultingRevision: 0 }, child: originalChild },
     selectedRename: { targetFolderId: 'child', request: { operationId: 'rename', expectedFolderRevision: 0, name: 'PRIVATE_NEW', reason: 'PRIVATE_REASON' },
-      receipt: { operationId: 'rename', resourceId: 'child', resultingRevision: 1, changed: true }, beforeChild: originalChild, child: { ...originalChild, name: 'PRIVATE_NEW', revision: 1 } } };
+      receipt: { operationId: 'rename', resourceId: 'child', resultingRevision: 1, changed: true }, beforeChild: originalChild, child: renamedChild },
+    selectedMove: { targetFolderId: 'child', request: { operationId: 'move', fromParentId: 'tail', toParentId: 'destination', expectedFolderRevision: 1, reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'move', resourceId: 'child', resultingRevision: 2, changed: true, occurredAt: '2026-10-06T00:00:00Z' }, beforeChild: renamedChild, child: movedChild } };
   try {
     await writeFile(context.statePath, 'unchanged Work state', { mode: 0o600 });
     await exports.saveRootFolderState(context, state);
@@ -202,8 +215,13 @@ test('Root folder restart oracle is separate, private, exclusive and bound to th
     await assert.rejects(exports.saveRootFolderState(context, state), { code: 'EEXIST' });
     assert.equal(await readFile(context.statePath, 'utf8'), 'unchanged Work state');
     await assert.rejects(exports.loadRootFolderState({ ...context, documentId: 'different-run' }));
-    for (const schemaVersion of [1, 2, 3]) {
+    for (const schemaVersion of [1, 2, 3, 4]) {
       await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, schemaVersion }));
+      await assert.rejects(exports.loadRootFolderState(context));
+    }
+    for (const selectedMove of [undefined, null, {}, { ...state.selectedMove, child: renamedChild },
+      { ...state.selectedMove, request: { ...state.selectedMove.request, actor: 'PRIVATE' } }]) {
+      await writeFile(`${context.statePath}.root-folder`, JSON.stringify({ ...state, selectedMove }));
       await assert.rejects(exports.loadRootFolderState(context));
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
@@ -390,8 +408,9 @@ test('runner pins the JSON environment override, rethrows failure and keeps capt
   // Read source only: importing run.mjs would launch the owned runtime.
   const runner = await readFile(new URL('./run.mjs', import.meta.url), 'utf8');
   const config = await readFile(new URL('../../apps/document-web/playwright.organization.config.ts', import.meta.url), 'utf8');
-  assert.match(runner, /\.\.\.process\.env,[^\n]*PLAYWRIGHT_JSON_OUTPUT_FILE: join\(directory, `browser-\$\{phase\}`, 'results\.json'\)/u);
-  assert.match(runner, /catch \(error\) \{\s*console\.error\(`Organization browser failure: \$\{JSON\.stringify\(await readBrowserFailureDiagnostics\(directory, phase\)\)\}`\);\s*throw error;/u);
+  assert.match(runner, /\.\.\.process\.env,[^\n]*PLAYWRIGHT_JSON_OUTPUT_FILE: join\(outputBase, `browser-\$\{phase\}`, 'results\.json'\)/u);
+  assert.match(runner, /catch \(error\) \{\s*const browserDiagnostics = await readBrowserFailureDiagnostics\(outputBase, phase\);\s*console\.error\(`Organization browser failure: \$\{JSON\.stringify\(browserDiagnostics\)\}`\);[\s\S]*?throw error;/u);
+  assert.match(runner, /if \(browserDiagnostics\.failure\?\.httpStatus === 503 && browserDiagnostics\.failure\.readEndpoint === 'finding'\)/u);
   assert.match(config, /\['json', \{ outputFile: join\(output, 'results\.json'\) \}\]/u);
   for (const setting of ["preserveOutput: 'never'", "trace: 'off'", "screenshot: 'off'", "video: 'off'"]) assert.ok(config.includes(setting));
 });
@@ -445,7 +464,7 @@ test('Agent observation follows only the unchanged failed UI assertion and rethr
   assert.match(support, /annotations\.push\(\{ type: 'organization-agent-status', description: status \}, \{ type: 'organization-agent-failure-code', description: failureCode \?\? 'none' \}\)/u);
 });
 
-test('rename replay uses the GUI path/body and original receipt while selected-create replay checks only the current child projection', async () => {
+test('rename and move replay keep original receipts while selected-create replay checks the current child under its new parent', async () => {
   const source = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
   const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
   const ts = require('typescript');
@@ -453,37 +472,118 @@ test('rename replay uses the GUI path/body and original receipt while selected-c
   const output = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const context = { sales: 'http://127.0.0.1:1', office: 'http://127.0.0.1:2' };
   const original = { folderId: 'child', parentFolderId: 'tail', revision: 0, name: 'PRIVATE_OLD' };
-  const current = { ...original, name: 'PRIVATE_NEW', revision: 1 };
+  const renamed = { ...original, name: 'PRIVATE_NEW', revision: 1 };
+  const current = { ...renamed, parentFolderId: 'destination', revision: 2 };
   const state = { request: { parentFolderId: 'root', folderId: 'parent' },
     sales: { root: { folderId: 'root' }, children: { items: [], nextCursor: null } }, office: { root: { folderId: 'root' }, children: { items: [], nextCursor: null } },
     selectedCreate: { request: { operationId: 'create', folderId: 'child', parentFolderId: 'tail', expectedParentRevision: 0, name: original.name, reason: 'PRIVATE_REASON' },
       receipt: { operationId: 'create', resourceId: 'child', resultingRevision: 0, changed: true }, child: original },
-    selectedRename: { targetFolderId: 'child', request: { operationId: 'rename', expectedFolderRevision: 0, name: current.name, reason: 'PRIVATE_REASON' },
-      receipt: { operationId: 'rename', resourceId: 'child', resultingRevision: 1, changed: true }, beforeChild: original, child: current } };
+    selectedRename: { targetFolderId: 'child', request: { operationId: 'rename', expectedFolderRevision: 0, name: renamed.name, reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'rename', resourceId: 'child', resultingRevision: 1, changed: true }, beforeChild: original, child: renamed },
+    selectedMove: { targetFolderId: 'child', request: { operationId: 'move', fromParentId: 'tail', toParentId: 'destination', expectedFolderRevision: 1, reason: 'PRIVATE_REASON' },
+      receipt: { operationId: 'move', resourceId: 'child', resultingRevision: 2, changed: true }, beforeChild: renamed, child: current } };
   const before = JSON.stringify(state); const calls = []; const exports = {};
   runInNewContext(output, { exports, currentAction: () => {}, isDeepStrictEqual: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     expect: actual => ({ toBe: expected => assert.equal(actual, expected), toBeNull: () => assert.equal(actual, null) }),
-    get: async (_request, origin, path) => path === '/v1/folders/root' ? state.sales.root : path.includes('/tail/') ? { items: [current], nextCursor: null } : path.includes('/child/') ? { items: [], nextCursor: null, capabilities: { renameFolder: origin === context.sales ? { status: 'available' } : { status: 'disabled', reason: 'permission' } } } : state.sales.children });
+    get: async (_request, origin, path) => path === '/v1/folders/root' ? state.sales.root : path.includes('/tail/') ? { items: [], nextCursor: null } : path.includes('/destination/') ? { items: [current], nextCursor: null } : path.includes('/child/') ? { items: [], nextCursor: null, capabilities: { renameFolder: origin === context.sales ? { status: 'available' } : { status: 'disabled', reason: 'permission' }, moveFolder: origin === context.sales ? { status: 'available' } : { status: 'disabled', reason: 'permission' } } } : state.sales.children });
   assert.equal(typeof exports.replaySelectedFolderRename, 'function');
   const request = {
-    post: async (url, { data }) => { calls.push(['POST', url, data]); assert.equal(data, state.selectedCreate.request); return { status: () => url.startsWith(context.sales) ? 201 : 403, json: async () => url.startsWith(context.sales) ? state.selectedCreate.receipt : { code: 'FORBIDDEN' } }; },
+    post: async (url, { data }) => { calls.push(['POST', url, data]); const move = url.endsWith('/child:move'); assert.equal(data, move ? state.selectedMove.request : state.selectedCreate.request); return { status: () => url.startsWith(context.sales) ? move ? 200 : 201 : 403, json: async () => url.startsWith(context.sales) ? move ? state.selectedMove.receipt : state.selectedCreate.receipt : { code: 'FORBIDDEN' } }; },
     patch: async (url, { data }) => { calls.push(['PATCH', url, data]); assert.equal(data, state.selectedRename.request); return { status: () => url.startsWith(context.sales) ? 200 : 403, json: async () => url.startsWith(context.sales) ? state.selectedRename.receipt : { code: 'FORBIDDEN' } }; },
   };
   await exports.replaySelectedFolderCreate(request, context, state); await exports.replaySelectedFolderRename(request, context, state);
-  assert.deepEqual(calls.map(([method, url]) => [method, url]), [['POST', `${context.sales}/v1/folders`], ['POST', `${context.office}/v1/folders`], ['PATCH', `${context.sales}/v1/folders/child`], ['PATCH', `${context.office}/v1/folders/child`]]);
+  assert.equal(typeof exports.replaySelectedFolderMove, 'function');
+  await exports.replaySelectedFolderMove(request, context, state);
+  assert.deepEqual(calls.map(([method, url]) => [method, url]), [['POST', `${context.sales}/v1/folders`], ['POST', `${context.office}/v1/folders`], ['PATCH', `${context.sales}/v1/folders/child`], ['PATCH', `${context.office}/v1/folders/child`], ['POST', `${context.sales}/v1/folders/child:move`], ['POST', `${context.office}/v1/folders/child:move`]]);
   assert.equal(JSON.stringify(state), before);
 });
 
-test('existing two Root cases add one child rename after create qualification and persist schema4 independently of Work', async () => {
+test('existing two Root cases add one child rename and move after create qualification and persist schema5 independently of Work', async () => {
   const journey = await readFile(new URL('../../apps/document-web/e2e-organization/journey.spec.ts', import.meta.url), 'utf8');
   const persistence = await readFile(new URL('../../apps/document-web/e2e-organization/persistence.spec.ts', import.meta.url), 'utf8');
   const support = await readFile(new URL('../../apps/document-web/e2e-organization/support.ts', import.meta.url), 'utf8');
   assert.match(journey, /await renameSelectedFolderFromUi\(page, request, context, \{ \.\.\.state, selectedCreate \}\)/u);
   assert.ok(journey.indexOf('await replaySelectedFolderCreate') < journey.indexOf('await renameSelectedFolderFromUi'));
   assert.match(persistence, /await replaySelectedFolderRename\(request, context, state\)/u);
-  assert.match(support, /schemaVersion: 4;/u); assert.match(support, /schemaVersion: 6;/u);
+  assert.match(support, /schemaVersion: 5;/u); assert.match(support, /schemaVersion: 6;/u);
+  assert.match(journey, /await moveSelectedFolderFromUi\(page, request, context, \{ \.\.\.state, selectedCreate, selectedRename \}/u);
+  assert.match(journey, /expect\(movePosts\)\.toBe\(1\)/u);
+  assert.match(persistence, /await replaySelectedFolderMove\(request, context, state\)/u);
   const rename = support.slice(support.indexOf('export async function renameSelectedFolderFromUi'), support.indexOf('export async function replaySelectedFolderRename'));
   assert.match(rename, /getByRole\('button', \{ name: '選択したフォルダー名を変更', exact: true \}\)/u);
   assert.match(rename, /response\.request\(\)\.postDataJSON\(\)/u);
   assert.doesNotMatch(rename, /request\.(?:post|patch)|waitForTimeout|setTimeout|screenshot|tracing/u);
+  const move = support.slice(support.indexOf('export async function moveSelectedFolderFromUi'), support.indexOf('export async function createSelectedFolderFromUi'));
+  assert.match(move, /getByRole\('group', \{ name: '移動先フォルダー', exact: true \}\)/u);
+  assert.match(move, /expect\(guiMovePosts\(\)\)\.toBe\(0\)/u);
+  assert.ok(move.indexOf('const refreshedFirst =') > move.indexOf('const receipt = await response.json()'));
+  assert.ok(move.indexOf('const refreshedFirst =') < move.indexOf('await restart.click()'));
+  assert.match(move, /const child = movedChildren\.items\[0\]!/u);
+  assert.match(move, /await assertFolderPaginationUi\(page, state, first\)/u);
+  assert.doesNotMatch(move, /request\.(?:post|patch)|waitForTimeout|setTimeout|screenshot|tracing/u);
+  // Exercise the actual old-parent acceptance block: an HTTP/UI read error must
+  // never qualify as an empty folder merely because no loading span or li exists.
+  const oldStart = move.indexOf('const oldChildren =');
+  const oldEnd = move.indexOf("await rail.getByRole('button', { name: destination.name, exact: true }).click();", oldStart);
+  assert.ok(oldStart >= 0 && oldEnd > oldStart);
+  const require = createRequire(new URL('../../apps/document-web/package.json', import.meta.url));
+  const ts = require('typescript');
+  const output = ts.transpileModule(`exports.verifyOldParent = async function(page, request, context, parent, rail, entry, dialog, isChildren, guiMovePosts) { ${move.slice(oldStart, oldEnd)} };`,
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  runInNewContext(output, { exports, get: async () => ({ items: [], nextCursor: null }),
+    expect: actual => ({ toBe: expected => assert.equal(actual, expected), toBeNull: () => assert.equal(actual, null),
+      toBeEnabled: async () => {}, toHaveCount: async expected => assert.equal(await actual.count(), expected) }) });
+  for (const [httpStatus, alerts] of [[200, 0], [503, 1], [200, 1]]) {
+    const clicks = []; const waits = [];
+    const row = { getByRole: role => ({ count: async () => role === 'alert' ? alerts : 0 }), locator: () => ({ count: async () => 0 }) };
+    const button = name => ({ click: async () => { clicks.push(name); }, locator: () => ({ locator: () => row }) });
+    const page = { waitForResponse: predicate => { waits.push(clicks.length); const response = { status: () => httpStatus,
+      url: () => 'http://127.0.0.1:1/v1/folders/tail/children?pageSize=200', request: () => ({ method: () => 'GET' }), json: async () => ({ items: [], nextCursor: null }) };
+      assert.equal(predicate(response), true); return Promise.resolve(response); } };
+    const check = () => exports.verifyOldParent(page, {}, { sales: 'http://127.0.0.1:1' }, { folderId: 'tail', name: 'PRIVATE_PARENT' },
+      { getByRole: (_role, { name }) => button(name) }, button('open-move'), { getByRole: (_role, { name }) => button(name) }, () => true, () => 1);
+    if (httpStatus === 200 && alerts === 0) {
+      await check(); assert.deepEqual(waits, [0]); assert.equal(clicks[0], 'open-move');
+    }
+    else await assert.rejects(check());
+  }
+});
+
+test('multi-principal policy phases retain only their fixed case, source location and closed action', () => {
+  const policyTitles = {
+    'policy-journey': '6名の合成担当で割当・担当変更・期限付き委任・同時引受・権限失効を実UIで確認する',
+    'policy-persistence': '6 processの再起動後も割当・委任・担当変更・取消と非開示を保持する',
+  };
+  Object.assign(policyTitles, {
+    'context-journey': '文脈・注意・業務Profileで複数の文脈を実画面で扱い、非開示と確認済みを保つ',
+    'context-persistence': '6 processの再起動後も文脈・確認済み・差戻しの注意と非開示を保持する',
+  });
+  for (const [phase, title] of Object.entries(policyTitles)) {
+    const raw = JSON.stringify({ suites: [{ specs: [{ title, file: `${phase}.spec.ts`, line: 10, column: 1, tests: [{ results: [{
+      status: 'failed', annotations: [{ type: 'organization-stage', description: 'policy-reassign-office' }, { type: 'note', description: 'PRIVATE review-01 理由' }],
+      error: { message: 'expect(received).toBe(expected) PRIVATE 理由', location: { file: `/runner/apps/document-web/e2e-organization/${phase}.spec.ts`, line: 42, column: 7 } },
+    }] }] }] }] });
+    const actual = browserFailureDiagnostics(raw, phase);
+    assert.deepEqual(actual, { phase, availability: 'available', failure: { test: phase, source: `${phase}.spec.ts`, line: 42, column: 7,
+      status: 'failed', errorCategory: 'assertion', matcher: 'toBe', currentAction: 'policy-reassign-office' } });
+    assert.doesNotMatch(JSON.stringify(actual), /PRIVATE|理由|review-01/u);
+  }
+  assert.deepEqual(browserFailureDiagnostics('{}', 'policy-unknown'), { availability: 'unavailable' });
+});
+
+test('Agent Chat phases retain only their fixed case, stage and source without private purpose or candidate text', () => {
+  const secret = 'PRIVATE_PURPOSE_OR_CANDIDATE';
+  const cases = [
+    ['agent-chat-journey', 'Agent Chatで構造化結果を確認し、提案から通常の画面で人間判断と文案の保存を行う', 'agent-chat-journey.spec.ts'],
+    ['agent-chat-persistence', '6 processの再起動後もAgentの構造化結果・下書き候補・提案と非開示を保持し、Chatの入力は残さない', 'agent-chat-support.ts'],
+  ];
+  for (const [phase, title, source] of cases) {
+    const raw = report({ status: 'failed', annotations: [{ type: 'organization-stage', description: 'agent-chat-draft', name: secret }],
+      error: { message: `expect(value).toBe(expected) ${secret}`, location: { file: source, line: 12, column: 3 }, matcherResult: { name: 'toBe', actual: secret, expected: secret } },
+      stdout: [secret] }, phase, { title, file: `${phase}.spec.ts` });
+    const failure = browserFailureDiagnostics(raw, phase).failure;
+    assert.deepEqual(failure, { test: phase, source, line: 12, column: 3, status: 'failed', errorCategory: 'assertion', matcher: 'toBe', currentAction: 'agent-chat-draft' });
+    assert.ok(!JSON.stringify(failure).includes(secret));
+  }
 });

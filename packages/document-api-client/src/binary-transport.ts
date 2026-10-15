@@ -16,6 +16,8 @@ export type CreateDocumentUpload = Omit<CreateDocumentMultipart, 'file'> & {
   mediaType: string;
 };
 
+export type CreateDocumentItemsUpload = { request: CommandsCreateDocument & { items: NonNullable<CommandsCreateDocument['items']> }; files: ReadonlyMap<string, Blob | File> };
+
 export type VersionUpload = Omit<VersionMultipart, 'files'> & {
   files: ReadonlyMap<string, Blob | File>;
 };
@@ -29,7 +31,7 @@ export type BinaryTransportBridgeOptions = {
 };
 
 type HttpMethod = 'GET' | 'POST' | 'PUT';
-type BinaryRequestOptions = { signal?: AbortSignal };
+type BinaryRequestOptions = { signal?: AbortSignal; maxBytes?: number };
 const binaryDeadlineMs = 120_000;
 
 
@@ -84,6 +86,18 @@ export class BinaryTransportBridge {
     );
   }
 
+  prepareDocumentItemsUpload(input: CreateDocumentItemsUpload): BuiltMultipart {
+    if (!input.request.items.length || input.request.items.some(item => !item.originalFilename.trim() || !item.mediaType.trim())) {
+      throw new BinaryTransportError('Initial originals and their names/media types are required');
+    }
+    return Object.freeze(buildManifestMultipart(input.request, input.request.items.map(item => ({ partId: item.partId })), input.files));
+  }
+
+  async createDocumentItems(input: CreateDocumentItemsUpload, prepared?: BuiltMultipart): Promise<CreateDocumentResponses[201]> {
+    const multipart = prepared ?? this.prepareDocumentItemsUpload(input);
+    return this.requestJson<CreateDocumentResponses[201]>('v1/documents', 'POST', multipart.body, { 'Content-Type': multipart.contentType }, true);
+  }
+
   prepareVersionUpload(input: VersionUpload): BuiltMultipart {
     return Object.freeze(buildVersionMultipart(input.request, input.files));
   }
@@ -120,9 +134,11 @@ export class BinaryTransportBridge {
   }
 
   async downloadVersionFileBlob(input: DownloadVersionFileInput, options: BinaryRequestOptions = {}): Promise<Blob> {
+    if (options.maxBytes !== undefined && (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0)) throw new BinaryTransportError('Invalid viewer byte limit');
+    const headers = options.maxBytes === undefined ? undefined : { 'x-knowledge-viewer-max-bytes': String(options.maxBytes) };
     return boundedBinaryRequest(async signal => {
-      const response = await this.request(downloadPath(input), 'GET', undefined, undefined, signal);
-      return response.blob();
+      const response = await this.request(downloadPath(input), 'GET', undefined, headers, signal);
+      return options.maxBytes === undefined ? response.blob() : readBoundedBlob(response, options.maxBytes, signal);
     }, options.signal);
   }
 
@@ -209,6 +225,9 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
       fileId: rendition.fileId,
     })),
   ]);
+  return buildManifestMultipart(request, parts, files);
+}
+function buildManifestMultipart(request: unknown, parts: readonly { partId: string; fileId?: string }[], files: ReadonlyMap<string, Blob | File>): BuiltMultipart {
   if (parts.length > 63) throw new BinaryTransportError('Binary parts must be at most 63 (64 total multipart parts)');
   const json = JSON.stringify(request);
   const jsonBytes = new Blob([json]).size;
@@ -220,8 +239,8 @@ function buildVersionMultipart(request: CommandsVersionWrite, files: ReadonlyMap
       throw new BinaryTransportError('The version manifest has an invalid or duplicate partId');
     }
     expectedIds.add(part.partId);
-    if (fileIds.has(part.fileId)) throw new BinaryTransportError('Shared FileID cannot be uploaded more than once');
-    fileIds.add(part.fileId);
+    if (part.fileId !== undefined && fileIds.has(part.fileId)) throw new BinaryTransportError('Shared FileID cannot be uploaded more than once');
+    if (part.fileId !== undefined) fileIds.add(part.fileId);
   }
 
   if (expectedIds.size !== files.size || [...files.keys()].some((id) => !expectedIds.has(id))) {
@@ -312,6 +331,30 @@ function isProblem(value: unknown): value is Problem {
     && typeof problem.code === 'string'
     && typeof problem.traceId === 'string'
     && typeof problem.retryable === 'boolean';
+}
+
+async function readBoundedBlob(response: Response, maximum: number, signal: AbortSignal): Promise<Blob> {
+  if (!Number.isSafeInteger(maximum) || maximum <= 0) { await response.body?.cancel(); throw new BinaryTransportError('Invalid viewer byte limit'); }
+  const length = response.headers.get('content-length');
+  if (length && /^\d+$/.test(length) && Number(length) > maximum) { await response.body?.cancel(); throw new BinaryTransportError('File exceeds viewer byte limit'); }
+  if (!response.body) throw new BinaryTransportError('The successful file response had no body');
+  const reader = response.body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener('abort', cancel, { once: true });
+  const parts: BlobPart[] = []; let size = 0;
+  try {
+    while (true) {
+      if (signal.aborted) throw new BinaryTransportError('Binary request was cancelled/aborted');
+      const { done, value } = await reader.read();
+      if (signal.aborted) throw new BinaryTransportError('Binary request was cancelled/aborted');
+      if (done) break;
+      size += value.byteLength;
+      if (size > maximum) throw new BinaryTransportError('File exceeds viewer byte limit');
+      parts.push(new Uint8Array(value));
+    }
+    return new Blob(parts, { type: response.headers.get('content-type') ?? '' });
+  } catch (error) { await reader.cancel().catch(() => undefined); throw error; }
+  finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
 
 async function boundedBinaryRequest<T>(run: (signal: AbortSignal) => Promise<T>, external?: AbortSignal): Promise<T> {

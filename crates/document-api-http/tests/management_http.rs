@@ -120,6 +120,58 @@ async fn create_folder(
 }
 
 #[tokio::test]
+async fn folder_move_name_collision_returns_revision_conflict_without_operation_receipt() {
+    let f = fixture().await;
+    allow_all(&f).await;
+    let identity: Arc<dyn IdentityAdapter> = Arc::new(FixedIdentity(context()));
+    let router = management_router(f.repository.clone(), identity).unwrap();
+    let from = Uuid::now_v7();
+    let to = Uuid::now_v7();
+    let moved = Uuid::now_v7();
+    let existing = Uuid::now_v7();
+    for (folder_id, parent_id, name) in [
+        (from, f.root_id.as_uuid(), "Source"),
+        (to, f.root_id.as_uuid(), "Destination"),
+        (moved, from, "Same Name"),
+        (existing, to, "Same Name"),
+    ] {
+        create_folder(
+            router.clone(),
+            request_operation(),
+            folder_id,
+            parent_id,
+            name,
+        )
+        .await;
+    }
+    let operation_id = request_operation();
+    let body = json!({
+        "operationId": operation_id,
+        "fromParentId": from,
+        "toParentId": to,
+        "expectedFolderRevision": 0,
+        "reason": "Move folder with an existing destination name"
+    });
+    let (status, problem) = json_request(
+        router,
+        Method::POST,
+        &format!("/v1/folders/{moved}:move"),
+        Some(&body),
+    )
+    .await;
+    let operations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM document_management_operations WHERE operation_id = $1",
+    )
+    .bind(operation_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(operations, 0);
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(problem["code"].as_str(), Some("REVISION_CONFLICT"));
+}
+
+#[tokio::test]
 async fn management_commands_preserve_replay_revision_and_typed_error_contracts() {
     let f = fixture().await;
     allow_all(&f).await;
@@ -627,4 +679,102 @@ async fn capability_snapshot_does_not_authorize_a_later_mutation_after_schedule_
         after["capabilities"]["updateMetadata"],
         json!({"status": "disabled", "reason": "pendingSchedule"})
     );
+}
+
+#[tokio::test]
+async fn current_read_state_routes_preserve_replay_reset_and_legacy_wire() {
+    let f = fixture().await;
+    allow_all(&f).await;
+    let version_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO document_versions(document_version_id,document_id,version_no,lifecycle_state,title,published_at,created_by_identity_provider,created_by_principal_id,metadata,created_at) VALUES($1,$2,1,'PUBLISHED','Synthetic',now(),'test-idp','policy-admin','{}',now())")
+        .bind(version_id).bind(f.document_id.as_uuid()).execute(&f.pool).await.unwrap();
+    sqlx::query("UPDATE documents SET current_version_id=$1 WHERE document_id=$2")
+        .bind(version_id)
+        .bind(f.document_id.as_uuid())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let path = format!(
+        "/v1/documents/{}/versions/{version_id}/read-state",
+        f.document_id.as_uuid()
+    );
+    let identity = Arc::new(FixedIdentity(context()));
+    let router = management_router(f.repository.clone(), identity.clone())
+        .unwrap()
+        .merge(read_router(f.repository.clone(), identity).unwrap());
+    let (status, initial) = json_request(router.clone(), Method::GET, &path, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(initial["readStateRevision"], 0);
+    assert_eq!(initial["firstReadAt"], Value::Null);
+    assert_eq!(initial["isRead"], false);
+    let view = json!({"operationId": Uuid::now_v7(), "expectedReadStateRevision": 0});
+    let (status, first) = json_request(
+        router.clone(),
+        Method::POST,
+        &format!("{path}/view"),
+        Some(&view),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["kind"], "VIEW");
+    assert_eq!(first["resultingReadState"]["readStateRevision"], 1);
+    let reset = json!({"operationId": Uuid::now_v7(), "expectedReadStateRevision": 1});
+    let (status, changed) = json_request(
+        router.clone(),
+        Method::POST,
+        &format!("{path}/reset"),
+        Some(&reset),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(changed["resultingReadState"]["isRead"], false);
+    assert_eq!(
+        changed["resultingReadState"]["firstReadAt"],
+        first["resultingReadState"]["firstReadAt"]
+    );
+    let (_, replay) = json_request(
+        router.clone(),
+        Method::POST,
+        &format!("{path}/view"),
+        Some(&view),
+    )
+    .await;
+    assert_eq!(replay, first);
+    let (_, legacy) = json_request(router.clone(), Method::PUT, &path, None).await;
+    assert_eq!(legacy.as_object().unwrap().len(), 4);
+    assert_eq!(legacy["inserted"], false);
+    assert_eq!(
+        legacy["firstReadAt"],
+        first["resultingReadState"]["firstReadAt"]
+    );
+    let (_, current) = json_request(router.clone(), Method::GET, &path, None).await;
+    assert_eq!(current["isRead"], false);
+    assert_eq!(current["readStateRevision"], 2);
+    let (status, detail) = json_request(
+        router.clone(),
+        Method::GET,
+        &format!("/v1/documents/{}?view=published", f.document_id.as_uuid()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["readState"]["isRead"], false);
+    assert_eq!(detail["unread"], true);
+    let (status, list) = json_request(
+        router,
+        Method::GET,
+        "/v1/documents?view=published&unreadOnly=true",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["items"].as_array().unwrap().len(), 1);
+    let agent = management_router(
+        f.repository.clone(),
+        Arc::new(FixedIdentity(actor_context(InvocationKind::Agent))),
+    )
+    .unwrap();
+    let (status, body) = json_request(agent, Method::GET, &path, None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["code"], "FORBIDDEN");
 }

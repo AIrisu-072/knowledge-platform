@@ -479,7 +479,10 @@ impl Workflow {
                 actor.principal_id().into()
             },
             origin_execution_id,
-            acting_assignment_id: actor.assignment_id(),
+            // The attempt's recorded responsibility; Human commands are bound to it.
+            acting_assignment_id: item
+                .acting_assignment_id
+                .ok_or(WorkError::IntegrityViolation)?,
             claim: claim.to_owned(),
             evidence_revision_refs: evidence_revision_refs.to_vec(),
             supersedes_finding_id,
@@ -545,7 +548,7 @@ impl Workflow {
                     task_id,
                     attempt_id: item.attempt_id,
                     created_by: actor.principal_id().into(),
-                    acting_assignment_id: actor.assignment_id(),
+                    acting_assignment_id: command.context().acting_assignment_id,
                     origin: "human".into(),
                     source: source.clone(),
                     relevant_location: relevant_location.clone(),
@@ -666,7 +669,7 @@ impl Workflow {
                     reason: reason.clone(),
                     evidence_revision_refs: evidence_revision_refs.clone(),
                     human_principal: actor.principal_id().into(),
-                    acting_assignment_id: actor.assignment_id(),
+                    acting_assignment_id: command.context().acting_assignment_id,
                     created_at: now.into(),
                     supersedes_decision_id: *supersedes_decision_id,
                     visibility: "work_item_private".into(),

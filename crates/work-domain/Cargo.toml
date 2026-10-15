@@ -9,6 +9,7 @@ publish = false
 serde.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
+time = { workspace = true, features = ["parsing", "formatting"] }
 
 [dev-dependencies]
 serde_json.workspace = true

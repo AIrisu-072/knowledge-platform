@@ -1,0 +1,25 @@
+# Ubuntu段階試験のメモリ予算
+
+32GB試験機向けに、利用者がRSS上限4GiBと利用可能メモリ予備4GiBを承認した。これは専用ローカル試験の停止予算であり、製品の利用者数・文書数・本番SLOを定めない。標準CIと指定なしのローカル既定値はRSS2GiB、メモリ予備512MiBのまま。
+
+公開・独立レビュー・正確headのCI・main統合と統合後CIを確認してから、清潔な期待SHAのcheckoutと空のprivate ext4証拠rootを用意する。指定値の単位はbytes。4GiBは4294967296 bytes。新規所有DBだけを使い、既存runへ途中で予算を変更しない。
+
+安全係数2、disk予備1GiB、80時間総上限、最後15分の終了枠、各段階の時間上限、途中の資源確認は維持する。開始時に不足・無効値・測定失敗があれば開始しない。既定値へ黙って戻さない。
+
+一覧照合は全ページのIDを保持し、全件数・重複・cursor loop・期待集合の一致を確認する。詳細DTOは件数照合のために保持しない。大量段階の原本・履歴・再起動詳細は従来の先頭・中間・末尾3件であり、全件の原本検証を意味しない。
+
+資源観測は従来のプロセスツリー合計RSSに固定の役割別内訳とハーネス自身のNode heapを加える。共有ページを控除したPSSではない。取得できない値をゼロとして記録せず、role/PIDや親子関係取得の失敗は測定不能として停止する。APIやDBのheapはNodeから推定しない。本文・秘密情報を観測へ追加しない。保存先は既存private append-only sidecar、メモリ上は直近256観測で、過去の観測を無制限に保持しない。
+
+旧run8548647d-e73f-4cb1-a53c-5de7d497a720は1万件10000登録・公開、elapsed7423133.450375msで成功した。10万件は予測RSS2801147904 bytesが旧2GiB上限を超えNOT_ADMITTED、登録0、exit1、所有プロセス・proxy・PostgreSQL cleanup済み。これは10万件の成功ではない。
+
+## 明示起動
+
+単位bytesの2値を最後に指定する。環境指定の場合も両方が必要で、片方だけ、負数、小数、単位文字、承認値以外は拒否する。
+
+```sh
+node tools/document-load-qualification/local-launch.mjs start /absolute/clean-checkout /absolute/private-empty-ext4-root REVIEWED_SHA 4294967296 4294967296
+```
+
+専用tmux観測wrapperからprepareLocalLaunchPlanを呼ぶ場合は、専用環境に `KP_DOCUMENT_LOAD_LOCAL_MAX_RSS_BYTES=4294967296` と `KP_DOCUMENT_LOAD_LOCAL_MIN_AVAILABLE_MEMORY_BYTES=4294967296` を明示する。起動ackとlauncher.jsonのresourceBudgetが一致し、各段階reportのmaxRssBytes/minAvailableMemoryBytesが同じ値であることを確認する。
+
+役割内訳はharness/human/agent/databaseのroot自身とotherDescendantsの5枠で重複なしに分け、合計は従来RSSと一致する。workerやPostgreSQL backend等はotherDescendantsに含まれるので、database枠だけをDB全体と解釈しない。heapはハーネスNodeだけのrss/heapTotal/heapUsed/external/arrayBuffersの5数値で、別プロセスのheapは未測定。標本のPID数は有限だが、全PIDの個別heapや本文は保存しない。

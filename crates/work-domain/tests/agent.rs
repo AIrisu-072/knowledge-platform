@@ -49,12 +49,13 @@ fn request(w: &mut Workflow) -> AgentExecution {
         _ => panic!(),
     }
 }
-fn output() -> AgentFindingOutput {
-    AgentFindingOutput {
-        summary: "合成実行・本文分析なし".into(),
-        claim: "人間が原本を確認してください".into(),
-        uncertainty: vec!["本文分析なし・実LLM/MCP通信なし".into()],
-    }
+fn output(ctx: &AgentDispatchContext) -> AgentOutput {
+    AgentOutput::referenced_finding(
+        ctx,
+        "合成実行・本文分析なし",
+        "人間が原本を確認してください",
+        vec!["本文分析なし・実LLM/MCP通信なし".into()],
+    )
 }
 #[test]
 fn agent_private_context_cancel_fences_late_output() {
@@ -74,7 +75,7 @@ fn agent_private_context_cancel_fences_late_output() {
     };
     w.apply(ACTOR, &cancel, NOW).unwrap();
     let before = w.clone();
-    assert!(w.finish_agent_execution(&ctx, output(), NOW).is_err());
+    assert!(w.finish_agent_execution(&ctx, output(&ctx), NOW).is_err());
     assert_eq!(w, before);
     assert!(w.findings.is_empty());
     assert_eq!(
@@ -89,7 +90,7 @@ fn agent_finish_atomic_trusted_provenance_no_human_decision_and_cancel_preserves
     let mut w = fixture();
     let e = request(&mut w);
     let ctx = w.start_agent_execution(ACTOR, e.id, NOW).unwrap().unwrap();
-    let done = w.finish_agent_execution(&ctx, output(), NOW).unwrap();
+    let done = w.finish_agent_execution(&ctx, output(&ctx), NOW).unwrap();
     assert_eq!(done.status, AgentExecutionStatus::Succeeded);
     assert_eq!(
         w.fail_agent_execution(ACTOR, e.id, AgentFailureCode::CommitOutcomeUnknown, NOW)
@@ -139,14 +140,14 @@ fn agent_context_mutation_and_invalid_output_roll_back() {
     let mut w = fixture();
     let e = request(&mut w);
     let ctx = w.start_agent_execution(ACTOR, e.id, NOW).unwrap().unwrap();
-    let mut bad = output();
+    let mut bad = output(&ctx);
     bad.uncertainty.clear();
     let before = w.clone();
     assert!(w.finish_agent_execution(&ctx, bad, NOW).is_err());
     assert_eq!(w, before);
     w.source.revision += 1;
     let before = w.clone();
-    assert!(w.finish_agent_execution(&ctx, output(), NOW).is_err());
+    assert!(w.finish_agent_execution(&ctx, output(&ctx), NOW).is_err());
     assert_eq!(w, before);
 }
 #[test]
@@ -259,7 +260,7 @@ fn context_transition_terminates_old_execution_and_new_attempt_is_not_blocked() 
         w.agent_execution(ACTOR, e.id).unwrap().status,
         AgentExecutionStatus::Failed
     );
-    assert!(w.finish_agent_execution(&ctx, output(), NOW).is_err());
+    assert!(w.finish_agent_execution(&ctx, output(&ctx), NOW).is_err());
     w.apply(
         VerifiedActor::Office01,
         &Command::Claim {
@@ -364,7 +365,7 @@ fn hold_resume_fences_running_and_queued_agent_outputs_without_redispatch() {
             let before = w.clone();
             if let Some(ctx) = &dispatched {
                 assert_eq!(
-                    w.finish_agent_execution(ctx, output(), NOW),
+                    w.finish_agent_execution(ctx, output(ctx), NOW),
                     Err(WorkError::WorkContextStale)
                 );
             }
@@ -372,4 +373,80 @@ fn hold_resume_fences_running_and_queued_agent_outputs_without_redispatch() {
             assert!(w.findings.is_empty());
         }
     }
+}
+
+#[test]
+fn reassignment_under_another_responsibility_lists_only_readable_executions() {
+    let mut w = fixture();
+    let execution = request(&mut w);
+    let ctx = |acting, revision| CommandContext {
+        operation_id: Uuid::now_v7(),
+        expected_revision: revision,
+        acting_assignment_id: acting,
+    };
+    // A second sales holder delegates to sales-01, giving it another responsibility.
+    let mut policy = OrganizationPolicy::synthetic();
+    let MutationResult::RoleAssignmentCreated { assignment, .. } = policy
+        .apply(
+            VerifiedActor::Approver01,
+            &PolicyCommand::CreateRoleAssignment {
+                context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, 0),
+                principal: VerifiedActor::Review01,
+                role_id: ROLE_SALES_ID,
+                unit_id: UNIT_SALES_ID,
+                valid_from: None,
+                valid_until: None,
+                reason: "営業応援".into(),
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let MutationResult::DelegationCreated { delegation, .. } = policy
+        .apply(
+            VerifiedActor::Review01,
+            &PolicyCommand::CreateDelegation {
+                context: ctx(assignment.id, 1),
+                source_assignment_id: assignment.id,
+                recipient: ACTOR,
+                actions: vec![
+                    PolicyAction::QueueRead,
+                    PolicyAction::WorkRead,
+                    PolicyAction::WorkClaim,
+                ],
+                valid_from: None,
+                valid_until: "2026-10-05T00:00:00Z".into(),
+                reason: "代理".into(),
+            },
+            NOW,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let now =
+        time::OffsetDateTime::parse(NOW, &time::format_description::well_known::Rfc3339).unwrap();
+    let mut w = w.with_authority(policy, now);
+    w.apply(
+        VerifiedActor::Approver01,
+        &Command::Assign {
+            task_id: SALES_TASK_ID,
+            context: ctx(APPROVER_MANAGEMENT_ASSIGNMENT_ID, w.source.revision),
+            expected_attempt_id: SALES_ATTEMPT_ID,
+            assignee: ACTOR,
+            assignee_responsibility_id: delegation.id,
+            reason: "責任の切替".into(),
+        },
+        NOW,
+    )
+    .unwrap();
+    // The earlier request belongs to the previous responsibility: never listed.
+    let detail = w.detail(ACTOR, SALES_TASK_ID).unwrap();
+    assert!(!detail.agent_execution_ids.contains(&execution.id));
+    for id in detail.agent_execution_ids {
+        assert!(w.agent_execution(ACTOR, id).is_ok());
+    }
+    assert!(w.agent_execution(ACTOR, execution.id).is_err());
 }

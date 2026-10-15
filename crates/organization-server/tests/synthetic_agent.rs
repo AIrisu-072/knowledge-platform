@@ -78,7 +78,7 @@ struct TestWork {
     builds: AtomicUsize,
     active_calls: AtomicUsize,
     interruptions: AtomicUsize,
-    output: Mutex<Vec<AgentFindingOutput>>,
+    output: Mutex<Vec<AgentOutput>>,
     failures: Mutex<Vec<AgentFailureCode>>,
     entered: Notify,
     release: Notify,
@@ -168,7 +168,7 @@ impl WorkRepository for TestWork {
     fn finish_agent_execution(
         &self,
         context: AgentDispatchContext,
-        output: AgentFindingOutput,
+        output: AgentOutput,
     ) -> WorkFuture<'_, AgentExecution> {
         Box::pin(async move {
             assert_eq!(context, self.context);
@@ -260,10 +260,43 @@ async fn one_shot_output_is_fixed_bounded_and_never_echoes_source_or_purpose() {
     let outputs = repository.output.lock().unwrap();
     assert_eq!(outputs.len(), 1);
     let output = &outputs[0];
-    for text in [&output.summary, &output.claim] {
+    let finding = output.finding.as_ref().unwrap();
+    assert_eq!(
+        finding.evidence_revision_refs,
+        repository.context.execution.evidence_revision_refs
+    );
+    assert_eq!(output.generated_artifacts.len(), 1);
+    assert_eq!(
+        output
+            .suggested_actions
+            .iter()
+            .map(|s| s.action)
+            .collect::<Vec<_>>(),
+        [
+            ProposedActionCandidate::ReviewFinding,
+            ProposedActionCandidate::UseGeneratedArtifact(0)
+        ]
+    );
+    assert!(
+        output
+            .source_outcomes
+            .iter()
+            .all(|o| o.outcome == AgentSourceUse::Referenced)
+    );
+    let draft = &output.generated_artifacts[0];
+    for text in [&output.summary, &finding.claim, &draft.title, &draft.text]
+        .into_iter()
+        .chain(output.suggested_actions.iter().map(|s| &s.rationale))
+    {
         assert!(!text.contains("PRIVATE"));
-        assert!(text.len() < 1024);
+        assert!(text.len() < 2048);
     }
+    let stored = repository.workflow.lock().unwrap().clone();
+    let result = stored
+        .agent_result(ACTOR, repository.context.execution.id)
+        .unwrap();
+    assert_eq!(result.generated_artifact_ids.len(), 1);
+    assert_eq!(result.suggested_action_ids.len(), 2);
     assert!(!output.uncertainty.is_empty());
     assert!(
         output
@@ -409,4 +442,129 @@ async fn dropping_the_owner_aborts_inflight_tasks_instead_of_detaching_them() {
     tokio::task::yield_now().await;
     assert_eq!(repository.active_calls.load(Ordering::SeqCst), 0);
     assert!(repository.output.lock().unwrap().is_empty());
+}
+
+/// A stand-in for a future real adapter, proving the port boundary.
+struct ScriptedExecutor {
+    delay: std::time::Duration,
+    output: Result<fn(&AgentDispatchContext) -> AgentOutput, WorkError>,
+    calls: AtomicUsize,
+}
+impl work_application::AgentExecutorPort for ScriptedExecutor {
+    fn execute(
+        &self,
+        context: AgentDispatchContext,
+        remaining: std::time::Duration,
+    ) -> WorkFuture<'_, AgentOutput> {
+        Box::pin(async move {
+            assert!(remaining <= work_application::AGENT_EXECUTOR_BUDGET);
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            self.output.map(|build| build(&context))
+        })
+    }
+}
+fn partial(context: &AgentDispatchContext) -> AgentOutput {
+    let mut output =
+        AgentOutput::referenced_finding(context, "外部adapter", "候補", vec!["不確実".into()]);
+    output.generated_artifacts = vec![GeneratedArtifactCandidate {
+        title: "下書き".into(),
+        text: "本文".into(),
+        source_revision_refs: context.execution.evidence_revision_refs.clone(),
+    }];
+    output
+}
+fn claims_body_analysis(context: &AgentDispatchContext) -> AgentOutput {
+    let mut output = partial(context);
+    output.source_outcomes[0].outcome = AgentSourceUse::Analyzed;
+    output
+}
+
+#[tokio::test]
+async fn executor_port_output_is_validated_bounded_and_never_retried() {
+    for (name, executor, expected) in [
+        (
+            "valid",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Ok(partial),
+                calls: AtomicUsize::new(0),
+            },
+            None,
+        ),
+        (
+            "timeout",
+            ScriptedExecutor {
+                delay: std::time::Duration::from_secs(5),
+                output: Ok(partial),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::DependencyUnavailable),
+        ),
+        (
+            "executor error",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Err(WorkError::DependencyUnavailable),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::DependencyUnavailable),
+        ),
+        // An adapter's own error never claims Work's commit uncertainty or a
+        // provider/context verdict: Work alone decides those.
+        (
+            "executor claims commit uncertainty",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Err(WorkError::CommitOutcomeUnknown),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::DependencyUnavailable),
+        ),
+        (
+            "executor claims denial",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Err(WorkError::Forbidden),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::DependencyUnavailable),
+        ),
+        (
+            "invalid output",
+            ScriptedExecutor {
+                delay: std::time::Duration::ZERO,
+                output: Ok(claims_body_analysis),
+                calls: AtomicUsize::new(0),
+            },
+            Some(AgentFailureCode::InvalidOutput),
+        ),
+    ] {
+        let repository = Arc::new(TestWork::new());
+        let executor = Arc::new(executor);
+        let dispatcher =
+            OwnedAgentDispatcher::with_executor(repository.clone(), ACTOR, executor.clone())
+                .with_budget(std::time::Duration::from_millis(200));
+        let id = repository.context.execution.id;
+        dispatcher.dispatch(ACTOR, id).unwrap();
+        repository.wait(&repository.completed).await;
+        dispatcher.shutdown().await.unwrap();
+        let workflow = repository.workflow.lock().unwrap().clone();
+        let execution = workflow.agent_execution(ACTOR, id).unwrap();
+        assert_eq!(executor.calls.load(Ordering::SeqCst), 1, "{name}");
+        match expected {
+            None => {
+                assert_eq!(execution.status, AgentExecutionStatus::Succeeded, "{name}");
+                assert_eq!(workflow.generated_artifacts.len(), 1, "{name}");
+                assert!(repository.failures.lock().unwrap().is_empty(), "{name}");
+            }
+            Some(code) => {
+                assert_eq!(execution.status, AgentExecutionStatus::Failed, "{name}");
+                assert_eq!(*repository.failures.lock().unwrap(), [code], "{name}");
+                assert!(workflow.findings.is_empty(), "{name}");
+                assert!(workflow.generated_artifacts.is_empty(), "{name}");
+                assert!(workflow.suggested_actions.is_empty(), "{name}");
+            }
+        }
+    }
 }

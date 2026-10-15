@@ -1,5 +1,8 @@
 # Document GUI Integration v0 — Written Design
 
+2026-10-07追補：[文書詳細表示・未読戻し](2026-10-07-document-view-read-state-design.md)を参照。本凍結時の明示確認の意味と旧PUT wireは保持し、新VIEW/RESET・現在projection・専用receiptは追補が規定する。初回日時を現在badgeの根拠にせず、新操作資格hintはfresh整合GET200に従う。
+
+
 - 状態: **PROPOSED / WRITTEN SPEC REVIEW PENDING**
 - 日付: 2026-09-30 JST
 - 対象: Document Platform Human GUI / GUI向けRead Model / Revision / Identity Presentation / Diff Display / Client Boundary

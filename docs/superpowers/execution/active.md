@@ -1,5 +1,308 @@
 # Active Execution Pointer
 
+## 2026-10-09 — 遅延した文書一覧応答のフォーカス保持
+
+- 再開先は[状況](document-list-focus-status.md)と[操作手順](../../operations/document-list-focus.md)。保存済み修正を main `e15be9c3` に取り込んだ独立 branch `fix/document-list-focus-20261009`。登録ボタンや別操作から一覧応答がフォーカスを奪う制御再現済みの不具合を修正する。元の Ubuntu small 失敗と同一原因とは断定しない。
+- push と日本語 Draft PR 作成は承認済み。次は関連試験・独立レビュー、重複確認後の公開、正確な head の必須 CI の確認。まだ merge しない。1 万件 run `37887357388`、他担当の branch / PR、実環境の設定は変更しない。
+
+---
+
+## 2026-10-08 — 作業版の原本構成・初回複数原本登録
+
+- 再開先は[状況](document-original-management-status.md)、[承認範囲](../specs/2026-10-08-document-original-management.md)、[実装計画](../plans/2026-10-08-document-original-management-implementation.md)。06:23:37 UTCの「この方針で進めてください」で、作業版だけの追加・削除・並替（最終原本不可、公開/履歴保持）と初回複数の原子的作成を承認。下の旧設計待ち記録を現在状態として使用しない。
+- branch `feat/document-originals-20261008`、製品 `17db92dcdde07fec28e8368cf909ac527d3f0d2e`。PR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82` を通常mergeし、製品sourceを保持。全GUI1786件、Rust focused24件、実PostgreSQL18.6+FS1件、型/build/Clippy、SDK/API契約が成功。詳細なログ保存の境界は状況へ。
+- registration/schema/SDKの独立レビューは指摘修正後GO。全体の独立レビューと保存headのCIは親が確認する。Linux sandbox/PDFiumが必須の実browser journey・再起動persistenceはこのMacでは未実施。実対象PC・本番認証/TLS・実アカウントの設定は変更していない。
+- 次は親のexact-headレビューを確認し、同一機能Draft PRのLinux hosted資格を実行する。main統合は正確headの必須CI成功後、統合後CIまで確認する。下のDocument/Desktop/Auditの記録は保持する。
+
+---
+
+## 2026-10-08 — 文書管理残タスク（Mac側、クラウド親と分担）
+
+- 再開先は[状況](document-remaining-20261008-status.md)と[計画](../plans/2026-10-08-document-remaining.md)。branch `feat/document-remaining-20261008`、main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`。元checkoutの未コミット文書を保全し別checkoutで作業する。
+- Macの製品変更は過去公開版の履歴用途による取下げGUIと正式改訂単体詳細。設計確認待ちの原本構成・初回複数・主体検索・viewerは追補案のみ。既読契機は現行のまま。schedulerとPR85 Document修正はクラウド親が担当し、Macの製品差分へ含めない。
+- 操作文書・導入/復旧/段階測定手順を同じDraftにまとめる。対象PC・本番認証/TLS・実directory/権限・大量実測は未実施。正確なhead CI、親との統合順序確認、main統合と統合後CIはこれから。
+- 保存先は同一[Draft PR108](https://github.com/AIrisu-072/knowledge-platform/pull/108)、製品commit `ee8b98f04fa012481cafa755add8db86c00666ef` / tree `3837d48cd4bbe1fd3cfcf52d763a82f2af016f45`。独立レビューGO、固定Node24.21.0 GUI1740件/Chromium mock機能8件成功、golden比較は未資格。最新保存headとhosted結果はPR Checks/説明を読み直す。main統合はクラウド親が順序を調整する。
+- 文書head `d99d2f54` のCI `37731740750` は実runtimeの移動後read刷新でFAIL。遅い両GETによるREDを確認し、通常版queryのSignal消費を旧契約へ戻しhistory用途の保護を保持する最小修正を準備した。修正headの独立レビュー・全CIを取り直す。詳細は状況文書。
+- 修正の独立レビューGO、独立7case・関連318件・全体1741件・型/build/diff検査成功。親がPR107統合後main `e67aaccc` への追従と、正確head全gate成功後のguard付きmain統合を承認した。次はmain取り込みheadの全CI、その後統合後CI。設計待ち機能は未実装のまま。
+- `196f5e04` は同headruntime再試験後に通常14jobs・DSI・Sandbox成功（16成功/skip3）。初回Organization persistence finding503は根因未確定として保持。統合直前にmainがTauri PR103の `8d4b94a9` へ進んだため競合なく追従し、文書featureを保持して新組合せのreview/全gateを確認する。双方のactive節を保持。最新headと最終結果はPR108説明/Checksへ記録する。
+- Tauri取り込み製品head `82a25431` の独立review GO、GUI74 suites1756件・型/build/diff成功。最後の文書追記はsource不変。次は保存headの全hosted gate、成功後のhead-guard統合、統合後main CI。設計回答は親が確認中で未承認のまま。
+
+---
+
+## 2026-10-07 23:11 UTC — PR106の手順head合格後に最新mainを保持して追従
+
+- 手順head e0836556 / tree0788260dの通常CI37698468205は14 jobs全成功、全19checks16成功・既存skip3。導入4手順の独立レビューもGO。CI確認中のmain643cc85d（Audit単位A/PR98）更新によりactive先頭だけが競合したため、双方の節を保持して解消する
+- Audit側の32fileは新mainと完全同一のまま取り込み、Document製品/試験/導入4手順はe0836556から変えない。導入pinは資格済み製品cbe65d14を保持する。再開は[状況](document-view-read-state-status.md)へ。次はこの統合headの通常全CI、親のmerge判定と統合後CI。旧baseの成功を新組合せの資格にはしない
+
+---
+
+## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
+- 単位A（PR #98、main `643cc85`）と単位B（Store・relay、PR #113、main `dba8168`）はmain統合済み（`dba8168` のmain CIは、Organization受入の既知の断続的な503でFAILURE。単位Bの起因ではなく、`dba8168` を含むPR #115のhead `660670d` では同じ手順がSUCCESS。詳細は状況文書）。単位C（`crates/audit-acceptance` の受入試験、[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)、設計§2.2の最終capability matrix）はDraft [PR #115](https://github.com/AIrisu-072/knowledge-platform/pull/115)（branch `claude/cool-darwin-7xh893`）。最初のexact-head CI（`660670d`、run 37761824323）はrust-testだけがFAILUREで、原因はGitHub runnerでtestcontainersのimage取得がstreamの途中で切れたこと（「bytes remaining on stream」、試験本体の前。他の31試験はPASS）。`b233652` でPullImageの失敗だけを最大3回再試行する。独立確認reviewはGOで、Minor 4件は `facb755`・`591006a`・`df1bd19` と状況文書の更新で閉じた。
+- 次は `audit-unit-c` のHEADを `claude/cool-darwin-7xh893` へpush（PR #115のhead `660670d` からのfast-forward）、exact-head CI、main統合、main CI。現在状態は状況文書の先頭とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+
+---
+
+## 2026-10-07 22:38 UTC — 自動既読・未読戻しの製品資格と導入手順
+
+- [PR106](https://github.com/AIrisu-072/knowledge-platform/pull/106)の製品head cbe65d14 / tree b2cb1cbaの通常CI37692284389は14 jobs全成功、全19checksは16成功・既存skip3。新Rust/DBを実ログ確認し、Document/Organization/summaryも公式step成功。詳細な根拠と取得制限は[状況](document-view-read-state-status.md)へ記録
+- 再開先は同じ[限定要件](../specs/2026-10-07-document-view-read-state-design.md)と[計画](../plans/2026-10-07-document-view-read-state.md)。資格済み製品headへ導入4手順を更新し、source照合/日本語レビュー後に同Draftへ保存する。最終保存headの通常CIと親のmerge判定はこれから。実server反映は依頼者が手動で行う
+- 他担当のmainと履歴を保持。製品sourceや新機能の追加、別経路によるログ取得、旧資格の転用は行わない
+
+---
+
+## 2026-10-07 10:02 UTC — 文書詳細表示による既読・未読戻しの再実装
+
+- 承認済みの詳細正常表示→既読、未読へ戻す再確認目印を実装する。[状況](document-view-read-state-status.md)、[限定要件](../specs/2026-10-07-document-view-read-state-design.md)、[計画](../plans/2026-10-07-document-view-read-state.md)が再開先
+- 旧未公開sourceは実行環境の接続障害後に取得不能となったため、最新main a7cf93d53から新sourceでTDD/レビュー/hostedを取り直す。旧成功件数を転用しない
+- branch feat/document-view-read-state-20261007。同じ単一Draftへ検証単位で保存し、未完成/失敗/未実施を明記する。Node契約REDとRust test sourceが最初の境界で、ローカルRustは公式archive403により未実施
+- 他担当のmain記録を保持する。新しいviewerや読了証明は追加せず、既知の3GUI反例と未読snapshot検査を先行する。新hosted資格とmain統合はこれから
+
+---
+
+## 2026-10-07 08:40 UTC — Organization 複数担当PoC（U1〜U4）完了
+
+- U4は[PR #104](https://github.com/AIrisu-072/knowledge-platform/pull/104)でmain `d92ca6d` へ統合済み（[U4状況](organization-agent-chat-status.md)）。U1〜U4の4単位（複数担当・役割・委任、複数文脈・注意・表示Profile、作業ファイル・Handoff・差戻し後の作業、Agentの構造化結果・Agent Chat）はすべてmainへ統合し、各統合前のexact-head CIと統合後のmain CIで確認済み（U4の統合後CIは本記録のPRで確認する）
+- 合成Identityのみ。本番接続・実データ・サーバー反映・本番Identity方式の選定は行っていない。各単位の実装追補に記録した「新しい判断」は承認済みとして扱わない
+- 未着手の候補（新しいsessionが選ぶ。進捗を会話から再構成しない）：
+  - 提出済み内容のDocument Platformへの昇格（既存Document APIでの明示操作）
+  - ローカルWorkspace（Tauri/native）からの作業ファイル選択（Runtime Contractの読取りhandle→既存の内容登録API）
+  - 作業ファイル・下書き候補・提案の保持期間・削除・orphan回収、保存容量の上限
+  - 実Agent/MCPの接続（[利用手順](../../operations/organization-browser-poc.md#実agentmcpへの接続依頼者向け本pocでは実施しない)の依頼者判断が前提）、Agentへ渡す文脈の追加、工程操作の提案
+- 再開する場合は、最新mainから新しいbranchを作り、該当specと各単位の状況・追補を確認してから始める
+
+---
+
+## 2026-10-07 08:10 UTC — Organization Agentの構造化結果・Agent Chat・executor adapter境界（U4）
+
+- U3は[PR #102](https://github.com/AIrisu-072/knowledge-platform/pull/102)でmain `3b06421` へ統合済み（[U3状況](organization-work-files-status.md)）。U4の再開先は[状況](organization-agent-chat-status.md)、[実装追補](../specs/2026-10-07-organization-agent-chat-amendment.md)、[小計画](../plans/2026-10-07-organization-agent-chat.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `3b06421` から作り直し、U4 commitを移した。AgentResultの構造化（下書き候補・型付き提案・根拠ごとの利用結果）、`AgentExecutorPort`（合成executorは実装の一つ）、Agent Chat（時系列、候補は読み直して未保存の文案へ、提案は読み直して通常の画面へ）
+- ローカルで全Rust・実PostgreSQL・GUI 1642件・実browser 23 stageが成功。新しい判断10点は承認済みとして扱わない
+- 次は独立review→修正→PR→exact-head CI→main統合→統合後CI
+
+---
+
+## 2026-10-07 07:20 UTC — Organization 作業ファイル・共有provider・Handoff・差戻し後の作業（U3）
+
+- U2は[PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)でmain `240bfd2` へ統合済み（[U2状況](organization-work-context-status.md)）。U3の再開先は[状況](organization-work-files-status.md)、[実装追補](../specs/2026-10-07-organization-work-files-handoff-amendment.md)、[小計画](../plans/2026-10-07-organization-work-files.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `240bfd2` から作り直し、U3 commitを移した。作業ファイル（Work所有の共有保存領域 `work-artifacts/`）、提出時の世代固定と受領者の取得、差戻し後の明示的な取込み
+- 独立reviewはGO。Important 1件（外した記録への操作が閲覧拒否扱い）と軽微事項を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 20 stageが成功。新しい判断10点は承認済みとして扱わない
+- 次はPR作成→exact-head CI→main統合→統合後CI→同名branchを作り直してU4（AgentExecutionの構造化結果・Agent Chat・adapter境界）
+
+---
+
+## 2026-10-07 06:10 UTC — Organization 複数文脈・注意・表示Profile（U2）
+
+- U1は[PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)でmain `04076b1` へ統合済み（[U1状況](organization-multi-principal-status.md)）。U2の再開先は[状況](organization-work-context-status.md)、[実装追補](../specs/2026-10-07-organization-work-context-attention-amendment.md)、[小計画](../plans/2026-10-07-organization-work-context.md)
+- branch `claude/trusting-knuth-dn5cx4` をmain `04076b1` から作り直した。合成文脈3件・文脈ごとのworkflow instance・Attention（導出）・確認済み（Work mutationではない）・表示Profile 3種・営業型の文脈一覧/事務型のWorkType別キュー
+- 独立reviewのNO-GO（審査文脈の差戻し後に再提出できない、差戻し注意の対象、注意APIの閲覧範囲ほか）を修正済み。ローカルで全Rust・実PostgreSQL・GUI・実browser 17 stageが成功。新しい判断は承認済みとして扱わない
+- [PR #101](https://github.com/AIrisu-072/knowledge-platform/pull/101)。再reviewはGO、軽微事項の修正後head `48efcfe` で全CI成功。main `4a71e56`（PR100 文書アクセス設定）を通常mergeで取り込み、組合せheadのCI合格後にmainへ統合する。次は統合後CI→同名branchを作り直してU3
+
+---
+
+## 2026-10-07 04:36 UTC — 文書アクセス設定の回復補修
+
+- PR97統合main bba1d6ddを基点に、既に接続済みDocument ACLの結果不明要求の固定・往復保持・関連read失効を優先する。[状況](document-access-policy-recovery-status.md)と[限定計画](../plans/2026-10-07-document-access-policy-recovery.md)が再開先
+- operationIdが変わる実route反例から、Folder側の既存パターンを再利用する。権限/継承/本文の意味、新主体、backendを増やさず合成fixtureだけで検証する。既読capability・原本構成・旧版取下げは別候補として保留
+- branchはfix/document-access-policy-recovery-20261007。PR97の最終合格/未取得境界は同PR本文へ保存済み。main自身のruntime3stepは成功し、残CIを独立監視中。次はTDD・独立review・同機能PRでの実受入
+
+05:00追補：実wireでoperationId/bodyが変わるREDから、Document固定store・Home/Detail回復入口・同期read失効へ補修。途中全1580/62合格後、管理可否を通常読取の失敗にしない正規observer再利用とJST表示の反例を追加修正し、最終全体検証/独立reviewへ進む。受入2filesと導入4docsを同機能へ保持。main bba自身の全CI/DB/artifact0は確認済み、今回のhostedは未資格。
+
+05:08追補：最終GUI1583/62・focused307/5・schema/型/buildと独立全体レビューが成功。公開前mainがPR95統合93947f3dへ進んだため、他担当のRuntime/Shell/CIをそのまま保持し、Active両記録だけを通常統合して組合せ確認へ進む。新headのhostedはまだ未資格。
+
+05:38追補：PR100 head0936a93dのDocument composition/summaryがFAIL、Org未実行。初回logはTransport closedで実失敗caseは未取得。別途、本番fresh cacheでは正常往復時にGETが増えないDOM反例を確認したため、追加受入のGET必須待受だけを限定補修する。旧head失敗と根因未確定を保持し、次sourceのCIで確認する。
+
+06:12追補：補修head ddc27de3は新CI14jobs/19checks合格、DB40とartifact0を確認。runtime stdout未取得の境界と旧FAILは保持する。mainがPR96統合04076b1fへ進んだため、Org source/受入をそのまま保持し、共有2文書の双方記録を通常統合。組合せレビュー/GUI/同PR通常CIを新たに確認する。
+
+---
+
+## 2026-10-07 04:40 UTC — Organization 複数担当・役割・委任（U1）
+
+- main `d515aa38` を基点に、Organization Clientの固定2名判定を組織単位・役割・正式割当・期限付き委任・担当変更へ一般化する。[状況](organization-multi-principal-status.md)、[実装追補](../specs/2026-10-07-organization-multi-principal-amendment.md)、[小計画](../plans/2026-10-07-organization-multi-principal.md)が再開先
+- PR43受入exact `6103e4d4`（tree `f2e13eee`）がmainの祖先であることと受入記録を確認。Phase0→3の凍結・PR62/67の既存機能を保持し、再実装しない。新しい判断5点は承認済みとして扱わない
+- [PR #96](https://github.com/AIrisu-072/knowledge-platform/pull/96)（branch `claude/trusting-knuth-dn5cx4`）。初回独立reviewのNO-GO（差戻し後の閲覧・一覧上限・職務分離ほか）を修正し、再reviewはGO。修正前head `be1a1be` はhosted全job成功（Organization 13 stage）。修正後はローカルで全Rust・実PostgreSQL・GUI1429件・実browser 13 stageが成功
+- main `93947f3`（PR95 Desktop Workspace Runtime、PR97 Folderアクセス設定）を取り込み済み。次はexact-head CI合格→main統合→統合後CI→同名branchを作り直してU2
+
+---
+
+## 2026-10-07 UTC — Desktop Workspace Runtime（Runtime担当、下記のDocument Pointerとは別）
+
+- Runtime担当の再開先は[状況](desktop-workspace-runtime-status.md)と[計画](../plans/2026-10-07-desktop-workspace-runtime.md)です。Document担当の公開前WORKING比較のPointer（下記）は変更していません
+- broker（`crates/local-workspace-runtime`）、単一IPCのRuntime Contract、`/local-workspaces` 画面、テスト専用bridgeによるChromium通しE2Eは[PR95](https://github.com/AIrisu-072/knowledge-platform/pull/95)でmainに統合済み
+- 07:30追補：依頼者が[判断5項目](../../decisions/2026-10-07-tauri-v2-desktop-qualification.md)に合意。main `04076b1` から作り直した同名branchで、Tauri shell（`apps/desktop/src-tauri`、独立Cargo workspace）を実装し、実アプリのGUIをtauri-driver＋Xvfb＋xdotool＋実backendで17シナリオ確認（ローカル専用、CIにはしない）。Windows実機は未実施。次は独立review→Draft PR→exact-head CI→統合
+- 09:20追補：[PR #103](https://github.com/AIrisu-072/knowledge-platform/pull/103)（Draft）。1回目の独立reviewを修正し、実GUI確認を24シナリオへ拡充（commit `baad3bc` で `qualifying: true`）。Linuxで未確認の項目は[手順書](../../operations/desktop-workspace-runtime.md)、詳細は[状況](desktop-workspace-runtime-status.md)。次は2回目の独立reviewの確認→exact-head CI→統合→統合後CI
+- 10:10追補：2回目の独立reviewの指摘を修正（設定の上書き防止、転送の上限試験、下書き保持、証跡の厳密化）。commit `3abfeca` と、main（PR #100〜#105）取り込み後の `c31e6d0` で、実GUI 24シナリオ・205項目がそれぞれ連続2回 `qualifying: true`。次はexact-head CI→統合→統合後CI
+- 14:40追補：3回目の独立reviewで、デスクトップ版のタスク画面の作業ファイル保存が必ず失敗する不具合（Work APIの専用headerをshellが落とす）などを発見し修正（`d18df99`）。実GUI 25シナリオ・212項目が連続2回 `qualifying: true`。次はpush→exact-head CI→4回目のreview→統合→統合後CI
+- 2026-10-08追補：4回目の独立reviewで、ウィンドウを閉じる操作でページの離脱確認が働かない不具合などを発見し修正（`6504778`）。実GUI 26シナリオ・217項目が固定版Node 24.21.0で連続2回 `qualifying: true`。デスクトップ版ではタスク・検索の画面へメニューから移れないこと（入口は依頼者の判断事項）を記録。次はpush→exact-head CI→統合→統合後CI
+
+---
+
+## 2026-10-07 02:31 UTC — 非root Folderアクセス設定
+
+- PR94統合main d515aa38を基点に、通常ツリーで選択・再確認できる非root Folderの既存主体だけを編集する。[状況](folder-access-policy-gui-status.md)と[小計画](../plans/2026-10-07-folder-access-policy-gui.md)が再開先
+- 既存GET/PUT・manageAccess・最終backend認可/OCCを保持。5権限/明示削除/継承切替を保存前に確認し、全主体削除・新主体directory・Root保護意味変更を追加しない。UNKNOWNは固定要求を保持し、自己失権後の403を元操作の失敗へ読み替えない
+- branchはfeat/document-folder-access-policy-20261007。次はTDD・合成fixture・独立review・同機能PR。PR94の日本語本文に最終CI/未取得限界を記録済み、main d515自身の資格は監視中。以下の公開済み履歴は保持する
+
+02:55追補：GUIはUNKNOWN/正規主体/同revision継承変化と同期失効の反例を補修し、最終候補を検証・独立review中。既存原本の遅延保存は同tick反例から既存guardへ限定接続。合成受入2filesは型/純粋81/収集18+5成功、実hosted未取得。main d515の新push全13jobs/13checks・DB36/Folder4・artifact0は確認済みで、導入pinを同機能4docs内で追従した。runtime stdout未取得の境界は保持する。
+
+03:10追補：最終GUI1523/60・schema/型/buildと独立全体/限定再reviewが合格。継承確認欄と比較query失効後の旧Blob復活の2件を反例から補修し、Unicode別主体IDの集合比較も固定した。sourceは33b02f210＋f52af90d、実受入2filesと導入4docsを同機能へ保持。新操作のhostedは未資格で、次は最新base確認→候補固定→Draft/同head CI。
+
+---
+
+## 2026-10-07 01:28 UTC — 公開前WORKINGの内容比較
+
+- PR93統合main41b584ddを基点に、通常「版・改訂」から正規readで確認したcurrent published/選択WORKINGの固定IDを既存Version comparisonへ送る。[状況](document-working-comparison-status.md)と[限定計画](../plans/2026-10-07-document-working-comparison.md)が再開先
+- server capabilityを尊重し、Versionの内容差分を正式改訂snapshotと混ぜない。更新・拒否・遅延・失効時は旧結果を隠し、未確定変更要求を保持する。既存direct human journeyの公開前区間を再利用し、新backend/runner/proxy許可拡大は行わない
+- branchはfeat/document-working-comparison-20261007。次はTDD・独立review・同PR内のdocs/tests/実受入。PR93とmainの成功、旧失敗と資格制限の記録は以下に保持する
+
+01:48追補：GUI83e39dd2は明示ID/再読取/GC後拒否の反例を含む全1421/56・focused215/4・schema/型/build成功。受入0335975fは既存caseの公開前比較と再起動後入口無しだけを追加し、純粋81/型/MCP/収集18+5成功。導入4docs d40e7164は資格済み41bへ同期。独立reviewで実受入のWORKING見出し1件を訂正し、最終全1421/56を再確認。新操作節も同梱し、同機能Draft/hostedへ進む。新比較の実browser資格はまだ未取得。
+
+---
+
+## 2026-10-07 00:10 UTC — 履歴日時のJST指定脱落を補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93) head202dc5abの共有bounded summaryで、既存journeyの履歴日時toHaveText（document-runtime.spec.ts:195:49）を失敗箇所と確認。旧詳細のJST wrapperが共有component抽出時に脱落していた。[状況](document-history-workspace-status.md)に共有情報とsource照合を記録
+- UTCの通常詳細/新履歴一覧2反例で、JST翌日表示の代わりにUTCが出るREDを確認。表示呼出し1箇所へAsia/Tokyoを復元し、両suite79件GREEN。全GUI1353/54・schema/型/build、独立88/3と5files reviewが成功。同PR次headで資格確認する。旧失敗・通信制約・未到達のAgent/再起動等は保持し、画像/timeout/skipは変更しない
+
+---
+
+## 2026-10-06 22:10 UTC — PR93初回失敗を保持しsmokeを補修
+
+- [PR93](https://github.com/AIrisu-072/knowledge-platform/pull/93)初回headcd67bc7aのcomposition/summaryはFAIL、Organization未実行。元log toolの初回/限定通信復旧もTransport closedで実失敗caseとcleanupは未取得。[本機能の状況](document-history-workspace-status.md)に失敗と制約を保持し、未合格のまま扱う
+- CI=trueのGUI1351/54・型/build・preview36は成功。既存前段e2eの「文書」部分一致が新「文書履歴」と重なる確定回帰をDOM反例で確認し、完全名locatorと新入口の存在確認へ限定補修。製品source・画像/golden・skip/timeoutは不変。独立review後、同PR次headの通常CIへ進む
+
+---
+
+## 2026-10-06 21:44 UTC — 履歴文書の閲覧導線を固定
+
+- [履歴一覧の状況](document-history-workspace-status.md)と[小計画](../plans/2026-10-06-document-history-workspace.md)を更新。通常入口から終了/取下げ後の明示行・旧版・原本・イベントへ進むGUIを固定し、全1351/54・focused326/6・schema/型/buildと既存受入sourceの純粋81/型/収集18+5が成功。独立reviewは230/5・schema・docs照合でGO。同機能Draft/hosted CIはこれから
+- 正規HistoryDocument.title、endedと版状態、現在属性と版属性を区別。現在一覧の拒否/paused/失効/遅延、同tick Blob、全体read reset、UNKNOWN/Organization保持の反例を確認した。新backend/fixture/runnerは追加しない
+- main933dのpush CI37530751555は全必須gate・freshDB・artifact0確認済み。runtime stdout未取得と固定source＋公式step結果の評価を分ける。導入4docsを資格済み933dへ同期し、今回の新入口がそのpinに含まれないことを明記。以下の公開済み履歴と過去の未取得項目も保持する
+
+---
+
+## 2026-10-06 21:20 UTC — 履歴一覧から旧版・原本・イベントへ
+
+- PR91/92統合main `933d3b0f` を基点とし、既存history一覧への通常入口と一覧内の閲覧専用選択を追加する。[状況](document-history-workspace-status.md)と[小計画](../plans/2026-10-06-document-history-workspace.md)が再開先
+- 公開終了/全版取下げ後も既存history-purposeで読む。通常detailへ権限意味を混ぜず、現在/過去metadata・ended/版状態・nullを区別し、拒否cache/遅延/再取得と未確定操作保持を検証する。既存lifecycle fixtureを使い、新backend・新基盤・大量fixtureは追加しない
+- PR91の新head `63ab9728` は全必須CI・freshDB/artifact0合格後に統合済み。runtime stdout未取得は保持し、既存sourceの強制終了条件＋公式step成功で必須gateを評価した。main自身CI37530751555は別監視中。以下の時点別記録と旧headの未取得項目も保持する
+- Folder ACL・公開前比較は後続候補であり、この機能を拡げない。次はTDD・独立review・同機能PRへの手順/試験一体化と同head資格
+
+---
+
+## 2026-10-06 20:20 UTC — PR91へ最新mainのコンテンツ版履歴を統合
+
+- [PR91](https://github.com/AIrisu-072/knowledge-platform/pull/91)の公開head `81be7976` に、[PR92](https://github.com/AIrisu-072/knowledge-platform/pull/92)統合main `f431c374` を通常mergeする。[イベント履歴の状況](document-history-pagination-status.md)と[小計画](../plans/2026-10-06-document-history-pagination.md)が再開先。両parentの履歴・操作手順・受入検査を保持し、同じPR91内で新しい組合せheadの資格を取る
+- 文書詳細の現在拒否を正式改訂/比較・イベント履歴・コンテンツ版履歴へ伝え、両履歴の明示再読取が互いの拒否状態を消さない共存反例を確認する。公開/編集対象、固定UNKNOWN、元の各read/cursor/原本契約は変えない
+- 旧PR91の全CI/check/step・Rust/DB/artifactは確認済みだが、正式runtime stdoutは未取得。同じ接続済みtoolの20:01復旧確認もTransport closedだった。匿名公式GETの403を再試行/回避せず、この旧exact資格未確認を保持する。新headのCIを旧headの証拠へ転用しない
+- PR92 head `9e508716` は全13jobs/18checks（15成功/既存skip3）、GUI1266/51、正式runtime Document18+5/Agent9/Org8、fresh DB36/Folder4、再起動/cleanup/artifact0を確認してmainへ統合。main自身のpush CI `37525170447` は別途監視中で未資格。以下は各時点の公開記録として保持する
+
+20:30追補：競合5filesを双方保持で解消し、両拒否通知の片方を外す各2REDから、再読取2順序の共存を確認した。固定sourceの全1312/53・focused100/4・schema/型/build、safe66/runtime型/MCP compile/収集18+5成功。独立reviewも186/6・schema/diffでGO、両hook本体と両側受入assertionは保持。既存PR91 observer警告と訂正した新テスト型指定の初回失敗を記録した。次は両parentの組合せheadを同PR91に保存して通常CIへ進む。main f431自身の実runtimeは独立成功したが残CI監視中であり、新組合せの実hostedは未資格。
+
+---
+
+## 2026-10-06 19:23 UTC — 閲覧専用コンテンツ版履歴
+
+- 資格済みmain `c2b68850` を独立worktreeの基点とし、通常詳細「版・改訂」から既存history-purposeで旧版詳細と原本を開く。[状況](document-content-history-status.md)と[小計画](../plans/2026-10-06-document-content-history.md)が再開先
+- 旧版選択を通常の公開/編集対象と隔離し、全AUTHORITATIVE原本・現在認可・cache失効・中断後の遅いdownload抑止をTDDで確認する。backend/OAS/SDK・新基盤・大量fixtureは追加しない
+- 未mergeのイベント履歴PR91は正式runtime stdout未取得を記録して保持する。この新機能はそのsourceや未取得資格へ依存しない。既存GUI・試験・日本語手順を同機能1PRにまとめる
+- main c2自身のCI `37505782574` は全13jobs/checks・実受入・DB36/Folder4・HTTP再起動・artifact0確認済み。今回新GUIは未資格であり、次は反例→実装/既存受入→独立review→同head hosted
+
+19:43追補：GUI `31ad2ddd` は37REDから実装し、余分な旧detail GET・close focus・背景再読取tail失敗の3境界も反例から補修。最終focused54・全1266/51・schema/型/build成功。受入 `00a272a2` は既存regulation2caseのみを拡張し、safe66・型/MCP compile・収集18+5成功。通常2版/再起動後3版から原本1件の旧版を確認するsourceで、実GUI複数原本・101版は未資格。全11pathsの独立組合せreviewは244/5とschema検査も合格してGO。次は同head既存hostedであり、実browser合格はまだ記録していない。
+
+---
+
+## 2026-10-06 18:19 UTC — 文書イベント履歴の続き表示
+
+- PR90統合main `c2b68850` から既存history/100/cursorを「履歴」タブへ接続する。[状況](document-history-pagination-status.md)と[小計画](../plans/2026-10-06-document-history-pagination.md)が再開先
+- offset cursorを完全snapshotとは扱わず、source組の重複除去、現在認可拒否後のcache失効、明示再読取、遅延/往復と未確定操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- PR90は全適用CI・GUI1212/49・実受入Document18+5/Agent9/Org8・DB36/Folder4・HTTP再起動/cleanup/artifact0合格後main統合。main自身のCI `37505782574` も全13jobs/checks・GUI1212/49・実受入/DB/cleanup/artifact0を独立確認。以下は各時点の履歴として保持する
+- GUI `989e72a4` は33反例REDから全1256/51・focused144/6・schema/型/build成功、独立GO。拒否errorだけの小さいmarkerをread resetから保持し、明示再読取で解除する。受入 `c42258e0` は既存2filesだけを追加し、safe66・型/MCP compile・収集18+5・限定review GO。環境中断後の依存確認も同一1回復旧で合格した
+- GUI・試験・日本語4docsを含む全11pathsの組合せreviewはGO、未解決所見なし。同機能1PRへまとめ、実GUI履歴100件超と画像等の未資格を明記する。今回の実hostedは未取得。次は候補固定→Draft/同head CI
+
+---
+
+## 2026-10-06 17:11 UTC — 比較結果の続き表示
+
+- PR89統合main `e249fb8d` から既存display/50/cursorを比較画面へ接続する。[状況](document-comparison-pagination-status.md)と[小計画](../plans/2026-10-06-document-comparison-pagination.md)が再開先
+- 本文差分と未比較範囲を両方継続し、metadata/本文判定の一貫性、認可失効、固定pairとcursor、遅延/再読取/既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- PR89 head `075a1e79` は全適用CI・実受入Document18+5/Agent9/Org8・DB36/Folder4・再起動/cleanup/artifact0合格後main統合。main自身のCI `37497603490` も独立して全13jobs/checks・GUI1161/47・実受入/DB36/Folder4/cleanup/artifact0を確認。以下のPR89記録は各時点の履歴として保持する
+- GUI・試験・日本語手順は同機能1PRにまとめる。実GUI50件超・画像等の未資格を明記し、導入pinはmain資格を確認して同PRでe249へ追従した。次は候補固定→日本語Draft→同head hosted
+
+17:03追補：GUI `95790bef` は35反例から実装し、追加失敗後のinvalidateとunmount往復の旧cursor残留もRED→GREENで補修。最終全1212/49・focused204/5・schema/型/build成功、独立GO。受入 `dc3dfb49` は既存caseだけへ通常比較・terminal・metadata一回表示・比較再読取/HTTP再起動を追加し、safe66・型/MCP compile・収集18+5・独立GO。main実runtimeは合格、残Rust/最終artifact確認後に手順pinを追従する。今回機能の実hostedは未資格であり、次は組合せreviewと同head Draft/CI。
+
+17:11追補：main e249の独立push全13checks/jobs・GUI1161/47・実受入/DB/cleanup/artifact0を確認し、手順4docs `7afe3400` をそのpinへ追従した。既存CLI/env/migration等17指定objectは旧pinから不変。全16pathsの独立組合せreview GO、新所見なし。Bash15/相対link49と既存履歴/停止復旧/コマンド保持も確認。今回の比較GUIはpin未収録・実hosted未資格で、次は同機能Draftの既存CIへ進む。
+
+---
+
+## 2026-10-06 15:59 UTC — 正式改訂の続き表示
+
+- PR88統合main `ea406848` から既存100件/nextCursorを「版」「新旧比較」へ接続する。[状況](document-revision-pagination-status.md)と[小計画](../plans/2026-10-06-document-revision-pagination.md)が再開先
+- 明示した古い比較IDを先頭2件へ無言で置換せず、追加read/再読取・失効・遅延・既存操作保持をTDDで確認する。新backend・新基盤・大量fixtureなし
+- 文書移動PR88は同headの全適用CI/実受入/DB36/cleanup/artifact0合格後にmain統合。main自身のCI `37457937486` も全13jobs/checks・実受入/再起動/DB36/cleanup/artifact0を独立確認した。GUI `9fc21a9` は独立I1/I2の認可拒否後cache復活を補修し、全1137/47・型/build・限定再review GO。受入は既存2改訂の通常read/比較/再読取/HTTP再起動を追加。独立I1の比較後の戻りを `06c27907` で既存button経由へ補修し、純粋63・型・MCP compile・収集18+5成功。限定再reviewはI1解消・組合せGO。次は同head Draft/hosted。実runtime・実GUI100件超は未資格のまま明示する
+- GUI・試験・日本語手順を同機能1PRへまとめ、mainへ直接統合する。以下は各時点の履歴
+
+13:35追補：[PR89](https://github.com/AIrisu-072/knowledge-platform/pull/89)初回head `de849c92` / tree `d35e9f6d` は13files・凍結候補一致。CI `37469083623` の実受入はjourney16成功/2失敗でqualified=false、後段は未到達。予約取消の成功statusと履歴背景read statusの同居を純粋DOMで再現し、既存取消region内への検査限定を補修中。metadataの旧日時/未読/一覧区間のtimeoutは原因未確定として別に診断する。失敗を保持し、限定修正/review後に同PRの新headで確認する。
+
+13:47追補：初回CIはRust/DB36/Folder4を含む11jobs成功、実受入と集約checkだけ失敗、全4run artifact0。取消試験の限定scope修正 `04a393f9` は25 PASS・型/収集・独立GO。metadataの実timeout根因は未確定のまま、別の実DOM反例で証明した遅いfocus奪取だけを `31aed928` で補修し、全GUI1144/47・schema/型/build成功。当該focus補修と取消fixの組合せも限定独立GO。次は同PR新headの実受入。Home側の別focus競合は残件である。
+
+14:20追補：次head `a27389c3` / CI `37474338595` は予約取消PASS、lifecycle通知strict-locatorとmetadata timeoutでjourney16/2・後段未到達。既存未読完了stageのallowlist漏れにより、公開lastStageから「正式改訂read未到達」とした解釈は撤回。停止範囲には移動・改訂read/比較も含まれる。lifecycle4検査を正しい操作regionへ限定し、既存診断の同一field/capへ固定7工程＋既存1工程許可だけを追加して実停止区間を判定する。製品・timeout/skip・診断の動的公開値は変えない。両失敗証拠と根因未確定を保持する。
+
+14:26追補：lifecycle限定検査 `d1f43a51` は23 PASS・型/収集、固定工程だけの診断 `4fed4451` はsafe64・型/収集が成功。6files組合せは独立GOで、同HEAD全GUI1147/47も合格。次は同PRの新head既存CIで実停止工程と受入を確認する。元metadata timeout根因未確定、実GUI100超未資格、既存未解明失敗を保持する。
+
+15:22追補：第3head `de2cf415` / CI `37479950755` はjourney17成功/metadataのみtimeout。初回改訂GET/2行は実通過し、次の比較操作区間へ絞れた。公式Playwright engineと実select描画で旧exact labelが0件・exact comboboxが1件となる8条件を再現し、`d885f66c` で18locatorだけを修正。独立した移動closeのfocus欠陥も `935f1c8a` で正常fallbackを保って限定補修し、focused83・製品同一の全1160/47・型/build成功。診断3固定工程 `1cdf9665` は同field/capを維持。6files組合せの限定独立reviewはGO。次は同PR新headの実受入。過去失敗・訂正・未資格を保持する。
+
+15:59追補：第4head `b7885fab` / CI `37487992438` は比較HTTP200と前段検査まで進み、metadata576:82のglobal対象dt/dd検査が既存現行版要約と重複してstrict失敗。`75bcf849` で比較region内の基準/対象6検査だけに限定し、旧actual2 RED→focused43・型/safe64/18+5収集成功。製品表示と同値の厳密検査を保持する。限定独立reviewはGO。次は同PR新head実完走。実GUI100超などの未資格と失敗証拠を維持する。
+
+---
+
+## 2026-10-06 11:01 UTC — 読める文書の移動GUI
+
+- PR87統合main `3448c51d` から、通常詳細の非null folderIdと可視ツリーだけで既存Document moveをGUI化する。[状況](document-move-status.md)と[小計画](../plans/2026-10-06-document-move.md)が再開先
+- fresh read、元/先と継承影響の明示確認、固定UNKNOWN、移動後read拒否時も一覧から保持結果へ戻る導線をTDDで確認する。新backend・権限推測・新基盤なし
+- PR87 main自身のCI `37447848469` は全13jobs/checks・Document/Organization実受入・HTTP再起動・DB36/新衝突2/既存拡張case・cleanup・artifact0を確認済み。公開mainと公式toolchainでworkspaceを復旧したが、旧ローカル証拠が戻ったとは扱わない
+- GUI `6bb0b26` は不正な移動先名/IDの独立I1を反例から補修し、全GUI1089/45・schema/型/build・独立再review GO。受入source `d4a6bc5` は既存metadataケースへの移動1回/HTTP再起動後の固定replayを追加し、純粋66・型・MCP compile・収集18+5成功。次は組合せreviewと同headのDraft/hosted。実装・手順・試験は同機能1PRへ。今回文書移動の実runtimeは未資格。以下は各時点の履歴
+
+---
+
+## 2026-10-06 08:37 UTC — フォルダー移動の実装・受入source統合
+
+- [Folder移動の状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)が現在の再開先。同機能の[PR87](https://github.com/AIrisu-072/knowledge-platform/pull/87)内でGUI・限定mapper・試験・日本語手順を完成させる
+- 初回公開 `db9031db` は既存hostedでHTTP同名衝突の500/409差を実RED確認後、move UPDATEを既存mapperへ1行接続した。fail-fast未実行のRepository反例を合格扱いしない
+- ローカルGUI952/42・schema/型/build、既存受入の純粋28・型・MCP compile・collection2+2は成功。旧親のGUI読取失敗を空表示と取り違える穴も実反例から補修し、組合せreview→同PR exact-head実受入/DB GREENへ進む。新GUIの実runtimeは未資格
+- UNKNOWN固定要求、移動後の現在readと操作store保持、可視Root focus fallbackを含む。新権限projection/ACL preview・新runner・画像は追加しない
+- 製品head合格後に同PR内の導入4docsをその公開headへpinし、最終CIを確認する。現0801 pinへの機能収録は未完。実サーバーは所有者が手動反映する。以下は過去時点の履歴
+
+---
+
+## 2026-10-06 07:13 UTC — 選択フォルダー移動の既存契約GUI化
+
+- PR84統合main `b9f447fa` から、既存move POST/read/hintを通常GUIへ接続する。[状況](document-folder-move-status.md)と[小計画](../plans/2026-10-06-document-folder-move.md)を今回の再開先とする
+- 対象/移動先/継承影響の明示確認、現POSTの最終認可、固定要求/UNKNOWN、移動後の現在readを保持する。ACL差分previewを捏造せず、新権限projection・新基盤を作らない
+- 同名衝突の既存mapper接続を同機能内TDDに含める。最初に既存DB/HTTP反例の実REDをhostedで確認し、rollback/台帳/監査を保ってGREENへ進む。GUI・文書・試験は同PRで完結し、結果だけの別PRを作らない
+- 日時PR84は全適用CI成功後mainへ統合し、main自身のCI `37427490836` 全13jobs・実受入・DB36・cleanup・artifact0まで確認済み
+- 07:27 UTC追補：test-only `b00b372d` で同名衝突の既存DB/HTTP反例とno-op/replay確認を追加、担当2filesの静的format/diff check成功。compile/実DB/実REDは未取得。次は反例先行sourceの独立reviewと同機能Draftの既存hosted。mapper/移動GUIは未実装。以下は過去時点の履歴
+
+---
+
+## 2026-10-06 05:58 UTC — 文書作成日時の範囲GUI
+
+- PR83統合main `dc04ba4a` から、既存createdFrom / createdBeforeを通常日時入力へ接続する。[状況](document-created-range-status.md)と[小計画](../plans/2026-10-06-document-created-range.md)を今回の再開先とする
+- 公開予約と同じJSTのカレンダー/時刻入力を再利用し、開始を含む・終了を含まない。精密URLは原文保持し、明示的な指定し直し/取消/解除で無言の丸めを防ぐ。新parser/backend/基盤なし
+- PR82とPR83のmain自身の全CI/実受入/DB36/cleanup/artifact0まで確認済み。旧persistence失敗/Organization503は原因未特定の履歴として保持する。機能・文書・試験を同PRにまとめ、結果だけの別PRを作らない
+- 06:26 UTC追補：製品 `787c8817` は全GUI870/39・型/schema/build・独立spec/品質レビューGO。受入 `3f586d43` は既存metadata2case内に加算し、型・純粋40・MCP compile・collection18+5成功。次は組合せ最終レビューと同head Draft/hosted。日時機能の実runtime資格は未取得。以下は過去時点の履歴
+
+---
+
+## 2026-10-06 03:16 UTC — 公開一覧の未読条件GUI
+
+- PR81統合main `0801c986` から、既存unreadOnly queryを公開一覧の明示絞り込みへ接続する。[状況](document-unread-filter-status.md)と[小計画](../plans/2026-10-06-document-unread-filter.md)を今回の再開先とする
+- optional bool、非published falseも停止、query入口の正規化、metadataとの複合不正条件解除、URL/詳細往復をTDDで確認する。既読記録、新backend、Search、新fixture/基盤なし
+- 属性3条件PR81は全適用CI・実GET/HTTP再起動・cleanup・全4run artifact0成功でmerge済み。main push CI `37407454204` も全13jobs・属性実GET/再起動・Org build・DB36・cleanup・artifact0成功。03:25 UTC追補：未読source `1621e25c` は全GUI828/39・型/build・pure28+3・collection2+2/18+5成功。次は日本語文書との組合せの独立レビューと同head Draft/hosted。今回未読条件の実runtime資格は未取得。以下は各時点の履歴
+
+---
+
 ## 2026-10-06 — Search Platform本番化プログラム
 
 - main `ce8ed4f` から `feat/search-platform-production-20261006` のDraft PR 1本で進める。[状態](search-platform-production-program-status.md)と[計画](../programs/search-platform-production/plan.md)が再開先
@@ -1354,3 +1657,4 @@ Task 8 signature GREEN head `eeed985f229bbcacd08a7ea955b305e4fc30f010` passed ex
 ## End-of-session rule
 
 Before intentional session switch/context exhaustion, record exact branch/head, CI evidence, Plan approval state, blockers, and next exact action.
+- 2026-10-08 05:30追補：最終（5回目）の独立reviewの指摘を修正（閉じる前の確認をshellで出し答えるまで閉じない、ローカルWorkspaceの未確定の操作の離脱確認）。commit `86f187b` で実GUI 26シナリオ・220項目が固定版Node 24.21.0で連続2回 `qualifying: true`。次はpush→exact-head CI→統合→統合後CI

@@ -1,9 +1,13 @@
+import { documentAccessPolicyOperations } from '../../application/document-access-policy';
+import { folderAccessPolicyOperations } from '../../application/document-folder-access-policy';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, Heading, Modal } from 'react-aria-components';
 import { documentApi, type Folder, type FolderDetail } from '../../application/document-workspace';
 import { canCreateRootFolder, folderName, rootFolderOperations, rootFolderValidation, sendRootFolderOperation, readSelectedFolder, type FolderCreateContext, type SelectedFolderContext } from '../../application/document-root-folder';
 import { folderRenameOperations } from '../../application/document-folder-rename';
+import { folderMoveOperations } from '../../application/document-folder-move';
+import { documentMoveOperations } from '../../application/document-move';
 import { metadataReason } from '../../application/document-metadata';
 import { createOperationId } from '../../application/operation-id';
 import { mapApiProblem, problemFromUnknown } from '../../application/problem-mapping';
@@ -20,11 +24,23 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   selected?: { context: SelectedFolderContext; folder: Folder & { capabilities?: FolderDetail['capabilities'] }; readReady: boolean };
 }) {
   const client = useQueryClient();
+  const documentPolicyStore = documentAccessPolicyOperations(client);
+  const documentPolicyOperation = useSyncExternalStore(documentPolicyStore.subscribe, documentPolicyStore.get);
+  const policyStore = folderAccessPolicyOperations(client);
+  const policyOperation = useSyncExternalStore(policyStore.subscribe, policyStore.get);
+  const documentMoveStore = documentMoveOperations(client);
+  const documentMove = useSyncExternalStore(documentMoveStore.subscribe, documentMoveStore.get);
   const store = rootFolderOperations(client);
   const operation = useSyncExternalStore(store.subscribe, store.get);
   const renameStore = folderRenameOperations(client);
   const rename = useSyncExternalStore(renameStore.subscribe, renameStore.get);
-  const renameUnresolved = rename?.status === 'pending' || rename?.status === 'unknown';
+  const moveStore = folderMoveOperations(client);
+  const move = useSyncExternalStore(moveStore.subscribe, moveStore.get);
+  const renameUnresolved = [documentPolicyOperation, rename, move, documentMove, policyOperation].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherUnresolvedNow = () => [documentPolicyStore.get(), renameStore.get(), moveStore.get(), documentMoveStore.get(), policyStore.get()].some(item => item?.status === 'pending' || item?.status === 'unknown');
+  const otherBlocked = documentPolicyOperation?.status === 'pending' || documentPolicyOperation?.status === 'unknown' || policyOperation?.status === 'pending' || policyOperation?.status === 'unknown' ? 'アクセス設定の結果が未確定です。保持されている操作の結果を先に確認してください。' : move?.status === 'pending' || move?.status === 'unknown' || documentMove?.status === 'pending' || documentMove?.status === 'unknown'
+    ? '移動結果が未確定です。保持されている移動操作の結果を先に確認してください。'
+    : '改名結果が未確定です。保持されている改名操作の結果を先に確認してください。';
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [reason, setReason] = useState('');
@@ -57,6 +73,7 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
   const problem = problemFromUnknown(operation?.error);
 
   function show(context: FolderCreateContext, button: HTMLButtonElement | null) {
+    if (!store.get() && otherUnresolvedNow()) return;
     opening.current += 1; refreshing.current = false; setReading(false);
     returnFocus.current = button; setDraftContext(context); setReviewed(undefined); setBlocked(false);
     setName(''); setReason(''); setLocalError(''); setOpen(true);
@@ -98,13 +115,13 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
       if (saved.status === 'unknown') await sendRootFolderOperation({ store, request: saved.request, send: documentApi.createFolder, invalidate: () => invalidate(saved.request.parentFolderId) });
       return;
     }
-    if (!allowed || validation || refreshing.current) return;
+    if (!allowed || validation || refreshing.current || otherUnresolvedNow()) return;
     refreshing.current = true; setReading(true); setLocalError('');
     const generation = opening.current; const key = contextKey; const context = draftContext;
     try {
       const current = await readTarget(context);
       if (generation !== opening.current || key !== liveContextKey.current || store.get()) return;
-      if (renameStore.get()?.status === 'pending' || renameStore.get()?.status === 'unknown') { setLocalError('改名結果が未確定です。保持されている改名操作の結果を先に確認してください。'); return; }
+      if (otherUnresolvedNow()) { setLocalError(otherBlocked); return; }
       if (!canCreateRootFolder(current)) { setLocalError(unavailable(context, current)); blockTarget(context); return; }
       await sendRootFolderOperation({ store, context: { ...context, name: current.name }, request: {
         operationId: createOperationId(), folderId: createOperationId(), parentFolderId: current.folderId,
@@ -128,6 +145,7 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
     try {
       const current = await readTarget(context);
       if (generation !== opening.current || key !== liveContextKey.current || store.get() !== saved) return;
+      if (otherUnresolvedNow()) { setLocalError(otherBlocked); return; }
       if (!canCreateRootFolder(current)) { setLocalError(unavailable(context, current)); return; }
       if (store.clearSettled(saved)) { blockedSelection.current = undefined; setDraftContext({ ...context, name: current.name }); setReviewed(current); setBlocked(false); setName(saved.request.name); setReason(saved.request.reason); }
     } catch {
@@ -146,7 +164,7 @@ export function RootFolderCreate({ root, readReady, reload, contextKey, selected
         : selected ? <CapabilityButton label={selectedTitle} availability={selectedDetail?.capabilities.createFolder} disabled={!selectedAllowed}
           onClick={() => show(selected.context, triggerContainer.current?.querySelectorAll('button')[1] ?? null)} />
           : <><button type="button" disabled>{selectedTitle}</button><small> 作成先をツリーで選び直してください。</small></>)}
-      {!operation && renameUnresolved && <small> 改名結果が未確定です。保持されている改名操作の結果を先に確認してください。</small>}
+      {!operation && renameUnresolved && <small> {otherBlocked}</small>}
       {!operation && reselectRequired && <small> 作成先をツリーで選び直してください。</small>}
     </span>
     <Modal isOpen={open} onOpenChange={value => { if (!value) close(); }} isDismissable={!pending} isKeyboardDismissDisabled={pending} className={styles.modal}>

@@ -3,6 +3,7 @@ use thiserror::Error;
 use document_domain::{DocumentId, DocumentVersionId, DomainError, FileId};
 
 use crate::command::PublishOperationId;
+use crate::current_read_state::ReadStateOperationId;
 use crate::management_command::{ManagementErrorCode, ManagementOperationId};
 use crate::publication_end::PublicationEndOperationId;
 use crate::versioning_command::VersionOperationId;
@@ -47,6 +48,10 @@ pub enum RepositoryError {
     StaleComparisonInput,
     #[error("invalid query cursor")]
     InvalidCursor,
+    #[error("operation id was already used with a different payload")]
+    OperationConflict,
+    #[error("read-state revision conflict")]
+    ReadStateRevisionConflict,
     #[error("repository conflict")]
     Conflict,
     #[error("business rule rejected operation")]
@@ -115,6 +120,8 @@ pub enum ApplicationError {
     StaleComparisonInput,
     #[error("file object not found")]
     FileObjectNotFound,
+    #[error("read-state revision conflict")]
+    ReadStateRevisionConflict,
     #[error("operation conflicts with current authoritative state")]
     Conflict,
     #[error("operation id was already used with a different payload")]
@@ -148,6 +155,7 @@ pub enum ApplicationError {
         document_id: DocumentId,
         document_version_id: DocumentVersionId,
         file_id: FileId,
+        file_ids: Option<Vec<FileId>>,
     },
     #[error("publish commit outcome is unknown")]
     PublishCommitOutcomeUnknown {
@@ -176,6 +184,12 @@ pub enum ApplicationError {
     ManagementCommitOutcomeUnknown { operation_id: ManagementOperationId },
     #[error("read confirmation commit outcome is unknown; retry the same version")]
     ReadStateCommitOutcomeUnknown {
+        document_version_id: DocumentVersionId,
+    },
+    #[error("current read-state commit outcome is unknown; retry the same operation id")]
+    CurrentReadStateCommitOutcomeUnknown {
+        operation_id: ReadStateOperationId,
+        document_id: DocumentId,
         document_version_id: DocumentVersionId,
     },
     #[error("file access audit commit outcome is unknown; content was not opened")]
@@ -220,6 +234,8 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::StaleComparisonInput => Self::StaleComparisonInput,
             RepositoryError::InvalidCursor => Self::Validation("invalid query cursor".into()),
             RepositoryError::Conflict => Self::Conflict,
+            RepositoryError::ReadStateRevisionConflict => Self::ReadStateRevisionConflict,
+            RepositoryError::OperationConflict => Self::OperationConflict,
             RepositoryError::BusinessRule => Self::BusinessRule,
             RepositoryError::Management(code) => Self::Management(code),
             RepositoryError::Unavailable => Self::RepositoryUnavailable,

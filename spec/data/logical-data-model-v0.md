@@ -221,6 +221,8 @@ DocumentVersion は1個以上の順序付きContentItemを持つ。各ContentIte
 
 既存のVersionFile（PRIMARY / ATTACHMENT）は旧表現である。単一PRIMARYでATTACHMENTのない初版のみ `logical_path = "primary"`, `ordinal = 0` のContentItemへ確定的に移行できる。ATTACHMENTがある場合はauthoritative itemかrenditionかを推測せず、分類されるまでVersioning操作を拒否する。新しいContentItem表現を唯一の編集可能な正本とし、旧VersionFileを並行した正本にしない。
 
+初回登録も1個以上の原本を一つの文書・初版へ原子的に作成できる。[原本管理追補](../../docs/superpowers/specs/2026-10-08-document-original-management.md)に従い、単原本legacyは `primary` / 0 を維持する。複数manifestでは全File IDsをordinal/path順で結果・結果不明回復へ束縛する。単原本登録後の更新で複数登録を模倣しない。作業版の追加・除外・並替は全manifest writeとして行い、公開版・履歴を直接変更しない。既存path+ordinalの形式互換検査を維持する。
+
 ## 2.7 Metadata
 
 v0 では柔軟性を優先し、共通項目 + 拡張 metadata の構成とする。
@@ -280,6 +282,14 @@ Folder は物理的・階層的整理、Tag / Category は横断分類として�
 - 端末を変えても Principal が同一なら既読状態を維持できる。
 
 Document Management Basics v0 では、信頼済み HumanInteractive 本人による現行 `PUBLISHED` Version の明示確認でのみ `first_read_at` を作る。通常参照、Agent/Service、プレビュー先読みは既読にしない。重複確認は自然キーで冪等に扱い、初回の必須 Audit と同一 transaction にする。旧版を後から既読にしたり、新版へ既読を自動継承したりしない。
+
+### 2.9.1 通常詳細表示と再確認未読（2026-10-07追補）
+
+上の明示確認の意味と旧PUTを保持し、[2026-10-07文書詳細表示・未読戻し追補](../../docs/superpowers/specs/2026-10-07-document-view-read-state-design.md)の本人VIEW/RESETを追加する。自然キーはidentity_provider×principal_id×document_version_id。first_read_atは不変の初回記録日時であり、読了・同意証明ではない。needs_recheck BOOLEAN NOT NULL DEFAULT FALSEとread_state_revision BIGINT NOT NULL DEFAULT 1（1〜9007199254740991）を追加する。既存row/旧INSERTはr1/false、行なしは初回日時null・再確認false・r0・isRead=false。現在isReadは初回日時ありかつ再確認false、旧unreadはその否定、unreadOnlyはfirst_read_at IS NULL OR needs_recheckである。Version履歴のfirstReadAtから現在badgeを推論しない。
+
+document_read_state_operationsのPKはidentity_provider/principal_id/operation_id。UUIDv7/RFC variant、Doc/Version FK、VIEW/RESET、32byte SHA256 digest、期待/結果revision、成功時の必須初回日時、再確認flag、changed、occurred_atを保存する。期待revisionは0〜MAX、結果は1〜MAX。changedなら結果=期待+1、no-opなら同値。RESETはchanged/再確認true、VIEWは再確認false。版の所属はtransactionで確認する。保存receiptは操作確定時のsnapshotであり現在値ではなく、書換え・TTL・削除機能を追加しない。
+
+Digestはdocument-current-read-state-v1の末尾NULと既存canonical JSONのschemaVersion、identityProvider、principalId、invocationKind、operationId、documentId、versionId、kind、expectedReadStateRevisionから作る。schemaVersion=1、invocationKind=human_interactive、actorはtrusted contextだけ、kindはendpointで固定する。同IDの異要求はOPERATION_CONFLICT。Document revision、lastReadAt、全閲覧ログ、Search更新は追加しない。
 
 ## 2.10 AccessPolicy
 

@@ -74,6 +74,30 @@ pub(super) async fn agent_execution(
             .await?,
     ))
 }
+/// Private draft candidate under the execution's current scope; read-only.
+pub(super) async fn generated_artifact(
+    State(state): State<ApiState>,
+    path: Result<Path<Uuid>, PathRejection>,
+) -> Result<Json<GeneratedArtifact>, Problem> {
+    Ok(Json(
+        state
+            .repository
+            .generated_artifact(state.actor, path_id(path)?)
+            .await?,
+    ))
+}
+/// Typed proposal; there is deliberately no route that executes it.
+pub(super) async fn suggested_action(
+    State(state): State<ApiState>,
+    path: Result<Path<Uuid>, PathRejection>,
+) -> Result<Json<SuggestedAction>, Problem> {
+    Ok(Json(
+        state
+            .repository
+            .suggested_action(state.actor, path_id(path)?)
+            .await?,
+    ))
+}
 pub(super) async fn agent_result(
     State(state): State<ApiState>,
     path: Result<Path<Uuid>, PathRejection>,

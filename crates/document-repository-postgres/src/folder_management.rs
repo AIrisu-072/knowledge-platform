@@ -401,7 +401,7 @@ impl PostgresDocumentRepository {
                 .bind(folder_id.as_uuid())
                 .execute(&mut *tx)
                 .await
-                .map_err(map_statement_error)?;
+                .map_err(map_folder_write_error)?;
                 let after = policy_snapshot(&mut tx, &resources).await?;
                 let mut administer_cache = HashMap::new();
                 for (prior_policy, next_policy) in before.into_iter().zip(after) {

@@ -89,7 +89,8 @@ async function cancelInGui(page: Page, documentId: string, versionId: string, sc
   expect(result).toEqual({ operationId: command.operationId, publishOperationId: schedule.publishOperationId,
     documentId, targetVersionId: versionId, resultingRevision: schedule.acceptedRevision + 1 });
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('status')).toContainText('公開予約を取り消しました');
+  const cancellation = page.getByRole('region', { name: '公開予約の取消操作', exact: true });
+  await expect(cancellation.getByRole('status')).toHaveText('公開予約を取り消しました');
   await expect(page.getByRole('button', { name: '公開予約を取り消す', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '予約公開する', exact: true })).toBeEnabled();
   return result;

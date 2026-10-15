@@ -1,5 +1,9 @@
 [workspace]
 members = [
+  "crates/audit-core",
+  "crates/audit-store-postgres",
+  "crates/audit-relay",
+  "crates/audit-acceptance",
   "crates/outbox-delivery",
   "crates/document-sandbox-runner",
   "crates/search-runtime",
@@ -35,6 +39,7 @@ members = [
   "crates/document-storage-fs",
   "crates/document-repository-postgres",
   "crates/document-publication-scheduler",
+  "crates/local-workspace-runtime",
   "tools/architecture-lint",
   "tools/assurance",
 ]

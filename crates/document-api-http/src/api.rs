@@ -80,7 +80,12 @@ impl DocumentApiRouters {
             if method == Method::POST && path.ends_with("/versions") {
                 return &self.versioning;
             }
-            if method == Method::PUT && path.ends_with("/read-state") {
+            if (method == Method::GET || method == Method::PUT) && path.ends_with("/read-state") {
+                return &self.management;
+            }
+            if method == Method::POST
+                && (path.ends_with("/read-state/view") || path.ends_with("/read-state/reset"))
+            {
                 return &self.management;
             }
             if method == Method::PUT && path.ends_with("/access-policy") {

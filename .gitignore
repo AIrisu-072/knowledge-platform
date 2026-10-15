@@ -27,3 +27,8 @@ target/assurance/
 /.superpowers/
 
 /experiments/search-vector-poc/target/
+
+# Desktop shell: separate Cargo target and local GUI evidence (synthetic data only).
+/apps/desktop/src-tauri/target/
+/apps/desktop/src-tauri/gen/
+/apps/desktop/e2e/.state/

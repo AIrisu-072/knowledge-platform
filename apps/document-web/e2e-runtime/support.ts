@@ -1,8 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
+import { expect, type Page } from '@playwright/test';
 import {
-  BinaryTransportBridge, getDocument, getDocumentHistory, listDocumentRevisions,
-  listDocumentVersions, listVersionFiles,
+  BinaryTransportBridge, getCurrentDocumentVersionReadState, getDocument, getDocumentHistory, listDocumentRevisions,
+  listDocumentVersions, listVersionFiles, type CommandsReadStateMutationRequest, type ModelsCurrentReadState, type ModelsReadStateMutationResult,
 } from '@knowledge-platform/document-api-client';
 import type { Manifest } from '../../../tools/document-poc-seed/src/seed';
 
@@ -44,7 +45,52 @@ export async function persistedSnapshot(baseUrl: string, documentId: string) {
   return { documentId, title: detail.title, metadata: detail.metadata, revision: detail.revision,
     currentVersionId: detail.currentVersionId, revisions: revisions.items, versions: fingerprints, publications };
 }
-export type PersistedState = { documents: Array<{ key: string; snapshot: Awaited<ReturnType<typeof persistedSnapshot>> }> };
+export type SavedDocumentReadState = {
+  state: ModelsCurrentReadState; request: CommandsReadStateMutationRequest; receipt: ModelsReadStateMutationResult; documentRevision: number;
+};
+export type PersistedState = {
+  documents: Array<{ key: string; snapshot: Awaited<ReturnType<typeof persistedSnapshot>> }>;
+  // 本人だけの状態・固定receiptは共通snapshot/公開添付へ混ぜない。
+  documentReadState?: SavedDocumentReadState;
+};
+export const currentReadState = async (context: RuntimeContext, path: { documentId: string; versionId: string }) =>
+  (await getCurrentDocumentVersionReadState({ ...options(context.human), path })).data;
+export async function observeReadStateChange(page: Page, context: RuntimeContext, before: ModelsCurrentReadState,
+  kind: 'VIEW' | 'RESET', trigger: () => Promise<unknown>): Promise<SavedDocumentReadState> {
+  const path = { documentId: before.documentId, versionId: before.versionId };
+  const documentRevision = (await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data.revision;
+  const response = page.waitForResponse(result => {
+    const url = new URL(result.url());
+    return url.origin === context.human && url.pathname === `/v1/documents/${path.documentId}/versions/${path.versionId}/read-state/${kind.toLowerCase()}`
+      && result.request().method() === 'POST';
+  });
+  await trigger();
+  const result = await response;
+  expect(result.status()).toBe(200);
+  const request = result.request().postDataJSON() as CommandsReadStateMutationRequest;
+  expect(request.operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  expect(request).toEqual({ operationId: request.operationId, expectedReadStateRevision: before.readStateRevision });
+  const receipt = await result.json() as ModelsReadStateMutationResult;
+  expect(receipt).toEqual({ ...path, operationId: request.operationId, kind, expectedReadStateRevision: before.readStateRevision,
+    changed: true, occurredAt: expect.any(String), resultingReadState: {
+      firstReadAt: before.firstReadAt ?? expect.any(String), needsRecheck: kind === 'RESET',
+      readStateRevision: before.readStateRevision + 1, isRead: kind === 'VIEW',
+    } });
+  const region = page.getByRole('region', { name: '本人の既読状態', exact: true });
+  await expect(region.getByRole('status')).toHaveText(kind === 'VIEW' ? '既読' : '未読');
+  await expect(region.getByRole('button', { name: '現在の既読状態を再取得', exact: true })).toBeEnabled();
+  const state = await currentReadState(context, path);
+  expect(state).toEqual({ ...path, ...receipt.resultingReadState });
+  expect((await getDocument({ ...options(context.human), path, query: { view: 'published' } })).data.revision).toBe(documentRevision);
+  return { state, request, receipt, documentRevision };
+}
+export async function resetReadStateInGui(page: Page, context: RuntimeContext, before: ModelsCurrentReadState) {
+  const result = await observeReadStateChange(page, context, before, 'RESET', () =>
+    page.getByRole('region', { name: '本人の既読状態', exact: true }).getByRole('button', { name: '未読に戻す', exact: true }).click());
+  await expect(page.getByRole('region', { name: '既読状態の操作結果', exact: true }))
+    .toContainText('未読に戻しました。次に文書の詳細を開くと既読になります');
+  return result;
+}
 export async function saveSnapshot(context: RuntimeContext, key: string, documentId: string) {
   let state: PersistedState;
   try { state = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState; }

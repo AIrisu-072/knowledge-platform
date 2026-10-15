@@ -29,7 +29,8 @@ export function toggleReference(items: RevisionRef[], ref: RevisionRef, selected
 export type { EvidenceRecord, Finding, HumanDecision } from './work-workspace';
 
 type ScopedRecord = { id: string; revision: number; taskId: string; attemptId: string; contextId: string };
-export function recordsMatchTask(task: { id: string; attemptId: string; contextId: string }, records: { evidence: ScopedRecord[]; findings: ScopedRecord[]; decisions: ScopedRecord[] }, snapshot?: SelectedHandoff): boolean {
-  const allowed = (items: ScopedRecord[], selected: RevisionRef[] = []) => items.every((item) => item.contextId === task.contextId && ((item.taskId === task.id && item.attemptId === task.attemptId) || selected.some((ref) => ref.id === item.id && ref.revision === item.revision)));
+/** A null task context means it is not disclosed to this reader; task and attempt still bind every record. */
+export function recordsMatchTask(task: { id: string; attemptId: string; contextId: string | null }, records: { evidence: ScopedRecord[]; findings: ScopedRecord[]; decisions: ScopedRecord[] }, snapshot?: SelectedHandoff): boolean {
+  const allowed = (items: ScopedRecord[], selected: RevisionRef[] = []) => items.every((item) => (task.contextId === null || item.contextId === task.contextId) && ((item.taskId === task.id && item.attemptId === task.attemptId) || selected.some((ref) => ref.id === item.id && ref.revision === item.revision)));
   return allowed(records.evidence, snapshot?.evidenceRevisionRefs) && allowed(records.findings, snapshot?.findingRevisionRefs) && allowed(records.decisions, snapshot?.decisionRevisionRefs);
 }

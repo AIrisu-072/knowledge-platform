@@ -15,9 +15,8 @@ use crate::limits::UploadLimits;
 
 pub(crate) struct InitialUpload {
     pub request_json: Vec<u8>,
-    pub original_filename: String,
-    pub media_type: String,
-    pub content: ContentReader,
+    pub legacy_file: Option<(String, String, ContentReader)>,
+    pub files: BTreeMap<String, ContentReader>,
 }
 
 pub(crate) struct VersionUpload {
@@ -38,6 +37,7 @@ pub(crate) async fn parse_initial_upload(
 ) -> Result<InitialUpload, MultipartFailure> {
     let mut request_json = None;
     let mut file = None;
+    let mut files = BTreeMap::new();
     let mut part_count = 0_usize;
     while let Some(mut field) = multipart
         .next_field()
@@ -59,7 +59,7 @@ pub(crate) async fn parse_initial_upload(
                 request_json = Some(read_bounded(&mut field, limits.json_bytes).await?);
             }
             "file" => {
-                if file.is_some() {
+                if file.is_some() || !files.is_empty() {
                     return Err(MultipartFailure::Validation);
                 }
                 let filename = field
@@ -77,16 +77,28 @@ pub(crate) async fn parse_initial_upload(
                 let content = spool_bounded(&mut field, limits.file_bytes).await?;
                 file = Some((filename, media_type, content));
             }
+            "files" => {
+                let part_id = field
+                    .headers()
+                    .get("x-part-id")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && value.len() <= limits.filename_bytes)
+                    .ok_or(MultipartFailure::Validation)?
+                    .to_owned();
+                if file.is_some() || files.contains_key(&part_id) {
+                    return Err(MultipartFailure::Validation);
+                }
+                files.insert(part_id, spool_bounded(&mut field, limits.file_bytes).await?);
+            }
             _ => return Err(MultipartFailure::Validation),
         }
     }
     let request_json = request_json.ok_or(MultipartFailure::Validation)?;
-    let (original_filename, media_type, content) = file.ok_or(MultipartFailure::Validation)?;
     Ok(InitialUpload {
         request_json,
-        original_filename,
-        media_type,
-        content,
+        legacy_file: file,
+        files,
     })
 }
 

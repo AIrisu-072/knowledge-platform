@@ -67,8 +67,6 @@ impl DocumentRepository for PostgresDocumentRepository {
         let (authoritative, domain_events, audit_events) = record.into_parts();
         let document = authoritative.document();
         let version = authoritative.version();
-        let file = authoritative.file();
-        let version_file = authoritative.version_file();
 
         let mut tx = self.pool.begin().await.map_err(map_statement_error)?;
 
@@ -95,6 +93,8 @@ impl DocumentRepository for PostgresDocumentRepository {
                 return Err(RepositoryError::FolderNotFound);
             }
 
+            for item in authoritative.content_items() {
+                let file = item.file();
             sqlx::query(
                 "INSERT INTO file_objects \
                  (file_id, content_hash, media_type, size_bytes, storage_locator, created_at) \
@@ -109,6 +109,8 @@ impl DocumentRepository for PostgresDocumentRepository {
             .execute(&mut *tx)
             .await
             .map_err(map_statement_error)?;
+
+            }
 
             sqlx::query(
                 "INSERT INTO documents \
@@ -153,16 +155,19 @@ impl DocumentRepository for PostgresDocumentRepository {
             .await
             .map_err(map_statement_error)?;
 
+            for item in authoritative.content_items() {
             let content_item_id = uuid::Uuid::now_v7();
             let representation_id = uuid::Uuid::now_v7();
             sqlx::query(
                 "INSERT INTO content_items \
                  (content_item_id, document_version_id, logical_path, ordinal, \
                   authoritative_representation_id) \
-                 VALUES ($1, $2, 'primary', 0, $3)",
+                 VALUES ($1, $2, $3, $4, $5)",
             )
             .bind(content_item_id)
-            .bind(version_file.document_version_id().as_uuid())
+            .bind(version.document_version_id().as_uuid())
+            .bind(item.logical_path().as_str())
+            .bind(i64::from(item.ordinal()))
             .bind(representation_id)
             .execute(&mut *tx)
             .await
@@ -174,11 +179,13 @@ impl DocumentRepository for PostgresDocumentRepository {
             )
             .bind(representation_id)
             .bind(content_item_id)
-            .bind(version_file.file_id().as_uuid())
-            .bind(version_file.original_filename())
+            .bind(item.file().file_id().as_uuid())
+            .bind(item.original_filename())
             .execute(&mut *tx)
             .await
             .map_err(map_statement_error)?;
+
+            }
 
             for event in &domain_events {
                 sqlx::query(

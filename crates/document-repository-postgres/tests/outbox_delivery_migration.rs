@@ -264,7 +264,7 @@ async fn migration_preserves_legacy_domain_and_audit_rows() {
             .fetch_one(&trial)
             .await
             .unwrap();
-    assert_eq!(migrated_version, Some(11));
+    assert_eq!(migrated_version, Some(12));
     let policy_rows: i64 = sqlx::query_scalar("SELECT count(*) FROM outbox_delivery_policy")
         .fetch_one(&trial)
         .await

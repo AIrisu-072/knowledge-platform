@@ -18,5 +18,16 @@ test('generated SDK operations match every OpenAPI operationId', async () => {
   )].sort();
 
   assert.deepEqual(generatedOperations, operationIds);
-  assert.equal(operationIds.length, 35);
+  assert.equal(operationIds.length, 38);
+});
+
+test('本人既読の新GET/VIEW/RESETと旧PUTのSDK契約を保持する', async () => {
+  const sdk = await readFile(new URL('packages/document-api-client/src/generated/sdk.gen.ts', repositoryRoot), 'utf8');
+  for (const name of ['getCurrentDocumentVersionReadState', 'recordDocumentVersionView', 'resetDocumentVersionReadState', 'markDocumentVersionRead']) {
+    assert.match(sdk, new RegExp('export const ' + name + '\\b'));
+  }
+  const types = await readFile(new URL('packages/document-api-client/src/generated/types.gen.ts', repositoryRoot), 'utf8');
+  for (const name of ['CurrentReadState', 'ReadStateMutationResult', 'ReadStateMutationRequest']) {
+    assert.match(types, new RegExp('export type ' + name + '\\b'));
+  }
 });

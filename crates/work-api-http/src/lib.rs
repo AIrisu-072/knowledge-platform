@@ -2,6 +2,8 @@
 //! Work HTTP transport. The composition root injects a process-fixed verified actor.
 mod agent;
 mod evidence;
+mod files;
+mod organization;
 use agent::*;
 use axum::{
     Json, Router,
@@ -12,9 +14,11 @@ use axum::{
     http::{HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use evidence::*;
+use files::*;
+use organization::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -46,6 +50,40 @@ fn build_router(
 ) -> Router {
     Router::new()
         .route("/v1/organization/session", get(session))
+        .route("/v1/organization/units", get(units))
+        .route("/v1/organization/roles", get(roles))
+        .route(
+            "/v1/organization/role-assignments",
+            get(role_assignments).post(create_role_assignment),
+        )
+        .route(
+            "/v1/organization/role-assignments/{id}/revoke",
+            post(revoke_role_assignment),
+        )
+        .route(
+            "/v1/organization/delegations",
+            get(delegations).post(create_delegation),
+        )
+        .route(
+            "/v1/organization/delegations/{id}/revoke",
+            post(revoke_delegation),
+        )
+        .route("/v1/organization/tasks/{id}/assignment", post(assign_task))
+        .route(
+            "/v1/organization/work-view-profiles",
+            get(work_view_profiles_page),
+        )
+        .route("/v1/organization/work-contexts", get(list_work_contexts))
+        .route("/v1/organization/work-contexts/{id}", get(work_context))
+        .route(
+            "/v1/organization/work-contexts/{id}/history",
+            get(work_context_history),
+        )
+        .route("/v1/organization/tasks/{id}/attention", get(task_attention))
+        .route(
+            "/v1/organization/tasks/{id}/attention-seen",
+            post(acknowledge_attention),
+        )
         .route("/v1/organization/tasks", get(list_tasks))
         .route("/v1/organization/tasks/{id}", get(task))
         .route(
@@ -55,6 +93,24 @@ fn build_router(
         .route(
             "/v1/organization/working-artifacts/{id}",
             get(artifact).put(update_artifact),
+        )
+        .route(
+            "/v1/organization/working-artifacts/{id}/content",
+            put(write_content)
+                .get(read_content)
+                .layer(DefaultBodyLimit::max(MAX_CONTENT_BYTES)),
+        )
+        .route(
+            "/v1/organization/working-artifacts/{id}/discard",
+            post(discard),
+        )
+        .route(
+            "/v1/organization/tasks/{id}/working-artifacts/import",
+            post(import_submission),
+        )
+        .route(
+            "/v1/organization/handoff-snapshots/{id}/artifacts/{artifact_id}/content",
+            get(read_snapshot_content),
         )
         .route(
             "/v1/organization/tasks/{id}/evidence",
@@ -85,6 +141,14 @@ fn build_router(
         .route(
             "/v1/organization/agent-executions/{id}/cancel",
             post(cancel_agent_execution),
+        )
+        .route(
+            "/v1/organization/generated-artifacts/{id}",
+            get(generated_artifact),
+        )
+        .route(
+            "/v1/organization/suggested-actions/{id}",
+            get(suggested_action),
         )
         .route("/v1/organization/tasks/{id}/claim", post(claim))
         .route("/v1/organization/tasks/{id}/submit", post(submit))
@@ -126,9 +190,11 @@ async fn transport_boundary(request: Request, next: Next) -> Response {
     let path = request.uri().path();
     let collection_query = request.method() == axum::http::Method::GET
         && (path == "/v1/organization/tasks"
+            || path == "/v1/organization/work-contexts"
             || (path.starts_with("/v1/organization/tasks/")
                 && (path.ends_with("/evidence") || path.ends_with("/findings")))
             || (path.starts_with("/v1/organization/findings/") && path.ends_with("/decisions")));
+    let content_read = request.method() == axum::http::Method::GET && path.ends_with("/content");
     let response = if header_bytes > 16 * 1024
         || forbidden
             .iter()
@@ -140,7 +206,13 @@ async fn transport_boundary(request: Request, next: Next) -> Response {
         next.run(request).await
     };
     let (parts, body) = response.into_parts();
-    let mut response = match axum::body::to_bytes(body, MAX_JSON_BYTES).await {
+    // Only the two file-content reads carry the larger file profile.
+    let limit = if content_read {
+        MAX_CONTENT_BYTES
+    } else {
+        MAX_JSON_BYTES
+    };
+    let mut response = match axum::body::to_bytes(body, limit).await {
         Ok(bytes) => Response::from_parts(parts, axum::body::Body::from(bytes)),
         Err(_) => Problem(WorkError::DependencyUnavailable).into_response(),
     };
@@ -159,20 +231,17 @@ struct ListQuery {
     view: Option<TaskView>,
     limit: Option<usize>,
     cursor: Option<String>,
+    /// Requested projection scope; re-resolved against the current policy.
+    acting_assignment_id: Option<Uuid>,
+    /// Presentation filters over the same authorized projection.
+    context_id: Option<Uuid>,
+    work_type_id: Option<Uuid>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Page<T> {
     items: Vec<T>,
     next_cursor: Option<String>,
-}
-async fn session(State(state): State<ApiState>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "principalId":state.actor.principal_id(),
-        "displayName":match state.actor { VerifiedActor::Sales01 => "営業担当（模擬）", VerifiedActor::Office01 => "事務担当（模擬）" },
-        "actingAssignmentId":state.actor.assignment_id(),
-        "capabilities":{"nativeWorkspace":false,"agent":state.agent_dispatch.is_some(),"search":false,"fileUpload":false,"return":true}
-    }))
 }
 async fn list_tasks(
     State(state): State<ApiState>,
@@ -186,10 +255,22 @@ async fn list_tasks(
     if query.cursor.is_some() {
         return Err(Problem(WorkError::CursorStale));
     }
-    let items = state
+    let items: Vec<TaskSummary> = state
         .repository
-        .list_tasks(state.actor, query.view.unwrap_or(TaskView::Context))
-        .await?;
+        .list_tasks_in(
+            state.actor,
+            query.view.unwrap_or(TaskView::Context),
+            query.acting_assignment_id,
+        )
+        .await?
+        .into_iter()
+        .filter(|item| {
+            query
+                .context_id
+                .is_none_or(|id| item.context_id == Some(id))
+        })
+        .filter(|item| query.work_type_id.is_none_or(|id| item.work_type_id == id))
+        .collect();
     // This fixed two-step PoC has no pagination token implementation: never silently truncate.
     if items.len() > limit {
         return Err(Problem(WorkError::ValidationFailed));
@@ -310,12 +391,27 @@ struct SubmitBody {
     acting_assignment_id: Uuid,
     artifacts: Vec<ArtifactSelection>,
 }
+/// A text draft (`value`) or a file record (`file`), never both.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CreateArtifactBody {
+    Text(DraftBody),
+    File(FileArtifactBody),
+}
 async fn create_artifact(
     State(state): State<ApiState>,
     path: Result<Path<Uuid>, PathRejection>,
-    body: Result<Json<DraftBody>, JsonRejection>,
+    body: Result<Json<CreateArtifactBody>, JsonRejection>,
 ) -> Result<Json<MutationResult>, Problem> {
-    let command = json_body(body)?.command(path_id(path)?, None);
+    let task_id = path_id(path)?;
+    let command = match json_body(body)? {
+        CreateArtifactBody::Text(body) => body.command(task_id, None),
+        // Without a composed Work store a file record could never get content.
+        CreateArtifactBody::File(_) if !state.repository.artifact_store_available() => {
+            return Err(Problem(WorkError::WorkArtifactUnavailable));
+        }
+        CreateArtifactBody::File(body) => body.command(task_id),
+    };
     Ok(Json(state.repository.execute(state.actor, command).await?))
 }
 async fn update_artifact(
@@ -465,6 +561,8 @@ impl IntoResponse for Problem {
             WorkError::EvidenceNotFound
             | WorkError::FindingNotFound
             | WorkError::WorkItemNotFound
+            | WorkError::OrganizationRecordNotFound
+            | WorkError::WorkContextNotFound
             | WorkError::WorkArtifactNotFound => StatusCode::NOT_FOUND,
             WorkError::RevisionConflict
             | WorkError::OperationConflict
@@ -473,9 +571,9 @@ impl IntoResponse for Problem {
             | WorkError::AgentResultNotReady
             | WorkError::HandoffNotReady
             | WorkError::CursorStale => StatusCode::CONFLICT,
-            WorkError::DependencyUnavailable | WorkError::CommitOutcomeUnknown => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            WorkError::DependencyUnavailable
+            | WorkError::CommitOutcomeUnknown
+            | WorkError::WorkArtifactUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             WorkError::IntegrityViolation => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = serde_json::json!({"type":"about:blank","title":status.canonical_reason().unwrap_or("Request failed"),"status":status.as_u16(),"code":self.0,"traceId":Uuid::now_v7()});

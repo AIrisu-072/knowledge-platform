@@ -1,12 +1,31 @@
 use document_domain::{Action, PolicySubjectKind};
 use organization_server::{
-    OrganizationProfile, bootstrap_document_policy, organization_root_grants,
+    OrganizationProfile, bootstrap_document_policy, legacy_organization_root_grants,
+    organization_root_grants,
 };
 
 #[test]
 fn fixture_policy_grants_office_read_only_and_keeps_provider_explicit() {
     let grants = organization_root_grants();
-    assert_eq!(grants.len(), 3);
+    assert_eq!(grants.len(), 7);
+    assert_eq!(legacy_organization_root_grants().len(), 3);
+    // Added synthetic Human principals read shared inputs only; no write/publish.
+    for name in ["review-01", "approver-01", "multi-role-01", "delegate-01"] {
+        let grant = grants
+            .iter()
+            .find(|g| g.subject().subject_id() == name)
+            .unwrap();
+        assert_eq!(
+            grant.subject().identity_provider(),
+            "organization-synthetic"
+        );
+        assert_eq!(grant.actions().len(), 2);
+        assert!(grant.actions().contains(&Action::Read));
+        assert!(grant.actions().contains(&Action::ReadHistory));
+    }
+    let mut sorted = grants.clone();
+    sorted.sort_by(|a, b| a.subject().cmp(b.subject()));
+    assert_eq!(sorted, grants);
     let office = grants
         .iter()
         .find(|g| g.subject().subject_id() == "office-01")

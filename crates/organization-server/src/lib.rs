@@ -7,8 +7,13 @@ pub use identity::{OrganizationProfile, SyntheticIdentityAdapter};
 mod composition;
 pub use composition::compose_routes;
 mod bootstrap;
-pub use bootstrap::{bootstrap_document_policy, organization_root_grants, verify_shared_document};
+pub use bootstrap::{
+    bootstrap_document_policy, legacy_organization_root_grants, organization_root_grants,
+    verify_shared_document,
+};
 mod document_evidence;
 pub use document_evidence::{DocumentAgentSource, DocumentEvidenceSource};
 mod synthetic_agent;
-pub use synthetic_agent::OwnedAgentDispatcher;
+pub use synthetic_agent::{OwnedAgentDispatcher, SyntheticAgentExecutor};
+mod work_artifacts;
+pub use work_artifacts::{FileSystemWorkArtifactStore, WORK_ARTIFACT_NAMESPACE};

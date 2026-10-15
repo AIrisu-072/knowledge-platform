@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelPublicationScheduleData, CancelPublicationScheduleErrors, CancelPublicationScheduleResponses, CompareDocumentRevisionsData, CompareDocumentRevisionsErrors, CompareDocumentRevisionsResponses, CompareDocumentVersionsData, CompareDocumentVersionsErrors, CompareDocumentVersionsResponses, CreateDocumentData, CreateDocumentErrors, CreateDocumentResponses, CreateDocumentVersionData, CreateDocumentVersionErrors, CreateDocumentVersionResponses, CreateFolderData, CreateFolderErrors, CreateFolderResponses, DownloadVersionFileData, DownloadVersionFileErrors, DownloadVersionFileResponses, EndDocumentPublicationData, EndDocumentPublicationErrors, EndDocumentPublicationResponses, GetDocumentAccessPolicyData, GetDocumentAccessPolicyErrors, GetDocumentAccessPolicyResponses, GetDocumentData, GetDocumentErrors, GetDocumentHistoryData, GetDocumentHistoryErrors, GetDocumentHistoryResponses, GetDocumentResponses, GetDocumentRevisionData, GetDocumentRevisionErrors, GetDocumentRevisionResponses, GetDocumentVersionData, GetDocumentVersionErrors, GetDocumentVersionResponses, GetFolderAccessPolicyData, GetFolderAccessPolicyErrors, GetFolderAccessPolicyResponses, GetRootFolderData, GetRootFolderErrors, GetRootFolderResponses, GetSessionData, GetSessionErrors, GetSessionResponses, GetVersionEditManifestData, GetVersionEditManifestErrors, GetVersionEditManifestResponses, ListDocumentRevisionsData, ListDocumentRevisionsErrors, ListDocumentRevisionsResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, ListDocumentVersionsData, ListDocumentVersionsErrors, ListDocumentVersionsResponses, ListFolderChildrenData, ListFolderChildrenErrors, ListFolderChildrenResponses, ListVersionFilesData, ListVersionFilesErrors, ListVersionFilesResponses, MarkDocumentVersionReadData, MarkDocumentVersionReadErrors, MarkDocumentVersionReadResponses, MoveDocumentData, MoveDocumentErrors, MoveDocumentResponses, MoveFolderData, MoveFolderErrors, MoveFolderResponses, PatchDocumentMetadataData, PatchDocumentMetadataErrors, PatchDocumentMetadataResponses, PublishVersionData, PublishVersionErrors, PublishVersionResponses, RebaseWorkingVersionData, RebaseWorkingVersionErrors, RebaseWorkingVersionResponses, RecoverDocumentCreationData, RecoverDocumentCreationErrors, RecoverDocumentCreationResponses, RenameFolderData, RenameFolderErrors, RenameFolderResponses, SchedulePublicationData, SchedulePublicationErrors, SchedulePublicationResponses, SetDocumentAccessPolicyData, SetDocumentAccessPolicyErrors, SetDocumentAccessPolicyResponses, SetFolderAccessPolicyData, SetFolderAccessPolicyErrors, SetFolderAccessPolicyResponses, UpdateWorkingVersionData, UpdateWorkingVersionErrors, UpdateWorkingVersionResponses, WithdrawVersionData, WithdrawVersionErrors, WithdrawVersionResponses } from './types.gen';
+import type { CancelPublicationScheduleData, CancelPublicationScheduleErrors, CancelPublicationScheduleResponses, CompareDocumentRevisionsData, CompareDocumentRevisionsErrors, CompareDocumentRevisionsResponses, CompareDocumentVersionsData, CompareDocumentVersionsErrors, CompareDocumentVersionsResponses, CreateDocumentData, CreateDocumentErrors, CreateDocumentResponses, CreateDocumentVersionData, CreateDocumentVersionErrors, CreateDocumentVersionResponses, CreateFolderData, CreateFolderErrors, CreateFolderResponses, DownloadVersionFileData, DownloadVersionFileErrors, DownloadVersionFileResponses, EndDocumentPublicationData, EndDocumentPublicationErrors, EndDocumentPublicationResponses, GetCurrentDocumentVersionReadStateData, GetCurrentDocumentVersionReadStateErrors, GetCurrentDocumentVersionReadStateResponses, GetDocumentAccessPolicyData, GetDocumentAccessPolicyErrors, GetDocumentAccessPolicyResponses, GetDocumentData, GetDocumentErrors, GetDocumentHistoryData, GetDocumentHistoryErrors, GetDocumentHistoryResponses, GetDocumentResponses, GetDocumentRevisionData, GetDocumentRevisionErrors, GetDocumentRevisionResponses, GetDocumentVersionData, GetDocumentVersionErrors, GetDocumentVersionResponses, GetFolderAccessPolicyData, GetFolderAccessPolicyErrors, GetFolderAccessPolicyResponses, GetRootFolderData, GetRootFolderErrors, GetRootFolderResponses, GetSessionData, GetSessionErrors, GetSessionResponses, GetVersionEditManifestData, GetVersionEditManifestErrors, GetVersionEditManifestResponses, ListDocumentRevisionsData, ListDocumentRevisionsErrors, ListDocumentRevisionsResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, ListDocumentVersionsData, ListDocumentVersionsErrors, ListDocumentVersionsResponses, ListFolderChildrenData, ListFolderChildrenErrors, ListFolderChildrenResponses, ListVersionFilesData, ListVersionFilesErrors, ListVersionFilesResponses, MarkDocumentVersionReadData, MarkDocumentVersionReadErrors, MarkDocumentVersionReadResponses, MoveDocumentData, MoveDocumentErrors, MoveDocumentResponses, MoveFolderData, MoveFolderErrors, MoveFolderResponses, PatchDocumentMetadataData, PatchDocumentMetadataErrors, PatchDocumentMetadataResponses, PublishVersionData, PublishVersionErrors, PublishVersionResponses, RebaseWorkingVersionData, RebaseWorkingVersionErrors, RebaseWorkingVersionResponses, RecordDocumentVersionViewData, RecordDocumentVersionViewErrors, RecordDocumentVersionViewResponses, RecoverDocumentCreationData, RecoverDocumentCreationErrors, RecoverDocumentCreationResponses, RenameFolderData, RenameFolderErrors, RenameFolderResponses, ResetDocumentVersionReadStateData, ResetDocumentVersionReadStateErrors, ResetDocumentVersionReadStateResponses, SchedulePublicationData, SchedulePublicationErrors, SchedulePublicationResponses, SetDocumentAccessPolicyData, SetDocumentAccessPolicyErrors, SetDocumentAccessPolicyResponses, SetFolderAccessPolicyData, SetFolderAccessPolicyErrors, SetFolderAccessPolicyResponses, UpdateWorkingVersionData, UpdateWorkingVersionErrors, UpdateWorkingVersionResponses, WithdrawVersionData, WithdrawVersionErrors, WithdrawVersionResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -253,11 +253,46 @@ export const setDocumentAccessPolicy = <ThrowOnError extends boolean = false>(op
 });
 
 /**
- * Explicit HumanInteractive read confirmation
+ * 現行公開版に対する本人の現在の既読状態を取得する
+ *
+ * HumanInteractive本人の、現在Readが許可された現行PUBLISHEDかつ未終了の版に限定する。新たに取得した整合した200の応答をGUIの操作資格のヒントとし、変更時に認可とCASを再検査する。旧版ではSTALE_VERSIONより先にReadHistoryを要求する。Agentの通常の文書参照は引き続き利用できる。
+ */
+export const getCurrentDocumentVersionReadState = <ThrowOnError extends boolean = false>(options: Options<GetCurrentDocumentVersionReadStateData, ThrowOnError>): RequestResult<GetCurrentDocumentVersionReadStateResponses, GetCurrentDocumentVersionReadStateErrors, ThrowOnError> => (options.client ?? client).get<GetCurrentDocumentVersionReadStateResponses, GetCurrentDocumentVersionReadStateErrors, ThrowOnError>({ url: '/v1/documents/{documentId}/versions/{versionId}/read-state', ...options });
+
+/**
+ * 旧PUTによるHumanInteractive本人の初回既読確認
  *
  * The trusted identity adapter supplies the verified actor. Authorization and Audit remain in Application.
  */
 export const markDocumentVersionRead = <ThrowOnError extends boolean = false>(options: Options<MarkDocumentVersionReadData, ThrowOnError>): RequestResult<MarkDocumentVersionReadResponses, MarkDocumentVersionReadErrors, ThrowOnError> => (options.client ?? client).put<MarkDocumentVersionReadResponses, MarkDocumentVersionReadErrors, ThrowOnError>({ url: '/v1/documents/{documentId}/versions/{versionId}/read-state', ...options });
+
+/**
+ * 通常詳細の正常な表示を記録する
+ *
+ * HumanInteractive本人の状態だけを扱う。現在Readと必要なReadHistoryを確認してからreceiptを再生し、receiptの照合は現行版判定とCASより先に行う。再生は現在状態を変更しない。完全再送ではpath、UUIDv7のoperationId、expectedReadStateRevisionを固定する。状態、receipt、実遷移のAuditを原子的に確定する。503 COMMIT_OUTCOME_UNKNOWNはretryableとexactRetryを返す。9007199254740991を超える増分は422で拒否する。
+ */
+export const recordDocumentVersionView = <ThrowOnError extends boolean = false>(options: Options<RecordDocumentVersionViewData, ThrowOnError>): RequestResult<RecordDocumentVersionViewResponses, RecordDocumentVersionViewErrors, ThrowOnError> => (options.client ?? client).post<RecordDocumentVersionViewResponses, RecordDocumentVersionViewErrors, ThrowOnError>({
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state/view',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * 現在既読の版を再確認のため未読に戻す
+ *
+ * HumanInteractive本人の状態だけを扱う。現在Readと必要なReadHistoryを確認してからreceiptを再生し、receiptの照合は現行版判定とCASより先に行う。再生は現在状態を変更しない。完全再送ではpath、UUIDv7のoperationId、expectedReadStateRevisionを固定する。状態、receipt、実遷移のAuditを原子的に確定する。503 COMMIT_OUTCOME_UNKNOWNはretryableとexactRetryを返す。9007199254740991を超える増分は422で拒否する。
+ */
+export const resetDocumentVersionReadState = <ThrowOnError extends boolean = false>(options: Options<ResetDocumentVersionReadStateData, ThrowOnError>): RequestResult<ResetDocumentVersionReadStateResponses, ResetDocumentVersionReadStateErrors, ThrowOnError> => (options.client ?? client).post<ResetDocumentVersionReadStateResponses, ResetDocumentVersionReadStateErrors, ThrowOnError>({
+    url: '/v1/documents/{documentId}/versions/{versionId}/read-state/reset',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Read authorized document history

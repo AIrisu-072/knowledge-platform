@@ -1,3 +1,4 @@
+import { invalidateDocumentReadStateViews } from './document-view-navigation';
 import type { QueryClient } from '@tanstack/react-query';
 import { documentApi, type CommandsWithdrawVersion, type CommandsEndPublication, type WithdrawResult, type EndPublicationResult } from './document-workspace';
 import { problemFromUnknown } from './problem-mapping';
@@ -25,8 +26,9 @@ function guardUnresolvedOperations(client: QueryClient) {
   window.addEventListener('beforeunload', warn);
   check();
 }
-const documentQueries = ['document', 'document-versions', 'document-version', 'document-revisions', 'document-history', 'document-version-files', 'document-access-policy', 'revision-comparison'];
+const documentQueries = ['document', 'document-versions', 'document-version', 'document-revisions', 'document-history', 'document-version-files', 'document-access-policy', 'revision-comparison', 'document-read-opening', 'document-current-read-state'];
 export async function refreshLifecycleQueries(client: QueryClient, documentId: string) {
+  invalidateDocumentReadStateViews(client, documentId);
   await Promise.all([
     ...documentQueries.map(key => client.invalidateQueries({ queryKey: [key, documentId] }, { throwOnError: true })),
     client.invalidateQueries({ queryKey: ['documents'] }, { throwOnError: true }),

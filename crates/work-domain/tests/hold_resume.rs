@@ -358,11 +358,16 @@ fn held_task_rejects_all_content_and_workflow_mutations_without_changing_private
             },
         ];
         for command in commands {
-            assert_eq!(
-                w.apply(actor, &command, NOW),
-                Err(WorkError::HandoffNotReady),
-                "{command:?}"
-            );
+            // A role without the command's policy action is refused as a
+            // permission before the held state is considered (Domain §6 order).
+            let expected = if actor == VerifiedActor::Sales01
+                && matches!(command, Command::Complete { .. } | Command::Return { .. })
+            {
+                WorkError::Forbidden
+            } else {
+                WorkError::HandoffNotReady
+            };
+            assert_eq!(w.apply(actor, &command, NOW), Err(expected), "{command:?}");
             assert_eq!(w, before);
         }
     }
@@ -423,20 +428,28 @@ fn hold_resume_do_not_upgrade_old_definitions_or_authorize_ready_terminal_shared
 fn hold_resume_require_the_defined_step_and_current_assignment() {
     for case in 0..3 {
         let mut w = saved();
+        let command = action(&w, VerifiedActor::Sales01, SALES_TASK_ID, "hold");
         // The exact fixture step and current assignment bind the definition action.
-        match case {
-            0 => w.source.step_id = OFFICE_STEP_ID,
-            1 => w.source.acting_assignment_id = Some(OFFICE_ASSIGNMENT_ID),
-            _ => w.source.work_assignment_id = None,
-        }
+        // A step whose segment needs another role, or an attempt bound to another
+        // principal's responsibility, is no longer disclosed to this actor at all.
+        let expected = match case {
+            0 => {
+                w.source.step_id = OFFICE_STEP_ID;
+                WorkError::WorkItemNotFound
+            }
+            1 => {
+                w.source.acting_assignment_id = Some(OFFICE_ASSIGNMENT_ID);
+                WorkError::WorkItemNotFound
+            }
+            _ => {
+                w.source.work_assignment_id = None;
+                WorkError::HandoffNotReady
+            }
+        };
         let before = w.clone();
         assert_eq!(
-            w.apply(
-                VerifiedActor::Sales01,
-                &action(&w, VerifiedActor::Sales01, SALES_TASK_ID, "hold"),
-                NOW
-            ),
-            Err(WorkError::HandoffNotReady),
+            w.apply(VerifiedActor::Sales01, &command, NOW),
+            Err(expected),
             "{case}"
         );
         assert_eq!(w, before);

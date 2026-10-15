@@ -1,16 +1,20 @@
 import { assertApplicationJapaneseFonts } from './japanese-font';
 import { visualCheckpoint } from './visual-capture';
 import { startDiagnostics, finishDiagnostics, captureUiDiagnostics } from './startup-diagnostics';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Request } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import {
   BinaryTransportBridge, compareDocumentRevisions, compareDocumentVersions, getDocument,
-  getDocumentAccessPolicy, getDocumentHistory, getRootFolder, getSession, listDocumentRevisions,
+  getDocumentAccessPolicy, getDocumentHistory, getDocumentVersion, getFolderAccessPolicy, getRootFolder, getSession, listDocumentRevisions,
   listDocuments, listDocumentVersions, listFolderChildren, listVersionFiles, publishVersion,
-  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment,
+  type VersionMutationResult, type CommandsMetadataPatch, type ModelsVersion, type ModelsDisplayFragment, type ModelsHistory, type RevisionComparisonResponse,
+  type VersionList, type VersionDetail, type FileList, type ModelsDiffDisplayProjection,
+  type PolicyGrantInput, type CommandsPolicyExplicit, type CommandsPolicyInherit, type MutationResult,
 } from '@knowledge-platform/document-api-client';
-import { hash, options, persistedSnapshot, runtime, saveSnapshot, uuidV7 } from './support';
+import { currentReadState, hash, observeReadStateChange, options, persistedSnapshot, resetReadStateInGui, runtime, saveSnapshot, uuidV7, type PersistedState } from './support';
+import { formatDateTime } from '../src/view-model/date-time';
 
 test.describe.configure({ mode: 'serial' });
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
@@ -52,6 +56,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   page.on('request', req => { const url = new URL(req.url()); if (url.pathname.startsWith('/v1/')) apiOrigins.add(url.origin); });
   await page.goto('/documents?view=published');
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '選択したフォルダーのアクセス設定', exact: true })).toBeHidden();
   completed('gui-loaded');
   await assertApplicationJapaneseFonts(page);
   test.info().annotations.push({ type: 'runtime-font', description: 'kosugi-regular-japanese-heading-body' });
@@ -64,12 +69,125 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page).toHaveURL(new RegExp(`folderId=${manifest.folders.shared.folderId}`));
   await expect(page.getByRole('table', { name: '文書一覧' })).toBeVisible();
   completed('folder-selected');
+  // 既存の合成Sharedだけを変更する。humanの全5権限とagentのreadは全遷移で保持する。
+  const folderPath = { folderId: manifest.folders.shared.folderId };
+  const grantsOnly = (grants: readonly PolicyGrantInput[]): PolicyGrantInput[] => grants
+    .map(({ subjectKind, identityProvider, subjectId, actions }) => ({ subjectKind, identityProvider, subjectId, actions: [...actions].sort() }))
+    .sort((left, right) => JSON.stringify([left.subjectKind, left.identityProvider, left.subjectId])
+      .localeCompare(JSON.stringify([right.subjectKind, right.identityProvider, right.subjectId])));
+  const originalFolderPolicy = (await getFolderAccessPolicy({ ...humanOptions, path: folderPath })).data;
+  const rootPolicy = (await getFolderAccessPolicy({ ...humanOptions, path: { folderId: humanRoot.folderId } })).data;
+  const humanOnlyPolicy = (await getFolderAccessPolicy({ ...humanOptions, path: { folderId: manifest.folders.humanOnly.folderId } })).data;
+  const originalDocumentPolicy = (await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data;
+  const originalDocument = (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data;
+  const originalGrants = grantsOnly(originalFolderPolicy.effectiveGrants);
+  expect(originalFolderPolicy).toMatchObject({ target: { kind: 'folder', id: folderPath.folderId }, bindingMode: 'explicit',
+    policyRevision: manifest.folders.shared.policy!.result!.resultingRevision, effectiveSource: { kind: 'folder', id: folderPath.folderId } });
+  expect(originalGrants).toEqual(grantsOnly(manifest.folders.shared.policy!.request.grants));
+  expect(originalGrants).toHaveLength(2);
+  expect(grantsOnly(rootPolicy.effectiveGrants)).toEqual(originalGrants);
+  expect(originalDocumentPolicy).toMatchObject({ bindingMode: 'inherit', effectivePolicyId: originalFolderPolicy.policyId,
+    effectiveSource: { kind: 'folder', id: folderPath.folderId } });
+  let currentFolderPolicy = originalFolderPolicy;
+  const folderOperations = new Set<string>();
+  const folderPolicyRequests: Request[] = [];
+  const captureFolderPolicy = (req: Request) => {
+    const url = new URL(req.url());
+    if (url.origin === human && /^\/v1\/folders\/[^/]+\/access-policy$/.test(url.pathname) && req.method() === 'PUT') folderPolicyRequests.push(req);
+  };
+  page.on('request', captureFolderPolicy);
+  for (const change of [
+    { mode: 'explicit', history: false, reason: 'Synthetic Shared agent history permission off' },
+    { mode: 'explicit', history: true, reason: 'Restore synthetic Shared agent history permission' },
+    { mode: 'inherit', history: true, reason: 'Synthetic Shared inherits verified root policy' },
+    { mode: 'explicit', history: true, reason: 'Restore synthetic Shared explicit policy from verified inherited grants' },
+  ] as const) {
+    // 保存成功で選択根拠を捨てるため、毎回通常ツリーから同じ行を明示選択し直す。
+    await sharedFolder.click();
+    const policyRead = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === human && url.pathname === `/v1/folders/${folderPath.folderId}/access-policy` && response.request().method() === 'GET';
+    });
+    await page.getByRole('button', { name: '選択したフォルダーのアクセス設定', exact: true }).click();
+    const policyReadResult = await policyRead;
+    expect(policyReadResult.status()).toBe(200);
+    expect(await policyReadResult.json()).toEqual(currentFolderPolicy);
+    const policyDialog = page.getByRole('dialog', { name: '選択したフォルダーのアクセス設定', exact: true });
+    await expect(policyDialog).toBeVisible();
+    await policyDialog.getByRole('combobox', { name: '設定方式', exact: true }).selectOption(change.mode);
+    const humanGrant = policyDialog.getByRole('group', { name: 'group / poc / poc-users', exact: true });
+    const agentGrant = policyDialog.getByRole('group', { name: 'group / poc / poc-agents', exact: true });
+    if (change.mode === 'explicit') await agentGrant.getByRole('checkbox', { name: '履歴閲覧', exact: true }).setChecked(change.history);
+    for (const label of ['閲覧', '履歴閲覧', '編集', '公開', 'アクセス管理']) {
+      await expect(humanGrant.getByRole('checkbox', { name: label, exact: true })).toBeChecked();
+    }
+    await expect(agentGrant.getByRole('checkbox', { name: '閲覧', exact: true })).toBeChecked();
+    for (const label of ['編集', '公開', 'アクセス管理']) await expect(agentGrant.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked();
+    await policyDialog.getByRole('textbox', { name: 'アクセス設定の変更理由', exact: true }).fill(change.reason);
+    await expect(policyDialog.getByRole('heading', { name: '変更内容の確認', exact: true })).toBeVisible();
+    await policyDialog.getByRole('checkbox', { name: '変更内容と影響範囲を確認しました', exact: true }).check();
+    const policyWrite = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === human && url.pathname === `/v1/folders/${folderPath.folderId}/access-policy` && response.request().method() === 'PUT';
+    });
+    await policyDialog.getByRole('button', { name: 'アクセス設定を保存', exact: true }).click();
+    const policyWriteResult = await policyWrite;
+    expect(policyWriteResult.status()).toBe(200);
+    const payload = policyWriteResult.request().postDataJSON() as CommandsPolicyExplicit | CommandsPolicyInherit;
+    expect(payload.operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(folderOperations.has(payload.operationId)).toBe(false); folderOperations.add(payload.operationId);
+    const expectedGrants = originalGrants.map(grant => ({ ...grant, actions: grant.subjectId === 'poc-agents' && !change.history
+      ? grant.actions.filter(action => action !== 'readHistory') : [...grant.actions] }));
+    const expectedPayload = { operationId: payload.operationId, expectedPolicyRevision: currentFolderPolicy.policyRevision, mode: change.mode, reason: change.reason };
+    if (payload.mode === 'explicit') expect({ ...payload, grants: grantsOnly(payload.grants) }).toEqual({ ...expectedPayload, grants: expectedGrants });
+    else expect(payload).toEqual(expectedPayload);
+    const receipt = await policyWriteResult.json() as MutationResult;
+    expect(receipt).toMatchObject({ operationId: payload.operationId, resourceId: folderPath.folderId,
+      changed: true, resultingRevision: currentFolderPolicy.policyRevision + 1 });
+    await expect(policyDialog.getByRole('status').filter({ hasText: 'アクセス設定を保存しました。' })).toBeVisible();
+    currentFolderPolicy = (await getFolderAccessPolicy({ ...humanOptions, path: folderPath })).data;
+    expect(currentFolderPolicy).toMatchObject({ target: originalFolderPolicy.target, bindingMode: change.mode,
+      policyId: originalFolderPolicy.policyId, policyRevision: receipt.resultingRevision,
+      effectivePolicyId: change.mode === 'inherit' ? rootPolicy.effectivePolicyId : originalFolderPolicy.policyId,
+      effectiveSource: change.mode === 'inherit' ? rootPolicy.effectiveSource : originalFolderPolicy.target });
+    expect(grantsOnly(currentFolderPolicy.effectiveGrants)).toEqual(expectedGrants);
+    const inheritedDocumentPolicy = (await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data;
+    expect(inheritedDocumentPolicy).toEqual({ ...originalDocumentPolicy, effectivePolicyId: currentFolderPolicy.effectivePolicyId,
+      effectiveSource: currentFolderPolicy.effectiveSource, effectiveGrants: currentFolderPolicy.effectiveGrants });
+    expect((await getDocument({ ...agentOptions, path: { documentId }, query: { view: 'published' } })).data.documentId).toBe(documentId);
+    const agentHistory = await request.get(`${agent}/v1/documents/${documentId}/versions?purpose=history&pageSize=100`);
+    expect(agentHistory.status()).toBe(change.history ? 200 : 403);
+    if (change.history) expect((await agentHistory.json()).items).toHaveLength(2);
+    else {
+      expect((await agentHistory.json()).code).toBe('FORBIDDEN');
+      // 既知成功receiptの完全再送だけを確認する。応答喪失/自己失権後UNKNOWNの実資格ではない。
+      const replay = await request.put(policyWriteResult.url(), { data: payload });
+      expect(replay.status()).toBe(200); expect(await replay.json()).toEqual(receipt);
+      expect((await getFolderAccessPolicy({ ...humanOptions, path: folderPath })).data).toEqual(currentFolderPolicy);
+    }
+    await policyDialog.getByRole('button', { name: '確認して閉じる', exact: true }).click();
+    await expect(policyDialog).toBeHidden();
+  }
+  page.off('request', captureFolderPolicy);
+  expect(folderPolicyRequests).toHaveLength(4);
+  expect(folderPolicyRequests.map(req => new URL(req.url()).pathname)).toEqual(Array(4).fill(`/v1/folders/${folderPath.folderId}/access-policy`));
+  expect(currentFolderPolicy.policyRevision).toBe(originalFolderPolicy.policyRevision + 4);
+  expect(grantsOnly(currentFolderPolicy.effectiveGrants)).toEqual(originalGrants);
+  expect((await getFolderAccessPolicy({ ...humanOptions, path: { folderId: humanRoot.folderId } })).data).toEqual(rootPolicy);
+  expect((await getFolderAccessPolicy({ ...humanOptions, path: { folderId: manifest.folders.humanOnly.folderId } })).data).toEqual(humanOnlyPolicy);
+  expect((await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data).toEqual(originalDocumentPolicy);
+  expect((await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data).toEqual(originalDocument);
+  await sharedFolder.click();
+  await expect(page.getByRole('table', { name: '文書一覧' })).toBeVisible();
   const row = page.getByRole('button', { name: /規程サンプル/ });
   await row.focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: '選択中の文書' })).toContainText('規程サンプル');
   await visualCheckpoint(page, '01-list-context-1440.png');
   completed('document-selected');
-  await page.getByRole('button', { name: '詳細を開く' }).press('Enter');
+  const initialReadState = await currentReadState(context, { documentId, versionId: originalDocument.currentVersionId! });
+  expect(initialReadState).toEqual({ documentId, versionId: originalDocument.currentVersionId,
+    firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false });
+  await observeReadStateChange(page, context, initialReadState, 'VIEW', () => page.getByRole('button', { name: '詳細を開く' }).press('Enter'));
   await expect(page.getByRole('heading', { name: '規程サンプル', level: 1 })).toBeVisible();
   await visualCheckpoint(page, '03-detail-overview-1440.png');
   completed('detail-opened');
@@ -89,16 +207,150 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('heading', { name: '正式改訂', exact: true })).toBeVisible();
   expect(before.revisions).toHaveLength(2);
   await visualCheckpoint(page, '04-revision-version-1440.png');
+  const oldVersion = before.versions.find(version => version.versionNo === 1)!;
+  expect(oldVersion.versionId).not.toBe(before.currentVersionId);
+  const currentVersion = before.versions.find(version => version.versionId === before.currentVersionId)!;
+  const normalSelection = page.getByRole('heading', { name: `選択中: 版 ${currentVersion.versionNo}`, exact: true });
+  await expect(normalSelection).toBeVisible();
+  const normalUrl = page.url();
+  const readStateBeforeHistory = (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
+  const versionsBeforeHistory = (await listDocumentVersions({ ...humanOptions, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
+  const versionReadStatesBeforeHistory = versionsBeforeHistory.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt }));
+  const historyResponse = (suffix: string) => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/versions${suffix}`
+      && url.searchParams.get('purpose') === 'history' && response.request().method() === 'GET';
+  });
+  const historyListResponse = historyResponse('');
+  await page.getByRole('button', { name: 'コンテンツ版の履歴を開く', exact: true }).click();
+  const historyListResult = await historyListResponse;
+  expect(historyListResult.status()).toBe(200);
+  expect(new URL(historyListResult.url()).searchParams.get('pageSize')).toBe('100');
+  expect(new URL(historyListResult.url()).searchParams.has('cursor')).toBe(false);
+  const historyVersions = await historyListResult.json() as VersionList;
+  expect(historyVersions.items.map(version => version.versionId)).toEqual(before.versions.map(version => version.versionId));
+  expect(historyVersions.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt }))).toEqual(versionReadStatesBeforeHistory);
+  // 既存の2版だけを使う。実GUIのコンテンツ版101件目の資格には読み替えない。
+  expect(historyVersions.nextCursor).toBeNull();
+  const contentHistory = page.getByRole('region', { name: 'コンテンツ版の履歴（閲覧専用）', exact: true });
+  await expect(contentHistory).toBeVisible();
+  const historySelection = contentHistory.getByRole('combobox', { name: '履歴のコンテンツ版を選択', exact: true });
+  await expect(historySelection).toHaveValue('');
+  const oldDetailResponse = historyResponse(`/${oldVersion.versionId}`);
+  const oldFilesResponse = historyResponse(`/${oldVersion.versionId}/files`);
+  await historySelection.selectOption(oldVersion.versionId);
+  const oldDetailResult = await oldDetailResponse, oldFilesResult = await oldFilesResponse;
+  expect(oldDetailResult.status()).toBe(200); expect(oldFilesResult.status()).toBe(200);
+  const oldDetail = await oldDetailResult.json() as VersionDetail;
+  expect(oldDetail).toMatchObject({ versionId: oldVersion.versionId, versionNo: 1, lifecycleState: 'published', isCurrent: false,
+    firstReadAt: historyVersions.items.find(version => version.versionId === oldVersion.versionId)!.firstReadAt });
+  expect(oldDetail.capabilities.download.status).toBe('available');
+  const historyDetail = contentHistory.getByRole('region', { name: '選択したコンテンツ版の詳細', exact: true });
+  await expect(historyDetail).toContainText(oldDetail.title);
+  await expect(historyDetail).toContainText(`Version ${oldDetail.versionNo}`);
+  const oldFiles = await oldFilesResult.json() as FileList;
+  const originals = oldFiles.items.filter(file => file.role === 'AUTHORITATIVE');
+  expect(originals.length).toBeGreaterThan(0);
+  const originalButtons = historyDetail.getByRole('button', { name: /^履歴の原本を取得: / });
+  await expect(originalButtons).toHaveCount(originals.length);
+  for (const [index, file] of originals.entries()) {
+    const originalResponse = historyResponse(`/${oldVersion.versionId}/files/${file.contentItemId}/${file.representationId}`);
+    const historicalDownload = page.waitForEvent('download');
+    await expect(originalButtons.nth(index)).toHaveAccessibleName(`履歴の原本を取得: ${file.displayName}`);
+    await originalButtons.nth(index).click();
+    expect((await originalResponse).status()).toBe(200);
+    const originalDownload = await historicalDownload;
+    expect(originalDownload.suggestedFilename()).toBe(file.displayName);
+    const originalBytes = await readFile((await originalDownload.path())!);
+    const originalSnapshot = oldVersion.files.find(item => item.contentItemId === file.contentItemId && item.representationId === file.representationId)!;
+    expect(originalBytes.byteLength).toBe(file.sizeBytes); expect(hash(originalBytes)).toBe(originalSnapshot.hash);
+  }
+  await expect(historySelection).toHaveValue(oldVersion.versionId);
+  await expect(normalSelection).toBeVisible();
+  await expect(page).toHaveURL(normalUrl);
+  await contentHistory.getByRole('button', { name: 'コンテンツ版の履歴を閉じる', exact: true }).click();
+  await expect(contentHistory).toBeHidden();
+  await expect(normalSelection).toBeVisible();
+  await expect(page).toHaveURL(normalUrl);
+  expect((await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState).toEqual(readStateBeforeHistory);
+  const versionsAfterHistory = (await listDocumentVersions({ ...humanOptions, path: { documentId }, query: { purpose: 'history', pageSize: 100 } })).data;
+  expect(versionsAfterHistory.items.map(({ versionId, firstReadAt }) => ({ versionId, firstReadAt })))
+    .toEqual(versionReadStatesBeforeHistory);
+  expect(await persistedSnapshot(human, documentId)).toEqual(before);
+  expect(await persistedSnapshot(agent, documentId)).toEqual(before);
+  const historyReadState = (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
+  const historyRegion = page.getByRole('region', { name: '変更履歴', exact: true });
+  let initialHistory: ModelsHistory | undefined;
+  for (const read of ['open', 'restart'] as const) {
+    const historyResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.origin === human && url.pathname === `/v1/documents/${documentId}/history`
+        && response.request().method() === 'GET';
+    });
+    if (read === 'open') await page.getByRole('tab', { name: '履歴', exact: true }).click();
+    else await historyRegion.getByRole('button', { name: '変更履歴を最初から読み直す', exact: true }).click();
+    const historyResult = await historyResponse;
+    expect(historyResult.status()).toBe(200);
+    expect([...new URL(historyResult.url()).searchParams]).toEqual([['pageSize', '100']]);
+    const history = await historyResult.json() as ModelsHistory;
+    expect(history.items.length).toBeGreaterThan(0);
+    expect(history.items.some(entry => entry.actionCode === 'document.version.published')).toBe(true);
+    // 既存seedの少数履歴だけを使う。実GUIの101件目や跨page snapshotの資格には読み替えない。
+    expect(history.nextCursor).toBeNull();
+    if (initialHistory) expect(isDeepStrictEqual(history, initialHistory)).toBe(true);
+    else initialHistory = history;
+    await expect(historyRegion.getByRole('heading', { name: '変更履歴', exact: true })).toBeVisible();
+    const historyRows = historyRegion.getByRole('listitem');
+    await expect(historyRows).toHaveCount(history.items.length);
+    await expect(historyRows.locator('strong')).toHaveText(history.items.map(entry => entry.actionCode));
+    await expect(historyRows.locator('span')).toHaveText(history.items.map(entry =>
+      entry.provenanceQuality === 'operationLedger' ? '操作記録' : entry.provenanceQuality === 'versionFallback' ? '版からの履歴' : '由来不明の履歴'));
+    for (const [index, entry] of history.items.entries()) {
+      const renderedRow = historyRows.nth(index);
+      await expect(renderedRow.locator('time')).toHaveText(entry.occurredAt ? formatDateTime(entry.occurredAt, 'Asia/Tokyo') : '日時不明');
+      const actorLabel = entry.actor?.presentation.displayName ?? entry.actor?.principalId ?? '実行者不明';
+      const actorStatus = entry.actor?.presentation.resolution === 'notFound' ? ' · ディレクトリに存在しません'
+        : entry.actor?.presentation.resolution === 'unavailable' ? ' · 表示情報を取得できません' : '';
+      await expect(renderedRow.locator('p')).toHaveText(actorLabel + actorStatus);
+    }
+    await expect(historyRegion.getByRole('button', { name: '変更履歴をさらに表示', exact: true })).toBeHidden();
+    await expect(historyRegion.getByRole('button', { name: '変更履歴の続きを再試行', exact: true })).toBeHidden();
+    await expect(historyRegion.getByRole('button', { name: '変更履歴を最初から読み直す', exact: true })).toBeEnabled();
+  }
+  expect(isDeepStrictEqual(await persistedSnapshot(human, documentId), before)).toBe(true);
+  expect(isDeepStrictEqual((await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data.readState, historyReadState)).toBe(true);
   await page.getByRole('tab', { name: '履歴', exact: true }).click();
   await expect(page.getByRole('heading', { name: '変更履歴' })).toBeVisible();
   await expect(page.getByText('document.version.published', { exact: true }).first()).toBeVisible();
   completed('history-opened');
+  const comparisonResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/revision-comparisons`
+      && response.request().method() === 'POST';
+  });
   await page.getByRole('tab', { name: '新旧比較', exact: true }).click();
   await expect(page.getByRole('heading', { name: '本文の変更' })).toBeVisible();
   const compareBody = { baseRevisionId: before.revisions[1]!.revisionId, targetRevisionId: before.revisions[0]!.revisionId, projection: 'display' as const };
+  const comparisonResult = await comparisonResponse;
+  expect(comparisonResult.status()).toBe(200);
+  expect(comparisonResult.request().postDataJSON()).toEqual({ ...compareBody, pageSize: 50 });
+  const comparisonBody = await comparisonResult.json() as RevisionComparisonResponse;
+  expect(comparisonBody.contentComparisonStatus).toBe('differentAuthoritativeVersions');
+  expect(comparisonBody.coverage).toBe('full');
+  expect(comparisonBody.displayItems.length).toBeGreaterThan(0);
+  // 既存の1行更新fixtureだけを使う。実GUIの50件超の追加page資格には読み替えない。
+  expect(comparisonBody.nextCursor ?? null).toBeNull();
+  const comparisonRegion = page.getByRole('region', { name: '新旧比較', exact: true });
+  const bodyChanges = comparisonRegion.locator('section')
+    .filter({ has: page.getByRole('heading', { name: '本文の変更', exact: true }) });
+  await expect(bodyChanges).toHaveCount(1);
+  await expect(bodyChanges.getByRole('listitem')).toHaveCount(comparisonBody.displayItems.length);
+  await expect(comparisonRegion.getByRole('button', { name: '比較結果をさらに表示', exact: true })).toBeHidden();
+  await expect(comparisonRegion.getByRole('button', { name: '比較結果を最初から読み直す', exact: true })).toBeVisible();
   const humanComparison = (await compareDocumentRevisions({ ...humanOptions, path: { documentId }, body: compareBody })).data;
   const agentComparison = (await compareDocumentRevisions({ ...agentOptions, path: { documentId }, body: compareBody })).data;
   expect(humanComparison.coverage).toBe('full'); expect(humanComparison.displayItems.length).toBeGreaterThan(0);
+  expect(comparisonBody.resultDigest).toBe(humanComparison.resultDigest);
   expect(agentComparison.resultDigest).toBe(humanComparison.resultDigest);
   await visualCheckpoint(page, '05-comparison-1440.png');
   completed('comparison-verified');
@@ -108,7 +360,21 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: /規程サンプル/ }).click();
   await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === `/documents/${documentId}` && url.searchParams.get('view') === 'authoring');
+  const documentPolicyRequests: Request[] = [];
+  const captureDocumentPolicy = (req: Request) => {
+    const url = new URL(req.url());
+    if (url.origin === human && /^\/v1\/documents\/[^/]+\/access-policy$/.test(url.pathname) && req.method() === 'PUT') documentPolicyRequests.push(req);
+  };
+  page.on('request', captureDocumentPolicy);
+  const documentPolicyRead = () => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/access-policy` && response.request().method() === 'GET';
+  });
+  const initialDocumentPolicyResponse = documentPolicyRead();
   await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
+  const initialDocumentPolicyResult = await initialDocumentPolicyResponse;
+  expect(initialDocumentPolicyResult.status()).toBe(200);
+  expect(await initialDocumentPolicyResult.json()).toEqual(originalDocumentPolicy);
   await expect(page.getByRole('heading', { name: '現在有効なアクセス権' })).toBeVisible();
   await expect(page.getByRole('rowheader', { name: /poc-agents/ })).toBeVisible();
   await page.getByRole('radio', { name: 'この文書だけに個別設定' }).check();
@@ -116,13 +382,71 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await expect(page.getByRole('radio', { name: 'この文書だけに個別設定' })).toBeChecked();
   await expect(page.getByLabel('変更理由')).toHaveValue('Synthetic runtime acceptance: preserve read-only agent grant');
   await visualCheckpoint(page, '10-access-policy-effective-draft-1440.png');
-  const policyResponse = page.waitForResponse(response => response.url().endsWith(`/documents/${documentId}/access-policy`) && response.request().method() === 'PUT');
+  const policyResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/access-policy` && response.request().method() === 'PUT';
+  });
   await page.getByRole('button', { name: 'アクセス設定を保存', exact: true }).click();
-  expect((await policyResponse).status()).toBe(200);
-  await expect(page.getByRole('status')).toContainText('アクセス設定を保存しました');
+  const documentPolicyResult = await policyResponse;
+  expect(documentPolicyResult.status()).toBe(200);
+  const documentPolicyBody = documentPolicyResult.request().postData()!;
+  const documentPolicyPayload = documentPolicyResult.request().postDataJSON() as CommandsPolicyExplicit;
+  expect(documentPolicyPayload.operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  expect(folderOperations.has(documentPolicyPayload.operationId)).toBe(false);
+  expect({ ...documentPolicyPayload, grants: grantsOnly(documentPolicyPayload.grants) }).toEqual({
+    operationId: documentPolicyPayload.operationId, expectedPolicyRevision: originalDocumentPolicy.policyRevision,
+    mode: 'explicit', reason: 'Synthetic runtime acceptance: preserve read-only agent grant',
+    grants: originalGrants,
+  });
+  const documentPolicyReceipt = await documentPolicyResult.json() as MutationResult;
+  expect(documentPolicyReceipt).toMatchObject({ operationId: documentPolicyPayload.operationId, resourceId: documentId,
+    changed: true, resultingRevision: originalDocumentPolicy.policyRevision + 1 });
+  expect(Number.isFinite(Date.parse(documentPolicyReceipt.occurredAt))).toBe(true);
+  const documentPolicyOutcome = page.getByRole('region', { name: '文書アクセス設定の保存結果', exact: true });
+  await expect(documentPolicyOutcome.getByRole('status').filter({ hasText: 'アクセス設定を保存しました。' })).toBeVisible();
+  await expect(documentPolicyOutcome).toContainText(documentPolicyPayload.operationId);
+  await expect(documentPolicyOutcome.getByRole('textbox', { name: '変更理由', exact: true })).toHaveValue(documentPolicyPayload.reason);
+  await expect(documentPolicyOutcome.getByText(`送信時のpolicy revision：${documentPolicyPayload.expectedPolicyRevision}`, { exact: true })).toBeVisible();
+  await expect(documentPolicyOutcome.getByText(`保存結果のpolicy revision：${documentPolicyReceipt.resultingRevision}`, { exact: true })).toBeVisible();
   const policy = (await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data;
   expect(policy.bindingMode).toBe('explicit');
-  expect(policy.effectiveGrants.find(grant => grant.subjectId === 'poc-agents')!.actions.sort()).toEqual(['read', 'readHistory']);
+  expect(policy).toMatchObject({ target: { kind: 'document', id: documentId }, policyRevision: documentPolicyReceipt.resultingRevision,
+    effectivePolicyId: policy.policyId, effectiveSource: { kind: 'document', id: documentId } });
+  expect(policy.policyId).not.toBeNull();
+  expect(grantsOnly(policy.effectiveGrants)).toEqual(originalGrants);
+  expect(grantsOnly(policy.effectiveGrants).find(grant => grant.subjectId === 'poc-users')!.actions)
+    .toEqual(['administer', 'publish', 'read', 'readHistory', 'write']);
+  expect(grantsOnly(policy.effectiveGrants).find(grant => grant.subjectId === 'poc-agents')!.actions).toEqual(['read', 'readHistory']);
+  // 既知成功の同じbodyを完全再送する。実の応答喪失・自己失権後UNKNOWNの資格ではない。
+  const documentPolicyReplay = await request.put(documentPolicyResult.url(), {
+    data: documentPolicyBody, headers: { 'content-type': 'application/json' },
+  });
+  expect(documentPolicyReplay.status()).toBe(200);
+  expect(await documentPolicyReplay.json()).toEqual(documentPolicyReceipt);
+  expect((await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data).toEqual(policy);
+  expect((await getFolderAccessPolicy({ ...humanOptions, path: folderPath })).data).toEqual(currentFolderPolicy);
+  // 同じアプリ内の通常往復で成功receiptを保持する。確認して閉じた後は現在GETだけを根拠にする。
+  await page.getByRole('navigation', { name: 'メインナビゲーション' }).getByRole('link', { name: '編集作業', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === '/documents' && url.searchParams.get('view') === 'authoring');
+  await expect(page.getByRole('button', { name: '文書アクセス設定の保存結果', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'PoC Shared', exact: true }).click();
+  await page.getByRole('button', { name: /規程サンプル/ }).click();
+  await page.getByRole('button', { name: '詳細を開く', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === `/documents/${documentId}` && url.searchParams.get('view') === 'authoring');
+  await page.getByRole('tab', { name: 'アクセス', exact: true }).click();
+  await expect(documentPolicyOutcome.getByRole('status').filter({ hasText: 'アクセス設定を保存しました。' })).toBeVisible();
+  await expect(documentPolicyOutcome).toContainText(documentPolicyPayload.operationId);
+  await expect(documentPolicyOutcome.getByRole('textbox', { name: '変更理由', exact: true })).toHaveValue(documentPolicyPayload.reason);
+  await expect(documentPolicyOutcome.getByText(`送信時のpolicy revision：${documentPolicyPayload.expectedPolicyRevision}`, { exact: true })).toBeVisible();
+  await expect(documentPolicyOutcome.getByText(`保存結果のpolicy revision：${documentPolicyReceipt.resultingRevision}`, { exact: true })).toBeVisible();
+  await documentPolicyOutcome.getByRole('button', { name: '確認して閉じる', exact: true }).click();
+  await expect(documentPolicyOutcome).toBeHidden();
+  await expect(page.getByRole('radio', { name: 'この文書だけに個別設定', exact: true })).toBeChecked();
+  expect((await getDocumentAccessPolicy({ ...humanOptions, path: { documentId } })).data).toEqual(policy);
+  page.off('request', captureDocumentPolicy);
+  expect(documentPolicyRequests).toHaveLength(1);
+  expect(new URL(documentPolicyRequests[0]!.url()).pathname).toBe(`/v1/documents/${documentId}/access-policy`);
+  expect(documentPolicyRequests[0]!.postData()).toBe(documentPolicyBody);
   completed('policy-saved');
 
   await page.getByRole('tab', { name: '版・改訂', exact: true }).click();
@@ -146,13 +470,88 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   await page.getByRole('button', { name: '新しい作業版を作成', exact: true }).click();
   const createdResponse = await createResponse; expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json() as VersionMutationResult;
-  await expect(page.getByRole('status')).toContainText('新しい作業版を作成しました');
+  await expect(page.getByRole('region', { name: '作業版の編集', exact: true }).getByRole('status')).toContainText('新しい作業版を作成しました');
   const createdFiles = (await listVersionFiles({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data;
   expect(createdFiles.items).toHaveLength(1);
   expect(createdFiles.items[0]).toMatchObject({ logicalPath: 'primary', ordinal: 0, mediaType: 'text/plain', displayName: 'primary' });
   completed('version-created');
   await page.getByRole('button', { name: '版の一覧へ戻る', exact: true }).click();
   await page.getByRole('button', { name: /WORKING · 版 3/ }).click();
+  const workingSelection = page.getByRole('heading', { name: '選択中: WORKING · 版 3', exact: true });
+  await expect(workingSelection).toBeVisible();
+  const workingComparisonButton = page.getByRole('button', { name: '現行公開版とこの作業版を比較', exact: true });
+  await expect(workingComparisonButton).toBeEnabled();
+  const workingComparisonUrl = page.url();
+  const workingComparisonBaseId = before.currentVersionId;
+  if (!workingComparisonBaseId) throw Error('The seeded published Version 2 must remain current before comparison');
+  const readWorkingComparisonState = async () => ({
+    // history-purpose includes this WORKING for the human writer, unlike the read-only agent.
+    snapshot: await persistedSnapshot(human, documentId),
+    document: (await getDocument({ ...humanOptions, path: { documentId }, query: { view: 'published' } })).data,
+    base: (await getDocumentVersion({ ...humanOptions, path: { documentId, versionId: workingComparisonBaseId }, query: { purpose: 'published' } })).data,
+    target: (await getDocumentVersion({ ...humanOptions, path: { documentId, versionId: created.targetVersionId }, query: { purpose: 'authoring' } })).data,
+  });
+  const beforeWorkingComparison = await readWorkingComparisonState();
+  expect(beforeWorkingComparison.document.currentVersionId).toBe(before.currentVersionId);
+  expect(beforeWorkingComparison.document.capabilities.compareVersions.status).toBe('available');
+  expect(beforeWorkingComparison.base).toMatchObject({ versionId: before.currentVersionId, versionNo: 2, lifecycleState: 'published', isCurrent: true });
+  expect(beforeWorkingComparison.target).toMatchObject({ versionId: created.targetVersionId, versionNo: 3, lifecycleState: 'working', isCurrent: false });
+  expect(beforeWorkingComparison.snapshot.revision).toBe(created.resultingRevision);
+  expect(beforeWorkingComparison.snapshot.versions).toHaveLength(3);
+  expect(beforeWorkingComparison.snapshot.versions.find(version => version.versionId === created.targetVersionId)!.files[0]!.hash).toBe(hash(changedContent));
+  const workingComparisonResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === human && url.pathname === `/v1/documents/${documentId}/comparisons`
+      && response.request().method() === 'POST';
+  });
+  const workingComparisonRequests: string[] = [];
+  const recordWorkingComparisonRequest = (req: Request) => {
+    const url = new URL(req.url());
+    if (url.origin === human && url.pathname.startsWith('/v1/')) workingComparisonRequests.push(`${req.method()} ${url.pathname}`);
+  };
+  page.on('request', recordWorkingComparisonRequest);
+  await workingComparisonButton.click();
+  const workingComparisonResult = await workingComparisonResponse;
+  expect(workingComparisonResult.status()).toBe(200);
+  expect(workingComparisonResult.request().postDataJSON()).toEqual({ baseVersionId: before.currentVersionId,
+    targetVersionId: created.targetVersionId, profile: 'document-diff-v0', projection: 'display', pageSize: 50 });
+  // Version display carries content items, not the formal Revision comparison's metadata snapshots or pair IDs.
+  const workingComparison = await workingComparisonResult.json() as ModelsDiffDisplayProjection;
+  expect(workingComparison).toMatchObject({ projection: 'display', verdict: 'different', coverage: 'full', pageSize: 50,
+    nextCursor: null, unverifiedRegions: [] });
+  expect(workingComparison.resultDigest).toMatch(/^[0-9a-f]{64}$/);
+  expect(workingComparison.items.length).toBeGreaterThan(0);
+  const baseLine = downloaded.toString('utf8').split('\n')[2]!;
+  const targetLine = changedContent.toString('utf8').split('\n')[2]!;
+  expect(workingComparison.items.some(item => item.base?.kind === 'text' && item.target?.kind === 'text'
+    && item.base.text.includes(baseLine) && item.target.text.includes(targetLine))).toBe(true);
+  const workingComparisonRegion = page.getByRole('region', { name: '公開前の内容比較', exact: true });
+  await expect(workingComparisonRegion).toBeVisible();
+  const workingComparisonFact = (label: string) => workingComparisonRegion.locator('dt').filter({ hasText: new RegExp(`^${label}$`) })
+    .locator('xpath=following-sibling::dd[1]');
+  await expect(workingComparisonFact('基準')).toHaveText(`Version 2 · ${beforeWorkingComparison.base.title}`);
+  await expect(workingComparisonFact('対象')).toHaveText(`WORKING · Version 3 · ${beforeWorkingComparison.target.title}`);
+  await expect(workingComparisonFact('基準版ID')).toHaveText(workingComparisonBaseId);
+  await expect(workingComparisonFact('対象版ID')).toHaveText(created.targetVersionId);
+  await expect(workingComparisonFact('本文')).toHaveText('差分あり');
+  await expect(workingComparisonFact('比較範囲')).toHaveText('全範囲');
+  await expect(workingComparisonRegion.getByRole('heading', { name: 'メタデータの変更', exact: true })).toBeHidden();
+  await expect(workingComparisonRegion.getByRole('listitem')).toHaveCount(workingComparison.items.length);
+  const textFragments = workingComparison.items.flatMap(item => [item.base, item.target])
+    .flatMap(fragment => fragment?.kind === 'text' ? [fragment.text] : []);
+  await expect(workingComparisonRegion.locator('pre')).toHaveText(textFragments);
+  // The existing one-line edit ends on this page; real 50+ pagination and multiple originals remain unqualified.
+  await expect(workingComparisonRegion.getByRole('button', { name: '内容比較をさらに表示', exact: true })).toBeHidden();
+  await expect(workingComparisonRegion.getByRole('button', { name: '内容比較の続きを再試行', exact: true })).toBeHidden();
+  await expect(workingComparisonRegion.getByRole('button', { name: '内容比較を最初から読み直す', exact: true })).toBeEnabled();
+  await workingComparisonRegion.getByRole('button', { name: '内容比較を閉じる', exact: true }).click();
+  await expect(workingComparisonRegion).toBeHidden();
+  await expect(workingSelection).toBeVisible();
+  await expect(page).toHaveURL(workingComparisonUrl);
+  page.off('request', recordWorkingComparisonRequest);
+  expect(workingComparisonRequests.filter(value => !value.startsWith('GET '))).toEqual([`POST /v1/documents/${documentId}/comparisons`]);
+  // Comparison/download audit may be appended. Authoritative data and both Version/read-state projections must not change.
+  expect(await readWorkingComparisonState()).toEqual(beforeWorkingComparison);
   await page.getByRole('button', { name: '公開する', exact: true }).click();
   const publishButton = page.getByRole('button', { name: '公開する', exact: true });
   await expect(publishButton).toBeDisabled();
@@ -169,7 +568,7 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   const publishResponse = page.waitForResponse(response => response.url().endsWith(':publish') && response.request().method() === 'POST');
   await page.keyboard.press('Enter'); expect((await publishResponse).status()).toBe(200);
   completed('publication-response-accepted');
-  await expect(page.getByRole('status')).toContainText('公開しました');
+  await expect(page.getByRole('region', { name: '公開・予約公開', exact: true }).getByRole('status')).toContainText('公開しました');
   completed('publication-success-visible');
   const returnToVersions = page.getByRole('button', { name: '版の一覧へ戻る', exact: true });
   await expect(page.locator('section[aria-busy]').filter({ has: publishButton })).toHaveAttribute('aria-busy', 'false');
@@ -190,9 +589,74 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
   expect(agentWrite.status()).toBe(404); expect((await agentWrite.json()).code).toBe('DOCUMENT_VERSION_NOT_FOUND');
   expect(await persistedSnapshot(human, documentId)).toEqual(after);
   expect(await persistedSnapshot(agent, documentId)).toEqual(after);
+  const readPath = { documentId, versionId: created.targetVersionId };
+  const newVersionUnread = await currentReadState(context, readPath);
+  expect(newVersionUnread).toEqual({ ...readPath, firstReadAt: null, needsRecheck: false, readStateRevision: 0, isRead: false });
+  const agentReadBefore = (await getDocument({ ...agentOptions, path: { documentId }, query: { view: 'published' } })).data.readState;
+  const readStateRequests: Request[] = [];
+  const readStateUrl = `${human}/v1/documents/${documentId}/versions/${readPath.versionId}/read-state`;
+  const recordReadState = (req: Request) => {
+    if (req.method() === 'POST' && [readStateUrl + '/view', readStateUrl + '/reset'].includes(req.url())) readStateRequests.push(req);
+  };
+  page.on('request', recordReadState);
+  const firstView = await observeReadStateChange(page, context, newVersionUnread, 'VIEW', () =>
+    page.goto(`/documents/${documentId}?view=published&tab=overview`));
+  const reset = await resetReadStateInGui(page, context, firstView.state);
+  // 旧PUTや過去VIEWの固定receipt再送は現在のRESETを解除しない。
+  const legacy = await request.put(readStateUrl);
+  expect(legacy.status()).toBe(200);
+  expect(await legacy.json()).toEqual({ ...readPath, firstReadAt: firstView.state.firstReadAt, inserted: false });
+  const replay = await request.post(readStateUrl + '/view', { data: firstView.request });
+  expect(replay.status()).toBe(200); expect(await replay.json()).toEqual(firstView.receipt);
+  const currentFile = createdFiles.items[0]!;
+  const originalAfterReset = await new BinaryTransportBridge({ baseUrl: human }).downloadVersionFileBlob({ ...readPath,
+    contentItemId: currentFile.contentItemId, representationId: currentFile.representationId, purpose: 'published' });
+  expect(hash(new Uint8Array(await originalAfterReset.arrayBuffer()))).toBe(hash(changedContent));
+  expect(await currentReadState(context, readPath)).toEqual(reset.state);
+  const readRegion = page.getByRole('region', { name: '本人の既読状態', exact: true });
+  const refreshed = page.waitForResponse(response => response.url() === readStateUrl && response.request().method() === 'GET');
+  await readRegion.getByRole('button', { name: '現在の既読状態を再取得', exact: true }).click();
+  expect((await refreshed).status()).toBe(200);
+  await expect(readRegion.getByRole('status')).toHaveText('未読');
+  await page.getByRole('tab', { name: '版・改訂', exact: true }).click();
+  await page.getByRole('tab', { name: '概要', exact: true }).click();
+  await expect(readRegion.getByRole('status')).toHaveText('未読');
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(await currentReadState(context, readPath)).toEqual(reset.state);
+  expect(readStateRequests.map(req => req.url())).toEqual([readStateUrl + '/view', readStateUrl + '/reset']);
+  await page.getByRole('button', { name: '← 一覧へ戻る', exact: true }).click();
+  await page.getByLabel('文書名で絞り込み', { exact: true }).fill(after.title);
+  await page.getByRole('checkbox', { name: '未読のみ', exact: true }).check();
+  const unreadList = page.waitForResponse(response => new URL(response.url()).pathname === '/v1/documents'
+    && new URL(response.url()).searchParams.get('unreadOnly') === 'true' && response.request().method() === 'GET');
+  await page.getByRole('button', { name: '絞り込む', exact: true }).click();
+  const unreadListResult = await unreadList;
+  expect(unreadListResult.status()).toBe(200);
+  expect((await unreadListResult.json()).items).toEqual(expect.arrayContaining([expect.objectContaining({
+    documentId, currentVersionId: readPath.versionId, readState: { isRead: false, firstReadAt: firstView.state.firstReadAt },
+  })]));
+  await page.locator(`[data-document-id="${documentId}"]`).press('Enter');
+  const reopened = await observeReadStateChange(page, context, reset.state, 'VIEW', () =>
+    page.getByRole('button', { name: '詳細を開く', exact: true }).press('Enter'));
+  expect(reopened.state).toEqual({ ...firstView.state, readStateRevision: 3 });
+  expect(readStateRequests.map(req => req.url())).toEqual([readStateUrl + '/view', readStateUrl + '/reset', readStateUrl + '/view']);
+  page.off('request', recordReadState);
+  for (const suffix of ['', '/view', '/reset']) {
+    const url = `${agent}/v1/documents/${documentId}/versions/${readPath.versionId}/read-state${suffix}`;
+    const deniedReadState = suffix ? await request.post(url, { data: { operationId: uuidV7(), expectedReadStateRevision: 0 } }) : await request.get(url);
+    expect(deniedReadState.status()).toBe(403); expect((await deniedReadState.json()).code).toBe('FORBIDDEN');
+  }
+  expect((await getDocument({ ...agentOptions, path: { documentId }, query: { view: 'published' } })).data.readState).toEqual(agentReadBefore);
+  expect(await persistedSnapshot(human, documentId)).toEqual(after);
+  expect(await persistedSnapshot(agent, documentId)).toEqual(after);
   expect(apiOrigins).toEqual(new Set([human]));
   completed('state-verified');
   await saveSnapshot(context, 'regulation', documentId);
+  const savedState = JSON.parse(await readFile(context.statePath, 'utf8'));
+  // 同じprivate stateを後続saveSnapshotも保存する。公開診断には追加しない。
+  savedState.folderAccessPolicy = { ...currentFolderPolicy, effectiveGrants: grantsOnly(currentFolderPolicy.effectiveGrants) };
+  savedState.documentAccessPolicy = { ...policy, effectiveGrants: grantsOnly(policy.effectiveGrants) };
+  await writeFile(context.statePath, JSON.stringify(savedState, null, 2), { mode: 0o600 });
   completed('snapshot-saved');
   await test.info().attach('shared-state.json', { body: Buffer.from(JSON.stringify(after, null, 2)), contentType: 'application/json' });
 });
@@ -319,6 +783,17 @@ test('real backend not-found and invalid API routes, keyboard return, reduced-mo
     await expect(page.getByRole('button', { name: /規程サンプル/ })).toBeFocused();
     if (width === 1280) await visualCheckpoint(page, '02-list-focus-return-1280.png');
   }
+  // 最後のkeyboard往復より後で未読へ戻し、HTTP再起動用の本人stateを固定する。
+  const savedState = JSON.parse(await readFile(context.statePath, 'utf8')) as PersistedState;
+  const regulation = savedState.documents.find(item => item.key === 'regulation')!.snapshot;
+  const readPath = { documentId, versionId: regulation.currentVersionId! };
+  await page.goto(`/documents/${documentId}?view=published&tab=overview`);
+  await expect(page.getByRole('region', { name: '本人の既読状態', exact: true }).getByRole('status')).toHaveText('既読');
+  const beforeReset = await currentReadState(context, readPath);
+  expect(beforeReset).toMatchObject({ isRead: true, needsRecheck: false, readStateRevision: 3 });
+  savedState.documentReadState = await resetReadStateInGui(page, context, beforeReset);
+  expect(savedState.documentReadState.documentRevision).toBe(regulation.revision);
+  await writeFile(context.statePath, JSON.stringify(savedState, null, 2), { mode: 0o600 });
   await page.goto(`/documents/${uuidV7()}?view=published`);
   await expect(page.getByRole('alert')).toContainText('文書が見つからないか、閲覧できません。');
   for (const path of ['/v1/not-a-real-route', '/health/not-a-real-route', '/missing.js', '/.env']) {

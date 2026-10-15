@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { organizationEnvironment } from './settings.mjs';
 const inputs = { inherited: { PATH: '/tools', KP_RUNTIME_MODE: 'production', KP_ORGANIZATION_PROFILE: 'unknown', TEST_DATABASE_URL: 'external', WORK_POC_TEST_DATABASE_URL: 'external', KP_POC_ALLOW_NON_LOOPBACK: 'true' }, database: 'postgres://synthetic@127.0.0.1:1234/kp_document_poc', profile: 'sales-01', port: 8090, storage: '/owned/storage', dsi: '/owned/dsi', diff: '/owned/diff', web: '/owned/web', pdfium: '/owned/pdfium' };
-test('both fixed profiles use same-origin GUI with only owned runtime values', () => {
-  for (const profile of ['sales-01', 'office-01']) {
+test('every fixed profile uses same-origin GUI with only owned runtime values', () => {
+  for (const profile of ['sales-01', 'office-01', 'review-01', 'approver-01', 'multi-role-01', 'delegate-01']) {
     const env = organizationEnvironment({ ...inputs, profile });
     assert.equal(env.KP_RUNTIME_MODE, 'organization-synthetic');
     assert.equal(env.KP_ORGANIZATION_PROFILE, profile);
@@ -17,7 +17,9 @@ test('both fixed profiles use same-origin GUI with only owned runtime values', (
   }
 });
 test('unknown runtime profiles are rejected', () => {
-  assert.throws(() => organizationEnvironment({ ...inputs, profile: 'poc-human' }));
+  for (const profile of ['poc-human', 'agent-01', 'admin', 'multi-role01', '']) {
+    assert.throws(() => organizationEnvironment({ ...inputs, profile }));
+  }
 });
 test('Organization composition confirms drain only after the Work pool closes', async () => {
   const { readFile } = await import('node:fs/promises');

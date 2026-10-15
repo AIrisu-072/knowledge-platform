@@ -1,5 +1,8 @@
 export { documentApi } from '../api/document-api';
 export type {
+  CurrentReadState,
+  ReadStateMutationRequest,
+  ReadStateMutationResult,
   CreateDocumentResult,
   CommandsWithdrawVersion,
   CommandsEndPublication,
@@ -10,9 +13,11 @@ export type {
   CommandsPolicyInherit,
   DocumentDetail,
   DocumentList,
+  DocumentRevisionDetail,
   DocumentRevisionPage,
   DocumentRevisionSummary,
   DisplayFragment,
+  DiffDisplayProjection,
   FileList,
   Folder,
   FolderChildren,

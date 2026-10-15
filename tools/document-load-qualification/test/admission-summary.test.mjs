@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+const{summarizeAdmission}=await import('../admission-summary.mjs').catch(()=>({}));
+test('capacity stops emit only fixed reasons and numeric projection/reserves',()=>{
+ const result=summarizeAdmission({admission:{status:'NOT_ADMITTED',reasons:['projected total elapsed time exceeds wall-time budget','projected disk growth would consume disk reserve','PRIVATE_SENTINEL'],projection:{totalElapsedMs:8000000,diskGrowthBytes:1000,peakRssBytes:900,multiplier:1000,basis:'PRIVATE_SENTINEL'}},plan:{budgets:{maxWallTimeMs:7200000,maxRssBytes:2000,diskReserveBytes:100,minAvailableMemoryBytes:100,secret:'PRIVATE_SENTINEL'}},observations:[{diskFreeBytes:100,availableMemoryBytes:200,rssBytes:50,storageDiskFreeBytes:100,databaseDiskFreeBytes:100,path:'PRIVATE_SENTINEL'}]});
+ assert.equal(result.status,'NOT_ADMITTED');assert.deepEqual(result.reasonCodes,['projected-wall-time-exceeds-budget','projected-disk-exhausts-reserve','invalid-admission-evidence']);assert.equal(result.projection.totalElapsedMs,8000000);assert.equal(result.budgets.maxWallTimeMs,7200000);assert.equal(result.current.diskFreeBytes,100);assert.ok(!JSON.stringify(result).includes('PRIVATE_SENTINEL'));
+});
+test('missing or malformed admission values are not invented as successful numeric measurements',()=>{
+ assert.equal(summarizeAdmission({}),null);const result=summarizeAdmission({admission:{status:'NOT_ADMITTED',reasons:['missing or invalid measured rssBytes'],projection:{totalElapsedMs:NaN,peakRssBytes:-1,diskGrowthBytes:'PRIVATE_SENTINEL',multiplier:Infinity}},observations:[{rssBytes:null}]});assert.deepEqual(result.reasonCodes,['missing-rss-measurement']);assert.equal(result.projection.totalElapsedMs,null);assert.equal(result.current.rssBytes,null);assert.ok(!JSON.stringify(result).includes('PRIVATE_SENTINEL'));
+});

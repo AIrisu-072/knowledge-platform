@@ -1,3 +1,6 @@
+import { documentAccessPolicyOperations, sendDocumentAccessPolicyOperation } from '../src/application/document-access-policy';
+import { folderAccessPolicyOperations, sendFolderAccessPolicyOperation } from '../src/application/document-folder-access-policy';
+import { refreshFolderMoveReads } from '../src/application/document-folder-move';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { defaultStringifySearch, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -58,7 +61,11 @@ function mockApi() {
   Object.values(api).forEach((mock) => mock.mockReset());
   api.getRootFolder.mockResolvedValue({ folderId, name: 'ルート', revision: 1, parentFolderId: null, capabilities: {} });
   api.listFolderChildren.mockResolvedValue({ items: [], nextCursor: null, capabilities: {} });
-  api.listDocuments.mockResolvedValue({ view: 'published', items: [listItem('published')], nextCursor: null });
+  api.listDocuments.mockImplementation(query => {
+    if (query.view !== 'history') return Promise.resolve({ view: 'published', items: [listItem('published')], nextCursor: null });
+    const { currentVersionId: ignored, ...historyItem } = listItem('published'); void ignored;
+    return Promise.resolve({ view: 'history', items: [{ ...historyItem, lifecycleState: 'published', ended: false }], nextCursor: null });
+  });
   api.getDocument.mockResolvedValue(documentDetail('published'));
   api.listDocumentVersions.mockResolvedValue({ items: [version()], nextCursor: null });
   api.getDocumentVersion.mockResolvedValue(versionDetail());
@@ -72,7 +79,7 @@ function mockApi() {
   api.getVersionEditManifest.mockImplementation((id, sourceVersionId, purpose) => Promise.resolve({ documentId: id, sourceVersionId, purpose, documentRevision: 7, title: '受入手順', items: [{ contentItemId: 'primary-item', logicalPath: 'primary', ordinal: 0, representations: [{ role: 'authoritative', representationId: 'primary-representation', fileId: 'source-file', mediaType: 'text/plain', originalFilename: 'source.txt', sizeBytes: 8 }] }] }));
   api.publishVersion.mockResolvedValue({ publishOperationId: 'pub', documentId, documentVersionId: versionId, resultingDocumentRevision: 8, publishedAt: '2026-10-01T02:00:00Z' });
   api.schedulePublication.mockResolvedValue({ publishOperationId: 'pub', documentId, targetVersionId: versionId, acceptedRevision: 8, scheduledPublishAt: '2026-10-02T02:00:00Z' });
-  api.setDocumentAccessPolicy.mockResolvedValue({ operationId: 'op', resourceId: documentId, resultingRevision: 5, changed: true, occurredAt: '2026-10-01T02:00:00Z' });
+  api.setDocumentAccessPolicy.mockImplementation((id, body) => Promise.resolve({ operationId: body.operationId, resourceId: id, resultingRevision: body.expectedPolicyRevision + 1, changed: true, occurredAt: '2026-10-01T02:00:00Z' }));
   api.downloadVersionFile.mockResolvedValue(new Blob(['original']));
   return api;
 }
@@ -398,7 +405,7 @@ test('partial comparison keeps Unknown and Partial visible and sends the reader 
   await user.click(screen.getByRole('button', { name: '基準原本を確認' }));
   await waitFor(() => expect(api.downloadVersionFile).toHaveBeenCalledWith(expect.objectContaining({
     documentId, contentItemId: 'content-id', representationId: 'representation-id', purpose: 'published',
-  })));
+  }), { signal: expect.any(AbortSignal) }));
 });
 
 test('access changes use existing identities and the current policy revision', async () => {
@@ -456,7 +463,7 @@ test('an explicit policy can be changed back to inheritance with a reason and it
     reason: '親フォルダーの設定へ戻す',
     mode: 'inherit',
   });
-  expect(screen.queryByText(documentId)).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '文書アクセス設定の保存結果' })).toHaveTextContent(documentId);
 });
 
 function listItem(view: 'published' | 'authoring') {
@@ -954,4 +961,543 @@ test('empty metadata route uses the same Query key and cached query as unspecifi
   expect(query).toBe(initialQuery);
   expect(api.listDocuments).toHaveBeenCalledTimes(initialCalls);
   expect(query.queryKey[1]).toMatchObject({ documentType: undefined, owningDepartment: undefined, category: undefined });
+});
+
+test('published unread draft applies with existing filters, drops cursor on and off, and keeps selection', async () => {
+  const api = mockApi();
+  const conditions = { titleContains: 'keep', documentType: 'type', owningDepartment: '   ', category: 'category', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, cursor: 'old', selectedDocumentId: documentId, panel: 'open' };
+  const { router } = renderAt('/documents' + defaultStringifySearch(conditions));
+  const checkbox = await screen.findByRole('checkbox', { name: '未読のみ' });
+  expect(checkbox).not.toBeChecked();
+  const calls = api.listDocuments.mock.calls.length;
+  fireEvent.click(checkbox);
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+  expect(router.state.location.search).not.toHaveProperty('unreadOnly');
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).toHaveProperty('unreadOnly', true));
+  const { cursor: oldCursor, ...keptConditions } = conditions; void oldCursor;
+  expect(router.state.location.search).toMatchObject({ ...keptConditions, unreadOnly: true });
+  expect(router.state.location.search).not.toHaveProperty('cursor');
+  await act(async () => { await router.navigate({ to: '/documents', search: { ...router.state.location.search, cursor: 'second' } as never }); });
+  fireEvent.click(screen.getByRole('button', { name: '属性の絞り込みを解除' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('documentType'));
+  expect(router.state.location.search).toHaveProperty('unreadOnly', true);
+  expect(checkbox).toBeChecked();
+  await act(async () => { await router.navigate({ to: '/documents', search: { ...router.state.location.search, cursor: 'third' } as never }); });
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('unreadOnly'));
+  expect(router.state.location.search).not.toHaveProperty('cursor');
+  expect(router.state.location.search).toMatchObject({ titleContains: 'keep', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, selectedDocumentId: documentId, panel: 'open' });
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('unreadOnly'));
+});
+
+test.each(['authoring', 'history'])('unread checkbox is hidden for %s', async view => {
+  mockApi();
+  renderAt('/documents' + defaultStringifySearch({ view }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(screen.queryByRole('checkbox', { name: '未読のみ' })).not.toBeInTheDocument();
+});
+
+test('raw published false and missing unread share a GET and cached Query despite router merge', async () => {
+  const api = mockApi();
+  const { router, client } = renderAt('/documents?view=published&unreadOnly=false&panel=closed');
+  const checkbox = await screen.findByRole('checkbox', { name: '未読のみ' });
+  expect(checkbox).not.toBeChecked();
+  expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('unreadOnly');
+  const query = client.getQueryCache().findAll({ queryKey: ['documents'] })[0]!;
+  const calls = api.listDocuments.mock.calls.length;
+  await act(async () => { await router.navigate({ to: '/documents', search: { view: 'published', includeDescendants: false, sort: 'published_at_desc', pageSize: 50, panel: 'closed' } }); });
+  expect(client.getQueryCache().findAll({ queryKey: ['documents'] })).toEqual([query]);
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+  expect(query.queryKey[1]).toMatchObject({ unreadOnly: undefined });
+});
+
+test.each([
+  [{ unreadOnly: '', documentType: 'keep' }, { documentType: 'keep' }, ['unreadOnly']],
+  [{ unreadOnly: false, view: 'authoring', category: 'keep' }, { view: 'authoring', category: 'keep' }, ['unreadOnly']],
+  [{ documentType: [1], unreadOnly: true }, { unreadOnly: true }, ['documentType']],
+  [{ documentType: [1], unreadOnly: '' }, {}, ['documentType', 'unreadOnly']],
+  [{ documentType: null, unreadOnly: false, view: 'history' }, { view: 'history' }, ['documentType', 'unreadOnly']],
+])('route error removes each invalid group independently without widening valid conditions: %p', async (conditions, expected, removed) => {
+  const api = mockApi();
+  const originalResponse = globalThis.Response; globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { router } = renderAt('/documents' + defaultStringifySearch({ ...conditions, titleContains: 'keep', cursor: 'discard', panel: 'closed' }));
+    const link = await screen.findByRole('link', { name: '条件を解除して一覧へ戻る' });
+    expect(api.listDocuments).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ titleContains: 'keep', ...expected });
+    for (const key of [...removed, 'cursor']) expect(router.state.location.search).not.toHaveProperty(key);
+    expect(api.listDocuments.mock.lastCall![0]).toMatchObject(expected);
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+test.each(['/documents?unreadOnly=', '/documents?view=authoring&unreadOnly=false', '/documents?view=invalid&unreadOnly=true'])('invalid unread returnTo stops with a fixed reason instead of a default GET: %p', async returnTo => {
+  const api = mockApi();
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(returnTo.endsWith('=') ? '未読のみはtrueまたはfalseで指定してください。URLの条件を確認してください。' : '未読のみは公開一覧でのみ指定できます。URLの条件を確認してください。');
+  expect(router.state.location.pathname).toBe(`/documents/${documentId}`);
+  expect(api.listDocuments).not.toHaveBeenCalled();
+});
+
+test.each([{ pageSize: 0 }, { cursor: '' }, { sort: 'invalid' }])('unread actual GET survives old-condition fallback and detail return: %p', async invalid => {
+  const api = mockApi();
+  const returnTo = '/documents' + defaultStringifySearch({ unreadOnly: true, documentType: 'keep', ...invalid });
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('checkbox', { name: '未読のみ' })).toBeChecked();
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ unreadOnly: true, documentType: 'keep' });
+  expect(router.state.location.search.unreadOnly).toBe(true);
+});
+
+test('unread URL history, detail selection and page/sort/folder changes preserve unknown operations', async () => {
+  const api = mockApi();
+  api.listDocuments.mockResolvedValue({ view: 'published', items: [listItem('published')], nextCursor: 'next' });
+  api.listFolderChildren.mockResolvedValue({ items: [{ folderId: reviewFolderId, parentFolderId: folderId, name: '審査', revision: 3, capabilities: {} }], nextCursor: null, capabilities: {} });
+  const { router, client } = renderAt('/documents' + defaultStringifySearch({ documentType: 'keep', unreadOnly: true, selectedDocumentId: documentId }));
+  const store = metadataOperations(client);
+  const snapshot = { status: 'unknown' as const, request: { operationId: 'unread-kept', expectedDocumentRevision: 7, set: { category: 'kept' }, unset: [], reason: 'keep' } };
+  store.put(documentId, snapshot);
+  try {
+    const checkbox = await screen.findByRole('checkbox', { name: '未読のみ' });
+    expect(checkbox).toBeChecked();
+    await screen.findByRole('button', { name: /受入手順/ });
+    fireEvent.click(screen.getByRole('button', { name: /詳細を開く/ }));
+    await screen.findByRole('heading', { name: '受入手順', level: 1 });
+    expect(String(router.state.location.search.returnTo)).toContain('unreadOnly=true');
+    fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+    expect(await screen.findByRole('checkbox', { name: '未読のみ' })).toBeChecked();
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ unreadOnly: true, documentType: 'keep', selectedDocumentId: documentId });
+    fireEvent.click(screen.getByRole('checkbox', { name: '未読のみ' }));
+    fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('unreadOnly'));
+    await act(async () => router.history.back());
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '未読のみ' })).toBeChecked());
+    await act(async () => router.history.forward());
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '未読のみ' })).not.toBeChecked());
+    fireEvent.click(screen.getByRole('checkbox', { name: '未読のみ' }));
+    fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+    await waitFor(() => expect(router.state.location.search.unreadOnly).toBe(true));
+    await screen.findByRole('button', { name: /受入手順/ });
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].cursor).toBe('next'));
+    fireEvent.change(screen.getByRole('combobox', { name: '並び順' }), { target: { value: 'title_asc' } });
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('cursor'));
+    fireEvent.change(screen.getByRole('combobox', { name: '1ページあたりの件数' }), { target: { value: '25' } });
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].pageSize).toBe(25));
+    fireEvent.click(await screen.findByRole('button', { name: '審査' }));
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].folderId).toBe(reviewFolderId));
+    expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ unreadOnly: true, documentType: 'keep', sort: 'title_asc', pageSize: 25 });
+    expect(store.get(documentId)).toBe(snapshot);
+  } finally { store.clear(documentId); }
+});
+
+test('unread key keeps a delayed old published list out of current results', async () => {
+  const api = mockApi();
+  let resolveOld!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(query => query.unreadOnly === true ? Promise.resolve({ view: 'published', items: [{ ...listItem('published'), title: '現在の未読結果' }], nextCursor: null }) : new Promise(resolve => { resolveOld = resolve; }));
+  renderAt('/documents?panel=closed');
+  await waitFor(() => expect(api.listDocuments).toHaveBeenCalled());
+  fireEvent.click(await screen.findByRole('checkbox', { name: '未読のみ' }));
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await screen.findByRole('button', { name: '現在の未読結果' });
+  await act(async () => resolveOld({ view: 'published', items: [{ ...listItem('published'), title: '旧条件の遅延結果' }], nextCursor: null } as DocumentList));
+  expect(screen.getByRole('button', { name: '現在の未読結果' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: '旧条件の遅延結果' })).not.toBeInTheDocument();
+});
+
+test('unread GET failure remains distinct from empty unread results and retries the same condition', async () => {
+  const api = mockApi();
+  api.listDocuments.mockRejectedValueOnce({ code: 'FORBIDDEN', status: 403 }).mockResolvedValue({ view: 'published', items: [], nextCursor: null });
+  renderAt('/documents?unreadOnly=true&panel=closed');
+  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '文書がありません' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+  expect(await screen.findByRole('heading', { name: '文書がありません' })).toBeVisible();
+  expect(api.listDocuments.mock.lastCall![0]).toHaveProperty('unreadOnly', true);
+});
+
+test('normal editing and document links have fresh query targets without unread or cursor', async () => {
+  mockApi();
+  renderAt('/documents?unreadOnly=true&cursor=old');
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(screen.getByRole('link', { name: '編集作業' })).toHaveAttribute('href', '/documents' + defaultStringifySearch(validateListSearch({ view: 'authoring' })));
+  expect(screen.getByRole('link', { name: '文書' })).toHaveAttribute('href', '/documents' + defaultStringifySearch(validateListSearch({ view: 'published' })));
+});
+
+
+const createdStartLabel = '作成日時の開始（含む）';
+const createdEndLabel = '作成日時の終了（含まない）';
+const preciseRange = { createdFrom: '2026-10-01T00:00:00.123456+09:00', createdBefore: '2026-10-02T00:00:00Z' };
+const minuteRange = { createdFrom: '2026-10-01T00:00:00.000Z', createdBefore: '2026-10-02T00:00:00.000Z' };
+
+test.each(['published', 'authoring', 'history'])('created calendar range applies in %s with explicit JST boundaries and keeps other filters', async view => {
+  const api = mockApi();
+  const conditions = { view, titleContains: 'keep', documentType: 'type', folderId, includeDescendants: true, sort: 'title_asc', pageSize: 25, cursor: 'old', selectedDocumentId: documentId, panel: 'closed' };
+  const { router } = renderAt('/documents' + defaultStringifySearch(conditions));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(screen.getByText('文書自体の作成日時で絞り込みます。JST / UTC+09:00・分単位。開始を含み、終了を含みません。')).toBeVisible();
+  const start = screen.getByLabelText(createdStartLabel), end = screen.getByLabelText(createdEndLabel);
+  expect(start).toHaveAttribute('type', 'datetime-local');
+  expect(end).toHaveAttribute('type', 'datetime-local');
+  expect(start).toHaveAttribute('step', '60');
+  const calls = api.listDocuments.mock.calls.length;
+  fireEvent.change(start, { target: { value: '2026-10-01T09:00' } });
+  fireEvent.change(end, { target: { value: '2026-10-02T09:00' } });
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ ...minuteRange, view }));
+  const { cursor: oldCursor, ...keptConditions } = conditions; void oldCursor;
+  expect(router.state.location.search).toMatchObject({ ...keptConditions, ...minuteRange });
+  expect(router.state.location.search).not.toHaveProperty('cursor');
+  fireEvent.click(screen.getByRole('button', { name: '属性の絞り込みを解除' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('documentType'));
+  expect(router.state.location.search).toMatchObject(minuteRange);
+  fireEvent.click(screen.getByRole('button', { name: '日時の条件を解除' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('createdFrom'));
+  expect(router.state.location.search).not.toHaveProperty('createdBefore');
+  expect(router.state.location.search).toMatchObject({ view, titleContains: 'keep', folderId, selectedDocumentId: documentId, panel: 'closed' });
+});
+
+test('created precise URL keeps raw values when applying other filters, replacing, cancelling or clearing one endpoint', async () => {
+  const api = mockApi();
+  const { router } = renderAt('/documents' + defaultStringifySearch({ ...preciseRange, documentType: 'keep', cursor: 'old', panel: 'closed' }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(screen.getByLabelText(createdStartLabel)).toHaveValue(preciseRange.createdFrom);
+  expect(screen.getByLabelText(createdStartLabel)).toHaveAttribute('readonly');
+  expect(screen.getByLabelText(createdEndLabel)).toHaveValue(preciseRange.createdBefore);
+  fireEvent.change(screen.getByRole('textbox', { name: '文書種別' }), { target: { value: 'new' } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ ...preciseRange, documentType: 'new' }));
+  fireEvent.click(screen.getByRole('button', { name: '作成日時の開始を指定し直す' }));
+  expect(screen.getByLabelText(createdStartLabel)).toHaveValue('');
+  const calls = api.listDocuments.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('作成日時の開始（含む）をJSTのカレンダーと時刻で指定してください。');
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+  expect(router.state.location.search).toMatchObject(preciseRange);
+  fireEvent.change(screen.getByLabelText(createdStartLabel), { target: { value: '2026-10-03T09:00' } });
+  fireEvent.click(screen.getByRole('button', { name: '作成日時の開始の指定し直しを取消' }));
+  expect(screen.getByLabelText(createdStartLabel)).toHaveValue(preciseRange.createdFrom);
+  fireEvent.click(screen.getByRole('button', { name: '作成日時の開始を指定し直す' }));
+  fireEvent.change(screen.getByLabelText(createdStartLabel), { target: { value: '2026-10-03T09:00' } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ createdFrom: '2026-10-03T00:00:00.000Z', createdBefore: preciseRange.createdBefore }));
+  fireEvent.click(screen.getByRole('button', { name: '作成日時の開始を解除' }));
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('createdFrom'));
+  expect(router.state.location.search.createdBefore).toBe(preciseRange.createdBefore);
+});
+
+test.each(['createdFrom', 'createdBefore'])('empty merged created %s shares the unspecified query key and GET', async key => {
+  const api = mockApi();
+  const { router, client } = renderAt('/documents' + defaultStringifySearch({ [key]: '', panel: 'closed' }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty(key);
+  const query = client.getQueryCache().findAll({ queryKey: ['documents'] })[0]!;
+  expect(query.queryKey[1]).toHaveProperty(key, undefined);
+  const calls = api.listDocuments.mock.calls.length;
+  await act(async () => { await router.navigate({ to: '/documents', search: { view: 'published', includeDescendants: false, sort: 'published_at_desc', pageSize: 50, panel: 'closed' } }); });
+  expect(client.getQueryCache().findAll({ queryKey: ['documents'] })).toEqual([query]);
+  expect(api.listDocuments).toHaveBeenCalledTimes(calls);
+});
+
+
+test.each([
+  ['2026-10-01T00:00:00.000Z', '2026-10-01T09:00', 'datetime-local'],
+  ['2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', 'text'],
+  ['2026-10-01T00:00:00.001Z', '2026-10-01T00:00:00.001Z', 'text'],
+  ['2026-10-01T09:00:00.000+09:00', '2026-10-01T09:00:00.000+09:00', 'text'],
+  ['2026-10-01t00:00:00z', '2026-10-01t00:00:00z', 'text'],
+  ['2016-12-31T23:59:60Z', '2016-12-31T23:59:60Z', 'text'],
+  ['2026-02-30T00:00:00.000Z', '2026-02-30T00:00:00.000Z', 'text'],
+  ['invalid', 'invalid', 'text'],
+])('created URL expands into minute calendar only after exact helper roundtrip: %p', async (raw, displayed, type) => {
+  const api = mockApi();
+  renderAt('/documents' + defaultStringifySearch({ createdFrom: raw, panel: 'closed' }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  const input = screen.getByLabelText(createdStartLabel);
+  expect(input).toHaveValue(displayed);
+  expect(input).toHaveAttribute('type', type);
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0].createdFrom).toBe(raw));
+});
+
+test('created URL pair changes invalidate both previous drafts and history restores applied fields', async () => {
+  const api = mockApi();
+  const { router } = renderAt('/documents' + defaultStringifySearch({ ...minuteRange, panel: 'closed' }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  fireEvent.change(screen.getByLabelText(createdStartLabel), { target: { value: '2026-10-09T09:00' } });
+  // Changing just the opposite URL endpoint establishes a new pair; discard the unsent old start.
+  const changed = { createdFrom: minuteRange.createdFrom, createdBefore: '2026-10-05T00:00:00.000Z' };
+  await act(async () => { await router.navigate({ to: '/documents', search: { ...router.state.location.search, ...changed } as never }); });
+  expect(screen.getByLabelText(createdStartLabel)).toHaveValue('2026-10-01T09:00');
+  expect(screen.getByLabelText(createdEndLabel)).toHaveValue('2026-10-05T09:00');
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).toMatchObject(changed));
+  await act(async () => router.history.back());
+  await waitFor(() => expect(screen.getByLabelText(createdEndLabel)).toHaveValue('2026-10-02T09:00'));
+  expect(screen.getByLabelText(createdStartLabel)).toHaveValue('2026-10-01T09:00');
+  await act(async () => router.history.forward());
+  await waitFor(() => expect(screen.getByLabelText(createdEndLabel)).toHaveValue('2026-10-05T09:00'));
+});
+
+test.each([
+  [{ createdFrom: 1, category: 'keep', unreadOnly: true }, { category: 'keep', unreadOnly: true }],
+  [{ createdBefore: 'a'.repeat(129), documentType: [1], unreadOnly: '' }, {}],
+  [{ createdFrom: preciseRange.createdFrom, category: [1], unreadOnly: '' }, { createdFrom: preciseRange.createdFrom }],
+])('created route recovery clears only invalid groups and cursor: %p', async (conditions, kept) => {
+  const api = mockApi();
+  const originalResponse = globalThis.Response; globalThis.Response = class {} as typeof Response;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { router } = renderAt('/documents' + defaultStringifySearch({ ...conditions, titleContains: 'keep', cursor: 'old', panel: 'closed' }));
+    const link = await screen.findByRole('link', { name: '条件を解除して一覧へ戻る' });
+    expect(api.listDocuments).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ titleContains: 'keep', ...kept });
+    expect(router.state.location.search).not.toHaveProperty('cursor');
+    expect(api.listDocuments.mock.lastCall![0]).toMatchObject(kept);
+    if (!('createdFrom' in kept)) expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('createdFrom');
+    expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('createdBefore');
+  } finally { globalThis.Response = originalResponse; warn.mockRestore(); error.mockRestore(); }
+});
+
+test('created range detail return preserves exact instants and old-condition fallback', async () => {
+  const api = mockApi();
+  const returnTo = '/documents' + defaultStringifySearch({ ...preciseRange, unreadOnly: true, documentType: 'keep', pageSize: 0 });
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  await screen.findByRole('button', { name: /受入手順/ });
+  expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ ...preciseRange, unreadOnly: true, documentType: 'keep', pageSize: 50 });
+  expect(router.state.location.search).toMatchObject(preciseRange);
+});
+
+test('created invalid returnTo stops with a fixed byte reason instead of a default GET', async () => {
+  const api = mockApi();
+  const returnTo = '/documents' + defaultStringifySearch({ createdBefore: 'a'.repeat(129) });
+  const { router } = renderAt(`/documents/${documentId}` + defaultStringifySearch({ view: 'published', returnTo }));
+  await screen.findByRole('heading', { name: '受入手順', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('作成日時の終了（含まない）は128 UTF-8 bytes以下で入力してください。');
+  expect(router.state.location.pathname).toBe(`/documents/${documentId}`);
+  expect(api.listDocuments).not.toHaveBeenCalled();
+});
+
+test.each(['list', 'detail'])('oversized raw %s context never falls back to a broader list GET', async where => {
+  const api = mockApi();
+  const longList = '/documents' + defaultStringifySearch({ createdFrom: preciseRange.createdFrom, unknown: 'x'.repeat(81920), panel: 'closed' });
+  const { router } = renderAt(where === 'list' ? longList : `/documents/${documentId}` + defaultStringifySearch({ returnTo: longList }));
+  if (where === 'detail') {
+    await screen.findByRole('heading', { name: '受入手順', level: 1 });
+    fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+  }
+  expect(await screen.findByRole('alert')).toHaveTextContent('一覧のURLが81920文字を超えています。URLの条件を短くして再度お試しください。');
+  expect(api.listDocuments).not.toHaveBeenCalled();
+  expect(router.state.location.pathname).toBe(where === 'list' ? '/documents' : `/documents/${documentId}`);
+});
+
+
+test('created conditions keep a delayed previous raw query out of the current list', async () => {
+  const api = mockApi();
+  let resolveOld!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(query => query.createdFrom === minuteRange.createdFrom
+    ? Promise.resolve({ view: 'published', items: [{ ...listItem('published'), title: '現在の日時結果' }], nextCursor: null })
+    : new Promise(resolve => { resolveOld = resolve; }));
+  renderAt('/documents?panel=closed');
+  await waitFor(() => expect(api.listDocuments).toHaveBeenCalled());
+  fireEvent.change(screen.getByLabelText(createdStartLabel), { target: { value: '2026-10-01T09:00' } });
+  fireEvent.click(screen.getByRole('button', { name: '絞り込む' }));
+  await screen.findByRole('button', { name: '現在の日時結果' });
+  await act(async () => resolveOld({ view: 'published', items: [{ ...listItem('published'), title: '旧日時の遅延結果' }], nextCursor: null } as DocumentList));
+  expect(screen.getByRole('button', { name: '現在の日時結果' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: '旧日時の遅延結果' })).not.toBeInTheDocument();
+});
+
+test.each([
+  [{ type: 'about:blank', title: 'synthetic-private-title', code: 'VALIDATION_FAILED', status: 422, retryable: false, traceId: 'synthetic-created-422', details: { createdFrom: 'synthetic-private-date' } }, '入力内容を確認してください'],
+  [new Error('synthetic-private-network'), '文書サービスに接続できません'],
+])('created failure keeps raw conditions distinct from empty results and retries exact query: %p', async (failure, reason) => {
+  const api = mockApi();
+  api.listDocuments.mockRejectedValueOnce(failure).mockResolvedValue({ view: 'published', items: [], nextCursor: null });
+  const { router } = renderAt('/documents' + defaultStringifySearch({ ...preciseRange, documentType: 'keep', panel: 'closed' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(reason as string);
+  expect(screen.queryByRole('heading', { name: '文書がありません' })).not.toBeInTheDocument();
+  expect(screen.queryByText(/synthetic-private/)).not.toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject(preciseRange);
+  expect(screen.getByLabelText(createdStartLabel)).toHaveValue(preciseRange.createdFrom);
+  fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+  expect(await screen.findByRole('heading', { name: '文書がありません' })).toBeVisible();
+  expect(api.listDocuments.mock.lastCall![0]).toMatchObject(preciseRange);
+  fireEvent.click(screen.getByRole('button', { name: '日時の条件を解除' }));
+  await waitFor(() => expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('createdFrom'));
+  expect(api.listDocuments.mock.lastCall![0]).not.toHaveProperty('createdBefore');
+  expect(api.listDocuments.mock.lastCall![0]).toHaveProperty('documentType', 'keep');
+});
+
+test('created changes preserve detail selection, pagination and all unknown operation stores', async () => {
+  const api = mockApi();
+  api.listDocuments.mockResolvedValue({ view: 'published', items: [listItem('published')], nextCursor: 'next-created' });
+  api.listFolderChildren.mockResolvedValue({ items: [{ folderId: reviewFolderId, parentFolderId: folderId, name: '審査', revision: 3, capabilities: {} }], nextCursor: null, capabilities: {} });
+  const { router, client } = renderAt('/documents' + defaultStringifySearch({ ...preciseRange, unreadOnly: true, documentType: 'keep', selectedDocumentId: documentId }));
+  const metadataStore = metadataOperations(client), rootStore = rootFolderOperations(client), renameStore = folderRenameOperations(client);
+  const metadataSnapshot = { status: 'unknown' as const, request: { operationId: 'created-kept', expectedDocumentRevision: 7, set: { category: 'kept' }, unset: [], reason: 'keep' } };
+  const rootSnapshot = { status: 'unknown' as const, request: { operationId: 'created-root-kept', folderId: reviewFolderId, parentFolderId: folderId, expectedParentRevision: 1, name: 'kept', reason: 'keep' } };
+  const renameSnapshot = { status: 'unknown' as const, targetFolderId: reviewFolderId, request: { operationId: 'created-rename-kept', expectedFolderRevision: 3, name: 'kept', reason: 'keep' }, context: { kind: 'selected' as const, folderId: reviewFolderId, sourceParentId: folderId, pageLimit: 1, name: '審査' }, currentName: '審査', expectedChanged: true };
+  const registrationSnapshot = { state: 'unknown' as const, ids: { documentId, documentVersionId: versionId, fileId: revisionId } };
+  metadataStore.put(documentId, metadataSnapshot); rootStore.put(rootSnapshot); renameStore.put(renameSnapshot); saveCreationReceipt(registrationSnapshot);
+  try {
+    await screen.findByRole('button', { name: /受入手順/ });
+    fireEvent.click(screen.getByRole('button', { name: /詳細を開く/ }));
+    await screen.findByRole('heading', { name: '受入手順', level: 1 });
+    const returnUrl = new URL(String(router.state.location.search.returnTo), 'http://synthetic.invalid');
+    expect(returnUrl.searchParams.get('createdFrom')).toBe(preciseRange.createdFrom);
+    expect(returnUrl.searchParams.get('createdBefore')).toBe(preciseRange.createdBefore);
+    fireEvent.click(screen.getByRole('button', { name: /一覧へ戻る/ }));
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(router.state.location.search).toMatchObject({ ...preciseRange, selectedDocumentId: documentId, unreadOnly: true });
+    fireEvent.click(screen.getByRole('button', { name: '次のページ' }));
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].cursor).toBe('next-created'));
+    fireEvent.change(screen.getByRole('combobox', { name: '並び順' }), { target: { value: 'title_asc' } });
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('cursor'));
+    fireEvent.change(screen.getByRole('combobox', { name: '1ページあたりの件数' }), { target: { value: '25' } });
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].pageSize).toBe(25));
+    fireEvent.click(await screen.findByRole('button', { name: '審査' }));
+    await waitFor(() => expect(api.listDocuments.mock.lastCall![0].folderId).toBe(reviewFolderId));
+    expect(api.listDocuments.mock.lastCall![0]).toMatchObject({ ...preciseRange, unreadOnly: true, documentType: 'keep' });
+    expect(metadataStore.get(documentId)).toBe(metadataSnapshot);
+    expect(rootStore.get()).toBe(rootSnapshot); expect(renameStore.get()).toBe(renameSnapshot);
+    expect(readCreationReceipt()).toEqual(registrationSnapshot);
+  } finally {
+    await act(async () => {
+      metadataStore.clear(documentId);
+      rootStore.put({ ...rootSnapshot, status: 'rejected' }); rootStore.clearSettled(rootStore.get()!);
+      renameStore.put({ ...renameSnapshot, status: 'rejected' }); renameStore.clearSettled(renameStore.get()!);
+    });
+    clearCreationReceipt();
+  }
+});
+
+test.each(['基準原本を確認', '対象原本を確認'])('Folder ACL送信後の詳細routeで%sのBlobと成功receiptが同tickでも保存しない', async label => {
+  const api = mockApi(); const { client, router } = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: '受入手順' });
+  let resolveReceipt!: (value: { operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }) => void;
+  const receipt = new Promise<{ operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }>(resolve => { resolveReceipt = resolve; });
+  const running = sendFolderAccessPolicyOperation({ store: folderAccessPolicyOperations(client), targetFolderId: reviewFolderId, context: { kind: 'selected', folderId: reviewFolderId, sourceParentId: folderId, pageLimit: 1, name: '資料' }, request: { operationId: 'policy', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' }, send: () => receipt, invalidate: () => refreshFolderMoveReads(client) });
+  await act(async () => { await router.navigate({ to: '/documents/$documentId', params: { documentId }, search: validateDetailSearch({ view: 'published', tab: 'compare' }) }); });
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: label }));
+  api.getDocument.mockRejectedValue(new Error('current read denied'));
+  await act(async () => { resolveReceipt({ operationId: 'policy', resourceId: reviewFolderId, resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }); resolveBlob(new Blob(['late'])); await running; });
+  expect(folderAccessPolicyOperations(client).get()?.status).toBe('succeeded'); expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); client.clear();
+});
+
+test.each(['invalidate', 'refetch', 'reset', 'remove'] as const)('比較原本の旧Blobを%s後の同値fresh readで復活させない', async kind => {
+  const api = mockApi(); const h = renderAt(`/documents/${documentId}?view=published&tab=compare`);
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: '基準原本を確認' }));
+  const signal = api.downloadVersionFile.mock.calls[0]![1].signal as AbortSignal;
+  await act(async () => {
+    if (kind === 'invalidate') await h.client.invalidateQueries({ queryKey: ['revision-comparison'] });
+    else if (kind === 'refetch') await h.client.refetchQueries({ queryKey: ['revision-comparison'] });
+    else if (kind === 'reset') await h.client.resetQueries({ queryKey: ['revision-comparison'] });
+    else h.client.removeQueries({ queryKey: ['revision-comparison'] });
+  });
+  await act(async () => { resolveBlob(new Blob(['old before ACL reset'])); });
+  expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); expect(signal.aborted).toBe(true);
+  if (kind === 'invalidate') { api.downloadVersionFile.mockResolvedValueOnce(new Blob(['fresh'])); fireEvent.click(await screen.findByRole('button', { name: '基準原本を確認' })); await waitFor(() => expect(create).toHaveBeenCalledTimes(1)); expect(click).toHaveBeenCalledTimes(1); }
+  h.client.clear();
+});
+test('比較原本の旧BlobをACL全read reset後の同値fresh readで復活させない', async () => {
+  const api = mockApi(); const h = renderAt(`/documents/${documentId}?view=published&tab=compare`);
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: '基準原本を確認' }));
+  const signal = api.downloadVersionFile.mock.calls[0]![1].signal as AbortSignal;
+  await act(async () => { await refreshFolderMoveReads(h.client); });
+  await act(async () => { resolveBlob(new Blob(['old before ACL reset'])); });
+  expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); expect(signal.aborted).toBe(true); h.client.clear();
+});
+
+test.each(['基準原本を確認', '対象原本を確認'])('Document ACL送信後の詳細routeで%sのBlobと成功receiptが同tickでも保存しない', async label => {
+  const api = mockApi(); const { client, router } = renderAt('/documents?view=published');
+  await screen.findByRole('button', { name: '受入手順' });
+  let resolveReceipt!: (value: { operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }) => void;
+  const receipt = new Promise<{ operationId: string; resourceId: string; resultingRevision: number; changed: boolean; occurredAt: string }>(resolve => { resolveReceipt = resolve; });
+  const running = sendDocumentAccessPolicyOperation({ store: documentAccessPolicyOperations(client), targetDocumentId: documentId, context: { documentId, title: '資料', view: 'published' }, request: { operationId: 'policy', expectedPolicyRevision: 7, mode: 'inherit', reason: '理由' }, send: () => receipt, invalidate: () => refreshFolderMoveReads(client) });
+  await act(async () => { await router.navigate({ to: '/documents/$documentId', params: { documentId }, search: validateDetailSearch({ view: 'published', tab: 'compare' }) }); });
+  let resolveBlob!: (value: Blob) => void; api.downloadVersionFile.mockReturnValue(new Promise<Blob>(resolve => { resolveBlob = resolve; }));
+  const create = jest.fn().mockReturnValue('blob:synthetic'); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() }); const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  fireEvent.click(await screen.findByRole('button', { name: label }));
+  api.getDocument.mockRejectedValue(new Error('current read denied'));
+  await act(async () => { resolveReceipt({ operationId: 'policy', resourceId: documentId, resultingRevision: 8, changed: true, occurredAt: '2026-10-07T00:00:00Z' }); resolveBlob(new Blob(['late'])); await running; });
+  expect(documentAccessPolicyOperations(client).get()?.status).toBe('succeeded'); expect(create).not.toHaveBeenCalled(); expect(click).not.toHaveBeenCalled(); client.clear();
+});
+
+test.each(['registration-trigger', 'registration-form', 'filter'] as const)('late list response preserves user focus in %s', async destination => {
+  const api = mockApi();
+  api.getRootFolder.mockResolvedValue({ folderId, name: 'ルート', revision: 1, parentFolderId: null, capabilities: { createDocument: operationAvailable } });
+  let resolveList!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(() => new Promise<DocumentList>(resolve => { resolveList = resolve; }));
+  renderAt('/documents?view=published');
+  const user = userEvent.setup();
+  const trigger = await screen.findByRole('button', { name: '文書を登録' });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  let target: HTMLElement = trigger;
+  if (destination === 'registration-form') {
+    await user.click(trigger);
+    target = within(await screen.findByRole('dialog', { name: '文書を登録' })).getByLabelText('文書名');
+  } else if (destination === 'filter') target = screen.getByRole('searchbox', { name: '文書名で絞り込み' });
+  target.focus();
+  expect(target).toHaveFocus();
+  await act(async () => { resolveList({ view: 'published', items: [listItem('published') as Extract<DocumentList, { view: 'published' }>['items'][number]], nextCursor: null }); });
+  await waitFor(() => expect(document.querySelector('button[data-document-id]')).toBeInTheDocument());
+  await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+  expect(target).toHaveFocus();
+  if (destination === 'registration-trigger') {
+    await user.keyboard('{Enter}');
+    const dialog = await screen.findByRole('dialog', { name: '文書を登録' });
+    await user.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+  }
+});
+
+test('initial list response focuses its selected row when no other control owns focus', async () => {
+  mockApi(); renderAt('/documents?view=published');
+  await waitFor(() => expect(screen.getByRole('button', { name: /受入手順/ })).toHaveFocus());
+});
+
+test('scheduled list frame preserves focus moved to registration after the effect', async () => {
+  const api = mockApi();
+  api.getRootFolder.mockResolvedValue({ folderId, name: 'ルート', revision: 1, parentFolderId: null, capabilities: { createDocument: operationAvailable } });
+  let resolveList!: (value: DocumentList) => void;
+  api.listDocuments.mockImplementation(() => new Promise<DocumentList>(resolve => { resolveList = resolve; }));
+  renderAt('/documents?view=published');
+  const trigger = await screen.findByRole('button', { name: '文書を登録' });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  const frames: FrameRequestCallback[] = [];
+  const frame = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  try {
+    expect(document.body).toHaveFocus();
+    await act(async () => { resolveList({ view: 'published', items: [listItem('published') as Extract<DocumentList, { view: 'published' }>['items'][number]], nextCursor: null }); });
+    await screen.findByRole('button', { name: /受入手順/ });
+    expect(frames.length).toBeGreaterThan(0);
+    trigger.focus();
+    await act(async () => { for (const callback of frames.splice(0)) callback(performance.now()); });
+    expect(trigger).toHaveFocus();
+  } finally { frame.mockRestore(); }
 });

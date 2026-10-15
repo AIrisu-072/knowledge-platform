@@ -21,7 +21,7 @@ test('初回登録だけを既存journeyへ追加し、成功時も失敗時も�
   assert.match(config, /testMatch: phase === 'journey' \? \[[^\]]*'initial-registration\.spec\.ts'/);
   assert.match(config, /retries: 0/);
   assert.match(source, /^test\.use\(\{ screenshot: 'off', trace: 'off', video: 'off' \}\);$/m);
-  assert.equal((source.match(/^test\('/gm) ?? []).length, 1);
+  assert.equal((source.match(/^test\('/gm) ?? []).length, 2);
   assert.match(source, /await startDiagnostics\(page\)/);
   assert.match(source, /await finishDiagnostics\(page\)/);
   assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
@@ -121,7 +121,7 @@ test('複数原本WORKINGのjourneyと再起動は同じrunnerで全recordingを
   for (const name of ['working-version-editor', 'working-version-editor-persistence']) {
     const source = await read(`../../../apps/document-web/e2e-runtime/${name}.spec.ts`);
     assert.match(source, /^test\.use\(\{ screenshot: 'off', trace: 'off', video: 'off' \}\);$/m);
-    assert.equal((source.match(/^test\('/gm) ?? []).length, name === 'working-version-editor' ? 2 : 1);
+    assert.equal((source.match(/^test\('/gm) ?? []).length, name === 'working-version-editor' ? 3 : 1);
     assert.doesNotMatch(source, /visualCheckpoint|screenshot\(|recordVideo|tracing|page\.route\(|route\.fulfill\(|route\.abort\(/);
   }
   const helper = await read('../../../apps/document-web/e2e-runtime/working-version-support.ts');
@@ -135,7 +135,7 @@ test('WORKING編集と予約取消を既存journey・再起動の正確な集合
   const match = config.match(/testMatch: phase === 'journey' \? (\[[^\]]*\]) : (\[[^\]]*\])/);
   assert.ok(match);
   const entries = value => [...value.matchAll(/'([^']+)'/g)].map(item => item[1]);
-  assert.deepEqual(entries(match[1]), ['document-runtime.spec.ts', 'initial-registration.spec.ts', 'metadata-editor.spec.ts',
+  assert.deepEqual(entries(match[1]), ['document-runtime.spec.ts', 'initial-registration.spec.ts', 'document-list-focus.spec.ts', 'metadata-editor.spec.ts',
     'lifecycle-operations.spec.ts', 'document-schedule-cancellation.spec.ts', 'working-version-editor.spec.ts',
     'human-agent-consistency.spec.ts', 'worker-failure.spec.ts', 'timestamp-layout.spec.ts']);
   assert.deepEqual(entries(match[2]), ['persistence.spec.ts', 'metadata-editor.spec.ts', 'lifecycle-operations-persistence.spec.ts',
@@ -156,7 +156,7 @@ test('WORKING実応答喪失は専用pageだけをproxyへ通し結果不明か�
   for (const stage of stages) { const next = save.indexOf(stage); assert.ok(next > position, stage); position = next; }
   assert.match(save, /received: 2, dispatched: 2, dropped: 1, unexpected: 0/);
   assert.match(source, /loss\.allowPublish\(`/);
-  assert.equal((source.match(/^test\('/gm) ?? []).length, 2);
+  assert.equal((source.match(/^test\('/gm) ?? []).length, 3);
 });
 
 

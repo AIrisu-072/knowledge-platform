@@ -225,7 +225,7 @@ async fn migration_keeps_pointer_and_receipt_same_database() {
             .iter()
             .map(|(version, _)| *version)
             .collect::<Vec<_>>(),
-        (1..=11).collect::<Vec<_>>()
+        (1..=12).collect::<Vec<_>>()
     );
 
     search_runtime::migrate(&pool).await.unwrap();

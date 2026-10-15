@@ -56,7 +56,7 @@ pub struct GuiDisplayTimestamp {
 pub struct GuiDocumentReadModel {
     pub display_version: GuiVersionSummary,
     pub display_revision: Option<DocumentRevisionSummary>,
-    pub first_read_at: Option<OffsetDateTime>,
+    pub read_state: crate::CurrentReadProjection,
     pub display_timestamp: GuiDisplayTimestamp,
 }
 

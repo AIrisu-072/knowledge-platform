@@ -17,7 +17,7 @@ export async function createMultiOriginalFixture(context: Awaited<ReturnType<typ
     documentMetadata: {}, versionMetadata: {} }, file: new Blob([originalBytes[0]!]), originalFilename: 'seed.txt', mediaType: 'text/plain' });
   const documentId = created.documentId, versionId = created.documentVersionId;
   const detail = (await getDocument({ ...common, path: { documentId }, query: { view: 'authoring' } })).data;
-  // Setup uses the existing full-manifest API. The GUI does not add/remove items.
+  // Setup uses the existing full-manifest API to provide originals with their own renditions.
   const files = new Map<string, Blob>();
   const items = sourceNames.map((originalFilename, ordinal) => {
     const partId = `original-${ordinal}`, renditionPartId = `rendition-${ordinal}`;
@@ -62,8 +62,8 @@ export async function workingEditorSnapshot(baseUrl: string, documentId: string)
       .map(item => ({ sourceKey: item.sourceKey, actionCode: item.actionCode, actor: item.actor?.principalId, details: item.details })) };
 }
 
-export type WorkingEditorState = { documents: Array<{ key: 'initial' | 'multiple'; snapshot: Awaited<ReturnType<typeof workingEditorSnapshot>> }> };
-export async function saveWorkingEditorSnapshot(context: RuntimeContext, key: 'initial' | 'multiple', documentId: string) {
+export type WorkingEditorState = { documents: Array<{ key: 'initial' | 'multiple' | 'structure'; snapshot: Awaited<ReturnType<typeof workingEditorSnapshot>> }> };
+export async function saveWorkingEditorSnapshot(context: RuntimeContext, key: 'initial' | 'multiple' | 'structure', documentId: string) {
   let state: WorkingEditorState;
   try { state = JSON.parse(await readFile(workingEditorStatePath(context), 'utf8')) as WorkingEditorState; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; state = { documents: [] }; }

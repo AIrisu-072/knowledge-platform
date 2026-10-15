@@ -211,6 +211,16 @@ impl WorkRepository for DomainFixture {
     fn agent_result(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, AgentResult> {
         Box::pin(async move { self.workflow.lock().unwrap().agent_result(actor, id) })
     }
+    fn generated_artifact(
+        &self,
+        actor: VerifiedActor,
+        id: Uuid,
+    ) -> WorkFuture<'_, GeneratedArtifact> {
+        Box::pin(async move { self.workflow.lock().unwrap().generated_artifact(actor, id) })
+    }
+    fn suggested_action(&self, actor: VerifiedActor, id: Uuid) -> WorkFuture<'_, SuggestedAction> {
+        Box::pin(async move { self.workflow.lock().unwrap().suggested_action(actor, id) })
+    }
     fn fail_agent_execution(
         &self,
         actor: VerifiedActor,
@@ -765,6 +775,182 @@ async fn agent_http_is_closed_private_replay_safe_and_never_dispatches_from_read
     let (status, result) = response_json(response).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(result["execution"]["status"], "cancelled");
+}
+
+#[tokio::test]
+async fn structured_agent_result_candidates_are_private_read_only_routes() {
+    let document = Uuid::from_u128(71);
+    let mut workflow = Workflow::synthetic(Some(document));
+    let now = "2026-10-07T00:00:00Z";
+    workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::RegisterEvidence {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 0),
+                expected_attempt_id: SALES_ATTEMPT_ID,
+                source: EvidenceSource {
+                    source_ref: SourceRef {
+                        provider_id: "document".into(),
+                        resource_id: document,
+                        revision_id: Uuid::from_u128(72),
+                        version_id: Uuid::from_u128(73),
+                    },
+                    authoritative_locator: AuthoritativeLocator {
+                        kind: "contentItem".into(),
+                        content_item_id: Uuid::from_u128(74),
+                        representation_id: Uuid::from_u128(75),
+                    },
+                },
+                relevant_location: "根拠".into(),
+            },
+            now,
+        )
+        .unwrap();
+    let refs = vec![RevisionRef {
+        id: workflow.evidence[0].id,
+        revision: 1,
+    }];
+    let MutationResult::AgentExecutionRequested { execution, .. } = workflow
+        .apply(
+            VerifiedActor::Sales01,
+            &Command::RequestAgentExecution {
+                task_id: SALES_TASK_ID,
+                context: context(VerifiedActor::Sales01, 1),
+                expected_attempt_id: SALES_ATTEMPT_ID,
+                purpose: "合成確認".into(),
+                evidence_revision_refs: refs.clone(),
+            },
+            now,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    let running = workflow
+        .start_agent_execution(VerifiedActor::Sales01, execution.id, now)
+        .unwrap()
+        .unwrap();
+    let mut output =
+        AgentOutput::referenced_finding(&running, "要約", "候補", vec!["不確実".into()]);
+    output.generated_artifacts = vec![GeneratedArtifactCandidate {
+        title: "下書き".into(),
+        text: "合成の下書き".into(),
+        source_revision_refs: refs.clone(),
+    }];
+    output.suggested_actions = vec![SuggestedActionCandidate {
+        action: ProposedActionCandidate::UseGeneratedArtifact(0),
+        rationale: "使えます".into(),
+    }];
+    workflow
+        .finish_agent_execution(&running, output, now)
+        .unwrap();
+    let result = workflow
+        .agent_result(VerifiedActor::Sales01, execution.id)
+        .unwrap();
+    let fixture = Arc::new(DomainFixture {
+        workflow: std::sync::Mutex::new(workflow),
+        outcomes: std::sync::Mutex::new(vec![]),
+    });
+    let dispatch = Arc::new(RecordingDispatch {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+        reject: false,
+    });
+    let app =
+        work_api_http::router_with_agent(fixture.clone(), VerifiedActor::Sales01, dispatch.clone());
+    let get = |path: String| {
+        let app = app.clone();
+        async move {
+            response_json(
+                app.oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap(),
+            )
+            .await
+        }
+    };
+    let (status, body) = get(format!(
+        "/v1/organization/agent-executions/{}/result",
+        execution.id
+    ))
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["sourceOutcomes"][0]["outcome"], "referenced");
+    assert_eq!(
+        body["generatedArtifactIds"][0],
+        result.generated_artifact_ids[0].to_string()
+    );
+    let generated = format!(
+        "/v1/organization/generated-artifacts/{}",
+        result.generated_artifact_ids[0]
+    );
+    let suggested = format!(
+        "/v1/organization/suggested-actions/{}",
+        result.suggested_action_ids[0]
+    );
+    let (status, body) = get(generated.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["value"]["text"], "合成の下書き");
+    assert_eq!(body["visibility"], "agent_execution_private");
+    assert_eq!(body["schemaId"], "organization.text-draft.v1");
+    let (status, body) = get(suggested.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["action"]["kind"], "use_generated_artifact");
+    assert_eq!(
+        body["action"]["generatedArtifactId"],
+        result.generated_artifact_ids[0].to_string()
+    );
+    // Not executable: no write method exists on either resource (the closed
+    // method fallback answers VALIDATION_FAILED), and nothing is dispatched.
+    let before = fixture.workflow.lock().unwrap().clone();
+    for (path, method) in [
+        (&generated, "POST"),
+        (&suggested, "POST"),
+        (&suggested, "PUT"),
+    ] {
+        let (status, body) = response_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .header("content-type", "application/json")
+                        .body(Body::from("{}"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body["code"], "VALIDATION_FAILED");
+    }
+    assert_eq!(*fixture.workflow.lock().unwrap(), before);
+    // Others and unknown IDs get the same non-disclosing answer.
+    for actor in [VerifiedActor::Office01, VerifiedActor::Approver01] {
+        let other = work_api_http::router_with_agent(fixture.clone(), actor, dispatch.clone());
+        for path in [&generated, &suggested] {
+            let (status, body) = response_json(
+                other
+                    .clone()
+                    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND);
+            assert_eq!(body["code"], "WORK_ITEM_NOT_FOUND");
+            assert!(!body.to_string().contains("合成の下書き"));
+        }
+    }
+    let (status, body) = get(format!(
+        "/v1/organization/generated-artifacts/{}",
+        Uuid::now_v7()
+    ))
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["code"], "WORK_ITEM_NOT_FOUND");
+    assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

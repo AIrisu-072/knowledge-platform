@@ -12,7 +12,7 @@ import { TaskHomePage } from '../src/routes/TaskHomePage';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: { getDocument: jest.fn(), listVersionFiles: jest.fn(), downloadVersionFile: jest.fn() } }));
 const session = { principalId: 'sales-01', displayName: '営業担当（模擬）', actingAssignmentId: 'assignment-sales', capabilities: { nativeWorkspace: false, agent: true, search: false, fileUpload: false, return: false } };
-const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null };
+const task = { id: 'task-1', contextId: 'context-1', attemptId: 'attempt-1', attemptNumber: 1, revision: 1, title: '内容確認', stepLabel: '内容確認', state: 'active', canClaim: false, canEdit: true, canSubmit: true, canComplete: false, completionActionId: null, canHold: false, holdActionId: null, canResume: false, resumeActionId: null, canReturn: false, canRegisterEvidence: true, canRegisterFinding: true, canRecordDecision: true, canRequestAgent: true, returnTransition: null, returnInstructionId: null, handoffSnapshotId: null, workTypeId: 'work-type-1', workTypeLabel: '内容確認', dueAt: null, attention: [], contextTitle: null };
 const documentId = '00000000-0000-4000-8000-000000000010';
 const otherDocumentId = '00000000-0000-4000-8000-000000000011';
 const detail = { ...task, inputResources: [{ kind: 'document', documentId, label: '共有入力文書' }, { kind: 'document', documentId: otherDocumentId, label: '別の共有文書' }], workingArtifacts: [{ id: 'draft-1', taskId: task.id, attemptId: task.attemptId, revision: 1, schemaId: 'organization.text-draft.v1', value: { text: '保存済みの文案' }, visibility: 'work_item_private' }], history: [], agentExecutionIds: [] };
@@ -23,6 +23,8 @@ function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason:
 function setup(view = 'context') {
   jest.spyOn(workApi, 'getSession').mockResolvedValue(session as never);
   jest.spyOn(workApi, 'listTasks').mockResolvedValue({ items: [task], nextCursor: null } as never);
+  jest.spyOn(workApi, 'listWorkContexts').mockResolvedValue({ items: [], nextCursor: null });
+  jest.spyOn(workApi, 'listWorkViewProfiles').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'getTask').mockResolvedValue(detail as never);
   jest.spyOn(workApi, 'listEvidence').mockResolvedValue({ items: [], nextCursor: null });
   jest.spyOn(workApi, 'listFindings').mockResolvedValue({ items: [], nextCursor: null });
@@ -282,7 +284,8 @@ test('no shared inputs means no Document request or upload/private attachment co
   jest.mocked(workApi.getTask).mockResolvedValue({ ...detail, inputResources: [] } as never);
   await screen.findByText('入力文書はありません');
   expect(documentApi.getDocument).not.toHaveBeenCalled();
-  expect(document.querySelector('input[type="file"]')).toBeNull();
+  // The Document module never uploads; private work files belong to the main work area only.
+  expect(screen.getByRole('complementary', { name: '文脈情報' }).querySelector('input[type="file"]')).toBeNull();
 });
 
 
