@@ -1,5 +1,14 @@
 # Audit Infrastructure v1：実行状況
 
+## 2026-10-15 — 完了記録PR #116のmain追従（公開前）
+
+- 対象はAudit単位A〜Cの完了記録だけ。PR #116の保存head `d47ab1495f1d78f46fef015873045ad5f7930be8` をmain `ead6830e` に追従した。main側のDocument一覧フォーカスのactive節とAudit完了の節は両方保持した。
+- 読み取りで再確認：PR #115はmain `712af6d6a1c74f3be33f5381f6a811b99b9d89b0` へ統合済み。exact-head `252e1a9248a6e7aaa55292e50a371a57d4008b2f` のCI run `37764414985` とmain CI run `37767198886` はともにSUCCESS。以下の2026-10-08の完了記録の根拠は維持する。
+- PR #116の保存headのCI run `37770545594` は `document-poc-runtime` と `required-check` がFAILURE。他の成功やmerge可能表示で、この失敗を合格に読み替えない。本追従headのhosted CIは未実施で、旧headの結果を新しい組合せへ転用しない。
+- 独立レビュー：保存headの文書差分はGO。main未反映の完了記録・判断待ち4件・引継ぎを保持する。今回のmain追従と状況追記を含む最終headの確認は親担当が行う。
+- 次のexact action：親担当が最新mainを再確認し、必要なら再追従する。最終headの差分・独立確認・必須CIを確認してから、承認範囲内でPR #116を更新し、正確なheadをguardしてmain統合する。統合後のmain CIも確認する。現時点ではローカル保存のみで、push・main統合はしていない。
+
+
 ## 2026-10-08 — 単位A〜Cのmain統合を完了（track完了）
 
 - 現在のGitHubの状態：
