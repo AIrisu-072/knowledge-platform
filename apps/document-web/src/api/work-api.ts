@@ -273,9 +273,9 @@ function result(value: unknown): WorkResult {
   }
   throw new Error('invalid_result');
 }
-async function request<T>(path: string, decode: (value: unknown) => T, method = 'GET', body?: unknown): Promise<T> {
+async function request<T>(path: string, decode: (value: unknown) => T, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
-  try { response = await fetch(`/v1/organization${path}`, { method, credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
+  try { response = await fetch(`/v1/organization${path}`, { method, credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(signal ? { signal } : {}) }); }
   catch { throw new WorkApiError(0, 'network_unavailable', method !== 'GET'); }
   if (!response.ok) {
     let code = 'request_failed';
@@ -323,14 +323,14 @@ function workflowAction(id: string, command: WorkflowActionCommand) {
   }, 'POST', command);
 }
 export const workApi = {
-  getSession: () => request('/session', (value): WorkSession => {
+  getSession: (signal?: AbortSignal) => request('/session', (value): WorkSession => {
     const item = object(value); const c = object(item.capabilities); const principalId = principal(item.principalId);
     const responsibilities = nullable(item.responsibilities, (entry) => array(entry, responsibility));
     if (responsibilities?.some((entry) => entry.principal !== principalId)) throw new Error('response_target_mismatch');
     const actingAssignmentId = nullable(item.actingAssignmentId, string);
     if (actingAssignmentId !== null && !responsibilities?.some((entry) => entry.id === actingAssignmentId)) throw new Error('invalid_acting_responsibility');
     return { principalId, displayName: string(item.displayName), actingAssignmentId, responsibilities, canManageOrganization: bool(item.canManageOrganization), policyRevision: nullable(item.policyRevision, revision), capabilities: { nativeWorkspace: bool(c.nativeWorkspace), agent: bool(c.agent), search: bool(c.search), fileUpload: bool(c.fileUpload), return: bool(c.return) } };
-  }),
+  }, 'GET', undefined, signal),
   listTasks: (view: 'context' | 'queue', actingAssignmentId?: string, filter: { contextId?: string; workTypeId?: string } = {}) => request(`/tasks?view=${view}&limit=100${actingAssignmentId ? `&actingAssignmentId=${segment(actingAssignmentId)}` : ''}${filter.contextId ? `&contextId=${segment(filter.contextId)}` : ''}${filter.workTypeId ? `&workTypeId=${segment(filter.workTypeId)}` : ''}`, (value) => { const item = object(value); if (item.nextCursor !== null) throw new Error('unsupported_pagination'); const items = array(item.items, task); if (items.some((entry) => (filter.contextId && entry.contextId !== filter.contextId) || (filter.workTypeId && entry.workTypeId !== filter.workTypeId))) throw new Error('response_target_mismatch'); return { items, nextCursor: null }; }),
   listWorkViewProfiles: () => request('/work-view-profiles', (value) => page(value, workViewProfile)),
   listWorkContexts: (actingAssignmentId?: string) => request(`/work-contexts${actingAssignmentId ? `?actingAssignmentId=${segment(actingAssignmentId)}` : ''}`, (value) => page(value, workContext)),
