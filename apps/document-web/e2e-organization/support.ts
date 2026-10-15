@@ -221,8 +221,13 @@ export async function replayRootFolderCreate(request: APIRequestContext, context
 }
 export async function openRootFolderHome(page: Page, origin: string) {
   currentAction('document-navigation');
-  await page.goto(`${origin}/tasks`);
-  await page.getByRole('navigation', { name: 'メインナビゲーション', exact: true }).getByRole('link', { name: '文書', exact: true }).click();
+  // Opened directly, without visiting タスク first: this server offers the Work API,
+  // so the primary navigation has タスク and 検索 on the document screen too.
+  await page.goto(`${origin}/documents`);
+  const navigation = page.getByRole('navigation', { name: 'メインナビゲーション', exact: true });
+  await expect(navigation.getByRole('link', { name: 'タスク', exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: '検索', exact: true })).toBeVisible();
+  await navigation.getByRole('link', { name: '文書', exact: true }).click();
   await expect(page.getByRole('region', { name: 'フォルダー', exact: true })).toBeVisible();
 }
 export async function assertRootFolderUi(page: Page, snapshot: RootFolderSnapshot, childId: string, role: 'sales' | 'office') {

@@ -1,6 +1,10 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
+import { workApi, WorkApiError } from '../src/api/work-api';
 import { AppShell } from '../src/components/app-shell/AppShell';
+
+afterEach(() => jest.restoreAllMocks());
 
 test('app shell exposes skip link, navigation, main workspace, and context panel', async () => {
   const root = createRootRoute({ component: Outlet });
@@ -8,7 +12,9 @@ test('app shell exposes skip link, navigation, main workspace, and context panel
       <h1>文書管理</h1>
     </AppShell> });
   const router = createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/documents'] }) });
-  render(<RouterProvider router={router as never} />);
+  // A document-only server: no Work API.
+  jest.spyOn(workApi, 'getSession').mockRejectedValue(new WorkApiError(404, 'request_failed'));
+  render(<QueryClientProvider client={new QueryClient()}><RouterProvider router={router as never} /></QueryClientProvider>);
   await screen.findByRole('heading', { name: '文書管理', level: 1 });
 
   expect(screen.getByRole('link', { name: 'メインコンテンツへ' })).toHaveAttribute('href', '#main-content');
