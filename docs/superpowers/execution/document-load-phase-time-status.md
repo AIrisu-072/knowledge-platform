@@ -10,5 +10,6 @@ Status: ACTIVE / PR123 統合準備
 - small elapsed8626.429626ms/fixed892.484170ms、1000予測128.93分は120分超。未達を維持。10万件未資格。
 - 前head CI38494330119は既存PoC unsafe-libyaml検出で未合格。修正PR124はmain ead6830eへ統合、統合後CI38502201323全14成功。
 - 2026-10-15: /tmp checkout消失を確認。元branchとworkspace退避文書を保持し永続専用checkoutへ復元。main ead6830eを競合なく取り込み、固定Node24.21.0の関連26試験成功。最初のdefault Node26試験はMac/Linux RSS条件で失敗し、資格として扱わない。
-- 次: 依存修正PR128の独立レビュー・exact-head CI・main統合後にそのmainへ追従し、組合せ独立レビューと必要試験、新head全CI、期待head指定merge、統合後CIを確認する。同じPR123で完結する。
+- 2026-10-15: PR128は独立review GO・head b794b3eeの全14CI成功後にmain 29026cc7486070410eb0b892e63c43eb7d1f5de5へ統合。競合なく追従した。
+- 次: 組合せ独立レビューと必要試験、新head全CI、期待head指定merge、統合後CIを確認する。同じPR123で完結する。PR128統合後CIも並行確認する。
 - デモ起動と新しい長時間負荷試験は今回開始しない。親へ統合結果を報告し、必要な調整後の別工程とする。再試行・予算引上げ・固定分類拡張で未達を隠さない。
