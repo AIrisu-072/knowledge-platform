@@ -3,8 +3,9 @@
 
 ## 2026-10-15 — 現在状態の再開入口
 
-- main `ead6830e` とGitHubの現在状態を照合。PR103・108・109・115・117〜122は統合済み。以下の各日付の未統合・CI進行中・未実行の節は履歴として保持し、現在状態は各状況文書の2026-10-15追補を先に読む。
+- main `71d757b049e48594ee4964aa5c01db54f3e17fd2` とGitHubの現在状態を照合。PR103・108・109・115・117〜123・128は統合済み。以下の各日付の未統合・CI進行中・未実行の節は履歴として保持し、現在状態は各状況文書の2026-10-15追補を先に読む。
 - [1万件](document-load-ten-thousand-status.md)：run `37887357388` は正確head `d996f801` でSUCCESS。[Ubuntuの10万件](document-load-local-scale-status.md)は別の実行・資格であり、成功未確認。旧runのadmissionや標本確認を本番資格へ広げない。
+- [時間予測](document-load-phase-time-status.md)：PR123のhead `6b58bd06` CI `38766162617` はSUCCESS、main `71d757b0` に統合済み。統合後CI `38769861407` は今回の確認時点でQUEUED。PR128の統合後CI `38765965535` はSUCCESS。1,000件予測128.93分 > 上限120分の未達は維持し、デモ・新長時間runは未開始。次は統合後CIの終端確認。
 - [Audit](audit-infrastructure-v1-status.md)は単位A〜Cが統合済み。Documentの実producerからStoreへの受入範囲であり、Search・Organization等の全サービスの監査接続完了ではない。本番認証・実LLM接続・本番配備の完了も示さない。
 - 予約公開の実行時主体解決は `crates/document-publication-scheduler/src/identity.rs` の `StaticRequesterResolver` によりruntime mode `poc`、provider `poc` の `poc-human` / `poc-agent` に限定される。任意の本番主体を解決するadapterが完成したとは扱わない。
 - 次はPR116の最新main追従・正確headレビュー/必須CI・統合後CIと、各trackの未確認証拠の確認。旧PR50〜53の整理条件は[履歴索引](../../research/organization-tauri-legacy-pr-index.md)を参照。
