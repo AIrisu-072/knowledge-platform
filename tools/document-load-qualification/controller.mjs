@@ -8,9 +8,12 @@ import {exerciseNegative,verifyNegativeRetained,sanitizeNegativeFailureCode}from
 import {sanitizeWorkerDiagnostic} from './worker-probe.mjs';
 import {sanitizeFailureDiagnostic,sanitizeInspectionDiagnostic,sanitizePublicationPrerequisites} from './diagnostics.mjs';
 import {BoundedTelemetry} from './telemetry.mjs';
+import {createPhaseTimer} from './phase-time.mjs';
 export async function runQualification({directory,runId,plan,previousReport,corpus,runtime,probeFactory,execute=exerciseStage,verify=verifyRetained,executeNegative=exerciseNegative,verifyNegative=verifyNegativeRetained}){
  await mkdir(directory,{recursive:true,mode:0o700});
  const started=performance.now(),timings=[],observations=[];
+ let phases;
+ const phase=(name,kind)=>phases?.transition(name,kind);
  const report={schemaVersion:1,runId,evidenceClass:runtime.evidenceClass==='owned-real-process'?'owned-real-process':'test-double',status:'NOT_RUN',stage:plan?.stage,documentCount:plan?.documentCount,fingerprint:plan?.fingerprint,plan,previousReport,productionSloClaim:false,qualityClaim:false,startedAt:new Date().toISOString(),sampleIntervalMs:1000};
  async function save(){const file=await open(join(directory,'report.tmp'),'w',0o600);try{await file.writeFile(JSON.stringify(report,null,2)+'\n');await file.sync();}finally{await file.close();}await rename(join(directory,'report.tmp'),join(directory,'report.json'));}
  let journal,timer,monitor,busy,stopError,telemetry;
@@ -32,6 +35,7 @@ export async function runQualification({directory,runId,plan,previousReport,corp
  try{
   const valid=validatePlan(plan);
   if(!valid.valid || corpus.hash!==plan.fingerprint.corpus){report.status='NOT_ADMITTED';report.failureCode='invalid-plan-or-corpus';await save();return report;}
+  phases=createPhaseTimer({now:()=>performance.now(),startedAt:started,documentCount:plan.documentCount});
   if(boundedTelemetry)telemetry=await BoundedTelemetry.open(join(directory,'observations.jsonl'));
   const initial=await observe();report.admission=admitStage(plan,previousReport,initial);
   if(report.admission.status!=='ADMITTED'){report.status='NOT_ADMITTED';await save();return report;}
@@ -45,16 +49,24 @@ export async function runQualification({directory,runId,plan,previousReport,corp
    try{telemetry.recordTiming(value);}catch(error){stopError=error;abort.abort(error);throw error;}
   }});
   if(telemetry&&stopError)throw stopError;
+  phase('qualification-identity-and-negative','scaled');
   const identityBefore=await runtime.identity();
   if(corpus.negativeAssets?.length){
    report.negativeCorpus=await executeNegative({probe,journal,assets:corpus.negativeAssets,checkpoint,runId,stageLabel:plan.stage,diagnosePublication:runtime.diagnosePublication,diagnoseWorker:runtime.diagnoseWorker});
    await save();
   }
-  report.evidence=await execute({probe,journal,count:plan.documentCount,assets:corpus.assets,checkpoint,runId,stageLabel:plan.stage});
+  phase('positive-workflow-unclassified','unclassified');
+  report.evidence=await execute({probe,journal,count:plan.documentCount,assets:corpus.assets,checkpoint,runId,stageLabel:plan.stage,phase});
+  phase('restart-preparation','scaled');
   report.status='AWAITING_RESTART';await save();
   // Avoid observing expected process absence while the owned restart is in progress.
   clearInterval(monitor);monitor=undefined;await busy;
-  await runtime.restart();lastObservationAt=-Infinity;
+  // Only idle process replacement is fixed: no PostgreSQL restart, document
+  // query/scan or original traversal; serve/ready checks only schema and fixed probes.
+  // Resource observations have drained above; identity scans stay outside this interval.
+  phase('restart-process-replacement','fixed');
+  await runtime.restart();
+  phase('restart-identity-and-retention','scaled');lastObservationAt=-Infinity;
   const identityAfter=await runtime.identity();
   const {humanPid:oldHuman,agentPid:oldAgent,...beforeDataset}=identityBefore;
   const {humanPid:newHuman,agentPid:newAgent,...afterDataset}=identityAfter;
@@ -86,6 +98,7 @@ export async function runQualification({directory,runId,plan,previousReport,corp
   }
  }
  finally{
+  try{phase('finalization','unclassified');}catch{report.status='FAILED';report.failureCode='phase-time-invalid';report.metricQualification='measurement-unavailable';phases=undefined;}
   clearInterval(monitor);clearTimeout(timer);await busy?.catch(()=>{});
   const entries=journal?[...journal.states]:[];
   report.counts={targetDocuments:plan?.documentCount??0,confirmedCreatedDocuments:entries.filter(([key,state])=>/^create:\d+$/.test(key)&&Object.hasOwn(state,'result')).length,confirmedPublishedDocuments:entries.filter(([key,state])=>/^publish:\d+$/.test(key)&&Object.hasOwn(state,'result')).length};
@@ -115,6 +128,9 @@ export async function runQualification({directory,runId,plan,previousReport,corp
    report.metrics=summarizeResources(observations,performance.now()-started);
    report.timings=Object.fromEntries([...new Set(timings.map(t=>t.operation))].map(operation=>{const samples=timings.filter(t=>t.operation===operation);return[operation,{...summarizeTimings(samples.map(t=>t.elapsedMs)),statuses:Object.fromEntries([...new Set(samples.map(t=>String(t.status)))].map(status=>[status,samples.filter(t=>String(t.status)===status).length]))}];}));
   }
+  const totalElapsedMs=performance.now()-started;
+  if(report.metrics)report.metrics.totalElapsedMs=totalElapsedMs;
+  try{if(phases)report.phaseTime=phases.finish(totalElapsedMs);}catch{report.status='FAILED';report.failureCode='phase-time-invalid';report.metricQualification='measurement-unavailable';delete report.phaseTime;}
   report.throughputDocumentsPerSecond=report.status==='SUCCEEDED'?plan.documentCount/(report.metrics.totalElapsedMs/1000):null;
   await save();
  }
