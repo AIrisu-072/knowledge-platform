@@ -22,6 +22,7 @@
     "@tanstack/react-virtual": "3.14.13",
     "ajv": "8.20.0",
     "motion": "13.4.6",
+    "pdfjs-dist": "6.4.299",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

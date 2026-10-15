@@ -7,6 +7,8 @@ import { validateDetailSearch } from '../src/application/search-state';
 import { workingOperationKey, type WorkingOperation, type WorkingWriteIntent } from '../src/application/document-working-version';
 import { metadataOperations, type MetadataOperation } from '../src/application/document-metadata';
 import { refreshLifecycleQueries } from '../src/application/document-lifecycle-operations';
+import { openPdfViewer } from '../src/application/pdf-renderer';
+jest.mock('../src/application/pdf-renderer', () => ({ openPdfViewer: jest.fn() }));
 import { refreshFolderMoveReads } from '../src/application/document-folder-move';
 
 jest.mock('../src/application/document-workspace', () => ({ documentApi: {
@@ -291,4 +293,32 @@ test('背景再読取のtail一時失敗は追加pageの再試行と区別し、
   await act(async () => h.client.invalidateQueries({ queryKey: ['document-versions', documentId] }));
   expect(historyCalls(h.api.listDocumentVersions)).toHaveLength(count); expect(region().queryByRole('combobox')).not.toBeInTheDocument();
   fireEvent.click(restart()); await waitFor(() => expect(chooser()).toHaveValue(previous.versionId)); expect(historyCalls(h.api.listDocumentVersions)).toHaveLength(count + 1);
+});
+
+test('履歴版の原本viewerはhistory guardを使い既読を書き換えず既存downloadを維持する', async () => {
+  const h = setup(); const destroy = jest.fn(); const draw = jest.fn(async () => undefined);
+  (openPdfViewer as jest.Mock).mockResolvedValue({ pages: 1, render: draw, destroy });
+  h.api.downloadVersionFile.mockResolvedValue({ size: 8, type: 'application/octet-stream', arrayBuffer: async () => new Uint8Array([37,80,68,70,45,49,46,55]).buffer });
+  await open(); await select(); await downloadReady();
+  fireEvent.click(await selected().findByRole('button', { name: '原本A.pdfを表示' }));
+  await waitFor(() => expect(draw).toHaveBeenCalledTimes(1));
+  expect(h.api.downloadVersionFile).toHaveBeenCalledWith(expect.objectContaining({ versionId: previous.versionId, purpose: 'history' }), expect.objectContaining({ maxBytes: 10485760 }));
+  expect(h.api.markDocumentVersionRead).not.toHaveBeenCalled(); expect(await downloadReady()).toBeEnabled();
+  fireEvent.click(close()); await waitFor(() => expect(destroy).toHaveBeenCalled());
+});
+test('履歴版viewer取得の拒否は成功cacheを廃棄し再表示させない', async () => {
+  const h = setup(); await open(); await select(); await downloadReady();
+  h.api.downloadVersionFile.mockRejectedValueOnce(problem('FORBIDDEN', 403));
+  fireEvent.click(await selected().findByRole('button', { name: '原本A.pdfを表示' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: '原本A.pdfを表示' })).toBeNull());
+  expect(h.api.markDocumentVersionRead).not.toHaveBeenCalled();
+});
+test('履歴版viewerの遅い応答は選択変更後に描画しない', async () => {
+  const h = setup(); const pending = deferred<unknown>(); const draw = jest.fn(async () => undefined);
+  const parser = openPdfViewer as jest.Mock; parser.mockReset(); parser.mockResolvedValue({ pages: 1, render: draw, destroy: jest.fn() });
+  await open(); await select(); await downloadReady(); h.api.downloadVersionFile.mockReturnValueOnce(pending.promise);
+  fireEvent.click(await selected().findByRole('button', { name: '原本A.pdfを表示' }));
+  await select(current.versionId);
+  await act(async () => pending.resolve({ size: 8, type: 'application/pdf', arrayBuffer: async () => new Uint8Array([37,80,68,70,45,49,46,55]).buffer }));
+  expect(parser).not.toHaveBeenCalled(); expect(draw).not.toHaveBeenCalled();
 });

@@ -7,6 +7,7 @@ export {
 export type {
   BinaryTransportBridgeOptions,
   CreateDocumentUpload,
+  CreateDocumentItemsUpload,
   DownloadVersionFileInput,
   VersionUpload,
 } from './binary-transport';

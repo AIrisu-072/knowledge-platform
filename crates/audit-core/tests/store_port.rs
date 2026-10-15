@@ -124,8 +124,17 @@ fn probe_expectation_lists_the_registered_types_of_a_source() {
             .expect("document source has relay types");
     assert_eq!(expectation.source, DOCUMENT_SOURCE);
     assert_eq!(expectation.adapter_version, LEGACY_ADAPTER_VERSION);
-    assert_eq!(expectation.types.len(), 21);
-    assert!(expectation.types.iter().any(|t| t == "folder.moved"));
+    assert_eq!(expectation.types.len(), 23);
+    for expected in [
+        "folder.moved",
+        "document.version.detail_viewed",
+        "document.version.marked_unread",
+    ] {
+        assert!(
+            expectation.types.iter().any(|t| t == expected),
+            "{expected}"
+        );
+    }
     assert_eq!(expectation.last_ack, Some(last_ack));
     assert!(
         ProbeExpectation::from_catalog(

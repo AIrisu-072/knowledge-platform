@@ -11,7 +11,9 @@ use crate::VersionPurpose;
 
 const SNAPSHOT_DOMAIN: &[u8] = b"document-diff-snapshot-v0\0";
 const SEMANTIC_DOMAIN: &[u8] = b"document-diff-semantic-v0\0";
-const CACHE_DOMAIN: &[u8] = b"document-diff-cache-v0\0";
+// Derived comparisons only: old process-local Partial results must not mask
+// expanded PDF coverage. Snapshot, Version and immutable DSI identity stay v0.
+const CACHE_DOMAIN: &[u8] = b"document-diff-cache-v0;pdf-bounded-semantics-1\0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SnapshotItem {

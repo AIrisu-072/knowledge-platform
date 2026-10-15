@@ -521,6 +521,13 @@ $defs:
       documentId: {type: string, format: uuid}
       documentVersionId: {type: string, format: uuid}
       fileId: {type: string, format: uuid}
+      fileIds:
+        type: array
+        minItems: 1
+        maxItems: 63
+        uniqueItems: true
+        description: All initial original File IDs in ordinal then logicalPath order. Present for atomic items creation.
+        items: {type: string, format: uuid}
   MutationResult:
     type: object
     additionalProperties: false

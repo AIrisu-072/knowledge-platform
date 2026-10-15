@@ -114,6 +114,9 @@ fn maximal_value(field: &FieldSpec, salt: usize) -> Value {
         | Kind::NullableCounter
         | Kind::PositiveCounter
         | Kind::NullablePositiveCounter => json!(i64::MAX),
+        Kind::SafeCounter | Kind::PositiveSafeCounter => {
+            json!(audit_core::kinds::MAX_SAFE_INTEGER)
+        }
         Kind::Boolean => json!(false),
         Kind::Enum | Kind::NullableEnum => {
             json!(field.values.iter().max_by_key(|v| v.len()).expect("values"))

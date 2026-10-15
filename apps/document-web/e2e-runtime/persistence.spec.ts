@@ -11,7 +11,7 @@ test('both restarted composition roots retain document/revision/operation IDs an
     folderAccessPolicy: Omit<ModelsAccessPolicyRead, 'effectiveGrants'> & { effectiveGrants: PolicyGrantInput[] };
     documentAccessPolicy: Omit<ModelsAccessPolicyRead, 'effectiveGrants'> & { effectiveGrants: PolicyGrantInput[] };
   };
-  expect(state.documents.map(item => item.key).sort()).toEqual(['c3-consistency', 'c3-diff-recovery', 'c3-dsi-recovery', 'gui-initial', 'pdf', 'regulation']);
+  expect(state.documents.map(item => item.key).sort()).toEqual(['c3-consistency', 'c3-diff-recovery', 'c3-dsi-recovery', 'gui-initial', 'gui-initial-multiple', 'pdf', 'regulation']);
   expect((await getSession(options(context.human))).data.principal.principalId).toBe('poc-human');
   expect((await getSession(options(context.agent))).data.principal.principalId).toBe('poc-agent');
   // GUI表示より前に最後のRESETと同一receiptを照合する。HTTP process再起動の資格だけを取る。

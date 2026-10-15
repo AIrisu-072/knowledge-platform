@@ -778,3 +778,177 @@ async fn disconnect_before_commit_is_closed_and_unknown_commit_has_no_blind_retr
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(ambiguous_repository.create_calls(), 1);
 }
+
+#[tokio::test]
+async fn initial_manifest_binary_wire_creates_two_originals() {
+    let repository = Arc::new(RecordingRepository::default());
+    let storage = Arc::new(RecordingStorage::default());
+    let app = router(repository.clone(), storage.clone());
+    let mut request: Value = serde_json::from_slice(&create_request_json()).unwrap();
+    request["items"] = json!([
+        {"logicalPath":"a.txt","ordinal":0,"partId":"a","mediaType":"text/plain","originalFilename":"a.txt"},
+        {"logicalPath":"b.txt","ordinal":1,"partId":"b","mediaType":"text/plain","originalFilename":"b.txt"}
+    ]);
+    let boundary = "initial-multiple";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"request\"\r\nContent-Type: application/json\r\n\r\n{request}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"a.txt\"\r\nX-Part-Id: a\r\n\r\nfirst\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"b.txt\"\r\nX-Part-Id: b\r\n\r\nsecond\r\n--{boundary}--\r\n"
+    );
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/documents")
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let result: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(result["fileIds"].as_array().unwrap().len(), 2);
+    assert_eq!(result["fileId"], result["fileIds"][0]);
+    assert_eq!(storage.0.lock().unwrap().put_calls, 2);
+    assert_eq!(
+        repository
+            .state
+            .lock()
+            .unwrap()
+            .document
+            .as_ref()
+            .unwrap()
+            .content_items()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn null_initial_manifest_is_not_legacy_creation() {
+    let repository = Arc::new(RecordingRepository::default());
+    let storage = Arc::new(RecordingStorage::default());
+    let mut request: Value = serde_json::from_slice(&create_request_json()).unwrap();
+    request["items"] = Value::Null;
+    let (status, _) = send(
+        router(repository.clone(), storage.clone()),
+        &[
+            Part::request(serde_json::to_vec(&request).unwrap()),
+            Part::file(b"bytes".to_vec()),
+        ],
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(repository.create_calls(), 0);
+    assert_eq!(storage.0.lock().unwrap().put_calls, 0);
+}
+
+async fn send_initial_manifest(
+    app: Router,
+    request: Value,
+    binaries: &[(&str, &str)],
+) -> (StatusCode, Value) {
+    let boundary = "initial-manifest-errors";
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"request\"\r\nContent-Type: application/json\r\n\r\n{request}\r\n"
+    );
+    for (part, bytes) in binaries {
+        body.push_str(&format!("--{boundary}\r\nContent-Disposition: form-data; name=\"files\"\r\nX-Part-Id: {part}\r\n\r\n{bytes}\r\n"));
+    }
+    body.push_str(&format!("--{boundary}--\r\n"));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/documents")
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let result =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    (status, result)
+}
+
+#[tokio::test]
+async fn invalid_initial_manifest_bindings_never_write_storage_or_database() {
+    let mut base: Value = serde_json::from_slice(&create_request_json()).unwrap();
+    base["items"] = json!([
+        {"logicalPath":"a.txt","ordinal":0,"partId":"a","mediaType":"text/plain","originalFilename":"a.txt"},
+        {"logicalPath":"b.txt","ordinal":1,"partId":"b","mediaType":"text/plain","originalFilename":"b.txt"}
+    ]);
+    let mut cases = vec![
+        (base.clone(), vec![("a", "first")]),
+        (
+            base.clone(),
+            vec![("a", "first"), ("b", "second"), ("extra", "unreferenced")],
+        ),
+        (base.clone(), vec![("a", "first"), ("a", "second")]),
+    ];
+    for (pointer, value) in [
+        ("/items", json!([])),
+        ("/items/1/partId", json!("a")),
+        ("/items/1/logicalPath", json!("../invalid")),
+        ("/items/0/mediaType", json!("invalid")),
+        ("/items/0/originalFilename", json!(" ")),
+    ] {
+        let mut request = base.clone();
+        *request.pointer_mut(pointer).unwrap() = value;
+        cases.push((request, vec![("a", "first"), ("b", "second")]));
+    }
+    let mut duplicate_anchor = base.clone();
+    duplicate_anchor["items"][1]["logicalPath"] = json!("a.txt");
+    duplicate_anchor["items"][1]["ordinal"] = json!(0);
+    cases.push((duplicate_anchor, vec![("a", "first"), ("b", "second")]));
+    for (request, binaries) in cases {
+        let repository = Arc::new(RecordingRepository::default());
+        let storage = Arc::new(RecordingStorage::default());
+        let (status, _) = send_initial_manifest(
+            router(repository.clone(), storage.clone()),
+            request.clone(),
+            &binaries,
+        )
+        .await;
+        assert!(
+            status == StatusCode::UNPROCESSABLE_ENTITY
+                || status == StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unexpected {status} for {request}"
+        );
+        assert_eq!(repository.create_calls(), 0);
+        assert_eq!(storage.0.lock().unwrap().put_calls, 0);
+    }
+}
+
+#[tokio::test]
+async fn initial_manifest_unknown_response_has_complete_receipt() {
+    let mut request: Value = serde_json::from_slice(&create_request_json()).unwrap();
+    request["items"] = json!([
+        {"logicalPath":"a.txt","ordinal":0,"partId":"a","mediaType":"text/plain","originalFilename":"a.txt"},
+        {"logicalPath":"b.txt","ordinal":1,"partId":"b","mediaType":"text/plain","originalFilename":"b.txt"}
+    ]);
+    let (status, result) = send_initial_manifest(
+        router(
+            Arc::new(RecordingRepository::ambiguous()),
+            Arc::new(RecordingStorage::default()),
+        ),
+        request,
+        &[("a", "first"), ("b", "second")],
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(result["recovery"]["fileIds"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        result["recovery"]["fileId"],
+        result["recovery"]["fileIds"][0]
+    );
+}

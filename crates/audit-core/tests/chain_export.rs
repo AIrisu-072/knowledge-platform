@@ -4,11 +4,11 @@
 use audit_core::catalog::{AUDIT_STORE_SOURCE, DOCUMENT_SOURCE};
 use audit_core::chain::{GENESIS_PREIMAGE, parse_hex32, to_hex};
 use audit_core::{
-    Anchor, ChainVerdict, Checkpoint, CheckpointComparison as Cmp, EpochAttestation,
-    EpochTransition, ExpiredRowEvidence, ExportError, GENESIS, RecoveryClassification,
-    RecoveryRecord, assess_recovery, chain_next, compare_checkpoint, envelope_digest,
-    expired_set_digest, verify_export, verify_export_complete, verify_export_subset,
-    verify_identity_chain,
+    Anchor, ChainIntegrity, ChainVerdict, Checkpoint, CheckpointComparison as Cmp,
+    EpochAttestation, EpochTransition, ExpiredRowEvidence, ExportError, GENESIS,
+    RecoveryClassification, RecoveryRecord, assess_recovery, chain_next, compare_checkpoint,
+    envelope_digest, expired_set_digest, verify_export, verify_export_complete,
+    verify_export_subset, verify_identity_chain, verify_identity_chain_complete,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -798,6 +798,7 @@ fn epoch_body(
             "restored_head_chain": to_hex(restored.1),
             "lost_from_seq": restored.0.wrapping_add(1),
             "lost_upper_seq": lost_upper,
+            "lost_upper_known": true,
             "classification": classification
         }),
     )
@@ -831,6 +832,7 @@ fn attestation(
         restored_head_chain: restored.1,
         lost_from_seq: restored.0 + 1,
         lost_upper_seq,
+        lost_upper_known: true,
         classification,
     })
 }
@@ -933,6 +935,7 @@ fn epoch_changes_must_be_attested_by_epoch_started() {
                         "restored_head_chain": to_hex(&chains[2]),
                         "lost_from_seq": 9,
                         "lost_upper_seq": 9,
+                        "lost_upper_known": true,
                         "classification": "restore"
                     }),
                 )
@@ -1066,6 +1069,7 @@ fn restored_heads_before_the_anchor_are_counted_unverified() {
         restored_head_seq: 1,
         restored_head_chain: built.chains[0],
         lost_upper: 3,
+        lost_upper_known: true,
     };
     let head = Checkpoint {
         epoch: 2,
@@ -1124,6 +1128,7 @@ fn records_must_agree_with_the_chained_epoch_started_body() {
         restored_head_seq: 3,
         restored_head_chain: built.chains[2],
         lost_upper: 3,
+        lost_upper_known: true,
     };
     let assessment = assess_recovery(&report, &[head], &[honest]);
     assert_eq!(assessment.verdict, ChainVerdict::Authentic);
@@ -1186,6 +1191,129 @@ fn records_must_agree_with_the_chained_epoch_started_body() {
     );
 }
 
+/// An `audit.recovery.epoch_started` body whose lost range the Store could
+/// not bound (`lost_upper_known: false`, `lost_upper_seq = restored_seq`).
+fn unknown_bound_body(n: u128, restored: (i64, &[u8; 32])) -> Spec {
+    epoch_details(
+        n,
+        1,
+        2,
+        json!({
+            "restored_head_seq": restored.0,
+            "restored_head_chain": to_hex(restored.1),
+            "lost_from_seq": restored.0.wrapping_add(1),
+            "lost_upper_seq": restored.0,
+            "lost_upper_known": false,
+            "classification": "restore"
+        }),
+    )
+}
+
+#[test]
+fn an_unknown_lost_bound_is_never_authentic() {
+    let built = recovery_export(0, |chains| unknown_bound_body(1, (3, &chains[2])));
+    let report = verify_export(&text(&built.lines), Anchor::Genesis).expect("attested");
+    let head = head_checkpoint(&built, 2);
+    let record = RecoveryRecord {
+        old_epoch: 1,
+        new_epoch: 2,
+        restored_head_seq: 3,
+        restored_head_chain: built.chains[2],
+        lost_upper: 3,
+        lost_upper_known: false,
+    };
+    assert_eq!(
+        report.epoch_transitions()[0].attestation,
+        Some(EpochAttestation {
+            restored_head_seq: 3,
+            restored_head_chain: built.chains[2],
+            lost_from_seq: 4,
+            lost_upper_seq: 3,
+            lost_upper_known: false,
+            classification: RecoveryClassification::Restore,
+        })
+    );
+    // The record of the unknown bound matches the body, but the Store could
+    // not bound what was lost: never authentic, even with a checkpoint at
+    // the head.
+    let assessment = assess_recovery(&report, &[head], &[record]);
+    assert_eq!(assessment.epochs[0].record, Some(record));
+    assert_eq!(assessment.verdict, ChainVerdict::Lost);
+    // A record that claims the same numbers as a known (empty) lost range
+    // contradicts the body; without any record the epoch is unverified.
+    let claimed = RecoveryRecord {
+        lost_upper_known: true,
+        ..record
+    };
+    let assessment = assess_recovery(&report, &[head], &[claimed]);
+    assert_eq!(assessment.epochs[0].record, None);
+    assert_eq!(assessment.verdict, ChainVerdict::UnverifiedRecovery);
+    assert_eq!(
+        assess_recovery(&report, &[head], &[]).verdict,
+        ChainVerdict::UnverifiedRecovery
+    );
+
+    // A body without a boolean lost_upper_known attests nothing.
+    for known in [None, Some(json!("false")), Some(Value::Null)] {
+        let built = epoch_history(|chains| {
+            let mut details = json!({
+                "restored_head_seq": 3,
+                "restored_head_chain": to_hex(&chains[2]),
+                "lost_from_seq": 4,
+                "lost_upper_seq": 3,
+                "classification": "restore"
+            });
+            if let Some(known) = known.clone() {
+                details["lost_upper_known"] = known;
+            }
+            epoch_details(1, 1, 2, details)
+        });
+        assert_eq!(
+            verify_export(&text(&built.lines), Anchor::Genesis),
+            Err(ExportError::UnattestedEpochChange { line: 4 }),
+            "{known:?}"
+        );
+    }
+
+    // Identity chains carry no body: the record alone says the bound is
+    // unknown. Restored head 7, an old-epoch checkpoint at 10: with an
+    // unknown bound it lies in the (unbounded) lost range.
+    let (identity, checkpoint) = restored_history();
+    let report = verify_identity_chain(&identity, Anchor::Genesis).expect("consistent");
+    let original = identity_rows(1, 10, 1, GENESIS, 0);
+    let unknown = RecoveryRecord {
+        old_epoch: 1,
+        new_epoch: 2,
+        restored_head_seq: 7,
+        restored_head_chain: original.chains[6],
+        lost_upper: 7,
+        lost_upper_known: false,
+    };
+    let head = Checkpoint {
+        epoch: 2,
+        seq: 11,
+        chain: report.head.chain,
+    };
+    let assessment = assess_recovery(&report, &[head], &[unknown]);
+    assert_eq!(assessment.verdict, ChainVerdict::Lost);
+    let assessment = assess_recovery(&report, &[checkpoint, head], &[unknown]);
+    assert_eq!(assessment.verdict, ChainVerdict::Lost);
+    assert_eq!(assessment.findings[0].explained_by, Some(unknown));
+    // The same record with a known empty range does not cover seq 10.
+    let known = RecoveryRecord {
+        lost_upper_known: true,
+        ..unknown
+    };
+    assert_eq!(
+        assess_recovery(&report, &[head], &[known]).verdict,
+        ChainVerdict::Authentic
+    );
+    assert_eq!(
+        assess_recovery(&report, &[checkpoint, head], &[known]).verdict,
+        ChainVerdict::UnverifiedRecovery
+    );
+}
+
 /// Rows 1..=3 in epoch 1, a planned move (restored head 3) at seq 4, rows
 /// 5..=8 in epoch 2.
 fn moved_history() -> (Built, RecoveryRecord) {
@@ -1210,6 +1338,7 @@ fn moved_history() -> (Built, RecoveryRecord) {
         restored_head_seq: 3,
         restored_head_chain: prefix.chains[2],
         lost_upper: 3,
+        lost_upper_known: true,
     };
     (build(&specs, 0, GENESIS), record)
 }
@@ -1247,17 +1376,144 @@ fn records_and_checkpoints_before_the_anchor_are_neutral() {
         assess_recovery(&tail, &[cp(2, 1)], &[]).verdict,
         ChainVerdict::NoCheckpoint
     );
-    // A record of a later epoch than the anchor's must match the export.
+    // A record of a transition after the verified head (it leaves the
+    // head's epoch 2) cannot be on this path: neutral, listed for review.
     let later = RecoveryRecord {
         old_epoch: 2,
         new_epoch: 3,
         restored_head_seq: 7,
         restored_head_chain: built.chains[6],
         lost_upper: 7,
+        lost_upper_known: true,
     };
     let assessment = assess_recovery(&tail, &[cp(8, 2)], &[later]);
+    assert_eq!(assessment.verdict, ChainVerdict::Authentic);
+    assert!(assessment.unmatched_records.is_empty());
+    assert_eq!(assessment.records_after_head, vec![later]);
+    // A record of a transition the path does cross must match it: the full
+    // export crosses 1 -> 2 at seq 4.
+    let wrong_head = RecoveryRecord {
+        restored_head_seq: 2,
+        restored_head_chain: built.chains[1],
+        lost_upper: 3,
+        ..record
+    };
+    let assessment = assess_recovery(&full, &[cp(8, 2)], &[wrong_head, later]);
     assert_eq!(assessment.verdict, ChainVerdict::UnverifiedRecovery);
-    assert_eq!(assessment.unmatched_records, vec![later]);
+    assert_eq!(assessment.unmatched_records, vec![wrong_head]);
+    assert_eq!(assessment.records_after_head, vec![later]);
+}
+
+#[test]
+fn checkpoints_at_the_anchor_are_neutral() {
+    let (built, _) = moved_history();
+    let cp = |seq: i64, epoch: i64| checkpoint_at(&built, 1, seq, epoch);
+    let anchor = cp(6, 2);
+    let tail =
+        verify_export(&text(&built.lines[6..]), Anchor::Checkpoint(anchor)).expect("tail verifies");
+    // The anchor itself as a checkpoint confirms nothing new: the factual
+    // comparison is kept, the verdict is neutral.
+    let assessment = assess_recovery(&tail, &[anchor], &[]);
+    assert_eq!(compare_checkpoint(&tail, &anchor), Cmp::Ahead);
+    assert_eq!(assessment.findings[0].comparison, Cmp::Ahead);
+    assert_eq!(assessment.findings[0].verdict, ChainVerdict::NoCheckpoint);
+    assert_eq!(assessment.authenticated_through, None);
+    assert_eq!(assessment.verdict, ChainVerdict::NoCheckpoint);
+    // Another out-of-band entry at the anchor's seq that disagrees with the
+    // anchor (chain or epoch) is a conflict between the trusted inputs, not
+    // evidence against the exported rows: never Tampered.
+    for conflicting in [
+        Checkpoint {
+            chain: [0x5a; 32],
+            ..anchor
+        },
+        Checkpoint { epoch: 1, ..anchor },
+    ] {
+        let assessment = assess_recovery(&tail, &[conflicting, cp(8, 2)], &[]);
+        assert_ne!(assessment.findings[0].comparison, Cmp::Ahead);
+        assert_eq!(assessment.findings[0].verdict, ChainVerdict::NoCheckpoint);
+        assert_eq!(
+            assessment.verdict,
+            ChainVerdict::Authentic,
+            "{conflicting:?}"
+        );
+        assert_eq!(assessment.authenticated_through, Some(8));
+    }
+    // An empty export anchored at a checkpoint is not authenticated by the
+    // same checkpoint.
+    let empty = verify_export("", Anchor::Checkpoint(anchor)).expect("empty");
+    assert_eq!(
+        assess_recovery(&empty, &[anchor], &[]).verdict,
+        ChainVerdict::NoCheckpoint
+    );
+    // Past the anchor, differences still count.
+    let rewritten = Checkpoint {
+        chain: [0x5a; 32],
+        ..cp(7, 2)
+    };
+    assert_eq!(
+        assess_recovery(&tail, &[rewritten, cp(8, 2)], &[]).verdict,
+        ChainVerdict::Tampered
+    );
+}
+
+#[test]
+fn chain_integrity_distinguishes_intact_broken_and_unanchored() {
+    let (_, built) = five();
+    let full = text(&built.lines);
+    let identity: Vec<String> = built
+        .lines
+        .iter()
+        .map(|line| {
+            let mut value: Value = serde_json::from_str(line).expect("line");
+            value["envelope"] = Value::Null;
+            value["expired"] = Value::Bool(false);
+            value.to_string()
+        })
+        .collect();
+    let identity = text(&identity);
+    assert_eq!(
+        ChainIntegrity::of(&verify_identity_chain(&identity, Anchor::Genesis)),
+        ChainIntegrity::Intact
+    );
+    assert_eq!(
+        ChainIntegrity::of(&verify_export(&full, Anchor::Genesis)),
+        ChainIntegrity::Intact
+    );
+    let gap = text(&[built.lines[0].clone(), built.lines[2].clone()]);
+    let broken = ChainIntegrity::of(&verify_export(&gap, Anchor::Genesis));
+    assert_eq!(
+        broken,
+        ChainIntegrity::Broken(ExportError::SeqGap {
+            line: 2,
+            expected: 2,
+            found: 3
+        })
+    );
+    assert_eq!(broken.as_str(), "broken");
+    let subset = ChainIntegrity::of(&verify_export_subset(&gap));
+    assert_eq!(subset, ChainIntegrity::Unanchored);
+    assert_eq!(
+        (ChainIntegrity::Intact.as_str(), subset.as_str()),
+        ("intact", "unanchored")
+    );
+    // Intact is about the chain only: an intact identity chain still has
+    // unattested epochs and expiries, and no checkpoint makes it authentic.
+    let report = verify_identity_chain(&identity, Anchor::Genesis).expect("intact");
+    assert!(!report.epochs_authenticated);
+    assert_eq!(
+        assess_recovery(&report, &[], &[]).verdict,
+        ChainVerdict::NoCheckpoint
+    );
+    // The complete variant also requires the manifest watermark.
+    assert!(verify_identity_chain_complete(&identity, Anchor::Genesis, 5).is_ok());
+    assert_eq!(
+        verify_identity_chain_complete(&identity, Anchor::Genesis, 6),
+        Err(ExportError::WatermarkMismatch {
+            watermark: 6,
+            head: 5
+        })
+    );
 }
 
 #[test]
@@ -1603,6 +1859,7 @@ fn documented_recovery_is_reported_as_lost_never_authentic() {
         restored_head_seq: 7,
         restored_head_chain: report.chain_at(7).expect("on path"),
         lost_upper: 10,
+        lost_upper_known: true,
     };
     let assessment = assess_recovery(&report, &[checkpoint], &[record]);
     assert_eq!(assessment.verdict, ChainVerdict::Lost);
@@ -1671,6 +1928,7 @@ fn differences_at_or_below_the_restored_head_are_tampering() {
         restored_head_seq: 7,
         restored_head_chain: report.chain_at(7).expect("on path"),
         lost_upper: 10,
+        lost_upper_known: true,
     };
     let old_checkpoint = checkpoint_at(&original, 1, 6, 1);
     let assessment = assess_recovery(&report, &[old_checkpoint], &[record]);
@@ -1702,6 +1960,7 @@ fn planned_move_with_an_empty_lost_range_is_authentic() {
         restored_head_seq: 7,
         restored_head_chain: original.chains[6],
         lost_upper: 7,
+        lost_upper_known: true,
     };
     // The checkpoint taken before the move authenticates only up to it.
     let assessment = assess_recovery(&report, &[checkpoint], &[record]);

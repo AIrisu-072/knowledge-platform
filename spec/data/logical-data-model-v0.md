@@ -221,6 +221,8 @@ DocumentVersion は1個以上の順序付きContentItemを持つ。各ContentIte
 
 既存のVersionFile（PRIMARY / ATTACHMENT）は旧表現である。単一PRIMARYでATTACHMENTのない初版のみ `logical_path = "primary"`, `ordinal = 0` のContentItemへ確定的に移行できる。ATTACHMENTがある場合はauthoritative itemかrenditionかを推測せず、分類されるまでVersioning操作を拒否する。新しいContentItem表現を唯一の編集可能な正本とし、旧VersionFileを並行した正本にしない。
 
+初回登録も1個以上の原本を一つの文書・初版へ原子的に作成できる。[原本管理追補](../../docs/superpowers/specs/2026-10-08-document-original-management.md)に従い、単原本legacyは `primary` / 0 を維持する。複数manifestでは全File IDsをordinal/path順で結果・結果不明回復へ束縛する。単原本登録後の更新で複数登録を模倣しない。作業版の追加・除外・並替は全manifest writeとして行い、公開版・履歴を直接変更しない。既存path+ordinalの形式互換検査を維持する。
+
 ## 2.7 Metadata
 
 v0 では柔軟性を優先し、共通項目 + 拡張 metadata の構成とする。

@@ -18,11 +18,11 @@ pub use chain::{GENESIS, chain_next, envelope_digest, expired_set_digest};
 pub use codes::{Rejection, RejectionCode};
 pub use envelope::{AuditEnvelope, JSONB_TEXT_LIMIT, validate_envelope};
 pub use export::{
-    Anchor, ChainVerdict, Checkpoint, CheckpointComparison, CheckpointFinding, EpochAttestation,
-    EpochReview, EpochTransition, ExpiredRowEvidence, ExportError, ExportReport,
+    Anchor, ChainIntegrity, ChainVerdict, Checkpoint, CheckpointComparison, CheckpointFinding,
+    EpochAttestation, EpochReview, EpochTransition, ExpiredRowEvidence, ExportError, ExportReport,
     RecoveryAssessment, RecoveryClassification, RecoveryRecord, assess_recovery,
     compare_checkpoint, verify_export, verify_export_complete, verify_export_subset,
-    verify_identity_chain,
+    verify_identity_chain, verify_identity_chain_complete,
 };
 pub use json::{jsonb_text_len, parse_unique};
 pub use legacy::{DocumentStagingProjection, LEGACY_ADAPTER_VERSION, project};

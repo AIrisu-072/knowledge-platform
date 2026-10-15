@@ -6,6 +6,23 @@
 - 承認済みの設計（主ナビゲーションはタスク・文書・検索、最初の画面はタスク）に共通画面を合わせる。Work APIのあるserverでは設計どおり、文書だけのserverは今のまま（依頼者の指示、案A）。デスクトップ版（PR #103、main `8d4b94a`）でタスク・検索へメニューから移れなかった件の対応。
 - 実装 `ced8ed6`、独立reviewのImportant（判定の失敗後に確かめ直さない）の修正 `4233c71`、実GUI確認の手順の修正 `89c2858`・`b0aae6e`。画面試験は全1774件・型検査・本番build成功。デスクトップの実GUIは `b0aae6e` で26シナリオ・227項目が連続3回 `qualifying: true`。実serverのE2E（organization-server・document-server）はCIで成功。新しい判断3点（判定の規則、3秒の上限、「編集作業」「文書履歴」を残す）は承認済みとして扱わない。Windows実機は依頼者の指示で後回し。
 - 次のexact action：PR #112のCIと独立reviewの結果を確認して修正 → CI成功 → 統合 → 統合後のmain CI → 依頼者へ報告。
+- 2026-10-15追補：session要求が応答しない場合の復帰P2を `d59c2f2b` で補修。詳細と旧baseのGUI focus1件失敗は状況文書へ記録。main `ead6830e` を双方のactive・製品sourceを保持して通常mergeし、組合せを別途検証する。最終main追従・exact-head資格・push/統合判断は親が行う。
+
+---
+
+## 2026-10-09 — 遅延した文書一覧応答のフォーカス保持
+
+- 再開先は[状況](document-list-focus-status.md)と[操作手順](../../operations/document-list-focus.md)。保存済み修正を main `e15be9c3` に取り込んだ独立 branch `fix/document-list-focus-20261009`。登録ボタンや別操作から一覧応答がフォーカスを奪う制御再現済みの不具合を修正する。元の Ubuntu small 失敗と同一原因とは断定しない。
+- push と日本語 Draft PR 作成は承認済み。次は関連試験・独立レビュー、重複確認後の公開、正確な head の必須 CI の確認。まだ merge しない。1 万件 run `37887357388`、他担当の branch / PR、実環境の設定は変更しない。
+
+---
+
+## 2026-10-08 — 作業版の原本構成・初回複数原本登録
+
+- 再開先は[状況](document-original-management-status.md)、[承認範囲](../specs/2026-10-08-document-original-management.md)、[実装計画](../plans/2026-10-08-document-original-management-implementation.md)。06:23:37 UTCの「この方針で進めてください」で、作業版だけの追加・削除・並替（最終原本不可、公開/履歴保持）と初回複数の原子的作成を承認。下の旧設計待ち記録を現在状態として使用しない。
+- branch `feat/document-originals-20261008`、製品 `17db92dcdde07fec28e8368cf909ac527d3f0d2e`。PR108統合main `6a34de3f0904949daca304b9178ef5125ea13d82` を通常mergeし、製品sourceを保持。全GUI1786件、Rust focused24件、実PostgreSQL18.6+FS1件、型/build/Clippy、SDK/API契約が成功。詳細なログ保存の境界は状況へ。
+- registration/schema/SDKの独立レビューは指摘修正後GO。全体の独立レビューと保存headのCIは親が確認する。Linux sandbox/PDFiumが必須の実browser journey・再起動persistenceはこのMacでは未実施。実対象PC・本番認証/TLS・実アカウントの設定は変更していない。
+- 次は親のexact-headレビューを確認し、同一機能Draft PRのLinux hosted資格を実行する。main統合は正確headの必須CI成功後、統合後CIまで確認する。下のDocument/Desktop/Auditの記録は保持する。
 
 ---
 
@@ -29,10 +46,11 @@
 
 ---
 
-## 2026-10-07 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
+## 2026-10-08 — Audit Infrastructure v1（横断基盤track、Documentの作業pointerとは並行）
 
-- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)。
-- branchは `claude/cool-darwin-7xh893`、Draft [PR98](https://github.com/AIrisu-072/knowledge-platform/pull/98)。旧PR44/45のstackには依存しない。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
+- Audit Outbox → relay → Audit Storeの配送・保存・検証を完成させるtrack。再開先は[状況](audit-infrastructure-v1-status.md)の先頭、[設計](../specs/2026-10-07-audit-infrastructure-v1-delivery-design.md)（改訂4）、[計画](../plans/2026-10-07-audit-infrastructure-v1-delivery.md)、[運用手順](../../operations/audit-delivery-store.md)。
+- 単位A（PR #98、main `643cc85`）と単位B（Store・relay、PR #113、main `dba8168`）はmain統合済み（`dba8168` のmain CIは、Organization受入の既知の断続的な503でFAILURE。単位Bの起因ではなく、`dba8168` を含むPR #115のhead `660670d` では同じ手順がSUCCESS。詳細は状況文書）。単位C（`crates/audit-acceptance` の受入試験、[引継ぎ](../handoffs/audit-infrastructure-v1-organization-handoff.md)、設計§2.2の最終capability matrix）はDraft [PR #115](https://github.com/AIrisu-072/knowledge-platform/pull/115)（branch `claude/cool-darwin-7xh893`）。最初のexact-head CI（`660670d`、run 37761824323）はrust-testだけがFAILUREで、原因はGitHub runnerでtestcontainersのimage取得がstreamの途中で切れたこと（「bytes remaining on stream」、試験本体の前。他の31試験はPASS）。`b233652` でPullImageの失敗だけを最大3回再試行する。独立確認reviewはGOで、Minor 4件は `facb755`・`591006a`・`df1bd19` と状況文書の更新で閉じた。
+- 次は `audit-unit-c` のHEADを `claude/cool-darwin-7xh893` へpush（PR #115のhead `660670d` からのfast-forward）、exact-head CI、main統合、main CI。現在状態は状況文書の先頭とGitHubを読む。Document producer・Search・Work・GUIは変更しない。下のDocument作業pointerはそのまま有効。
 
 ---
 

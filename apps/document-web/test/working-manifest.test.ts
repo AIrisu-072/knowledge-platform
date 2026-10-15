@@ -66,3 +66,62 @@ test('a format-changing replacement is rejected locally without guessed conversi
   await expect(prepare(manifest, new Map([['a', new File(['pdf'], 'new.pdf', { type: 'application/pdf' })]]))).rejects.toThrow(/形式/);
   expect(documentApi.downloadVersionFile).not.toHaveBeenCalled();
 });
+
+test('structural editing removes own renditions, preserves audited retained bytes and reindexes in selected order', async () => {
+  const file = new File(['new'], 'new.txt', { type: 'text/plain' });
+  const intent = await prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['b', 'new'], additions: [{ id: 'new', logicalPath: 'new/path', file }] } });
+  expect(intent.body.items.map(item => [item.logicalPath, item.ordinal])).toEqual([['two', 0], ['new/path', 1]]);
+  expect(intent.body.items[0]!.fileId).toBe('b-file');
+  expect(intent.body.items[0]!.renditions![0]!.fileId).toBe('b-r-file');
+  expect(intent.body.items[1]!.renditions).toEqual([]);
+  expect(intent.body.items[1]!.fileId).not.toBe('b-file');
+  expect(intent.files.get(intent.body.items[1]!.partId)).toBe(file);
+  expect(documentApi.downloadVersionFile).toHaveBeenCalledTimes(2);
+  expect(documentApi.downloadVersionFile).not.toHaveBeenCalledWith(expect.objectContaining({ contentItemId: 'a' }), expect.anything());
+});
+test.each(['', '/root', 'a//b', 'a/../b', './a', 'a\\b', 'a\u0000b', 'one'])('rejects invalid or duplicate added path %p before any reads', async logicalPath => {
+  await expect(prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['a', 'b', 'new'], additions: [{ id: 'new', logicalPath, file: new File(['new'], 'new.txt', { type: 'text/plain' }) }] } })).rejects.toThrow(/パス/);
+  expect(documentApi.downloadVersionFile).not.toHaveBeenCalled();
+});
+test('zero originals and structure changes on a published source fail before download', async () => {
+  await expect(prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: [], additions: [] } })).rejects.toThrow(/原本/);
+  await expect(prepareWorkingVersion({ mode: 'create', manifest: { ...manifest, purpose: 'published' }, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['b', 'a'], additions: [] } })).rejects.toThrow(/作業版/);
+});
+
+test('reorder reindexes while cancelling structural edits preserves the original sparse ordinals', async () => {
+  const reordered = await prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['b', 'a'], additions: [] } });
+  expect(reordered.body.items.map(item => [item.logicalPath, item.ordinal])).toEqual([['two', 0], ['one', 1]]);
+  const unchanged = await prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['a', 'b'], additions: [] } });
+  expect(unchanged.body.items.map(item => item.ordinal)).toEqual([2, 7]);
+});
+test('new paths are NFC-normalized and existing same-path different-ordinal anchors remain untouched', async () => {
+  const source = JSON.parse(JSON.stringify(manifest)) as EditManifest; source.items[1]!.logicalPath = 'one';
+  const intent = await prepareWorkingVersion({ mode: 'update', manifest: source, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['a', 'b', 'new'], additions: [{ id: 'new', logicalPath: 'cafe\u0301', file: new File(['new'], 'new.txt', { type: 'text/plain' }) }] } });
+  expect(intent.body.items.map(item => [item.logicalPath, item.ordinal])).toEqual([['one', 0], ['one', 1], ['café', 2]]);
+});
+test.each([{ itemIds: ['a', 'a'] }, { itemIds: ['missing'] }])('invalid selected IDs fail closed %p', async ({ itemIds }) => {
+  await expect(prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds, additions: [] } })).rejects.toThrow(/構成/);
+  expect(documentApi.downloadVersionFile).not.toHaveBeenCalled();
+});
+test('new originals count against the binary-part limit before downloading kept files', async () => {
+  const additions = Array.from({ length: 60 }, (_, n) => ({ id: `new-${n}`, logicalPath: `path-${n}`, file: new File(['new'], 'new.txt', { type: 'text/plain' }) }));
+  await expect(prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['a', 'b', ...additions.map(item => item.id)], additions } })).rejects.toThrow(/63/);
+  expect(documentApi.downloadVersionFile).not.toHaveBeenCalled();
+});
+test('oversized additions and unknown format fail before audited download', async () => {
+  const file = new File(['new'], 'new.txt', { type: 'text/plain' }); Object.defineProperty(file, 'size', { value: 256 * 1024 * 1024 + 1 });
+  await expect(prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['a', 'b', 'new'], additions: [{ id: 'new', logicalPath: 'new', file }] } })).rejects.toThrow(/256/);
+  await expect(prepareWorkingVersion({ mode: 'update', manifest, title: 'Title', replacements: new Map(), signal: new AbortController().signal,
+    structure: { itemIds: ['a', 'b', 'new'], additions: [{ id: 'new', logicalPath: 'new', file: new File(['new'], 'unknown') }] } })).rejects.toThrow(/形式/);
+  expect(documentApi.downloadVersionFile).not.toHaveBeenCalled();
+});

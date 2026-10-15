@@ -11,7 +11,11 @@ export function creationIds(value: unknown): CreateDocumentResult | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const candidate = value as Partial<CreateDocumentResult>;
   if (![candidate.documentId, candidate.documentVersionId, candidate.fileId].every(id => typeof id === 'string' && uuid.test(id))) return undefined;
-  return { documentId: candidate.documentId!, documentVersionId: candidate.documentVersionId!, fileId: candidate.fileId! };
+  if (candidate.fileIds !== undefined && (!Array.isArray(candidate.fileIds) || !candidate.fileIds.length || candidate.fileIds.length > 63
+    || candidate.fileIds[0] !== candidate.fileId || new Set(candidate.fileIds).size !== candidate.fileIds.length
+    || candidate.fileIds.some(id => typeof id !== 'string' || !uuid.test(id)))) return undefined;
+  return { documentId: candidate.documentId!, documentVersionId: candidate.documentVersionId!, fileId: candidate.fileId!,
+    ...(candidate.fileIds ? { fileIds: [...candidate.fileIds] } : {}) };
 }
 
 export function readCreationReceipt(): CreationReceipt | null {
@@ -48,4 +52,14 @@ export function creationWasRejected(error: unknown): boolean {
     FOLDER_NOT_FOUND: 404, UNSUPPORTED_MEDIA_TYPE: 415, BUSINESS_RULE_REJECTED: 422,
   };
   return rejected[problem.code] === problem.status;
+}
+
+export function originalPathError(path: string): string | null {
+  if (!path.trim() || path !== path.normalize('NFC') || /[\\\u0000-\u001f\u007f]/.test(path)
+    || path.startsWith('/') || path.split('/').some(part => !part || part === '.' || part === '..')) return '原本パスは空でない相対パスを指定してください。';
+  return null;
+}
+export function sameCreationIds(expected: CreateDocumentResult, actual: CreateDocumentResult): boolean {
+  return actual.documentId === expected.documentId && actual.documentVersionId === expected.documentVersionId && actual.fileId === expected.fileId
+    && JSON.stringify(actual.fileIds) === JSON.stringify(expected.fileIds);
 }

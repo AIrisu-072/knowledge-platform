@@ -1,0 +1,75 @@
+name: Document 10000 qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Run a fresh small qualification, then admit exactly10000 documents
+        required: true
+        type: choice
+        options: ['10000']
+        default: '10000'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: document-load-thousand
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.repository == 'AIrisu-072/knowledge-platform' && github.event.repository.private == false && github.ref == 'refs/heads/main' && inputs.stage == '10000' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MISE_AUTO_INSTALL: '0'
+      MISE_TASK_RUN_AUTO_INSTALL: 'false'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # existing pin
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # existing pin
+        with:
+          install: false
+      - name: Install pinned runtime and dependencies
+        run: |
+          mise install rust
+          mise install node
+          mise install pnpm
+          pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check qualification contracts before any real load
+        run: pnpm --dir tools/document-load-qualification test
+      - name: Install verified Japanese runner font
+        run: node tools/document-poc-runtime/runner-font.mjs
+      - name: Install pinned Chromium
+        run: pnpm --filter @knowledge-platform/document-web exec playwright install chromium
+      - name: Qualify fresh small and conditionally admit10000
+        env:
+          KP_DOCUMENT_LOAD_RECEIPT_ALLOWED: 'true'
+          KP_DOCUMENT_LOAD_SOURCE_HEAD: ${{ github.sha }}
+        run: |
+          unset KP_DOCUMENT_LOAD_SMALL KP_DOCUMENT_LOAD_PLAN KP_DOCUMENT_LOAD_THOUSAND
+          unset KP_POC_CAPTURE_VISUAL KP_POC_VISUAL_REVIEW_ENABLED
+          export KP_DOCUMENT_LOAD_TEN_THOUSAND=true
+          mise run document:poc:agent
+      - name: Emit bounded owned runtime result
+        timeout-minutes: 1
+        if: ${{ always() }}
+        run: node tools/document-poc-runtime/ci-summary.mjs
+      - name: Upload only the successful bounded chain receipt
+        timeout-minutes: 2
+        if: ${{ success() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # existing pin
+        with:
+          name: document-load-ten-thousand-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: false
+          compression-level: 0
+          include-hidden-files: true
+          path: tools/document-poc-runtime/.state/document-load-export/qualification.json

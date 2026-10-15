@@ -52,8 +52,8 @@ pub use action_capability::{
 };
 pub use authorized_document::{AuthorizationScope, AuthorizedDocumentService};
 pub use command::{
-    CreateDocumentCommand, CreateDocumentResult, PublishDocumentCommand, PublishDocumentResult,
-    PublishOperationId,
+    CreateDocumentCommand, CreateDocumentItem, CreateDocumentItemsCommand, CreateDocumentResult,
+    PublishDocumentCommand, PublishDocumentResult, PublishOperationId,
 };
 pub use create_outcome::{
     CreateOutcomeProbe, CreateOutcomeRecoveryService, CreateOutcomeRepository,

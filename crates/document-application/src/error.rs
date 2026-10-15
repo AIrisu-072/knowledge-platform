@@ -155,6 +155,7 @@ pub enum ApplicationError {
         document_id: DocumentId,
         document_version_id: DocumentVersionId,
         file_id: FileId,
+        file_ids: Option<Vec<FileId>>,
     },
     #[error("publish commit outcome is unknown")]
     PublishCommitOutcomeUnknown {

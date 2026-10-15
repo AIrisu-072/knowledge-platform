@@ -34,3 +34,9 @@ path = "tests/runner_baseline.rs"
 [[test]]
 name = "runner_isolation"
 path = "tests/runner_isolation.rs"
+
+# Bounded test tooling only; reuses this package's unchanged qualified runner.
+[[example]]
+name = "document-load-inspection"
+path = "../../tools/document-load-qualification/inspection-probe.rs"
+test = true

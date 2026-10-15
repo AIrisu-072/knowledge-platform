@@ -8,6 +8,22 @@ $defs:
       title: {type: string, minLength: 1}
       documentMetadata: {type: object}
       versionMetadata: {type: object}
+      items:
+        type: array
+        minItems: 1
+        maxItems: 63
+        description: Atomic initial originals. Uses files parts; cannot be mixed with legacy file.
+        items: {$ref: '#/$defs/InitialContentItem'}
+  InitialContentItem:
+    type: object
+    additionalProperties: false
+    required: [logicalPath, ordinal, partId, mediaType, originalFilename]
+    properties:
+      logicalPath: {type: string, minLength: 1}
+      ordinal: {type: integer, minimum: 0}
+      partId: {type: string, minLength: 1}
+      mediaType: {type: string, minLength: 1}
+      originalFilename: {type: string, minLength: 1}
   VersionContentItem:
     type: object
     additionalProperties: false

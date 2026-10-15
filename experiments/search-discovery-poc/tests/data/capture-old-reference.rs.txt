@@ -1,0 +1,17 @@
+use lindera::{dictionary::load_dictionary,mode::Mode,segmenter::Segmenter};
+use lindera_analysis::tokenizer::Tokenizer;
+use search_discovery_poc::lexical::{AnalyzerKind,LexicalResource,LexicalCase,evaluate_lexical};
+use serde_json::json;
+#[test]
+fn capture_old_reference() {
+ let resources:Vec<LexicalResource>=serde_json::from_str(include_str!("../fixtures/lexical/resources.json")).unwrap();
+ let cases:Vec<LexicalCase>=serde_json::from_str(include_str!("../fixtures/lexical/queries.json")).unwrap();
+ let tokenizer=Tokenizer::new(Segmenter::new(Mode::Normal,load_dictionary("embedded://ipadic").unwrap(),None));
+ let mut texts:Vec<(String,String)>=Vec::new();
+ for r in &resources {texts.push((format!("resource:{}:title",r.id),r.title.clone()));texts.push((format!("resource:{}:summary",r.id),r.summary.clone()));for (i,a) in r.aliases.iter().enumerate(){texts.push((format!("resource:{}:alias:{}",r.id,i),a.clone()));}}
+ for c in &cases{texts.push((format!("query:{}",c.id),c.query.clone()));}
+ for (i,t) in ["","ABC123","! ? / ()","令和8年 AI検索 2026-10-14。","融資\n相談\t窓口"].iter().enumerate(){texts.push((format!("edge:{}",i),t.to_string()));}
+ let token_cases:Vec<_>=texts.iter().map(|(id,text)|{let tokens=tokenizer.tokenize(text).unwrap();json!({"id":id,"text":text,"tokens":tokens.iter().map(|t|json!({"surface":t.surface,"byte_start":t.byte_start,"byte_end":t.byte_end,"position":t.position,"position_length":t.position_length})).collect::<Vec<_>>()})}).collect();
+ let evals:Vec<_>=[AnalyzerKind::TantivyDefault,AnalyzerKind::LinderaIpadic].into_iter().map(|a|{let e=evaluate_lexical(a,&resources,&cases).unwrap();json!({"analyzer_id":e.measurement.analyzer_id,"cases":e.cases,"recall_at_10":e.measurement.recall_at_10,"mrr":e.measurement.mrr,"ndcg_at_10":e.measurement.ndcg_at_10,"index_bytes":e.measurement.index_bytes,"quality_bits":{"recall_at_10":e.measurement.recall_at_10.to_bits(),"mrr":e.measurement.mrr.to_bits(),"ndcg_at_10":e.measurement.ndcg_at_10.to_bits()}})}).collect();
+ std::fs::write(std::env::var("KP_OLD_REFERENCE_PATH").unwrap(),serde_json::to_vec_pretty(&json!({"schemaVersion":1,"tokenCases":token_cases,"evaluations":evals})).unwrap()).unwrap();
+}

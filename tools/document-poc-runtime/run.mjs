@@ -16,18 +16,35 @@ import { DatabaseDiagnostics } from './database-diagnostics.mjs';
 import { assertSameRuntime, observeOwnedRuntime, privateProvenanceProbe } from './runtime-provenance.mjs';
 import { postgresReadyArgs, postgresVersionArgs, parsePostgresReadyStatus, waitForPostgresTcp } from './postgres-readiness.mjs';
 
+import { loadEnabled, runDocumentLoad } from '../document-load-qualification/hosted.mjs';
+import { createLoadRestarter } from '../document-load-qualification/restart.mjs';
+import { fetchCurrentRunBudget, createWorkClock } from '../document-load-qualification/job-budget.mjs';
+import { cleanupOwnedRuntime } from '../document-load-qualification/cleanup.mjs';
+import { createLocalRunBudget } from '../document-load-qualification/local-budget.mjs';
+import { validateLocalLaunchContext, recordLocalStartup } from '../document-load-qualification/local-launch.mjs';
+import { ownedExt4DatabaseEnabled, prepareOwnedDatabaseStorage, ownedPostgresArguments, verifyOwnedDatabaseMounts } from '../document-load-qualification/local-storage.mjs';
+import { writeLocalScaleReceipt } from '../document-load-qualification/local-receipt-export.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--prebuilt')) throw Error('Usage: node tools/document-poc-runtime/run.mjs [--prebuilt]');
+const documentLoadEnabled = loadEnabled(process.env, args.includes('--prebuilt'));
+const tenThousandMode = process.env.KP_DOCUMENT_LOAD_TEN_THOUSAND === 'true';
+const localScaleMode = process.env.KP_DOCUMENT_LOAD_HUNDRED_THOUSAND === 'true';
+const ownedExt4Database = ownedExt4DatabaseEnabled(process.env);
+const localContext = localScaleMode ? await validateLocalLaunchContext(process.env) : undefined;
+const loadBudget = tenThousandMode ? await fetchCurrentRunBudget() : localScaleMode ? createLocalRunBudget({startedAt:localContext.startedAt,now:Date.now()}) : undefined;
+const loadClock = tenThousandMode || localScaleMode ? createWorkClock() : undefined;
 const visualEnabled = process.env.KP_POC_CAPTURE_VISUAL === 'true';
+if (localScaleMode && visualEnabled) throw Error('Local scale qualification does not enable visual capture');
 if (process.env.KP_POC_CAPTURE_VISUAL !== undefined && !visualEnabled) throw Error('KP_POC_CAPTURE_VISUAL must be absent or true');
 if (visualEnabled && args.includes('--prebuilt')) throw Error('Visual evidence requires built-in-this-run source provenance');
 if (visualEnabled) assertOwnedVisualDatabaseInput(process.env);
 const base = resolve(process.env.KP_POC_EVIDENCE_DIR ?? join(root, 'tools/document-poc-runtime/.state'));
 await mkdir(base, { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join(base, 'run-'));
-const runId = randomUUID();
-const stages = RUNTIME_STAGES;
+const runId = localContext?.runId ?? randomUUID();
+const stages = documentLoadEnabled ? [...RUNTIME_STAGES.slice(0, -1), 'document-load-qualification', RUNTIME_STAGES.at(-1)] : RUNTIME_STAGES;
 const report = new EvidenceReport(directory, stages);
 const databaseDiagnostics = new DatabaseDiagnostics(report, Boolean(process.env.TEST_DATABASE_URL));
 report.data.runId = runId;
@@ -36,18 +53,26 @@ report.data.buildMode = args.includes('--prebuilt') ? 'prebuilt-unverified-sourc
 report.data.processes = [];
 report.data.observationWindows = { startupMs: STARTUP_OBSERVATION_MS, rationale: 'Exceeds DB acquire5s + DSI preflight10s + Diff preflight30s; not a production SLO', drainStillAliveMs: 500 };
 const processes = [];
-let cid, database, password, proxy;
+let cid, database, password, proxy, localDatabaseStorage, localChain;
+const localFinalShutdown = [];
 const log = name => join(directory, `${name}.log`);
 const options = (name, env = process.env) => ({ cwd: root, env, log: log(name), secrets: [database, password] });
 const run = (name, executable, args, env, timeoutMs) => command(executable, args, { ...options(name, env), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+const provenanceTimeoutMs = tenThousandMode || localScaleMode ? 10_000 : undefined;
 let visualContext;
 let failed = false;
 let interrupted = false;
 const onSignal = () => { interrupted = true; for (const owned of processes) if (owned.child.exitCode === null) owned.child.kill('SIGTERM'); };
 process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal);
 try {
-  report.data.gitHead = await run('git', 'git', ['rev-parse', 'HEAD']);
-  report.data.gitDirty = Boolean(await run('git', 'git', ['status', '--porcelain']));
+  report.data.gitHead = await run('git', 'git', ['rev-parse', 'HEAD'], undefined, provenanceTimeoutMs);
+  if (tenThousandMode) assert.equal(report.data.gitHead, process.env.GITHUB_SHA, 'Qualification checkout differs from provider run');
+  report.data.gitDirty = Boolean(await run('git', 'git', ['status', '--porcelain'], undefined, provenanceTimeoutMs));
+  if (localScaleMode) {
+    assert.equal(report.data.gitHead, localContext.sourceHead, 'Local qualification source mismatch');
+    assert.equal(report.data.gitDirty, false, 'Local qualification requires clean source');
+    await recordLocalStartup(localContext,{pid:process.pid,sourceHead:report.data.gitHead,directory});
+  }
   await report.stage('toolchain', async () => {
     report.data.tools = { rustc: await run('rustc-version', 'rustc', ['--version']), pnpm: await run('pnpm-version', 'pnpm', ['--version']) };
     report.data.sourceLocks = { cargo: await sha256File(join(root, 'Cargo.lock')), pnpm: await sha256File(join(root, 'pnpm-lock.yaml')) };
@@ -60,6 +85,10 @@ try {
     await run('build-rust', 'cargo', ['build', '--locked', '-p', 'document-server', '-p', 'document-semantic-inspection-worker', '-p', 'document-diff-worker']);
     await run('build-web', 'pnpm', ['--filter', '@knowledge-platform/document-web', 'build']);
     await run('build-mcp', 'pnpm', ['--filter', '@knowledge-platform/document-mcp', 'build']);
+    if (documentLoadEnabled) {
+      await run('document-load-inspection-tests', 'cargo', ['test', '--locked', '-p', 'document-semantic-inspection-runner', '--example', 'document-load-inspection']);
+      await run('document-load-inspection-build', 'cargo', ['build', '--locked', '-p', 'document-semantic-inspection-runner', '--example', 'document-load-inspection']);
+    }
   });
   const binary = join(binaryDir, 'document-server');
   const storage = join(directory, 'storage');
@@ -84,6 +113,7 @@ try {
       mcp: await sha256File(join(root, 'apps/document-mcp/dist/main.cjs')),
       mcpConsistency: await sha256File(join(root, 'apps/document-mcp/dist/consistency.cjs')),
       mcpRuntime: await sha256File(join(root, 'apps/document-mcp/dist/runtime.cjs')), web: {} };
+    if (documentLoadEnabled) report.data.artifacts.inspectionProbe = await sha256File(join(binaryDir, 'examples', 'document-load-inspection'));
     async function recordAssets(path, prefix = '') {
       for (const entry of await readdir(path, { withFileTypes: true })) {
         if (entry.isDirectory()) await recordAssets(join(path, entry.name), `${prefix}${entry.name}/`);
@@ -102,8 +132,9 @@ try {
     if (database) { report.data.database = { ownership: 'caller-asserted-disposable', cleanup: 'caller-owned; never dropped by harness' }; return; }
     password = randomBytes(24).toString('hex');
     const cidfile = join(directory, 'postgres.cid');
+    if (ownedExt4Database) localDatabaseStorage = await prepareOwnedDatabaseStorage(directory);
     try {
-      await databaseDiagnostics.step('docker-run', () => run('postgres-start', 'docker', postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }));
+      await databaseDiagnostics.step('docker-run', () => run('postgres-start', 'docker', ownedExt4Database ? ownedPostgresArguments(runId,cidfile,localDatabaseStorage) : postgresArguments(runId, cidfile), { ...process.env, POSTGRES_PASSWORD: password }));
     } catch (error) {
       try { cid = (await readFile(cidfile, 'utf8')).trim(); } catch { /* Docker might not have created the owned container. */ }
       throw new Blocked(`Disposable Docker PostgreSQL could not start: ${error.message}`, { cause: error });
@@ -117,6 +148,7 @@ try {
     const digestResult = await databaseDiagnostics.step('repo-digest-query', () => run('postgres-image', 'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', imageId]));
     const repoDigests = await databaseDiagnostics.step('repo-digest-parse', async () => JSON.parse(digestResult));
     report.data.database = { ownership: 'harness-owned', image: 'postgres:18.6-bookworm', imageId, repoDigests };
+    if (ownedExt4Database) report.data.database.storage = await verifyOwnedDatabaseMounts(cid,localDatabaseStorage,run);
     await databaseDiagnostics.step('readiness', () => waitForPostgresTcp(
       async budget => parsePostgresReadyStatus(await run('postgres-ready', 'docker', postgresReadyArgs(cid), process.env, budget)),
     ));
@@ -140,7 +172,7 @@ try {
   });
   async function start(profile, generation) {
     if (interrupted) throw Error('Harness interrupted');
-    const owned = startProcess(binary, ['serve'], options(`${profile}-${generation}`, env(profile))); processes.push(owned);
+    const owned = startProcess(binary, ['serve'], { ...options(`${profile}-${generation}`, env(profile)), ...(localScaleMode ? { captureMode: 'bounded-tail' } : {}) }); processes.push(owned);
     report.data.processes.push({ profile, generation, pid: owned.child.pid, origin: profile === 'poc-human' ? human : agent, database: 'shared', storage: 'shared' });
     try { await waitReady(profile === 'poc-human' ? human : agent, owned.child); }
     catch (error) {
@@ -171,9 +203,9 @@ try {
     // External disposable databases retain their nonvisual diagnostic path, but
     // cannot establish harness-owned identity and are explicitly unverified.
     if (report.data.database.ownership !== 'harness-owned') return;
-    const sourceHead = await run('provenance-head', 'git', ['rev-parse', 'HEAD']);
+    const sourceHead = await run('provenance-head', 'git', ['rev-parse', 'HEAD'], undefined, provenanceTimeoutMs);
     assert.equal(sourceHead, report.data.gitHead, 'Owned runtime provenance source changed');
-    assert.equal(await run('provenance-dirty', 'git', ['status', '--porcelain']), '', 'Owned runtime provenance source is dirty');
+    assert.equal(await run('provenance-dirty', 'git', ['status', '--porcelain'], undefined, provenanceTimeoutMs), '', 'Owned runtime provenance source is dirty');
     const container = await privateProvenanceProbe('docker', ['inspect', '--format', '{{.Id}} {{index .Config.Labels "kp.document-poc.run"}}', cid], process.env);
     const binding = await privateProvenanceProbe('docker', ['port', cid, '5432/tcp'], process.env);
     const query = postgresVersionArgs(cid);
@@ -181,6 +213,7 @@ try {
     const databaseIdentity = await privateProvenanceProbe('docker', query, { ...process.env, PGPASSWORD: password });
     const observed = await observeOwnedRuntime({ runId, sourceHead, human, agent,
       database: upstreamDatabase, proxy: proxy.url, storage, manifestPath, cid, container, binding, databaseIdentity });
+    if (localScaleMode) Object.assign(observed,await verifyOwnedDatabaseMounts(cid,localDatabaseStorage,run));
     if (checkpoint !== 'initial') assertSameRuntime(report.data.runtimeProvenance.initial, observed);
     report.data.runtimeProvenance ??= {};
     report.data.runtimeProvenance[checkpoint] = observed;
@@ -316,13 +349,39 @@ try {
     humanProcess = await start('poc-human', 3); agentProcess = await start('poc-agent', 2);
   });
   await report.stage('browser-persistence', async () => { await browser('persistence'); await recordRuntime('afterRestart'); });
-  await report.stage('final-shutdown', async () => { await stopProcess(humanProcess); await stopProcess(agentProcess); });
+  const restartForDocumentLoad = createLoadRestarter({
+    maxStages: localScaleMode ? 4 : tenThousandMode ? 3 : 2,
+    current: () => ({ human: humanProcess, agent: agentProcess }), stop: stopProcess, start,
+    replace: ({ human, agent }) => { humanProcess = human; agentProcess = agent; },
+  });
+  if (documentLoadEnabled) await report.stage('document-load-qualification', async () => {
+    report.data.documentLoadQualification = await runDocumentLoad({ root, directory, runId,
+      sourceHead: report.data.gitHead, artifacts: report.data.artifacts, storage, cid, password, human, agent, run, worker: dsi, pdfium,
+      getPids: () => [humanProcess.child.pid, agentProcess.child.pid],
+      identity: async () => { await recordRuntime('documentLoadCheckpoint'); return {
+        ...report.data.runtimeProvenance.documentLoadCheckpoint,
+        humanPid: humanProcess.child.pid, agentPid: agentProcess.child.pid,
+      }; },
+      restart: restartForDocumentLoad, loadBudget, loadClock, onLocalChain: value => { localChain = value; },
+    });
+  });
+  await report.stage('final-shutdown', async () => {
+    await stopProcess(humanProcess);
+    if (localScaleMode) localFinalShutdown.push({pid:humanProcess.child.pid,result:'gracefully-stopped'});
+    await stopProcess(agentProcess);
+    if (localScaleMode) localFinalShutdown.push({pid:agentProcess.child.pid,result:'gracefully-stopped'});
+  });
 } catch (error) {
   failed = true;
   if (report.data.status === 'running') { report.data.status = error instanceof Blocked ? 'blocked' : 'failed'; report.data.failure = error.message; }
   console.error(`Document runtime acceptance ${report.data.status}; local evidence retained`);
 } finally {
   const cleanup = [];
+  if (tenThousandMode || localScaleMode) {
+    const result = await cleanupOwnedRuntime({ processes, stop: stopProcess, proxy, cid, runId, run, env: process.env });
+    cleanup.push(...result.cleanup);
+    if (result.failed) { failed = true; report.data.status = 'failed'; }
+  } else {
   for (const owned of processes) {
     if (owned.child.exitCode !== null || owned.child.signalCode || owned.child.spawnFailure) continue;
     try { await stopProcess(owned); cleanup.push({ pid: owned.child.pid, result: 'gracefully-stopped' }); }
@@ -342,15 +401,25 @@ try {
       cleanup.push({ resource: 'owned-postgres', result: 'removed' });
     } catch { cleanup.push({ resource: 'owned-postgres', result: 'cleanup-unconfirmed' }); failed = true; report.data.status = 'failed'; }
   }
+  }
   report.data.cleanup = cleanup;
   if (interrupted) { failed = true; report.data.status = 'failed'; report.data.failure = 'Harness interrupted'; }
   // finish must not override cleanup failures with passing acceptance.
   if (failed && report.data.stages.every(stage => stage.status === 'passed')) report.data.stages.push({ name: 'cleanup', status: 'failed' });
   await report.finish();
+  if (localScaleMode && report.data.acceptanceQualified) {
+    try {
+      const exported = await writeLocalScaleReceipt(directory,localChain,{sourceHead:report.data.gitHead,acceptanceQualified:report.data.acceptanceQualified,finalShutdown:localFinalShutdown,cleanup:{failed,cleanup:report.data.cleanup}});
+      report.data.localScaleReceipt = {status:'EXPORTED',...exported};
+      await report.save();console.log(JSON.stringify({localScaleReceipt:report.data.localScaleReceipt}));
+    } catch {
+      failed=true;report.data.status='failed';report.data.acceptanceQualified=false;report.data.localScaleReceipt={status:'FAILED'};await report.save();
+    }
+  }
   if (visualEnabled && report.data.acceptanceQualified) {
     try {
-      const currentSource = { gitHead: await run('visual-git-head', 'git', ['rev-parse', 'HEAD']),
-        gitDirty: Boolean(await run('visual-git-dirty', 'git', ['status', '--porcelain'])) };
+      const currentSource = { gitHead: await run('visual-git-head', 'git', ['rev-parse', 'HEAD'], undefined, provenanceTimeoutMs),
+        gitDirty: Boolean(await run('visual-git-dirty', 'git', ['status', '--porcelain'], undefined, provenanceTimeoutMs)) };
       await exportVisualEvidence({ runDirectory: directory, report: report.data, context: visualContext, currentSource });
       report.data.visualEvidence = { status: 'validated-local-export', count: 13, visualReview: 'NOT RUN' };
     } catch {
