@@ -2,6 +2,14 @@
 
 [計画](plan.md)。branch `feat/search-validation-corpus-20261006`（検証基盤）と `fix/search-validation-findings-20261006`（検証で見つかった不具合の修正、mainから分岐）。検証基盤のbranchは修正branchを取り込んでいる。
 
+## 2026-10-16 — mainへの取り込み（進行中）
+
+- 所有者の承認（2026-10-16）：検索の完成や本番運用資格は宣言せず、不具合修正（#85）・世代の部品化（#99）・検証基盤を、#86 でまとめてmainへ取り込む。mergeはhosted CIの成功後に所有者が確認する。deployはしない。
+- mainの取り込み `27c6dc20`：衝突はDSIの公開前検査（`detect.rs`、`worker_contract.rs`）だけ。mainの #107 が同じ修正をより広く入れていたため、mainの版を採った。migrationはmainが0009まで、本branchが0010〜0013で重ならない。個人のパスの既定値を検証用scriptから外した（`3b1b7775`）。#99 のbaseはmainへ付け替えた。
+- ローカル検証（Linux VM、aarch64）：fmt、`cargo check`、clippy（synthetic featureを含む）、architecture-lint、assurance（gaps 0）は成功。試験は検索crate群とsearch-source-http（synthetic）がすべて成功。outbox-delivery・search-source-document・search-runtimeの失敗は、試験用PostgreSQLコンテナの起動とコンテナ内の `pg_dump` だけ（VMにDockerが無い）。`server_e2e`（synthetic）はaarch64のdebugビルドが通らないため、hosted CIで確かめる。独立レビューは、この環境で委任workerを起動できず未実施。
+- 取り込みに含まれないもの：本番の検索の入口（検証用host以外に無い）、運用操作の試験、10万文書、長時間運転、更新中のp99 1秒以下、精度の改善（仕様の判断待ち）、本番運用資格の宣言。
+- 次：hosted CIの結果を確かめ、失敗があれば直す。成功したら所有者にmergeを確認する。
+
 ## 2026-10-06 — 1,000文書段階（進行中）
 
 ### 実行環境
