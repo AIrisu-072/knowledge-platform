@@ -209,8 +209,11 @@ struct Envelope<T> {
     body: T,
 }
 
-fn envelope<T: Serialize>(body: &T) -> Result<serde_json::Value, BundleError> {
-    serde_json::to_value(Envelope {
+/// The envelope text of `body`, written directly: a `serde_json::Value` of
+/// the projection at 10,000 documents (41 MB of text) took about ten times
+/// its text while it was stored.
+fn envelope<T: Serialize>(body: &T) -> Result<String, BundleError> {
+    serde_json::to_string(&Envelope {
         dto_version: PAYLOAD_DTO_VERSION.into(),
         body,
     })
@@ -230,13 +233,9 @@ fn restore<T: DeserializeOwned>(text: &str) -> Result<T, BundleError> {
 
 /// The stored rows of one payload: the envelope itself when it fits, else
 /// `{"dto_version", "chunk"}` objects whose strings concatenate to its text.
-fn payload_rows(
-    value: &serde_json::Value,
-    chunk_bytes: usize,
-) -> Result<Vec<serde_json::Value>, BundleError> {
-    let text = serde_json::to_string(value).map_err(|_| BundleError::Shape)?;
+fn payload_rows(text: String, chunk_bytes: usize) -> Result<Vec<String>, BundleError> {
     if text.len() <= chunk_bytes {
-        return Ok(vec![value.clone()]);
+        return Ok(vec![text]);
     }
     if text.len() > MAX_PAYLOAD_BYTES {
         return Err(BundleError::Shape);
@@ -252,10 +251,13 @@ fn payload_rows(
             // A chunk smaller than one character cannot split the text.
             return Err(BundleError::Shape);
         }
-        rows.push(serde_json::json!({
-            "dto_version": PAYLOAD_DTO_VERSION,
-            "chunk": &rest[..end],
-        }));
+        rows.push(
+            serde_json::to_string(&serde_json::json!({
+                "dto_version": PAYLOAD_DTO_VERSION,
+                "chunk": &rest[..end],
+            }))
+            .map_err(|_| BundleError::Shape)?,
+        );
         rest = &rest[end..];
     }
     Ok(rows)
@@ -855,14 +857,14 @@ impl PgPayloadStore {
         .await?;
         for (kind, payload, digest, count) in rows {
             let count = i64::try_from(count).map_err(|_| BundleError::Binding)?;
-            for (chunk, part) in payload_rows(&payload, self.chunk_bytes)?
+            for (chunk, part) in payload_rows(payload, self.chunk_bytes)?
                 .into_iter()
                 .enumerate()
             {
                 sqlx::query(
                     "INSERT INTO search_generation_payload \
                      (source_id,generation_id,kind,chunk,dto_version,payload,logical_digest, \
-                      logical_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+                      logical_count) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)",
                 )
                 .bind(validated.key.source_id.as_uuid())
                 .bind(validated.key.generation_id.as_uuid())
