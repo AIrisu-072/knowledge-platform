@@ -30,18 +30,20 @@ Files: `tools/document-load-qualification/phase-time.mjs`, `safety.mjs`, `test/p
 
 Interface: `createPhaseTimer({now,startedAt,documentCount})` の `transition(name,kind)` / `finish(totalElapsedMs)`、`projectElapsedTime(report,nextCount,safetyFactor)`。schemaVersion1、最大64区間、0からtotalまで連続したstartMs/endMs。
 
-- [ ] 固定費一回・比例費N/n、欠測・重複・不正・未割当・上限・旧reportfallbackのREDを実行。
-- [ ] 計測と検証、`ceil(2 × [fixed + (total-fixed) × N/n])` を実装しGREEN。
+- [x] 固定費一回・比例費N/n、欠測・重複・不正・未割当・上限・旧reportfallbackのREDを実行。
+- [x] 計測と検証、`ceil(2 × [fixed + (total-fixed) × N/n])` を実装しGREEN。
 
 ## Task B: 実controller計測と回帰
 
 Files: `controller.mjs`, `workflow.mjs`, `test/controller.test.mjs`, `test/workflow.test.mjs`。
 
-- [ ] 実controllerの全時間coverage、restartのみ固定、正例ループ件数、失敗時証跡のREDを実行。
-- [ ] BG観測待機後〜restart返却だけを固定として囲む。他の処理と最後のcloseまで保守側に計上しGREEN。
+- [x] 実controllerの全時間coverage、restartのみ固定、正例ループ件数、失敗時証跡のREDを実行。
+- [x] BG観測待機後〜restart返却だけを固定として囲む。他の処理と最後のcloseまで保守側に計上しGREEN。
 
 ## Task C: 同じPRで出荷・現地試験
 
 - [ ] 全harness/runtime試験・型検査・独立レビュー。最終headをUbuntuで通常資格とsmallへ通す。
 - [ ] 日本語Draft PRを一件公開。正確head CI全成功後Ready、期待head指定でmain統合、統合後CI全成功。
 - [ ] 最新clean mainで重複・資源を確認し、新規専用DBからfresh4段階pipelineを一回起動。runID/SHA/開始/期限/観測方法を先に報告。
+
+2026-10-15再開: 製品head777eのUbuntu短期資格は成功。main追従後の組合せレビュー/CI/統合を優先する。新規長時間pipelineとデモ起動は今回の実行範囲外で、親の調整後に扱う。1000予測128.93分の未達を保持する。
