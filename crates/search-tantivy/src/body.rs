@@ -212,6 +212,17 @@ fn segment_entries(
 
 /// The entry of every live Unit document, read one document at a time.
 pub(crate) fn unit_entries(units: &UnitIndex) -> Result<Vec<UnitSealEntry>, LexicalIndexError> {
+    let mut out = Vec::new();
+    visit_unit_entries(units, |entry| out.push(*entry))?;
+    Ok(out)
+}
+
+/// Calls `visit` with the entry of every live Unit document, in segment and
+/// document order, without collecting them.
+fn visit_unit_entries(
+    units: &UnitIndex,
+    mut visit: impl FnMut(&UnitSealEntry),
+) -> Result<(), LexicalIndexError> {
     let pass = {
         let mut cache = segment_cache()
             .lock()
@@ -220,7 +231,6 @@ pub(crate) fn unit_entries(units: &UnitIndex) -> Result<Vec<UnitSealEntry>, Lexi
         cache.pass
     };
     let searcher = units.reader.searcher();
-    let mut out = Vec::new();
     for (segment_ord, segment) in searcher.segment_readers().iter().enumerate() {
         let entries = segment_entries(units, segment_ord, segment, pass)?;
         let alive = segment.alive_bitset();
@@ -229,7 +239,7 @@ pub(crate) fn unit_entries(units: &UnitIndex) -> Result<Vec<UnitSealEntry>, Lexi
             if alive.is_some_and(|bits| !bits.is_alive(doc_id)) {
                 continue;
             }
-            out.push(*entry);
+            visit(entry);
         }
     }
     segment_cache()
@@ -237,7 +247,7 @@ pub(crate) fn unit_entries(units: &UnitIndex) -> Result<Vec<UnitSealEntry>, Lexi
         .map_err(|_| LexicalIndexError::LockPoisoned)?
         .segments
         .retain(|_, (used, _)| *used + KEPT_PASSES > pass);
-    Ok(out)
+    Ok(())
 }
 
 /// Every live Unit of the committed index, decoded (no cache).
@@ -323,38 +333,52 @@ pub(crate) fn build_unit_index_from_base(
     let Ok(previous) = open_unit_index(base, tokenizer) else {
         return Ok(None);
     };
-    let Ok(previous_units) = unit_entries(&previous) else {
-        return Ok(None);
-    };
-    let before: HashMap<UnitId, [u8; 32]> = previous_units
-        .iter()
-        .map(|entry| (entry.unit_id, entry.hash))
-        .collect();
     // The entries the Unit source keeps, else every Unit hashed here. A
     // source holding only some Units keeps every entry.
-    let after: HashMap<UnitId, [u8; 32]> = match entries {
-        Some(entries) if !complete || entries.len() == units.len() => {
-            let after: HashMap<_, _> = entries
-                .iter()
-                .map(|entry| (entry.unit_id, entry.hash))
-                .collect();
-            if after.len() != entries.len() {
-                return Err(LexicalIndexError::DuplicateUnit);
-            }
-            after
-        }
+    let after: Arc<Vec<UnitSealEntry>> = match entries {
+        Some(entries) if !complete || entries.len() == units.len() => entries,
         _ if !complete => return Err(LexicalIndexError::IncompleteUnits),
-        _ => {
-            let after: HashMap<_, _> = units
+        _ => Arc::new(
+            units
                 .iter()
-                .map(|unit| Ok((unit.unit_id, unit_doc_hash(unit)?)))
-                .collect::<Result<_, LexicalIndexError>>()?;
-            if after.len() != units.len() {
-                return Err(LexicalIndexError::DuplicateUnit);
-            }
-            after
-        }
+                .map(|unit| {
+                    Ok(UnitSealEntry {
+                        unit_id: unit.unit_id,
+                        hash: unit_doc_hash(unit)?,
+                    })
+                })
+                .collect::<Result<_, LexicalIndexError>>()?,
+        ),
     };
+    // The base and the build are compared through positions of `after`
+    // sorted by Unit ID and one flag per position, read from the cached
+    // segment entries: at 10,000 documents (1.7 million Units) a copy of the
+    // base entries and maps of both sides took 0.4 GB for each build.
+    let order = sorted_positions(&after)?;
+    let position = |unit_id: &UnitId| {
+        order
+            .binary_search_by(|&at| after[at as usize].unit_id.cmp(unit_id))
+            .ok()
+            .map(|found| order[found] as usize)
+    };
+    // A base document whose Unit is gone or differs is deleted; the rest
+    // mark their position as already indexed.
+    let mut indexed = vec![false; after.len()];
+    let mut deleted = Vec::new();
+    let visited = visit_unit_entries(&previous, |entry| match position(&entry.unit_id) {
+        Some(at) if after[at].hash == entry.hash => indexed[at] = true,
+        _ => deleted.push(entry.unit_id),
+    });
+    if visited.is_err() {
+        return Ok(None);
+    }
+    // A deleted term removes every document of that Unit, so a Unit the
+    // base also holds in another document is added again.
+    for unit_id in &deleted {
+        if let Some(at) = position(unit_id) {
+            indexed[at] = false;
+        }
+    }
     // Every Unit the base lacks or holds with another document must be one
     // this build holds; otherwise this base cannot serve.
     if !complete {
@@ -362,7 +386,8 @@ pub(crate) fn build_unit_index_from_base(
             units.iter().map(|unit| unit.unit_id).collect();
         if after
             .iter()
-            .any(|(unit_id, hash)| before.get(unit_id) != Some(hash) && !held.contains(unit_id))
+            .zip(&indexed)
+            .any(|(entry, indexed)| !indexed && !held.contains(&entry.unit_id))
         {
             return Ok(None);
         }
@@ -391,16 +416,14 @@ pub(crate) fn build_unit_index_from_base(
     };
     let mut writer: tantivy::IndexWriter = index.index.writer(15_000_000)?;
     writer.set_merge_policy(Box::new(NoMergePolicy));
-    for (unit_id, hash) in &before {
-        if after.get(unit_id) != Some(hash) {
-            writer.delete_term(Term::from_field_text(
-                index.fields.unit_id,
-                &unit_id.to_string(),
-            ));
-        }
+    for unit_id in &deleted {
+        writer.delete_term(Term::from_field_text(
+            index.fields.unit_id,
+            &unit_id.to_string(),
+        ));
     }
     for unit in units {
-        if before.get(&unit.unit_id) != after.get(&unit.unit_id) {
+        if position(&unit.unit_id).is_some_and(|at| !indexed[at]) {
             writer.add_document(unit_document(index.fields, unit)?)?;
         }
     }
@@ -410,6 +433,25 @@ pub(crate) fn build_unit_index_from_base(
     index.reader.reload()?;
     index.dir = Some(dir.to_path_buf());
     Ok(Some(index))
+}
+
+/// Positions of `entries` sorted by Unit ID; two entries of one Unit are an
+/// error.
+fn sorted_positions(entries: &[UnitSealEntry]) -> Result<Vec<u32>, LexicalIndexError> {
+    let count = u32::try_from(entries.len()).map_err(|_| LexicalIndexError::UnitEncoding)?;
+    let mut order: Vec<u32> = (0..count).collect();
+    order.sort_unstable_by(|a, b| {
+        entries[*a as usize]
+            .unit_id
+            .cmp(&entries[*b as usize].unit_id)
+    });
+    if order
+        .windows(2)
+        .any(|pair| entries[pair[0] as usize].unit_id == entries[pair[1] as usize].unit_id)
+    {
+        return Err(LexicalIndexError::DuplicateUnit);
+    }
+    Ok(order)
 }
 
 /// Segments with fewer documents than this count as small.
