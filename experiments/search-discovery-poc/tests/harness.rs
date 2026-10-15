@@ -130,3 +130,18 @@ fn graph_only_relation_fixture_is_pinned_in_the_receipt() {
         Some(&observed)
     );
 }
+
+#[test]
+fn receipt_accepts_exact_seven_candidates_without_the_unused_analysis_wrapper() {
+    let mut report = QualificationReport::evidence().unwrap();
+    report.candidate_versions.remove("lindera-analysis");
+    assert_eq!(report.candidate_versions.len(), 7);
+    report.verify_evidence().unwrap();
+    report
+        .candidate_versions
+        .insert("lindera-analysis".into(), "6.2.0".into());
+    assert!(
+        report.verify_evidence().is_err(),
+        "removed wrapper cannot remain a recorded candidate"
+    );
+}
