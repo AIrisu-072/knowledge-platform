@@ -4,6 +4,8 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { validatePhaseTime, projectElapsedTime } from './phase-time.mjs';
+
 const execFileAsync = promisify(execFile);
 const STAGES = ['small', 1000, 10000, 100000];
 const FINGERPRINT_KEYS = ['corpus', 'code', 'runtime'];
@@ -56,6 +58,10 @@ function validateHistory(report, expectedIndex, fingerprint, reasons) {
     const value = report.metrics?.[field];
     if (!finiteNonnegative(value) || (field !== 'diskGrowthBytes' && value === 0)) reasons.push(`previous report is missing measured positive ${field} (disk growth may be zero)`);
   }
+  if (Object.hasOwn(report, 'phaseTime')) {
+    const validation = validatePhaseTime(report.phaseTime, report.metrics?.totalElapsedMs, report.documentCount);
+    if (!validation.valid) reasons.push(...validation.errors);
+  }
   if (expectedIndex > 0) validateHistory(report.previousReport, expectedIndex - 1, fingerprint, reasons);
 }
 
@@ -84,9 +90,15 @@ export function admitStage(plan, previousReport, observation) {
   if (observation.rssBytes > budgets.maxRssBytes) reasons.push('current process-tree RSS exceeds budget');
   if (index > 0) {
     const multiplier = plan.documentCount / previousReport.documentCount * plan.safetyFactor;
+    let elapsedProjection;
+    try { elapsedProjection = projectElapsedTime(previousReport, plan.documentCount, plan.safetyFactor); }
+    catch (error) {
+      reasons.push(error.message);
+      return { status: 'NOT_ADMITTED', reasons, projection };
+    }
     projection = {
-      basis: 'serial-workload: linear time/disk; prior peak RSS with safety factor; runtime abort guards required', multiplier,
-      totalElapsedMs: Math.ceil(previousReport.metrics.totalElapsedMs * multiplier),
+      basis: `${elapsedProjection.basis}; linear disk; prior peak RSS with safety factor; runtime abort guards required`, multiplier,
+      totalElapsedMs: elapsedProjection.totalElapsedMs,
       diskGrowthBytes: Math.ceil(previousReport.metrics.diskGrowthBytes * multiplier),
       peakRssBytes: Math.ceil(previousReport.metrics.peakRssBytes * plan.safetyFactor),
     };

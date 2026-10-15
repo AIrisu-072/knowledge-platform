@@ -199,3 +199,23 @@ test('resource observation refuses symlink roots and malformed explicit measurem
   assert.equal(invalidBound.storageBytes, null);
 });
 test('larger-stage admission rejects unit-test receipts without real restart provenance',()=>{assert.equal(admitStage(plan(1000),{...report(),evidenceClass:'test-double'},observation()).status,'NOT_ADMITTED');});
+
+test('phase time admission allocates proven fixed restart once without relaxing other gates', () => {
+  const previous=report();previous.phaseTime={schemaVersion:1,documentCount:10,totalElapsedMs:1000,segments:[
+    {name:'restart-process-replacement',kind:'fixed',startMs:0,endMs:800},
+    {name:'other-work',kind:'scaled',startMs:800,endMs:1000},
+  ]};
+  const result=admitStage(plan(1000),previous,observation());
+  assert.equal(result.status,'ADMITTED');assert.equal(result.projection.totalElapsedMs,41600);
+  assert.equal(result.projection.diskGrowthBytes,2000000);assert.equal(result.projection.peakRssBytes,40000);
+  assert.equal(admitStage(plan(1000,{budgets:{...plan(1000).budgets,maxWallTimeMs:41599}}),previous,observation()).status,'NOT_ADMITTED');
+});
+
+test('malformed phase evidence in any prior stage refuses admission instead of legacy fallback', () => {
+  const invalid=[null,{},undefined,{schemaVersion:1,documentCount:10,totalElapsedMs:1000,segments:[{name:'unapproved-fixed',kind:'fixed',startMs:0,endMs:1000}]}];
+  for(const phaseTime of invalid){
+    assert.equal(admitStage(plan(1000),report('small',{phaseTime}),observation()).status,'NOT_ADMITTED');
+    const prior=report(1000);prior.previousReport.phaseTime=phaseTime;
+    assert.equal(admitStage(plan(10000),prior,observation()).status,'NOT_ADMITTED');
+  }
+});

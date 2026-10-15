@@ -13,3 +13,8 @@ test('co-located stages use distinct fixed folder names without changing the run
  }
  assert.equal(new Set(names.map(n=>n.toLowerCase())).size,2);assert.ok(names.every(n=>n.includes('test')));
 });
+
+test('positive serial interval includes mutation checkpoints and stops before full-list verification',async t=>{
+ const c=await context(t), events=[];c.phase=(name,kind)=>events.push([name,kind]);const checkpoint=c.checkpoint;c.checkpoint=async()=>{events.push(['checkpoint']);await checkpoint();};const create=c.probe.create;c.probe.create=async args=>{events.push(['create']);return create(args);};const list=c.probe.list;c.probe.list=async(...args)=>{events.push(['list']);return list(...args);};
+ await exerciseStage(c);const serial=events.findIndex(e=>e[0]==='positive-registration-publication');const verification=events.findIndex(e=>e[0]==='positive-full-list-verification');assert.deepEqual(events[serial],['positive-registration-publication','serial']);assert.deepEqual(events[verification],['positive-full-list-verification','scaled']);assert.ok(serial>=0&&verification>serial);assert.equal(events.slice(serial,verification).filter(e=>e[0]==='create').length,c.count);assert.ok(events.slice(serial,verification).filter(e=>e[0]==='checkpoint').length>=2*c.count);assert.ok(events.findIndex(e=>e[0]==='list')>verification);
+});
