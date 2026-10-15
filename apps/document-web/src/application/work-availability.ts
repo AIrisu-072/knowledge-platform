@@ -23,12 +23,24 @@ export const AVAILABILITY_RECHECK_MS = 10_000;
 export const workAvailabilityQuery = queryOptions({
   queryKey: ['work-api-availability'] as const,
   queryFn: async (): Promise<WorkAvailability> => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Bound the whole read, including the response body. A stalled request must
+    // become unknown so the existing recheck can recover on this same screen.
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new WorkApiError(0, 'network_unavailable'));
+        controller.abort();
+      }, AVAILABILITY_RECHECK_MS);
+    });
     try {
-      await workApi.getSession();
+      await Promise.race([workApi.getSession(controller.signal), timeout]);
       return 'available';
     } catch (error) {
       if (error instanceof WorkApiError && error.status === 404) return 'unavailable';
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
   },
   staleTime: Infinity,

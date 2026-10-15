@@ -33,7 +33,7 @@ export function TaskHomePage() {
   const clearAgentTransients = useClearAgentTransients();
   const client = useQueryClient();
   const [blockedId, setBlockedId] = useState<string | null>(null);
-  const session = useQuery({ queryKey: sessionKey, queryFn: workApi.getSession, staleTime: 0, gcTime: 0, retry: false });
+  const session = useQuery({ queryKey: sessionKey, queryFn: () => workApi.getSession(), staleTime: 0, gcTime: 0, retry: false });
   const sessionData = session.isSuccess ? session.data : undefined;
   useEffect(() => { if (sessionData && (currentHref === '/tasks' || currentHref.startsWith('/tasks?'))) organization.setContext(sessionData, currentHref); }, [sessionData, currentHref, organization.setContext]);
   // A selected responsibility only narrows the projection; an unknown one is ignored, never sent as identity.

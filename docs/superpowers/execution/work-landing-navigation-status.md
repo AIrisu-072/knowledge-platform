@@ -2,6 +2,15 @@
 
 再開先：[計画](../plans/2026-10-08-work-landing-navigation.md)。branch `claude/upbeat-tesla-qcu94x`（main `6a34de3` から作成）。
 
+## 2026-10-15 — 初回判定が応答しない場合の復帰補修
+
+- PR112 head `07f572be` の独立reviewでP2を確認。3秒後に文書一覧を開いても元のsession要求はpendingのままで、errorだけを対象とする再確認へ進めない。Desktopのproxyは180秒、Browserは画面側の有限上限が無かった。
+- 判定要求だけに10秒の期限とAbortControllerを追加し、ヘッダー待ち・本文待ちのどちらも「分からない」として既存の10秒再確認へ進める。3秒のlanding、404判定、10秒以内に遅れて成功した結果の共有、通常タスク画面のsession読取契約は保持する。新しい製品機能や設計承認は追加しない。
+- 反例2件を先に追加し、修正前は両方 `Expected: error / Received: pending` で失敗。修正後は同じ文書画面のメニューが再確認で復帰し、期限後の旧応答が新しい結果を上書きしないことも確認した。
+- 作業先は専用detached worktree `knowledge-platform-work-nav`。push・mergeなし。検証結果と次のexact actionは本節の追記を参照。
+- 旧base `07f572be`＋補修の検証（固定Node 24.21.0）：関連3 suites59件とタスク・担当/委任2 suites104件成功。schemas check、画面・organization-runtime・desktop-bridgeの型検査、本番webpack build成功（既存3 warning）。全画面は75 suites1776件中1775成功、`document-move.test.tsx:175`「閉じた移動の遅いfocus復帰はreopen-idle後のfocusを上書きしない」1件失敗（366.553秒）。この失敗は保持し、mainの既存focus修正を含む組合せで別に再確認する。
+- 次のexact action：この補修をローカルcommitに保全 → 承認されたmain `ead6830e` を通常merge（双方activeとmain製品を保持）→ 組合せの画面試験/型検査 → 親へ引渡し。最終main追従・独立review・exact-head CI・push/merge判断は親が行う。旧baseの成功を組合せheadへ転用しない。
+
 ## 2026-10-08 — 実装と検証
 
 - 背景：PR #103（デスクトップ版、main `8d4b94a`）の確認で、デスクトップ版ではタスク・検索の画面へ画面の操作だけでは移れないことが分かった。調べると、承認済みの設計（主ナビゲーションはタスク・文書・検索、最初の画面はタスク）に共通画面の実装が合っていなかった。依頼者が案A（Work APIを使えるserverでは設計どおりにし、文書だけのserverは今のまま）を指示。

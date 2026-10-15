@@ -123,6 +123,36 @@ test('文書だけのserverと分かれば、確かめ直さない', async () =>
   }
 });
 
+test.each(['headers', 'body'])('初回sessionの%sが返らなくても中断して確かめ直し、同じ画面にタスクを出す', async (stalled) => {
+  jest.useFakeTimers();
+  const originalFetch = globalThis.fetch;
+  let firstSignal: AbortSignal | undefined;
+  let release: (value: unknown) => void = () => undefined;
+  const pending = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = jest.fn(async (_url, init) => {
+    firstSignal ??= init?.signal as AbortSignal | undefined;
+    return stalled === 'headers' ? pending : { ok: true, status: 200, json: () => pending };
+  }) as typeof fetch;
+  try {
+    const { client } = setup('/documents');
+    await act(async () => { await Promise.resolve(); });
+    expect(links()).toEqual(DOCUMENT_LINKS);
+    await act(async () => { jest.advanceTimersByTime(AVAILABILITY_RECHECK_MS); });
+    expect(client.getQueryState(workAvailabilityQuery.queryKey)?.status).toBe('error');
+    expect(firstSignal?.aborted).toBe(true);
+    globalThis.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ ...session, actingAssignmentId: null }) })) as unknown as typeof fetch;
+    await act(async () => { jest.advanceTimersByTime(AVAILABILITY_RECHECK_MS); });
+    await waitFor(() => expect(links()).toEqual(ORGANIZATION_LINKS));
+    expect(screen.getByRole('heading', { name: '文書一覧' })).toBeInTheDocument();
+    // A response from the timed-out request cannot overwrite the new result.
+    await act(async () => { release(stalled === 'headers' ? { ok: false, status: 404, json: async () => ({}) } : {}); });
+    expect(client.getQueryData(workAvailabilityQuery.queryKey)).toBe('available');
+  } finally {
+    globalThis.fetch = originalFetch;
+    jest.useRealTimers();
+  }
+});
+
 test.each([['/tasks', 'タスク'], ['/search', '検索']])('%s では画面自身がWork APIを読むので、shellは判定の要求を出さない', async (entry, heading) => {
   const probe = jest.spyOn(workApi, 'getSession').mockResolvedValue(session);
   setup(entry);
