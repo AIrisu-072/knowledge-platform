@@ -4,6 +4,8 @@
 
 PR108はmain `6a34de3f0904949daca304b9178ef5125ea13d82` に統合済み。以下の未統合・Draft・CI進行中は当時の記録であり、現時点の未統合を示さない。本番配備・実認証/TLS・実データ環境での受入はこの統合だけで完了とはしない。
 
+identity/directoryの境界（2026-10-15にmain実コードを確認）：Document serverは `crates/document-server/src/identity.rs` の `StaticPoCIdentityAdapter` が固定 `poc-human` / `poc-agent` を使い、Organization serverは `crates/organization-server/src/identity.rs` の `SyntheticIdentityAdapter` が固定6profileを使う。予約公開のresolverはruntime/provider `poc` の同2主体だけを受け付ける（`crates/document-publication-scheduler/src/identity.rs`）。これらを実アカウント認証や本番directory接続の完成と扱わない。主体検索・directoryの承認/実装/統合の完了根拠は今回確認できていないため、完了とは記録しない。原本構成・初回複数原本はPR109、viewerはPR111としてmain統合済みであり、以下の一括した設計待ち記録とは区別する。
+
 以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
 
 状態: IN PROGRESS / 未統合 / 未配備。main基点 `2a37d35cd228344f98e0194de16d5336fa786e3c`、branch `feat/document-remaining-20261008`。
