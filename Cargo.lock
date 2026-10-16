@@ -5204,6 +5204,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-server"
+version = "0.0.0"
+dependencies = [
+ "document-application",
+ "document-domain",
+ "document-repository-postgres",
+ "document-server",
+ "search-api-http",
+ "search-application",
+ "search-graph",
+ "search-runtime",
+ "search-source-document",
+ "search-vector-adapter",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "search-source-document"
 version = "0.0.0"
 dependencies = [
