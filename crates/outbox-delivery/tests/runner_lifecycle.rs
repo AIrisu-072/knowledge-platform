@@ -15,7 +15,7 @@ use outbox_delivery::{
     DeliveryFuture, ErrorCode, FenceResult, HandlerFuture, OutboxStore,
     runner::{
         ClaimAdmission, ClaimPermit, DeliveryContext, DeliveryHandler, DeliveryRunner,
-        NoopAdmission, NoopPermit,
+        NoopAdmission, NoopPermit, RunSummary,
     },
 };
 use serde_json::json;
@@ -1122,6 +1122,96 @@ async fn shutdown_interrupts_pending_claim_without_dispatching() {
     assert_eq!(store.renew.entered.load(Ordering::SeqCst), 0);
     assert_eq!(permit.0.release.returned.load(Ordering::SeqCst), 1);
     assert!(permit.0.released.load(Ordering::SeqCst));
+}
+
+fn delayed_first(delay: Duration) -> OperationProbe {
+    OperationProbe {
+        delay_first: Some(delay),
+        ..OperationProbe::default()
+    }
+}
+
+// Shutdown during an in-flight operation that finishes inside the drain
+// budget: its result is known, so nothing after it is reported as Unknown.
+async fn shutdown_while_first_call_is_in_flight(
+    store: Arc<PendingStore>,
+    admission: Arc<PendingAdmission>,
+    handler: Arc<PendingHandler>,
+    in_flight: &OperationProbe,
+) -> Result<RunSummary, DeliveryError> {
+    let cfg = pending_config();
+    let runner = DeliveryRunner::new(store, handler, admission, cfg).unwrap();
+    let (shutdown, receiver) = watch::channel(false);
+    let task = tokio::spawn(async move { runner.run_until_shutdown(receiver).await });
+    wait_for(&in_flight.entered, 1).await;
+    shutdown.send(true).unwrap();
+    let result = bounded_join(task, cfg.drain_timeout, "shutdown drain_timeout").await;
+    assert_eq!(in_flight.returned.load(Ordering::SeqCst), 1);
+    assert_eq!(in_flight.abandoned.load(Ordering::SeqCst), 0);
+    result
+}
+
+#[tokio::test]
+async fn shutdown_waits_for_in_flight_empty_claim_and_stops_cleanly() {
+    let store = Arc::new(PendingStore {
+        claim: delayed_first(Duration::from_millis(40)),
+        ..PendingStore::new(0)
+    });
+    let permit = PendingPermit::default();
+    let summary = shutdown_while_first_call_is_in_flight(
+        store.clone(),
+        immediate_admission(permit.clone()),
+        Arc::new(PendingHandler::new(None)),
+        &store.claim,
+    )
+    .await
+    .expect("an empty claim that returns inside the drain budget is a clean stop");
+    assert_eq!(summary.claimed, 0);
+    assert_eq!(summary.outages, 0);
+    assert!(permit.0.released.load(Ordering::SeqCst));
+    assert_eq!(store.claim.entered.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn shutdown_waits_for_in_flight_policy_check_and_claims_nothing() {
+    let store = Arc::new(PendingStore {
+        verify: delayed_first(Duration::from_millis(40)),
+        ..PendingStore::new(1)
+    });
+    let admission = immediate_admission(PendingPermit::default());
+    let summary = shutdown_while_first_call_is_in_flight(
+        store.clone(),
+        admission.clone(),
+        Arc::new(PendingHandler::new(None)),
+        &store.verify,
+    )
+    .await
+    .expect("a policy check that returns inside the drain budget is a clean stop");
+    assert_eq!(summary.outages, 0);
+    assert_eq!(admission.acquire.entered.load(Ordering::SeqCst), 0);
+    assert_eq!(store.claim.entered.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn shutdown_returned_claim_is_not_dispatched_and_stays_unknown() {
+    let store = Arc::new(PendingStore {
+        claim: delayed_first(Duration::from_millis(40)),
+        ..PendingStore::new(1)
+    });
+    let permit = PendingPermit::default();
+    let handler = Arc::new(PendingHandler::new(Some(DeliveryDecision::Applied)));
+    let result = shutdown_while_first_call_is_in_flight(
+        store.clone(),
+        immediate_admission(permit.clone()),
+        handler.clone(),
+        &store.claim,
+    )
+    .await;
+    // The claimed row is left to lease expiry; no attempt is refunded.
+    assert_eq!(result, Err(DeliveryError::StoreUnknown));
+    assert_eq!(handler.started.load(Ordering::SeqCst), 0);
+    assert!(permit.0.released.load(Ordering::SeqCst));
+    store.assert_no_settlement();
 }
 
 #[tokio::test]
