@@ -44,6 +44,12 @@
 - 秘密値（DBのパスワード、検索のトークン）は `.env` ではなくcomposeのsecretとして、リポジトリ外のファイルから渡す（リポジトリには例の形だけ）。
 - Vectorのモデルは、固定revisionで取得したディレクトリを読取り専用でmountする（imageに含めない）。モデルが無ければVector無しで起動する。
 
+### 2a. 環境差を作らない（所有者の方針 2026-10-16）
+
+MacとLinuxで同じimageと同じ `compose.yaml` を使う。Macでは Docker Desktop または OrbStack のLinuxで動かし、Mac専用・Linux専用の起動方法（systemd、普通のプロセスの直接起動など）は作らない。本文抽出のsandboxはLinux専用のため、Macでもコンテナの中で動かす。
+
+CPUの種類だけは違う。既定はホストと同じ種類のimage（Apple Siliconはarm64）で、本番と同じ `linux/amd64` はCIで確かめる。Macで `linux/amd64` を動かすこともできる（`stack:build` の指定で切替、OrbStackではRosettaを使う）。imageはreleaseビルドで作る（aarch64のdebugビルドはcandleのgemm-f16が通らない）。
+
 ### 3. image：直下の `Dockerfile` にtargetを足す
 
 既存の `rust-build` 段から、`document-server`（DSI・差分worker、固定版PDFiumを含む）、`search-worker`（本文抽出workerを含む）、`search-server` のtargetを足す。実行用の土台は既存の `bootstrap-tools` と同じ `debian:bookworm-slim`、利用者は非root（uid 10001）。本文抽出のsandbox（Landlock・seccomp）がコンテナの中で効くかは実装で確かめ、効かない場合は弱めて動かさず、止めて報告する。
@@ -77,7 +83,7 @@
 | 1 | `crates/search-server`：検証用hostの組み立てを移し、PoCの固定プロフィールとトークンの確認、`serve` / `migrate`、loopbackの既定 | 単体試験（トークン一致・不一致、プロフィールの対応）、architecture-lint、既存のRust gate |
 | 2 | `Dockerfile` のtarget（document-server、search-worker、search-server） | `docker buildx build --platform linux/amd64` の各target、非rootで起動 |
 | 3 | `compose.yaml`、secretの渡し方、volume、miseのtask | `stack:up` / `stack:down` が冪等に動く |
-| 4 | `stack:smoke`（受入確認1〜5） | Linux（amd64のCI相当環境と開発用VM）で成功 |
+| 4 | `stack:smoke`（受入確認1〜5） | Mac（arm64、OrbStack）とLinux amd64で同じ手順が成功 |
 | 5 | 仕様（選定）・手順書・状態記録 | 独立レビュー、hosted CI |
 
 各段は別のcommitにし、1本のDraft PRでmainへ。mergeはhosted CIの成功後に所有者が確認する。deployはしない。
