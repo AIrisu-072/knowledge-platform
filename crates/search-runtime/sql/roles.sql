@@ -126,3 +126,23 @@ GRANT SELECT, INSERT, UPDATE (deployment_epoch, authority_revision, inventory_di
 GRANT INSERT ON search_audit_outbox_events TO search_host_publisher;
 GRANT SELECT ON search_host_inventory_revision, search_host_inventory_head
     TO search_registration, search_reader;
+
+-- Migrations 0008 and 0012: Vector. Builders add content-addressed values,
+-- segments and staged indexes; the coordinator publishes a staged index for
+-- the current generation and advances a scope's epoch when its authority
+-- changes (the epoch row lock needs the epoch UPDATE grant); only GC deletes;
+-- readers read.
+REVOKE ALL ON search_vector_scope_epoch, search_vector_stage,
+    search_vector_generation, search_vector_value,
+    search_vector_segment, search_vector_stage_segment FROM PUBLIC;
+GRANT SELECT ON search_vector_scope_epoch, search_vector_stage,
+    search_vector_generation, search_vector_value,
+    search_vector_segment, search_vector_stage_segment
+    TO search_builder, search_coordinator, search_reader, search_gc;
+GRANT INSERT ON search_vector_value, search_vector_segment,
+    search_vector_stage, search_vector_stage_segment TO search_builder;
+GRANT INSERT, DELETE ON search_vector_generation TO search_coordinator;
+GRANT INSERT, UPDATE (epoch) ON search_vector_scope_epoch TO search_coordinator;
+GRANT DELETE ON search_vector_stage, search_vector_generation,
+    search_vector_value, search_vector_segment, search_vector_stage_segment
+    TO search_gc;
