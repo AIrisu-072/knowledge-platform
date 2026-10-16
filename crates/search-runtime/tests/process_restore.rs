@@ -189,7 +189,25 @@ async fn backup_restore_to_new_db_preserves_key_digest_and_query() {
         .startup(10)
         .await
         .unwrap();
-    assert_eq!(report.current, original);
+    if report.current != original {
+        // `ReadyError::Graph` carries no cause; read the Graph rows directly so
+        // an intermittent CI failure records which check failed.
+        let manifest: String = sqlx::query_scalar(
+            "SELECT current_manifest_digest FROM search_source_coordination WHERE source_id=$1",
+        )
+        .bind(current.source_id.as_uuid())
+        .fetch_one(&restored)
+        .await
+        .unwrap();
+        let graph = search_graph::PostgresGraphStore::new(restored.clone())
+            .recover_rows(current, &manifest)
+            .await
+            .err();
+        panic!(
+            "restored current differs: {:?}; graph recovery error: {graph:?}",
+            report.current
+        );
+    }
 
     // A real Graph query on the restored database.
     let catalog = fixture.catalog().await;
