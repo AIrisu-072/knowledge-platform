@@ -90,8 +90,8 @@ pub fn unit(source: SourceId, parent: u128, part: u32, text: &str, profile: u8) 
     let profile = ExtractionProfileId::parse(&digest(profile)).unwrap();
     KnowledgeUnit {
         unit_id: UnitId::derive(&version, &part, &profile, &locator, 0).unwrap(),
-        version,
-        part,
+        version: version.into(),
+        part: part.into(),
         parent_unit_id: None,
         ordinal: 0,
         kind: UnitKind::PlainText,
@@ -110,7 +110,8 @@ pub fn unit(source: SourceId, parent: u128, part: u32, text: &str, profile: u8) 
             archive_inner_format: None,
             profile,
             parser_build_id: "reader-1".into(),
-        },
+        }
+        .into(),
     }
 }
 
@@ -121,8 +122,8 @@ pub fn authority(
 ) -> VectorAuthorityInput {
     VectorAuthorityInput {
         generation,
-        version: unit.version.clone(),
-        part: unit.part.clone(),
+        version: (*unit.version).clone(),
+        part: (*unit.part).clone(),
         authoritative_representation_ref: unit.provenance.authoritative_representation_ref.clone(),
         raw: unit.provenance.raw.clone(),
         profile: unit.provenance.profile.clone(),

@@ -390,6 +390,11 @@ pub trait VectorExecutionPort: Send + Sync {
     ) -> BoxFuture<'a, VectorRetrievalBatch>;
 }
 
+/// Units ranked per requested unique parent; Units of one Resource cluster.
+const UNIT_OVERSAMPLE: usize = 8;
+/// Upper bound of the oversampled Unit ranking of one query.
+const MAX_UNIT_WINDOW: usize = 1024;
+
 /// The Vector façade over the trusted ports.
 pub struct VectorRetriever<'a> {
     pub provider: &'a dyn EmbeddingProvider,
@@ -433,8 +438,15 @@ impl VectorRetriever<'_> {
         if embedded.model_id() != query.model_id() {
             return Err(invalid("Vector query model"));
         }
-        let hits = self.index.search(&pin, &embedded, query.window()).await?;
-        if hits.len() > query.window()
+        // Units of one Resource are near each other, so the window is filled
+        // with unique parents from an oversampled Unit ranking.
+        let unit_window = query
+            .window()
+            .saturating_mul(UNIT_OVERSAMPLE)
+            .min(MAX_UNIT_WINDOW)
+            .max(query.window());
+        let hits = self.index.search(&pin, &embedded, unit_window).await?;
+        if hits.len() > unit_window
             || hits
                 .iter()
                 .enumerate()
@@ -470,6 +482,9 @@ impl VectorRetriever<'_> {
                 }
                 VectorResolution::Suppressed => {}
                 VectorResolution::Unavailable => batch.unavailable = true,
+            }
+            if batch.candidates.len() >= query.window() {
+                break;
             }
         }
         Ok(batch)

@@ -33,6 +33,10 @@ time.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+tikv-jemallocator.workspace = true
+tikv-jemalloc-ctl.workspace = true
+
 [dev-dependencies]
 document-application = { version = "0.0.0", path = "../document-application" }
 search-extraction-worker = { version = "0.0.0", path = "../search-extraction-worker" }

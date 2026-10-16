@@ -182,7 +182,7 @@ async fn final_revoke_recomputes_rank_count_gap() {
     let corpus = corpus(&world);
     // Allowed when retrieved, revoked before the result is ranked.
     corpus
-        .revoke_after_first_check
+        .revoke_after_retrieval
         .lock()
         .unwrap()
         .insert(rid(11));
@@ -193,6 +193,32 @@ async fn final_revoke_recomputes_rank_count_gap() {
         vec![1, 2]
     );
     assert!(page.gaps.is_empty());
+}
+
+#[tokio::test]
+async fn first_page_checks_access_only_as_far_as_it_ranks() {
+    let world = ApiWorld::new().await;
+    let mut request = input("規程");
+    request.page_size = 1;
+    let full = corpus(&world);
+    let page = search(&world, &full, request.clone()).await;
+    // The first item, from that item and the one that shows a next page
+    // exists (no continuation here, so the page is partial); the later
+    // candidate is never checked.
+    assert_eq!(ids(&page), vec![rid(11)]);
+    assert!(page.partial);
+    assert_eq!(*full.evaluated.lock().unwrap(), vec![rid(11), rid(12)]);
+    // A denied candidate is passed over and the next one checked instead.
+    let denied = corpus(&world);
+    denied.denied.lock().unwrap().insert(rid(11));
+    let page = search(&world, &denied, request).await;
+    assert_eq!(ids(&page), vec![rid(12)]);
+    assert_eq!(page.items[0].rank, 1);
+    assert!(page.partial);
+    assert_eq!(
+        *denied.evaluated.lock().unwrap(),
+        vec![rid(11), rid(12), rid(21)]
+    );
 }
 
 #[tokio::test]

@@ -2,7 +2,6 @@ use tantivy::schema::{
     Field, IndexRecordOption, STORED, STRING, Schema, TextFieldIndexing, TextOptions,
 };
 
-pub(crate) const ANALYZER_VERSION: &str = "tantivy-default-0.26.2";
 pub(crate) const LEXICAL_SCHEMA_VERSION: &str = "schema-1";
 
 #[derive(Clone, Copy)]
@@ -52,12 +51,12 @@ pub(crate) const fn kind_token(kind: search_core::resource::ResourceKind) -> &'s
     }
 }
 
-pub(crate) fn lexical_schema() -> (Schema, LexicalFields) {
+pub(crate) fn lexical_schema(tokenizer: &str) -> (Schema, LexicalFields) {
     let mut builder = Schema::builder();
     let resource_ref = builder.add_text_field("resource_ref", STRING | STORED);
     let indexed = TextOptions::default().set_indexing_options(
         TextFieldIndexing::default()
-            .set_tokenizer("default")
+            .set_tokenizer(tokenizer)
             .set_index_option(IndexRecordOption::WithFreqsAndPositions),
     );
     let fields = LexicalFields {

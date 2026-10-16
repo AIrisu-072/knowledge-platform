@@ -402,3 +402,23 @@ async fn renew_racing_gc_keeps_the_lease_and_generation() {
         1
     );
 }
+
+/// Superseded READY generations are retired after a publication, keeping the
+/// current key and the newest previous ones.
+#[tokio::test]
+async fn superseded_generations_are_retired_except_the_newest_previous() {
+    let fixture = fixture().await;
+    let gc = PgGenerationGc::new(fixture.admin.clone(), &fixture.root);
+    let first = fixture.publish_current(8_201).await;
+    let second = fixture.publish_current(8_202).await;
+    let third = fixture.publish_current(8_203).await;
+    let current = fixture.publish_current(8_204).await;
+    assert_eq!(gc.retire_superseded(source_id(), 1).await, Ok(2));
+    for (key, rows) in [(first, 0), (second, 0), (third, 1), (current, 1)] {
+        assert_eq!(count(&fixture.admin, "search_generation", key).await, rows);
+    }
+    assert_eq!(gc.retire_superseded(source_id(), 1).await, Ok(0));
+    assert_eq!(gc.retire_superseded(source_id(), 0).await, Ok(1));
+    assert_eq!(count(&fixture.admin, "search_generation", third).await, 0);
+    assert_eq!(count(&fixture.admin, "search_generation", current).await, 1);
+}

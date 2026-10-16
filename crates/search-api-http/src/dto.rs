@@ -373,7 +373,29 @@ struct SearchItemDto {
     title: Option<String>,
     rank: usize,
     matched_fields: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snippet: Option<SnippetDto>,
     provenance: ProvenanceDto,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SnippetDto {
+    text: String,
+    field: &'static str,
+    coverage: &'static str,
+}
+
+/// A body snippet: plain text, at most 320 code points, never empty.
+fn body_snippet(value: &Option<String>) -> Option<SnippetDto> {
+    value
+        .as_ref()
+        .filter(|text| !text.trim().is_empty() && text.chars().count() <= 320)
+        .map(|text| SnippetDto {
+            text: text.clone(),
+            field: "body",
+            coverage: "body",
+        })
 }
 
 #[derive(Serialize)]
@@ -423,6 +445,7 @@ pub fn search_page(view: &SearchResultView, trace_id: Uuid) -> serde_json::Resul
                             MatchedField::Body => "body",
                         })
                         .collect(),
+                    snippet: body_snippet(&item.snippet),
                     provenance: ProvenanceDto {
                         source_id: source(item.source_id),
                         resource_version_id: item

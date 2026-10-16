@@ -20,7 +20,7 @@ use crate::gc::{CleanupReport, GcError, PgGenerationGc};
 use crate::ready::{ReadyCoordinator, ReadyError, VerifiedBundle};
 
 /// Schema objects the runtime needs before it may serve or claim work.
-const REQUIRED: [&str; 16] = [
+const REQUIRED: [&str; 18] = [
     "public.search_source_coordination",
     "public.search_source_ownership",
     "public.search_generation",
@@ -34,6 +34,8 @@ const REQUIRED: [&str; 16] = [
     "search_graph.resource",
     "search_graph.relation",
     "search_graph.participant",
+    "search_graph.segment",
+    "search_graph.generation_segment",
     "search_graph.build_guard",
     "search_graph.graph_participant_incidence",
     "search_graph.graph_build_guard_by_base",

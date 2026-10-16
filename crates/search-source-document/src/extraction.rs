@@ -7,13 +7,14 @@
 //! Source-owned Unit identity and provenance.
 
 use std::io::Cursor;
+use std::sync::Arc;
 
 use document_application::{ContentReader, FileStorage, StorageError};
 use search_core::id::SourceId;
 use search_core::knowledge_unit::{
     ArchiveProfilePlan, ArchiveReaderNode, BudgetKey, ExtractionProfileDefinitionV1,
     ExtractionProfileId, FormatId, KnowledgeUnit, NativeLocator, UnitAuthorityBinding, UnitId,
-    UnitProvenance, text_sha256, validate_archive_member, validate_part_units,
+    UnitProvenance, share_unit_context, text_sha256, validate_archive_member, validate_part_units,
 };
 use search_extraction_core::{
     BodyCoverage, ContentExtractor, CoverageReason, ExtractionError, ItemOperationState,
@@ -174,6 +175,14 @@ impl BodyProfileRegistry {
 
     pub fn parser_build_id(&self) -> &str {
         &self.parser_build_id
+    }
+
+    /// The registered single-format profile of `format`, if any.
+    pub(crate) fn profile_id(&self, format: FormatId) -> Option<&ExtractionProfileId> {
+        self.profiles
+            .iter()
+            .find(|(candidate, _)| *candidate == format)
+            .map(|(_, profile)| profile.id())
     }
 
     fn definition(&self, format: FormatId) -> Option<&ExtractionProfileDefinitionV1> {
@@ -482,6 +491,9 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
             archive_plan: profile.archive_plan().cloned(),
         };
         let mut units: Vec<KnowledgeUnit> = Vec::with_capacity(report.fragments.len());
+        // Every Unit of the Part shares these; see `share_unit_context`.
+        let shared_version = Arc::new(version.clone());
+        let shared_part = Arc::new(item.part.clone());
         for fragment in &report.fragments {
             let archive_inner_format = match (&fragment.locator, profile.archive_plan()) {
                 (NativeLocator::Archive { members, .. }, Some(plan)) => Some(
@@ -512,15 +524,15 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
             .map_err(|_| BodyBuildError::Integrity("unit identity"))?;
             units.push(KnowledgeUnit {
                 unit_id,
-                version: version.clone(),
-                part: item.part.clone(),
+                version: shared_version.clone(),
+                part: shared_part.clone(),
                 parent_unit_id,
                 ordinal: fragment.ordinal,
                 kind: fragment.kind,
                 text: fragment.text.clone(),
                 locator: fragment.locator.clone(),
                 text_sha256: text_sha256(&fragment.text),
-                provenance: UnitProvenance {
+                provenance: Arc::new(UnitProvenance {
                     source_snapshot: binding.source_snapshot.clone(),
                     authoritative_representation_ref: binding
                         .authoritative_representation_ref
@@ -530,9 +542,10 @@ impl<F: FileStorage, E: ContentExtractor> DocumentBodyExtractor<F, E> {
                     archive_inner_format,
                     profile: profile.id().clone(),
                     parser_build_id: self.registry.parser_build_id.clone(),
-                },
+                }),
             });
         }
+        share_unit_context(&mut units);
         validate_part_units(&binding, &units)
             .map_err(|_| BodyBuildError::Integrity("unit authority"))?;
         Ok(units)
@@ -592,6 +605,13 @@ fn build_error(error: ExtractionError) -> BodyBuildError {
 pub trait BodyItemExtractor: Send + Sync {
     fn parser_build_id(&self) -> &str;
 
+    /// Whether a published entry may stand for a fresh extraction of the same
+    /// item: same parser build and the profile this extractor would use now.
+    /// The default never reuses.
+    fn reusable(&self, _entry: &crate::body_manifest::BodyItemEntry) -> bool {
+        false
+    }
+
     fn extract<'a>(
         &'a self,
         record: &'a VersionSnapshotRecord,
@@ -606,6 +626,19 @@ where
 {
     fn parser_build_id(&self) -> &str {
         self.registry.parser_build_id()
+    }
+
+    fn reusable(&self, entry: &crate::body_manifest::BodyItemEntry) -> bool {
+        // Only a completed single-format read; archives and refusals are cheap
+        // or plan-bound and are always read again.
+        entry.operation == ItemOperationState::Completed
+            && entry.archive_plan.is_none()
+            && entry.parser_build_id == self.registry.parser_build_id()
+            && matches!(
+                (entry.detected_format, &entry.profile),
+                (Some(format), Some(profile))
+                    if self.registry.profile_id(format) == Some(profile)
+            )
     }
 
     fn extract<'a>(

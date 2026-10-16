@@ -28,7 +28,7 @@ use crate::canonical::{
 
 const RELATION_DTO_VERSION: &str = "v1";
 
-fn kind_text(kind: ResourceKind) -> &'static str {
+pub(crate) fn kind_text(kind: ResourceKind) -> &'static str {
     match kind {
         ResourceKind::Knowledge => "KNOWLEDGE",
         ResourceKind::Document => "DOCUMENT",
@@ -41,7 +41,7 @@ fn kind_text(kind: ResourceKind) -> &'static str {
     }
 }
 
-fn kind_from(text: &str) -> Result<ResourceKind, GraphError> {
+pub(crate) fn kind_from(text: &str) -> Result<ResourceKind, GraphError> {
     Ok(match text {
         "KNOWLEDGE" => ResourceKind::Knowledge,
         "DOCUMENT" => ResourceKind::Document,
@@ -548,7 +548,7 @@ pub async fn validate_on(
         crate::incremental::ready_gate(&mut *connection, handle).await?;
     }
     let parent = building_for(parent(&mut *connection, key, "FOR UPDATE").await?, target)?;
-    let (resources, relations) = load_rows(&mut *connection, key).await?;
+    let (resources, relations) = crate::segments::load_generation(&mut *connection, key).await?;
     let (graph_content_digest, resource_count, relation_count) =
         recompute(key, &parent, &resources, &relations)?;
     Ok((
@@ -644,6 +644,48 @@ impl PostgresGraphStore {
         Ok(GraphStage { key })
     }
 
+    /// Writes a whole target Graph as segments and its segment list (stage
+    /// 4), for a FULL or an INCREMENTAL target. Nothing is copied from an
+    /// incremental base: the list is the complete target, so it stands for
+    /// both the verified copy and the applied delta.
+    pub async fn stage_segments(
+        &self,
+        target: &GraphBuildRef,
+        resources: &[GraphResourceRecord],
+        relations: &[TypedRelationInstance],
+    ) -> Result<GraphStage, GraphError> {
+        let key = target.target_key();
+        for relation in relations {
+            relation
+                .validate()
+                .map_err(|_| GraphError::Invalid("relation"))?;
+        }
+        canonical_graph_digest(key.source_id, GRAPH_SCHEMA_VERSION, resources, relations)?;
+        let built = crate::segments::partition(key.source_id, resources, relations)?;
+        let mut tx = self.pool.begin().await?;
+        if let GraphBuildRef::Incremental(handle) = target {
+            crate::incremental::open_segment_stage(&mut tx, handle).await?;
+        }
+        let parent = building_for(parent(&mut tx, key, "FOR UPDATE").await?, target)?;
+        if canonical_mapping_digest(key.source_id, &parent.source_snapshot, resources)?
+            != parent.source_mapping_digest
+        {
+            return Err(GraphError::Integrity("source mapping commitment"));
+        }
+        if !crate::segments::segment_list(&mut tx, key)
+            .await?
+            .is_empty()
+        {
+            return Err(GraphError::FenceLost);
+        }
+        crate::segments::write_segments(&mut tx, key, &built).await?;
+        if let GraphBuildRef::Incremental(handle) = target {
+            crate::incremental::close_segment_stage(&mut tx, handle).await?;
+        }
+        tx.commit().await?;
+        Ok(GraphStage { key })
+    }
+
     /// Recomputes the staged generation under its parent lock. No READY.
     pub async fn validate(&self, target: &GraphBuildRef) -> Result<GraphStageReport, GraphError> {
         let key = target.target_key();
@@ -653,7 +695,7 @@ impl PostgresGraphStore {
             crate::incremental::ready_gate(&mut tx, handle).await?;
         }
         let parent = building_for(parent(&mut tx, key, "FOR UPDATE").await?, target)?;
-        let (resources, relations) = load_rows(&mut tx, key).await?;
+        let (resources, relations) = crate::segments::load_generation(&mut tx, key).await?;
         let (graph_content_digest, resource_count, relation_count) =
             recompute(key, &parent, &resources, &relations)?;
         tx.commit().await?;
@@ -676,6 +718,11 @@ impl PostgresGraphStore {
         key: ProjectionGenerationKey,
         resource_ref: ResourceId,
     ) -> Result<Option<GraphResourceRecord>, GraphError> {
+        if let Some(found) =
+            crate::segments::ready_segment_resource(&self.pool, key, resource_ref).await?
+        {
+            return Ok(found);
+        }
         let row = sqlx::query(concat!(
             "SELECT ",
             resource_columns!(),
@@ -691,6 +738,39 @@ impl PostgresGraphStore {
         .await?;
         row.map(|row| resource_from_row(&row, Vec::new()))
             .transpose()
+    }
+
+    /// The stored receipt of a READY generation, without reading its rows:
+    /// for a base an incremental target is registered against.
+    pub async fn ready_receipt(
+        &self,
+        key: ProjectionGenerationKey,
+        expected_manifest_digest: &str,
+    ) -> Result<GraphGenerationReceipt, GraphError> {
+        let mut connection = self.pool.acquire().await?;
+        let parent = parent(&mut connection, key, "")
+            .await?
+            .ok_or(GraphError::Integrity("missing generation"))?;
+        let count = |n: Option<i64>| {
+            n.and_then(|n| u64::try_from(n).ok())
+                .ok_or(GraphError::Integrity("READY receipt"))
+        };
+        if parent.state != "READY" || parent.projection_manifest_digest != expected_manifest_digest
+        {
+            return Err(GraphError::Integrity("not the expected READY generation"));
+        }
+        Ok(GraphGenerationReceipt {
+            key,
+            graph_content_digest: parent
+                .graph_content_digest
+                .ok_or(GraphError::Integrity("READY receipt"))?,
+            resource_count: count(parent.resource_count)?,
+            relation_count: count(parent.relation_count)?,
+            projection_manifest_digest: parent.projection_manifest_digest,
+            source_snapshot: parent.source_snapshot,
+            source_mapping_digest: parent.source_mapping_digest,
+            graph_schema_version: GRAPH_SCHEMA_VERSION.into(),
+        })
     }
 
     /// Read-only recovery of a READY generation: every row is rebuilt and the
@@ -731,7 +811,7 @@ impl PostgresGraphStore {
         {
             return Err(GraphError::Integrity("not the expected READY generation"));
         }
-        let (resources, relations) = load_rows(&mut tx, key).await?;
+        let (resources, relations) = crate::segments::load_generation(&mut tx, key).await?;
         let (content, resource_count, relation_count) =
             recompute(key, &parent, &resources, &relations)?;
         if Some(&content) != parent.graph_content_digest.as_ref()

@@ -92,8 +92,8 @@ pub(crate) fn same_version_binding(
 
 fn same_unit(unit: &KnowledgeUnit, hit: &KnowledgeUnitHitRef) -> bool {
     unit.unit_id == hit.unit_id
-        && unit.version == hit.version
-        && unit.part == hit.part
+        && *unit.version == hit.version
+        && *unit.part == hit.part
         && unit.text_sha256 == hit.text_sha256
         && unit.provenance.profile == hit.profile
         && unit.provenance.raw == hit.raw

@@ -8,6 +8,7 @@ pub mod canonical;
 pub mod incremental;
 pub mod migrate;
 pub mod reader;
+pub mod segments;
 pub mod store;
 
 pub use canonical::{

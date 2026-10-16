@@ -408,6 +408,9 @@ where
         let mut backoff = self.config.poll_interval.max(Duration::from_millis(100));
         let mut shutdown_error = None;
         while !shutdown_requested(Some(&shutdown), drain, self.config) {
+            // A cycle that claimed work polls again at once: with one claim
+            // per cycle a backlog would otherwise wait one interval per row.
+            let mut busy = false;
             match self.run_cycle_inner(Some(&mut shutdown), drain).await {
                 Ok(cycle) => {
                     summary.cycles += 1;
@@ -416,6 +419,7 @@ where
                     summary.lost += u64::from(cycle.lost);
                     summary.reaped += cycle.reaped;
                     backoff = self.config.poll_interval.max(Duration::from_millis(50));
+                    busy = cycle.claimed > 0;
                 }
                 Err(DeliveryError::StoreUnknown) => {
                     summary.outages += 1;
@@ -428,6 +432,9 @@ where
             }
             if shutdown_requested(Some(&shutdown), drain, self.config) {
                 break;
+            }
+            if busy {
+                continue;
             }
             tokio::select! {
                 biased;

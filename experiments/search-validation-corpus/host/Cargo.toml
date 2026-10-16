@@ -1,0 +1,35 @@
+[package]
+name = "search-validation-host"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+# Validation-only Search API host: never a root workspace member, never a
+# production dependency and never a production identity path. It serves the
+# durable Search API on loopback with synthetic Bearer actors so the real
+# Document → Search path can be measured end to end.
+[workspace]
+resolver = "3"
+
+[dependencies]
+document-application = { path = "../../../crates/document-application" }
+document-domain = { path = "../../../crates/document-domain" }
+document-repository-postgres = { path = "../../../crates/document-repository-postgres" }
+search-api-http = { path = "../../../crates/search-api-http" }
+search-application = { path = "../../../crates/search-application" }
+search-graph = { path = "../../../crates/search-graph" }
+search-runtime = { path = "../../../crates/search-runtime" }
+search-source-document = { path = "../../../crates/search-source-document" }
+search-vector-adapter = { path = "../../../crates/search-vector-adapter" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
+time = "0.3"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+
+[patch.crates-io]
+ovba = { path = "../../../third_party/document-semantic-inspection/ovba-0.7.1" }
+tantivy = { path = "../../../third_party/search/tantivy-0.26.2" }

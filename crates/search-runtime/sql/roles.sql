@@ -89,6 +89,11 @@ GRANT UPDATE (state) ON search_generation TO search_gc;
 GRANT DELETE ON search_generation_full_guard, search_generation_payload,
     search_generation_receipt, search_lexical_artifact,
     search_evaluation_lease, search_generation TO search_gc;
+-- Migration 0011: segmented Unit manifests.
+GRANT SELECT, INSERT ON search_unit_segment, search_generation_segment TO search_builder;
+GRANT SELECT ON search_unit_segment, search_generation_segment
+    TO search_coordinator, search_reader;
+GRANT SELECT, DELETE ON search_unit_segment, search_generation_segment TO search_gc;
 -- Migration 0004: lock-only access to the Source row for GC.
 REVOKE ALL ON FUNCTION search_gc_lock_source(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION search_gc_lock_source(UUID) TO search_gc;

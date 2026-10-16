@@ -21,7 +21,10 @@ use search_core::projection::{ProjectionGenerationKey, ProjectionGenerationManif
 use search_core::resource::ResourceKind;
 use search_core::source::{DiscoverableSource, DiscoveryMode, EnumerationSemantics, RetentionMode};
 use search_core::temporal::TemporalEvaluationContext;
-use search_tantivy::{LexicalBuildInput, LexicalDocument, TantivyLexicalIndex};
+use search_tantivy::{
+    LexicalBuildInput, LexicalDocument, LexicalIndexError, TantivyLexicalIndex, UnitSealEntry,
+    UnitSource, unit_doc_hash,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -128,8 +131,8 @@ fn unit(parent: u128, part: &str, ordinal: u32, text: &str) -> KnowledgeUnit {
     let profile = profile();
     KnowledgeUnit {
         unit_id: UnitId::derive(&version, &part, &profile, &locator, ordinal).unwrap(),
-        version,
-        part,
+        version: version.into(),
+        part: part.into(),
         parent_unit_id: None,
         ordinal,
         kind: UnitKind::PlainText,
@@ -148,7 +151,8 @@ fn unit(parent: u128, part: &str, ordinal: u32, text: &str) -> KnowledgeUnit {
             archive_inner_format: None,
             profile,
             parser_build_id: "search-extraction-worker-test".into(),
-        },
+        }
+        .into(),
     }
 }
 
@@ -324,8 +328,8 @@ async fn same_text_separate_part_keeps_ref() {
             .find(|unit| unit.unit_id == unit_hit.unit_id)
             .unwrap();
         assert_eq!(Some(unit_hit.parent_resource), hit.candidate.resource_ref);
-        assert_eq!(unit_hit.version, source_unit.version);
-        assert_eq!(unit_hit.part, source_unit.part);
+        assert_eq!(unit_hit.version, *source_unit.version);
+        assert_eq!(unit_hit.part, *source_unit.part);
         assert_eq!(unit_hit.raw, source_unit.provenance.raw);
         assert_eq!(unit_hit.profile, source_unit.provenance.profile);
         assert_eq!(unit_hit.text_sha256, source_unit.text_sha256);
@@ -387,4 +391,333 @@ async fn token_hit_without_literal_span_is_not_qualified() {
         .unwrap();
     assert!(batch.hits.is_empty());
     assert!(!batch.exhausted_matching_units);
+}
+
+/// Japanese text is segmented only by the CJK bigram analyzer: an unspaced
+/// sentence is one token under the legacy default, so a word inside it is
+/// found only with bigrams. The persisted generation keeps its analyzer.
+#[tokio::test]
+async fn cjk_bigram_analyzer_finds_words_inside_unspaced_japanese() {
+    let bigram = |dir: Option<&std::path::Path>| {
+        let mut manifest = manifest();
+        manifest.analyzer_version = Some(search_tantivy::CJK_BIGRAM_ANALYZER_VERSION.into());
+        let input = LexicalBuildInput::new(
+            source_id(),
+            "snapshot-body",
+            "schema-1",
+            1,
+            vec![card(10, "アンパサンドの歴史"), card(11, "会議室の予約手順")],
+        )
+        .with_body_units(vec![unit(
+            11,
+            "primary",
+            0,
+            "会議室は前日までに総務部へ申請する。",
+        )])
+        .with_analyzer_version(search_tantivy::CJK_BIGRAM_ANALYZER_VERSION);
+        let index = TantivyLexicalIndex::new();
+        match dir {
+            Some(dir) => index.build_generation_at(manifest, &source(), input, dir),
+            None => index.build_generation(manifest, &source(), input),
+        }
+        .unwrap();
+        index
+    };
+    let index = bigram(None);
+    let titles = index
+        .retrieve(key(), &request(), &LexicalQuery::new("パサンド", 10))
+        .await
+        .unwrap();
+    assert_eq!(titles[0].resource_ref, Some(resource(10)));
+    let body = index
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("総務部へ申請", 10),
+        )
+        .await
+        .unwrap();
+    assert_eq!(body.hits.len(), 1);
+    assert_eq!(body.hits[0].candidate.resource_ref, Some(resource(11)));
+    // Most of the query's tokens, not contiguous: still a hit in a bigram
+    // generation, and its span is the longest part of the query the Unit
+    // contains, so the snippet points at real text.
+    let scattered = index
+        .retrieve_body(key(), &request(), &LexicalQuery::body_only("申請総務", 10))
+        .await
+        .unwrap();
+    assert_eq!(scattered.hits.len(), 1);
+    let span = &scattered.hits[0].unit_hit.as_ref().unwrap().span;
+    let text = "会議室は前日までに総務部へ申請する。";
+    let part = &text[span.start_byte as usize..span.end_byte as usize];
+    assert!(part == "申請" || part == "総務", "{part}");
+    // Too few of the query's tokens: no hit.
+    let unrelated = index
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("会計監査の基準", 10),
+        )
+        .await
+        .unwrap();
+    assert!(unrelated.hits.is_empty());
+
+    // The legacy default analyzer cannot see the word inside the sentence.
+    let legacy = build(
+        vec![card(11, "会議室の予約手順")],
+        vec![unit(
+            11,
+            "primary",
+            0,
+            "会議室は前日までに総務部へ申請する。",
+        )],
+    );
+    let missed = legacy
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("総務部へ申請", 10),
+        )
+        .await
+        .unwrap();
+    assert!(missed.hits.is_empty());
+
+    // A persisted bigram generation reopens with its own analyzer.
+    let dir = std::env::temp_dir().join(format!("kp-bigram-{}", Uuid::new_v4()));
+    bigram(Some(&dir));
+    let mut manifest = manifest();
+    manifest.analyzer_version = Some(search_tantivy::CJK_BIGRAM_ANALYZER_VERSION.into());
+    let reopened = TantivyLexicalIndex::new();
+    let persisted = reopened
+        .load_generation_at(&manifest, &source(), &dir)
+        .unwrap();
+    assert_eq!(
+        persisted.analyzer_version,
+        search_tantivy::CJK_BIGRAM_ANALYZER_VERSION
+    );
+    let again = reopened
+        .retrieve_body(
+            key(),
+            &request(),
+            &LexicalQuery::body_only("総務部へ申請", 10),
+        )
+        .await
+        .unwrap();
+    assert_eq!(again.hits.len(), 1);
+    // The manifest and the persisted sidecar must name the same analyzer.
+    let legacy_manifest = self::manifest();
+    assert!(TantivyLexicalIndex::inspect_persisted(&legacy_manifest, &source(), &dir).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A generation built from an earlier one's Unit index has exactly the new
+/// Units; the earlier directory is unchanged and unchanged segment files are
+/// shared by hard link.
+#[tokio::test]
+async fn unit_index_from_a_base_generation_has_exactly_the_new_units() {
+    let persist = |dir: &std::path::Path,
+                   documents: Vec<LexicalDocument>,
+                   units: Vec<KnowledgeUnit>,
+                   base: Option<&std::path::Path>| {
+        let mut input =
+            LexicalBuildInput::new(source_id(), "snapshot-body", "schema-1", 1, documents)
+                .with_body_units(units);
+        if let Some(base) = base {
+            input = input.with_base_units_dir(base.join("units"));
+        }
+        TantivyLexicalIndex::new()
+            .build_generation_at(manifest(), &source(), input, dir)
+            .unwrap();
+    };
+    let texts = |dir: &std::path::Path| {
+        let reopened = TantivyLexicalIndex::new();
+        reopened
+            .load_generation_at(&manifest(), &source(), dir)
+            .unwrap();
+        let mut out: Vec<String> = reopened
+            .enumerate_unit_docs(key())
+            .unwrap()
+            .into_iter()
+            .map(|doc| doc.text)
+            .collect();
+        out.sort();
+        out
+    };
+
+    let root = std::env::temp_dir().join(format!("kp-unit-base-{}", Uuid::new_v4()));
+    let (first, second) = (root.join("first"), root.join("second"));
+    persist(
+        &first,
+        vec![card(11, "会議室"), card(12, "旧い文書")],
+        vec![
+            unit(11, "primary", 0, "会議室は前日までに申請する。"),
+            unit(11, "primary", 1, "旧い行"),
+            unit(12, "primary", 0, "消える行"),
+        ],
+        None,
+    );
+    persist(
+        &second,
+        vec![card(11, "会議室"), card(13, "新しい文書")],
+        vec![
+            unit(11, "primary", 0, "会議室は前日までに申請する。"),
+            unit(11, "primary", 1, "新しい行"),
+            unit(13, "primary", 0, "増えた行"),
+        ],
+        Some(&first),
+    );
+    assert_eq!(
+        texts(&second),
+        ["会議室は前日までに申請する。", "増えた行", "新しい行"]
+    );
+    assert_eq!(
+        texts(&first),
+        ["会議室は前日までに申請する。", "旧い行", "消える行"]
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let inodes = |dir: &std::path::Path| -> std::collections::BTreeSet<u64> {
+            std::fs::read_dir(dir.join("units"))
+                .unwrap()
+                .map(|entry| entry.unwrap().metadata().unwrap().ino())
+                .collect()
+        };
+        assert!(!inodes(&first).is_disjoint(&inodes(&second)));
+    }
+    let reopened = TantivyLexicalIndex::new();
+    reopened
+        .load_generation_at(&manifest(), &source(), &second)
+        .unwrap();
+    let found = |query: &'static str| {
+        let reopened = &reopened;
+        async move {
+            reopened
+                .retrieve_body(key(), &request(), &LexicalQuery::body_only(query, 10))
+                .await
+                .unwrap()
+                .hits
+                .len()
+        }
+    };
+    assert_eq!(found("増えた行").await, 1);
+    assert_eq!(found("消える行").await, 0);
+    assert_eq!(found("旧い行").await, 0);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Holds only the changed Units and every Unit's seal entry.
+struct HeldInPart {
+    held: Vec<KnowledgeUnit>,
+    every: Vec<UnitSealEntry>,
+}
+
+impl UnitSource for HeldInPart {
+    fn units(&self) -> Vec<&KnowledgeUnit> {
+        self.held.iter().collect()
+    }
+
+    fn seal_entries(&self) -> Option<Vec<UnitSealEntry>> {
+        Some(self.every.clone())
+    }
+
+    fn complete(&self) -> bool {
+        false
+    }
+}
+
+/// Units held only in part build from a base Unit index that has every other
+/// Unit, and fail without one or when the base lacks a Unit not held.
+#[test]
+fn units_held_in_part_build_only_from_a_base_with_every_other_unit() {
+    let seal = |units: &[&KnowledgeUnit]| -> Vec<UnitSealEntry> {
+        units
+            .iter()
+            .map(|unit| UnitSealEntry {
+                unit_id: unit.unit_id,
+                hash: unit_doc_hash(unit).unwrap(),
+            })
+            .collect()
+    };
+    let documents = || vec![card(11, "会議室"), card(13, "新しい文書")];
+    let build = |dir: &std::path::Path, units: HeldInPart, base: Option<&std::path::Path>| {
+        let mut input =
+            LexicalBuildInput::new(source_id(), "snapshot-body", "schema-1", 1, documents())
+                .with_body_unit_source(std::sync::Arc::new(units));
+        if let Some(base) = base {
+            input = input.with_base_units_dir(base.join("units"));
+        }
+        TantivyLexicalIndex::new().build_generation_at(manifest(), &source(), input, dir)
+    };
+
+    let root = std::env::temp_dir().join(format!("kp-unit-part-{}", Uuid::new_v4()));
+    let first = root.join("first");
+    let kept = unit(11, "primary", 0, "会議室は前日までに申請する。");
+    let input = LexicalBuildInput::new(
+        source_id(),
+        "snapshot-body",
+        "schema-1",
+        1,
+        vec![card(11, "会議室"), card(12, "旧い文書")],
+    )
+    .with_body_units(vec![
+        kept.clone(),
+        unit(11, "primary", 1, "旧い行"),
+        unit(12, "primary", 0, "消える行"),
+    ]);
+    TantivyLexicalIndex::new()
+        .build_generation_at(manifest(), &source(), input, &first)
+        .unwrap();
+
+    let changed = unit(11, "primary", 1, "新しい行");
+    let added = unit(13, "primary", 0, "増えた行");
+    let every = seal(&[&kept, &changed, &added]);
+    build(
+        &root.join("second"),
+        HeldInPart {
+            held: vec![changed.clone(), added.clone()],
+            every: every.clone(),
+        },
+        Some(&first),
+    )
+    .unwrap();
+    let reopened = TantivyLexicalIndex::new();
+    reopened
+        .load_generation_at(&manifest(), &source(), &root.join("second"))
+        .unwrap();
+    let mut texts: Vec<String> = reopened
+        .enumerate_unit_docs(key())
+        .unwrap()
+        .into_iter()
+        .map(|doc| doc.text)
+        .collect();
+    texts.sort();
+    assert_eq!(
+        texts,
+        ["会議室は前日までに申請する。", "増えた行", "新しい行"]
+    );
+
+    let without_base = build(
+        &root.join("third"),
+        HeldInPart {
+            held: vec![changed.clone(), added.clone()],
+            every: every.clone(),
+        },
+        None,
+    );
+    assert!(matches!(
+        without_base,
+        Err(LexicalIndexError::IncompleteUnits)
+    ));
+    // The base lacks the added Unit and this build does not hold it.
+    let lacking = build(
+        &root.join("fourth"),
+        HeldInPart {
+            held: vec![changed],
+            every,
+        },
+        Some(&first),
+    );
+    assert!(matches!(lacking, Err(LexicalIndexError::IncompleteUnits)));
+    let _ = std::fs::remove_dir_all(&root);
 }

@@ -557,6 +557,38 @@ impl PostgresGraphStore {
     }
 }
 
+/// Before a segment list is written for an incremental target: the guard is
+/// live, nothing was copied or verified, and no delta was applied.
+pub(crate) async fn open_segment_stage(
+    connection: &mut PgConnection,
+    handle: &BuildGuardHandle,
+) -> Result<(), GraphError> {
+    let gate = gate(connection, handle).await?;
+    if gate.copy_verified || gate.phase.is_some() || gate.sequence != 0 {
+        return Err(GraphError::FenceLost);
+    }
+    Ok(())
+}
+
+/// After the segment list is written: the list is the complete target, so
+/// it is recorded as the verified copy and the applied delta.
+pub(crate) async fn close_segment_stage(
+    connection: &mut PgConnection,
+    handle: &BuildGuardHandle,
+) -> Result<(), GraphError> {
+    let target = handle.target_key();
+    sqlx::query(
+        "UPDATE search_graph.build_guard SET copy_verified_at = clock_timestamp() \
+         WHERE source_id=$1 AND target_generation_id=$2",
+    )
+    .bind(target.source_id.as_uuid())
+    .bind(target.generation_id.as_uuid())
+    .execute(&mut *connection)
+    .await?;
+    set_cursor(&mut *connection, target, "DELTA", 1).await?;
+    still_live(connection, handle).await
+}
+
 /// READY validation of an incremental target additionally needs a live guard,
 /// a verified copy and the applied delta.
 pub(crate) async fn ready_gate(

@@ -1,0 +1,25 @@
+{
+  "note": "Exact law titles resolved through the e-Gov 法令API v2. `previous` also fetches the revision in force immediately before the current one (改正前後の評価用).",
+  "laws": [
+    {"title": "金融商品取引法", "previous": true},
+    {"title": "金融商品取引法施行令", "previous": true},
+    {"title": "金融商品取引業等に関する内閣府令", "previous": false},
+    {"title": "銀行法", "previous": true},
+    {"title": "銀行法施行令", "previous": false},
+    {"title": "保険業法", "previous": true},
+    {"title": "資金決済に関する法律", "previous": true},
+    {"title": "犯罪による収益の移転防止に関する法律", "previous": true},
+    {"title": "金融サービスの提供及び利用環境の整備等に関する法律", "previous": true},
+    {"title": "貸金業法", "previous": false},
+    {"title": "信託業法", "previous": false},
+    {"title": "預金保険法", "previous": false},
+    {"title": "社債、株式等の振替に関する法律", "previous": false},
+    {"title": "会社法", "previous": true},
+    {"title": "民法", "previous": true},
+    {"title": "個人情報の保護に関する法律", "previous": true},
+    {"title": "消費者契約法", "previous": true},
+    {"title": "割賦販売法", "previous": false},
+    {"title": "公認会計士法", "previous": false},
+    {"title": "行政手続法", "previous": false}
+  ]
+}

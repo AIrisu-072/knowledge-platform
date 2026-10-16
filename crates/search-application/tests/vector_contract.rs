@@ -1,4 +1,5 @@
 //! P2-06: the trusted Vector query, Source resolution and S1 contract.
+use std::sync::Arc;
 
 #[path = "support/api.rs"]
 mod api;
@@ -265,13 +266,19 @@ async fn stale_version_t10_part_representation_raw_profile_text_model_or_generat
     ));
     // The Source's current Unit differs in any bound field: suppressed.
     let mutations: Vec<Mutation> = vec![
-        Box::new(|unit| unit.version.source_native_version = "version-2".into()),
-        Box::new(|unit| unit.part.source_native_part_id = "part-other".into()),
         Box::new(|unit| {
-            unit.provenance.authoritative_representation_ref = "representation-2".into()
+            Arc::make_mut(&mut unit.version).source_native_version = "version-2".into()
         }),
-        Box::new(|unit| unit.provenance.raw.sha256 = [8; 32]),
-        Box::new(|unit| unit.provenance.profile = ExtractionProfileId::parse(&digest(19)).unwrap()),
+        Box::new(|unit| Arc::make_mut(&mut unit.part).source_native_part_id = "part-other".into()),
+        Box::new(|unit| {
+            Arc::make_mut(&mut unit.provenance).authoritative_representation_ref =
+                "representation-2".into()
+        }),
+        Box::new(|unit| Arc::make_mut(&mut unit.provenance).raw.sha256 = [8; 32]),
+        Box::new(|unit| {
+            Arc::make_mut(&mut unit.provenance).profile =
+                ExtractionProfileId::parse(&digest(19)).unwrap()
+        }),
         Box::new(|unit| {
             unit.text = "alpha changed".into();
             unit.text_sha256 = search_core::knowledge_unit::text_sha256("alpha changed");

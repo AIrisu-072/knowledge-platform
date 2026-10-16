@@ -188,6 +188,7 @@ pub fn unit_hit(parent: ResourceId) -> KnowledgeUnitHitRef {
         },
         profile,
         opaque_locator: "00".into(),
+        excerpt: None,
     }
 }
 

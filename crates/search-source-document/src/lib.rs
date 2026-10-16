@@ -17,18 +17,23 @@ mod model;
 mod outbox;
 mod postgres;
 mod relations;
+mod segment_codec;
 mod translate;
 
 pub use api_read::DocumentApiRead;
-pub use body_bundle::{PublishedBody, graph_receipt, seal_lexical};
+pub use body_bundle::{
+    PublishedBody, graph_receipt, seal_lexical, seal_lexical_entries, seal_lexical_hashes,
+    shared_seal_entries, stored_unit_manifest, unit_seal_entries,
+};
 pub use body_evidence::{
     CurrentVersionReader, DocumentBodyCoverageGaps, DocumentExactTextEvidenceCatalog,
 };
 pub use body_manifest::{
     ArtifactReceipt, BodyCoverageArtifact, BodyCoverageItem, BodyItemEntry, BodyUnitManifest,
-    GenerationBundleReceipt, LEXICAL_SCHEMA_VERSION, compute_bundle_receipt, coverage_receipt,
-    profile_set_digest, projection_digest, unit_manifest_receipt, validate_manifest,
-    validate_restored_manifest,
+    GenerationBundleReceipt, LEXICAL_SCHEMA_VERSION, StoredUnits, compute_bundle_receipt,
+    compute_bundle_receipt_from, coverage_receipt, profile_set_digest, profile_set_digest_from,
+    projection_digest, segment_digest, unit_manifest_receipt, unit_manifest_receipt_from_segments,
+    validate_manifest, validate_restored_manifest, validate_restored_manifest_skipping,
 };
 pub use coverage::{DocumentCoveragePreflight, DocumentCoverageRequirement};
 pub use delivery::DocumentSearchDeliveryHandler;
@@ -60,6 +65,7 @@ pub use relations::{
     DocumentRelationProjection, DocumentRelationProjector, RelationProjectionError,
     document_resource_id, folder_resource_id,
 };
+pub use segment_codec::{SEGMENT_DTO_VERSION, decode_segment, encode_segment};
 pub use translate::{
     DocumentIndexInputs, DocumentSourceTranslation, DocumentSourceTranslator,
     DocumentVisibilityClass, TranslationError,

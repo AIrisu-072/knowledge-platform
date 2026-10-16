@@ -152,6 +152,8 @@ pub struct SearchHit {
     pub resource_version: Option<ResourceVersionId>,
     pub title: Option<String>,
     pub matched: Vec<MatchedField>,
+    /// The body window of the representative Unit, for a body match only.
+    pub snippet: Option<String>,
 }
 
 /// A Search retrieval pass: ranked hits, pinned generations and gaps.
@@ -608,6 +610,7 @@ impl<'a> DiscoveryService<'a> {
                                         .retrieval_inputs
                                         .vector_query
                                         .as_deref(),
+                                    defer_access_to_caller: false,
                                 },
                             )
                             .await;
@@ -905,6 +908,7 @@ impl<'a> DiscoveryService<'a> {
     /// `PriorityConcat` federation as Discovery, without the evidence loop.
     /// Live remote retrieval needs a Discovery evaluation binding, so a
     /// remote Source contributes only its durable generation here.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search_visible(
         &self,
         actor: &TrustedSearchScope,
@@ -913,6 +917,7 @@ impl<'a> DiscoveryService<'a> {
         request: DiscoveryRequest,
         query: LexicalQuery,
         max_candidates: usize,
+        needed: Option<usize>,
     ) -> Result<SearchOutcome, SearchError> {
         let (sources, routing, mut gaps) = VisibleRouting::prepare(actor, visible, routing)?;
         let routes = SourceRouter::plan(&request.need, &sources, &routing);
@@ -998,6 +1003,8 @@ impl<'a> DiscoveryService<'a> {
                     body_query: body.then_some(&query),
                     graph_plan: None,
                     vector_query: None,
+                    // The final gate below checks every hit it keeps.
+                    defer_access_to_caller: true,
                 },
             )
             .await;
@@ -1050,15 +1057,53 @@ impl<'a> DiscoveryService<'a> {
             }
         }
         // Final gate: ranks and counts are computed only over hits that are
-        // currently allowed after every Source read finished.
+        // currently allowed after every Source read finished. With `needed`,
+        // hits are checked in rank order until that many Resources would be
+        // returned; a later Resource can only rank after them, so the result
+        // up to `needed` is the same as checking every hit, and a hit of a
+        // Resource already kept is still kept.
         let mut allowed = Vec::with_capacity(records.len());
+        let mut kept = BTreeSet::new();
         for record in records {
-            if self
+            let resource = record
+                .raw
+                .candidate
+                .resource_ref
+                .map(|resource| (record.raw.generation, resource));
+            if needed.is_some_and(|needed| kept.len() >= needed)
+                && !resource.is_some_and(|resource| kept.contains(&resource))
+            {
+                continue;
+            }
+            if !self
                 .currently_allowed(&record.raw.candidate, &request)
                 .await
             {
-                allowed.push(record);
+                continue;
             }
+            if let Some(resource) = resource
+                && needed.is_some()
+            {
+                let pin = pins.get(&record.raw.candidate.source_ref).ok_or_else(|| {
+                    SearchError::OperationFailed("search hit has no pinned Source".into())
+                })?;
+                // Counted only if federation will rank it: every gate
+                // applicable (as `gate_state`) and the candidate qualifies.
+                let gates = self.hard_gates(&record, pin, &request);
+                if [
+                    gates.applicability.state,
+                    gates.structured.state,
+                    gates.access.state,
+                    gates.temporal.state,
+                ]
+                .iter()
+                .all(|state| *state == ApplicabilityState::Applicable)
+                    && gates.applicability.qualify(&record.raw.candidate).is_some()
+                {
+                    kept.insert(resource);
+                }
+            }
+            allowed.push(record);
         }
         let records = allowed;
         let hard_gates = records
@@ -1134,13 +1179,18 @@ impl<'a> DiscoveryService<'a> {
             if !seen.insert((generation, resource_id)) {
                 continue;
             }
-            let projection = records
-                .iter()
-                .find(|record| {
-                    record.raw.generation == generation
-                        && record.raw.candidate.resource_ref == Some(resource_id)
-                })
-                .and_then(|record| record.projection.as_ref());
+            let record = records.iter().find(|record| {
+                record.raw.generation == generation
+                    && record.raw.candidate.resource_ref == Some(resource_id)
+            });
+            let projection = record.and_then(|record| record.projection.as_ref());
+            let snippet = if body {
+                record
+                    .and_then(|record| record.raw.unit_hit.as_ref())
+                    .and_then(|hit| hit.excerpt.clone())
+            } else {
+                None
+            };
             hits.push(SearchHit {
                 source_id,
                 resource_id,
@@ -1149,6 +1199,7 @@ impl<'a> DiscoveryService<'a> {
                 resource_version: projection.and_then(|detail| detail.directory.resource_version),
                 title: projection.and_then(|detail| detail.directory.title.clone()),
                 matched: matched.into_iter().collect(),
+                snippet,
             });
         }
         Ok(SearchOutcome {

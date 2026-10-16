@@ -1,6 +1,7 @@
 //! Canonical, provider-neutral search unit identity and local validation.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -171,15 +172,56 @@ pub struct UnitProvenance {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnowledgeUnit {
     pub unit_id: UnitId,
-    pub version: ResourceVersionRef,
-    pub part: ContentPartRef,
+    /// Shared by the Units of one Part; see [`share_unit_context`].
+    pub version: Arc<ResourceVersionRef>,
+    pub part: Arc<ContentPartRef>,
     pub parent_unit_id: Option<UnitId>,
     pub ordinal: u32,
     pub kind: UnitKind,
     pub text: String,
     pub locator: NativeLocator,
     pub text_sha256: [u8; 32],
-    pub provenance: UnitProvenance,
+    pub provenance: Arc<UnitProvenance>,
+}
+
+/// Makes consecutive Units with equal version, Part or provenance share one
+/// allocation. The Units are unchanged as values; a decoded Part otherwise
+/// holds one copy of each per Unit.
+pub fn share_unit_context(units: &mut [KnowledgeUnit]) {
+    for index in 1..units.len() {
+        let (before, rest) = units.split_at_mut(index);
+        let (previous, unit) = (&before[index - 1], &mut rest[0]);
+        if !Arc::ptr_eq(&unit.version, &previous.version) && unit.version == previous.version {
+            unit.version = previous.version.clone();
+        }
+        if !Arc::ptr_eq(&unit.part, &previous.part) && unit.part == previous.part {
+            unit.part = previous.part.clone();
+        }
+        if !Arc::ptr_eq(&unit.provenance, &previous.provenance)
+            && unit.provenance == previous.provenance
+        {
+            unit.provenance = previous.provenance.clone();
+        }
+    }
+}
+
+/// Sets the Source snapshot of every Unit. Shared provenance stays shared:
+/// one new provenance per run of Units that had the same one.
+pub fn restamp_source_snapshot(units: &mut [KnowledgeUnit], source_snapshot: &str) {
+    let mut last: Option<(Arc<UnitProvenance>, Arc<UnitProvenance>)> = None;
+    for unit in units {
+        if let Some((old, new)) = &last
+            && Arc::ptr_eq(old, &unit.provenance)
+        {
+            unit.provenance = new.clone();
+            continue;
+        }
+        let mut provenance = (*unit.provenance).clone();
+        provenance.source_snapshot = source_snapshot.to_owned();
+        let new = Arc::new(provenance);
+        let old = std::mem::replace(&mut unit.provenance, new.clone());
+        last = Some((old, new));
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -309,8 +351,8 @@ pub fn validate_part_units(
     for (index, unit) in units.iter().enumerate() {
         if unit.ordinal
             != u32::try_from(index).map_err(|_| UnitValidationError::Invalid("unit count"))?
-            || unit.version != binding.version
-            || unit.part != binding.part
+            || *unit.version != binding.version
+            || *unit.part != binding.part
             || unit.provenance.source_snapshot != binding.source_snapshot
             || unit.provenance.authoritative_representation_ref
                 != binding.authoritative_representation_ref
@@ -441,9 +483,9 @@ pub fn matches_pinned_unit(
     pinned.generation.source_id == pinned.version.source_id
         && hit.generation == pinned.generation
         && hit.unit_id == unit.unit_id
-        && hit.version == unit.version
+        && hit.version == *unit.version
         && hit.version == pinned.version
-        && hit.part == unit.part
+        && hit.part == *unit.part
         && hit.part == pinned.part
         && hit.authoritative_representation_ref == unit.provenance.authoritative_representation_ref
         && hit.authoritative_representation_ref == pinned.authoritative_representation_ref
@@ -470,8 +512,8 @@ pub fn cache_key_matches_authority(
         && key.authority_scope_key == pinned.authority_scope_key
         && key.retention_lease_id == pinned.retention_lease_id
         && key.lifetime_scope_id == pinned.lifetime_scope_id
-        && unit.version == pinned.version
-        && unit.part == pinned.part
+        && *unit.version == pinned.version
+        && *unit.part == pinned.part
         && unit.provenance.authoritative_representation_ref
             == pinned.authoritative_representation_ref
         && unit.provenance.raw == pinned.raw

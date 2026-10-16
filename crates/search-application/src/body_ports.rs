@@ -33,6 +33,37 @@ pub struct KnowledgeUnitHitRef {
     pub profile: ExtractionProfileId,
     /// Encoded native locator; meaningful only to the owning Source.
     pub opaque_locator: String,
+    /// A bounded plain-text window of the Unit around the matched literal
+    /// (at most `MAX_EXCERPT_CHARS` code points). It is disclosed only as the
+    /// body snippet of a hit that passed the final current-access gate.
+    pub excerpt: Option<String>,
+}
+
+/// The longest body snippet the Search API may disclose.
+pub const MAX_EXCERPT_CHARS: usize = 320;
+
+/// The window of `text` around `span` with at most `MAX_EXCERPT_CHARS` code
+/// points, the match kept whole when it fits, line breaks as spaces.
+pub fn excerpt_around(text: &str, span: &TextSpan) -> Option<String> {
+    let start = text.get(..span.start_byte as usize)?.chars().count();
+    let matched = text
+        .get(span.start_byte as usize..span.end_byte as usize)?
+        .chars()
+        .count();
+    let chars: Vec<char> = text.chars().collect();
+    let room = MAX_EXCERPT_CHARS.saturating_sub(matched);
+    // Half of the spare room before the match; a short tail shifts it back.
+    let mut from = start.saturating_sub(room / 2);
+    let to = (from + MAX_EXCERPT_CHARS).min(chars.len());
+    if to - from < MAX_EXCERPT_CHARS {
+        from = to.saturating_sub(MAX_EXCERPT_CHARS);
+    }
+    let window: String = chars[from..to]
+        .iter()
+        .map(|c| if c.is_control() { ' ' } else { *c })
+        .collect();
+    let trimmed = window.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -238,4 +269,33 @@ pub trait SourceExactTextAbsencePort: Send + Sync {
         selector: &'a ExactTextSelector,
         budget: ExactScanBudget,
     ) -> BoxFuture<'a, ExactTextAbsenceOutcome>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span(text: &str, needle: &str) -> TextSpan {
+        let start = text.find(needle).unwrap() as u32;
+        TextSpan::new(text, start, start + needle.len() as u32).unwrap()
+    }
+
+    #[test]
+    fn excerpt_keeps_the_match_inside_a_bounded_window() {
+        let text = format!("{}東京の本文{}", "前".repeat(500), "後".repeat(500));
+        let excerpt = excerpt_around(&text, &span(&text, "東京の本文")).unwrap();
+        assert!(excerpt.contains("東京の本文"));
+        assert_eq!(excerpt.chars().count(), MAX_EXCERPT_CHARS);
+        // Near the end the window shifts back instead of shrinking.
+        let tail = format!("{}終わりの語", "前".repeat(500));
+        let excerpt = excerpt_around(&tail, &span(&tail, "終わりの語")).unwrap();
+        assert!(excerpt.ends_with("終わりの語"));
+        assert_eq!(excerpt.chars().count(), MAX_EXCERPT_CHARS);
+        // Short text is returned whole, line breaks as spaces.
+        let short = "一行目\n東京\n三行目";
+        assert_eq!(
+            excerpt_around(short, &span(short, "東京")).unwrap(),
+            "一行目 東京 三行目"
+        );
+    }
 }
