@@ -103,3 +103,9 @@ tantivy = "=0.26.2"
 ovba = { path = "third_party/document-semantic-inspection/ovba-0.7.1" }
 # Reviewed 0.26.2 archive with lru pinned to fixed 0.18.2.
 tantivy = { path = "third_party/search/tantivy-0.26.2" }
+# Exact qualified archives moved from yanked zip 8.6.0 / 2.4.2 to zip 9.0.3;
+# only the zip API changes (see each PROVENANCE.md and ZIP9.diff).
+calamine = { path = "third_party/document-semantic-inspection/calamine-0.36.1" }
+rxls = { path = "third_party/document-semantic-inspection/rxls-0.1.3" }
+office_oxide = { path = "third_party/document-semantic-inspection/office_oxide-0.1.11" }
+candle-core = { path = "third_party/search/candle-core-0.11.0" }

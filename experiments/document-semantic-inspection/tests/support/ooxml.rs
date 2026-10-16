@@ -53,7 +53,7 @@ fn read_parts(input: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut parts = Vec::with_capacity(archive.len());
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).expect("fixture entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut data = Vec::new();
         file.read_to_end(&mut data).expect("read fixture entry");
         parts.push((name, data));

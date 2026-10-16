@@ -369,7 +369,10 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
         if file.is_dir() {
             continue;
         }
-        let name = file.name().to_owned();
+        let name = file
+            .name()
+            .map_err(|error| PocError::SemanticExtractionFailed(format!("PPTX entry name: {error}")))?
+            .into_owned();
         validate_part_name(&name)?;
         if parts.contains_key(&name) {
             return Err(PocError::SemanticExtractionFailed(format!(

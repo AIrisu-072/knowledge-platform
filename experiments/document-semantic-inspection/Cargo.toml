@@ -29,7 +29,7 @@ url = "2"
 
 office_oxide = "=0.1.11"
 
-zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "=9.0.3", default-features = false, features = ["deflate"] }
 
 quick-xml = "=0.42.0"
 
@@ -57,3 +57,10 @@ cc = "=1.2.41"
 [dev-dependencies]
 cfb = "=0.10.0"
 tempfile = "3"
+
+[patch.crates-io]
+# Exact qualified archives moved from yanked zip 8.6.0 / 2.4.2 to zip 9.0.3;
+# only the zip API changes (see each PROVENANCE.md and ZIP9.diff).
+calamine = { path = "../../third_party/document-semantic-inspection/calamine-0.36.1" }
+rxls = { path = "../../third_party/document-semantic-inspection/rxls-0.1.3" }
+office_oxide = { path = "../../third_party/document-semantic-inspection/office_oxide-0.1.11" }

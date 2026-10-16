@@ -626,6 +626,8 @@ Corpus:
 | Calamine `0.36.1` | **SELECTED** | MIT | spreadsheet differential oracle |
 | `ovba 0.7.1` | **SELECTED** | MIT | static VBA project/source extraction |
 | `tree-sitter 0.25.10` + vendored `tree-sitter-vba@c691f237...` | **SELECTED** | permissive / upstream grammar revision | strict VBA syntax/recovery gate |
+
+Office Oxide 0.1.11、rxls 0.1.3、Calamine 0.36.1は、2026-10-16からcrates.ioの同じarchiveにzip 9.0.3への対応だけを当てた写し（`third_party/document-semantic-inspection/*/PROVENANCE.md` と `ZIP9.diff`）を使う。zip 8.6.0と2.4.2がyankされ、各crateの最新版がまだzip 9に対応していないため。版と意味の射影はqualification済みの構成のまま変えない（所有者の判断 2026-10-16）。
 | `zip 8.6.0` deflate-only | **SELECTED** | MIT | bounded OOXML package traversal |
 | `quick-xml 0.42.0` | **SELECTED** | MIT | independent raw OOXML coverage/semantic oracle |
 
@@ -1291,7 +1293,7 @@ The owner directed that Vector be made usable and enabled by default when a meas
 
 | Item | Decision | Evidence boundary |
 |---|---|---|
-| Embedding runtime | **SELECTED**: Candle 0.11.0 CPU (`candle-core`/`candle-nn`/`candle-transformers`, default features off) with `tokenizers` 0.22.0 (`onig`) | P2-02 reference parity (token IDs identical, component error within 0.002, cosine within 0.0001) on the pinned files. `ort`/ONNX Runtime remains unmeasured and unselected. The archived `paste` build-time macro (RUSTSEC-2024-0436, unmaintained, no known vulnerability) comes with gemm/pulp and tokenizers and is ignored in `deny.toml` and `osv-scanner.toml` with this reason. |
+| Embedding runtime | **SELECTED**: Candle 0.11.0 CPU (`candle-core`/`candle-nn`/`candle-transformers`, default features off); `candle-core` uses the same 0.11.0 archive with only its zip requirement moved to 9.0.3 (`third_party/search/candle-core-0.11.0/PROVENANCE.md`, 2026-10-16) with `tokenizers` 0.22.0 (`onig`) | P2-02 reference parity (token IDs identical, component error within 0.002, cosine within 0.0001) on the pinned files. `ort`/ONNX Runtime remains unmeasured and unselected. The archived `paste` build-time macro (RUSTSEC-2024-0436, unmaintained, no known vulnerability) comes with gemm/pulp and tokenizers and is ignored in `deny.toml` and `osv-scanner.toml` with this reason. |
 | Embedding model | **SELECTED**: `intfloat/multilingual-e5-small` revision `614241f622f53c4eeff9890bdc4f31cfecc418b3` (MIT), files hash-checked before load | The MiniLM candidate is not selected. |
 | Vector retrieval engine | **SELECTED**: exact cosine scan of the pinned generation in `search-runtime` (`PgVectorIndex`) | p95 query embedding plus scan 18.8 ms at 1,024 Units on the development machine. ANN remains unmeasured and is not required at this scale. |
 | Similarity floor | **0.890** (`DEFAULT_SIMILARITY_FLOOR`) | Calibrated on 40 MIRACL ja dev calibration queries only. |

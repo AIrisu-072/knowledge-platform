@@ -101,7 +101,7 @@ fn read_parts(archive: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut parts = Vec::with_capacity(zip.len());
     for index in 0..zip.len() {
         let mut file = zip.by_index(index).expect("central-directory entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .expect("base ZIP entry reads with a valid CRC");

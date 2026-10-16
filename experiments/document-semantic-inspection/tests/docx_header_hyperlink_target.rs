@@ -60,7 +60,7 @@ fn read_package(input: &[u8]) -> BTreeMap<String, Vec<u8>> {
     let mut parts = BTreeMap::new();
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).expect("DOCX ZIP entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).expect("read DOCX part");
         assert!(
