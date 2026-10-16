@@ -60,7 +60,7 @@ curl -s -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
 
 ## 秘密値とデータ
 
-- 秘密値：`${KP_STACK_DIR:-~/.knowledge-platform/stack}/secrets/`（DBの `kp` と下の4つのroleのパスワード、検索サーバー2つのトークン）。`stack:secrets` が無いときだけ作る（0600）。リポジトリには入れない。
+- 秘密値：`${KP_STACK_DIR:-~/.knowledge-platform/stack}/secrets/`（DBの `kp` と下の4つのroleのパスワード、検索サーバー2つのトークン）。`stack:secrets` が無いときだけ作る（ディレクトリは0700、ファイルは0644。composeはファイルをホストの所有者のままmountし、サービスはuid 10001で動くため）。リポジトリには入れない。
 - データ：Docker volume（`pgdata`、`storage`＝文書の原本、`lexical`＝字句索引、`search-config`＝Source設定）。`stack:reset` で消える。
 
 ## 制限（v0）

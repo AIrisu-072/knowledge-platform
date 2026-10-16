@@ -28,7 +28,11 @@ secrets() {
       (umask 077 && random_secret > "$dir/$name")
       echo "stack: created $dir/$name"
     fi
-    chmod 600 "$dir/$name"
+    # Compose bind-mounts a file secret with its host owner and mode, and the
+    # services run as uid 10001 (Linux keeps the host uid; Mac file sharing
+    # hides it). The file is readable inside the 0700 directory, which keeps
+    # other host users out; a container sees only the secrets it lists.
+    chmod 644 "$dir/$name"
   done
   # The single shared role of the first stack version is gone.
   rm -f "$dir/db_app_password"
