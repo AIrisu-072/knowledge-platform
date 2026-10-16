@@ -2,13 +2,15 @@
 
 [計画](plan.md)。branch `feat/search-validation-corpus-20261006`（検証基盤）と `fix/search-validation-findings-20261006`（検証で見つかった不具合の修正、mainから分岐）。検証基盤のbranchは修正branchを取り込んでいる。
 
-## 2026-10-16 — mainへの取り込み（進行中）
+## 2026-10-16 — mainへの取り込み（完了）
 
 - 所有者の承認（2026-10-16）：検索の完成や本番運用資格は宣言せず、不具合修正（#85）・世代の部品化（#99）・検証基盤を、#86 でまとめてmainへ取り込む。mergeはhosted CIの成功後に所有者が確認する。deployはしない。
 - mainの取り込み `27c6dc20`：衝突はDSIの公開前検査（`detect.rs`、`worker_contract.rs`）だけ。mainの #107 が同じ修正をより広く入れていたため、mainの版を採った。migrationはmainが0009まで、本branchが0010〜0013で重ならない。個人のパスの既定値を検証用scriptから外した（`3b1b7775`）。#99 のbaseはmainへ付け替えた。
 - ローカル検証（Linux VM、aarch64）：fmt、`cargo check`、clippy（synthetic featureを含む）、architecture-lint、assurance（gaps 0）は成功。試験は検索crate群とsearch-source-http（synthetic）がすべて成功。outbox-delivery・search-source-document・search-runtimeの失敗は、試験用PostgreSQLコンテナの起動とコンテナ内の `pg_dump` だけ（VMにDockerが無い）。`server_e2e`（synthetic）はaarch64のdebugビルドが通らないため、hosted CIで確かめる。独立レビューは、この環境で委任workerを起動できず未実施。
 - 取り込みに含まれないもの：本番の検索の入口（検証用host以外に無い）、運用操作の試験、10万文書、長時間運転、更新中のp99 1秒以下、精度の改善（仕様の判断待ち）、本番運用資格の宣言。
-- 次：hosted CIの結果を確かめ、失敗があれば直す。成功したら所有者にmergeを確認する。
+- hosted CI：途中のheadで、mainの #128（rustls）未取り込みと検証hostの別lockfile（`experiments/search-validation-corpus/host/Cargo.lock`）のrustlsで `security` が、Organizationの既知の503で `document-poc-runtime` が一度ずつ失敗した。前者は直し、後者は再実行で成功。最終head `26bc0a2b` でCI・DSI PoC・DSI Sandbox Preflightがすべて成功。
+- 所有者が #86 をmerge（2026-10-16 00:52 UTC、merge `4d89de34`）。#85・#99 も同時にmerged。merge後のmainのCIも成功。
+- サーバー設定の方針（所有者の判断 2026-10-16、未反映）：RTX 5090のゲートウェイの `bonsai-2-27b` で、画像の置き場（multimodal encoder cache、今は16,384トークン）と1回の処理量（`max_num_batched_tokens`、今は4,096）を広げる。JDocQA Reasoning Benchの実行中、300 dpiのページ画像は1枚で最大約5,000トークンになり、時間の約半分は16件中0〜2件しか処理されず（KVキャッシュの使用は7〜13%）、1問あたり約50秒かかった。反映はllm-server側の明示的な運用操作として、所有者の指示のあとに行う。
 
 ## 2026-10-06 — 1,000文書段階（進行中）
 
