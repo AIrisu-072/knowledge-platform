@@ -21,13 +21,17 @@ secrets() {
   local dir="$KP_STACK_DIR/secrets"
   mkdir -p "$dir"
   chmod 700 "$dir"
-  for name in db_password db_app_password search_human_token search_agent_token; do
+  for name in db_password db_document_password db_search_delivery_password \
+      db_search_worker_password db_search_server_password search_human_token \
+      search_agent_token; do
     if [[ ! -s "$dir/$name" ]]; then
       (umask 077 && random_secret > "$dir/$name")
       echo "stack: created $dir/$name"
     fi
     chmod 600 "$dir/$name"
   done
+  # The single shared role of the first stack version is gone.
+  rm -f "$dir/db_app_password"
 }
 
 build() {

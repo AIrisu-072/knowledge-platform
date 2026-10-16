@@ -22,9 +22,9 @@ x-document-server: &document-server
     - /bin/sh
     - -ec
     - |
-      export KP_DATABASE_URL="postgres://kp_app:$$(cat /run/secrets/db_app_password)@postgres:5432/kp"
+      export KP_DATABASE_URL="postgres://kp_document:$$(cat /run/secrets/db_document_password)@postgres:5432/kp"
       exec document-server serve
-  secrets: [db_app_password]
+  secrets: [db_document_password]
   volumes:
     - storage:/var/lib/knowledge-platform/storage
   depends_on:
@@ -38,7 +38,7 @@ x-search-server: &search-server
     - /bin/sh
     - -ec
     - |
-      export KP_DATABASE_URL="postgres://kp_app:$$(cat /run/secrets/db_app_password)@postgres:5432/kp"
+      export KP_DATABASE_URL="postgres://kp_search_server:$$(cat /run/secrets/db_search_server_password)@postgres:5432/kp"
       exec search-server serve
   volumes:
     - storage:/var/lib/knowledge-platform/storage:ro
@@ -102,12 +102,20 @@ services:
       - |
         export PGPASSWORD="$$(cat /run/secrets/db_password)"
         psql -h postgres -U kp -d kp -q -v ON_ERROR_STOP=1 -f /sql/search-roles.sql -f /sql/graph-roles.sql
-        psql -h postgres -U kp -d kp -q -v ON_ERROR_STOP=1 -f /sql/app-role.sql
-    secrets: [db_password, db_app_password]
+        psql -h postgres -U kp -d kp -q -v ON_ERROR_STOP=1 -f /sql/service-roles.sql
+        sed 's/{{DELIVERY_ROLE}}/kp_search_delivery/g' /sql/delivery-role.sql \
+          | psql -h postgres -U kp -d kp -q -v ON_ERROR_STOP=1
+    secrets:
+      - db_password
+      - db_document_password
+      - db_search_delivery_password
+      - db_search_worker_password
+      - db_search_server_password
     volumes:
       - ./crates/search-runtime/sql/roles.sql:/sql/search-roles.sql:ro
       - ./crates/search-graph/sql/roles.sql:/sql/graph-roles.sql:ro
-      - ./deploy/compose/app-role.sql:/sql/app-role.sql:ro
+      - ./deploy/compose/service-roles.sql:/sql/service-roles.sql:ro
+      - ./crates/outbox-delivery/sql/least_privilege.sql:/sql/delivery-role.sql:ro
     depends_on:
       search-migrate: { condition: service_completed_successfully }
 
@@ -152,12 +160,12 @@ services:
       - /bin/sh
       - -ec
       - |
-        url="postgres://kp_app:$$(cat /run/secrets/db_app_password)@postgres:5432/kp"
-        export SEARCH_DELIVERY_DATABASE_URL="$$url" SEARCH_COMPLETION_DATABASE_URL="$$url"
+        export SEARCH_DELIVERY_DATABASE_URL="postgres://kp_search_delivery:$$(cat /run/secrets/db_search_delivery_password)@postgres:5432/kp"
+        export SEARCH_COMPLETION_DATABASE_URL="postgres://kp_search_worker:$$(cat /run/secrets/db_search_worker_password)@postgres:5432/kp"
         exec search_outbox_worker
     environment:
       SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
-    secrets: [db_app_password]
+    secrets: [db_search_delivery_password, db_search_worker_password]
     volumes:
       - storage:/var/lib/knowledge-platform/storage:ro
       - lexical:/var/lib/knowledge-platform/search/lexical
@@ -175,7 +183,7 @@ services:
       KP_POC_ALLOW_NON_LOOPBACK: "true"
       KP_SEARCH_TOKEN_FILE: /run/secrets/search_human_token
       SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
-    secrets: [db_app_password, search_human_token]
+    secrets: [db_search_server_password, search_human_token]
     ports: ["127.0.0.1:${KP_SEARCH_HUMAN_PORT:-8090}:8090"]
 
   search-agent:
@@ -187,7 +195,7 @@ services:
       KP_POC_ALLOW_NON_LOOPBACK: "true"
       KP_SEARCH_TOKEN_FILE: /run/secrets/search_agent_token
       SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
-    secrets: [db_app_password, search_agent_token]
+    secrets: [db_search_server_password, search_agent_token]
     ports: ["127.0.0.1:${KP_SEARCH_AGENT_PORT:-8091}:8091"]
 
 volumes:
@@ -199,8 +207,14 @@ volumes:
 secrets:
   db_password:
     file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_password
-  db_app_password:
-    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_app_password
+  db_document_password:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_document_password
+  db_search_delivery_password:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_search_delivery_password
+  db_search_worker_password:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_search_worker_password
+  db_search_server_password:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_search_server_password
   search_human_token:
     file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/search_human_token
   search_agent_token:
