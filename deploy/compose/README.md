@@ -60,7 +60,7 @@ curl -s -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
 
 ## 秘密値とデータ
 
-- 秘密値：`${KP_STACK_DIR:-~/.knowledge-platform/stack}/secrets/`（DBのパスワード、検索サーバー2つのトークン）。`stack:secrets` が無いときだけ作る（0600）。リポジトリには入れない。
+- 秘密値：`${KP_STACK_DIR:-~/.knowledge-platform/stack}/secrets/`（DBの `kp` と `kp_app` のパスワード、検索サーバー2つのトークン）。`stack:secrets` が無いときだけ作る（0600）。リポジトリには入れない。
 - データ：Docker volume（`pgdata`、`storage`＝文書の原本、`lexical`＝字句索引、`search-config`＝Source設定）。`stack:reset` で消える。
 
 ## 制限（v0）
@@ -68,4 +68,4 @@ curl -s -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
 - 本番の認証・TLS、Kubernetes、運用操作（版の更新・取下げ・権限変更・backup/restore）の手順は範囲外。
 - 索引に入る形式はテキストだけ（Source設定 `search-source.sh` のprofile）。
 - Vector（意味の検索）は既定で無効。使うときは固定revisionのモデルのディレクトリを `KP_SEARCH_VECTOR_MODEL_DIR` で渡し、コンテナへmountする（今後の作業）。
-- DBのroleはPoC用に1つ（superuser）で、全サービスがこれで接続する。本番のrole分離は検証していない。
+- DBの接続：初期化（migration、権限の設定）だけがsuperuserの `kp`。文書サーバー・検索のworker・検索サーバーは非superuserの `kp_app` で接続し、検索の表は検索のrole（`search_*`）が許す範囲、文書の表は行の読み書きだけ（`deploy/compose/app-role.sql`）。サービスごとのroleの分離までは行っていない。

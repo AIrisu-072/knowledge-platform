@@ -21,7 +21,7 @@ secrets() {
   local dir="$KP_STACK_DIR/secrets"
   mkdir -p "$dir"
   chmod 700 "$dir"
-  for name in db_password search_human_token search_agent_token; do
+  for name in db_password db_app_password search_human_token search_agent_token; do
     if [[ ! -s "$dir/$name" ]]; then
       (umask 077 && random_secret > "$dir/$name")
       echo "stack: created $dir/$name"
