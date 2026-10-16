@@ -1,0 +1,198 @@
+# Single-host PoC stack: Document servers, Search worker and Search servers
+# over one PostgreSQL. The same file and images run on Mac (OrbStack or
+# Docker Desktop) and Linux; see deploy/compose/README.md.
+#
+# The PoC identity is not production authentication: each server process is a
+# fixed profile (poc-human or poc-agent). Every published port is bound to
+# 127.0.0.1. Secrets live outside the repository in ${KP_STACK_DIR}/secrets
+# and are created by `mise run stack:secrets`.
+name: knowledge-platform
+
+x-paths:
+  storage: &storage /var/lib/knowledge-platform/storage
+  lexical: &lexical /var/lib/knowledge-platform/search/lexical
+  config: &config /var/lib/knowledge-platform/search/config
+
+x-document-server: &document-server
+  image: knowledge-platform/document-server:local
+  build: { context: ., target: document-server }
+  restart: unless-stopped
+  entrypoint:
+    - /bin/sh
+    - -ec
+    - |
+      export KP_DATABASE_URL="postgres://kp:$$(cat /run/secrets/db_password)@postgres:5432/kp"
+      exec document-server serve
+  secrets: [db_password]
+  volumes:
+    - storage:/var/lib/knowledge-platform/storage
+  depends_on:
+    document-migrate: { condition: service_completed_successfully }
+
+x-search-server: &search-server
+  image: knowledge-platform/search-server:local
+  build: { context: ., target: search-server }
+  restart: unless-stopped
+  entrypoint:
+    - /bin/sh
+    - -ec
+    - |
+      export KP_DATABASE_URL="postgres://kp:$$(cat /run/secrets/db_password)@postgres:5432/kp"
+      exec search-server serve
+  volumes:
+    - storage:/var/lib/knowledge-platform/storage:ro
+    - lexical:/var/lib/knowledge-platform/search/lexical
+    - search-config:/var/lib/knowledge-platform/search/config:ro
+  depends_on:
+    search-roles: { condition: service_completed_successfully }
+    search-config: { condition: service_completed_successfully }
+
+services:
+  postgres:
+    image: postgres:18.6-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kp
+      POSTGRES_DB: kp
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kp -d kp"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One-shot initialization, in order: Document schema and PoC root policy,
+  # Search and Graph schemas, Search roles, the shared Source file.
+  document-migrate:
+    image: knowledge-platform/document-server:local
+    build: { context: ., target: document-server }
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export KP_DATABASE_URL="postgres://kp:$$(cat /run/secrets/db_password)@postgres:5432/kp"
+        document-server migrate
+        KP_IDENTITY_PROFILE=poc-human document-server bootstrap-poc
+    secrets: [db_password]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  search-migrate:
+    image: knowledge-platform/search-server:local
+    build: { context: ., target: search-server }
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export KP_DATABASE_URL="postgres://kp:$$(cat /run/secrets/db_password)@postgres:5432/kp"
+        exec search-server migrate
+    secrets: [db_password]
+    depends_on:
+      document-migrate: { condition: service_completed_successfully }
+
+  search-roles:
+    image: postgres:18.6-bookworm
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export PGPASSWORD="$$(cat /run/secrets/db_password)"
+        psql -h postgres -U kp -d kp -q -v ON_ERROR_STOP=1 -f /sql/search-roles.sql -f /sql/graph-roles.sql
+    secrets: [db_password]
+    volumes:
+      - ./crates/search-runtime/sql/roles.sql:/sql/search-roles.sql:ro
+      - ./crates/search-graph/sql/roles.sql:/sql/graph-roles.sql:ro
+    depends_on:
+      search-migrate: { condition: service_completed_successfully }
+
+  search-config:
+    image: knowledge-platform/search-worker:local
+    build: { context: ., target: search-worker }
+    entrypoint: ["search-source.sh", "/var/lib/knowledge-platform/search/config/source.json"]
+    environment:
+      KP_SEARCH_SOURCE_ID: ${KP_SEARCH_SOURCE_ID:-0192f4a0-7a5e-7c10-8b6e-5a1d0c0ffee1}
+      KP_SEARCH_TENANT: poc
+      KP_SEARCH_LEXICAL_ROOT: *lexical
+      KP_STORAGE_ROOT: *storage
+    volumes:
+      - lexical:/var/lib/knowledge-platform/search/lexical
+      - search-config:/var/lib/knowledge-platform/search/config
+
+  document-human:
+    <<: *document-server
+    environment:
+      KP_IDENTITY_PROFILE: poc-human
+      KP_BIND: 0.0.0.0:8080
+      KP_POC_ALLOW_NON_LOOPBACK: "true"
+      KP_STORAGE_ROOT: *storage
+    ports: ["127.0.0.1:${KP_DOCUMENT_HUMAN_PORT:-8080}:8080"]
+
+  document-agent:
+    <<: *document-server
+    environment:
+      KP_IDENTITY_PROFILE: poc-agent
+      KP_BIND: 0.0.0.0:8081
+      KP_POC_ALLOW_NON_LOOPBACK: "true"
+      KP_STORAGE_ROOT: *storage
+    ports: ["127.0.0.1:${KP_DOCUMENT_AGENT_PORT:-8081}:8081"]
+
+  search-worker:
+    image: knowledge-platform/search-worker:local
+    build: { context: ., target: search-worker }
+    restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        url="postgres://kp:$$(cat /run/secrets/db_password)@postgres:5432/kp"
+        export SEARCH_DELIVERY_DATABASE_URL="$$url" SEARCH_COMPLETION_DATABASE_URL="$$url"
+        exec search_outbox_worker
+    environment:
+      SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
+    secrets: [db_password]
+    volumes:
+      - storage:/var/lib/knowledge-platform/storage:ro
+      - lexical:/var/lib/knowledge-platform/search/lexical
+      - search-config:/var/lib/knowledge-platform/search/config:ro
+    depends_on:
+      search-roles: { condition: service_completed_successfully }
+      search-config: { condition: service_completed_successfully }
+
+  search-human:
+    <<: *search-server
+    environment:
+      KP_IDENTITY_PROFILE: poc-human
+      KP_BIND: 0.0.0.0:8090
+      KP_POC_ALLOW_NON_LOOPBACK: "true"
+      KP_SEARCH_TOKEN_FILE: /run/secrets/search_human_token
+      SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
+    secrets: [db_password, search_human_token]
+    ports: ["127.0.0.1:${KP_SEARCH_HUMAN_PORT:-8090}:8090"]
+
+  search-agent:
+    <<: *search-server
+    environment:
+      KP_IDENTITY_PROFILE: poc-agent
+      KP_BIND: 0.0.0.0:8091
+      KP_POC_ALLOW_NON_LOOPBACK: "true"
+      KP_SEARCH_TOKEN_FILE: /run/secrets/search_agent_token
+      SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
+    secrets: [db_password, search_agent_token]
+    ports: ["127.0.0.1:${KP_SEARCH_AGENT_PORT:-8091}:8091"]
+
+volumes:
+  pgdata:
+  storage:
+  lexical:
+  search-config:
+
+secrets:
+  db_password:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/db_password
+  search_human_token:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/search_human_token
+  search_agent_token:
+    file: ${KP_STACK_DIR:-${HOME}/.knowledge-platform/stack}/secrets/search_agent_token
