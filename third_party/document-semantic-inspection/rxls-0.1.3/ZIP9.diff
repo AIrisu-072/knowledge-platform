@@ -1,0 +1,150 @@
+diff -ruN rxls-0.1.3.orig/Cargo.toml rxls-0.1.3/Cargo.toml
+--- rxls-0.1.3.orig/Cargo.toml
++++ rxls-0.1.3/Cargo.toml
+@@ -221,7 +221,7 @@
+ version = "2.0"
+ 
+ [dependencies.zip]
+-version = "2.2"
++version = "=9.0.3"
+ features = ["deflate"]
+ optional = true
+ default-features = false
+diff -ruN rxls-0.1.3.orig/src/main.rs rxls-0.1.3/src/main.rs
+--- rxls-0.1.3.orig/src/main.rs
++++ rxls-0.1.3/src/main.rs
+@@ -3670,7 +3670,13 @@
+                 return Err(ExitCode::from(65));
+             }
+         };
+-        let name = file.name().to_string();
++        let name = match file.name() {
++            Ok(name) => name.into_owned(),
++            Err(err) => {
++                eprintln!("{command} {label}: ZIP entry {index} name: {err}");
++                return Err(ExitCode::from(65));
++            }
++        };
+         let compressed_bytes = file.compressed_size();
+         let uncompressed_bytes = file.size();
+         if name.ends_with(".rels") {
+diff -ruN rxls-0.1.3.orig/src/package.rs rxls-0.1.3/src/package.rs
+--- rxls-0.1.3.orig/src/package.rs
++++ rxls-0.1.3/src/package.rs
+@@ -300,7 +300,10 @@
+                     continue;
+                 }
+             };
+-            let name = file.name().to_string();
++            let name = file
++                .name()
++                .map_err(|_| Error::Zip("OOXML package entry name is not valid UTF-8"))?
++                .into_owned();
+             if name.len() > MAX_NAME_LEN {
+                 return Err(Error::Zip("OOXML package entry name is too long"));
+             }
+@@ -2513,7 +2516,7 @@
+         let names: Vec<String> = {
+             let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+             (0..zip.len())
+-                .map(|i| zip.by_index(i).unwrap().name().to_string())
++                .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
+                 .collect()
+         };
+         let a_pos = names.iter().position(|n| n == "xl/a.xml").unwrap();
+diff -ruN rxls-0.1.3.orig/src/spreadsheet.rs rxls-0.1.3/src/spreadsheet.rs
+--- rxls-0.1.3.orig/src/spreadsheet.rs
++++ rxls-0.1.3/src/spreadsheet.rs
+@@ -5905,7 +5905,7 @@
+         let mut output = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+         for index in 0..input.len() {
+             let mut part = input.by_index(index).expect("read input zip member");
+-            let part_name = part.name().to_string();
++            let part_name = part.name().expect("input zip member name").into_owned();
+             output
+                 .start_file(&part_name, SimpleFileOptions::default())
+                 .expect("start replacement zip member");
+diff -ruN rxls-0.1.3.orig/src/xlsx.rs rxls-0.1.3/src/xlsx.rs
+--- rxls-0.1.3.orig/src/xlsx.rs
++++ rxls-0.1.3/src/xlsx.rs
+@@ -459,7 +459,7 @@
+         let Ok(file) = zip.by_index(idx) else {
+             continue;
+         };
+-        if matches(file.name()) {
++        if file.name().is_ok_and(|name| matches(&name)) {
+             if found.is_some() {
+                 return None;
+             }
+@@ -672,7 +672,7 @@
+             }
+             Ok(Event::Text(text))
+                 if open_relationship.is_some()
+-                    && text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
++                    && (&*text).iter().all(u8::is_ascii_whitespace) => {}
+             Ok(Event::PI(_) | Event::Comment(_)) if open_relationship.is_some() => {}
+             Ok(_) if open_relationship.is_some() => return None,
+             Ok(Event::Start(element)) if root.is_none() && !root_closed => {
+@@ -721,7 +721,7 @@
+                 root_open = false;
+                 root_closed = true;
+             }
+-            Ok(Event::Text(text)) if text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
++            Ok(Event::Text(text)) if (&*text).iter().all(u8::is_ascii_whitespace) => {}
+             Ok(Event::Decl(_) | Event::PI(_) | Event::Comment(_)) => {}
+             Ok(Event::Eof) => break,
+             Err(_) | Ok(_) => return None,
+@@ -6784,7 +6784,7 @@
+             }
+             Ok(Event::CData(text)) => {
+                 if let Some(body) = body.as_mut().filter(|body| body.in_text) {
+-                    if !text.as_ref().is_empty() {
++                    if !(&*text).is_empty() {
+                         let role = body.role;
+                         let fact = body.current_fact();
+                         push_chart_text_style_fact(
+diff -ruN rxls-0.1.3.orig/src/xmltree.rs rxls-0.1.3/src/xmltree.rs
+--- rxls-0.1.3.orig/src/xmltree.rs
++++ rxls-0.1.3/src/xmltree.rs
+@@ -280,7 +280,7 @@
+                             // Match the old quick-xml behavior: references outside the
+                             // document element belonged to the raw prolog/epilog text.
+                             let mut raw = Vec::new();
+-                            raw.try_reserve(reference.as_ref().len() + 2)
++                            raw.try_reserve((&*reference).len() + 2)
+                                 .map_err(|_| Error::Xml("xml: out of memory growing raw text"))?;
+                             raw.push(b'&');
+                             raw.extend_from_slice(reference.as_ref());
+diff -ruN rxls-0.1.3.orig/src/ziputil.rs rxls-0.1.3/src/ziputil.rs
+--- rxls-0.1.3.orig/src/ziputil.rs
++++ rxls-0.1.3/src/ziputil.rs
+@@ -21,7 +21,7 @@
+         let file = zip
+             .by_index_raw(index)
+             .map_err(|_| Error::Zip("invalid ZIP central-directory entry"))?;
+-        if file.name().len() > 4096 {
++        if file.name_raw().len() > 4096 {
+             return Err(Error::Zip("ZIP package entry name is too long"));
+         }
+         if file.size() > max_part {
+@@ -42,7 +42,10 @@
+         let file = zip
+             .by_index_raw(index)
+             .map_err(|_| Error::Zip("invalid ZIP central-directory entry"))?;
+-        if file.name().ends_with('/') {
++        let name = file
++            .name()
++            .map_err(|_| Error::Zip("ZIP entry name is not valid UTF-8"))?;
++        if name.ends_with('/') {
+             continue;
+         }
+         let method = file.compression();
+@@ -51,7 +54,7 @@
+             zip::CompressionMethod::Stored | zip::CompressionMethod::Deflated
+         ) {
+             return Err(Error::UnsupportedCompression {
+-                part: file.name().to_string(),
++                part: name.into_owned(),
+                 method: compression_method_id(method),
+             });
+         }

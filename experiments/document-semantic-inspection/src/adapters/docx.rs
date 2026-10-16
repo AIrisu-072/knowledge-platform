@@ -441,7 +441,12 @@ fn inspect_package(input: &[u8]) -> Result<PackageInspection, PocError> {
         let mut file = archive.by_index(index).map_err(|error| {
             PocError::SemanticExtractionFailed(format!("invalid ZIP entry: {error}"))
         })?;
-        let name = file.name().to_owned();
+        let name = file
+            .name()
+            .map_err(|error| {
+                PocError::SemanticExtractionFailed(format!("invalid ZIP entry name: {error}"))
+            })?
+            .into_owned();
         validate_part_name(&name)?;
         let size = file.size();
         if size > MAX_ENTRY_BYTES {

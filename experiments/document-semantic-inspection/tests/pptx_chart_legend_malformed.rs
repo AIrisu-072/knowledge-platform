@@ -157,7 +157,7 @@ fn read_parts(archive: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut parts = Vec::with_capacity(zip.len());
     for index in 0..zip.len() {
         let mut file = zip.by_index(index).expect("central-directory entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .expect("ZIP entry reads with a valid CRC");
@@ -188,7 +188,7 @@ fn assert_zip_crc_and_xml_events(bytes: &[u8]) {
     let mut names = Vec::with_capacity(zip.len());
     for index in 0..zip.len() {
         let mut file = zip.by_index(index).expect("mutant central-directory entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .expect("mutant ZIP entry has a valid CRC");

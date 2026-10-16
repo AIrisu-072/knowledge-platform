@@ -33,3 +33,5 @@ uuid = { version = "1", features = ["v4", "v7", "serde"] }
 [patch.crates-io]
 ovba = { path = "../../../third_party/document-semantic-inspection/ovba-0.7.1" }
 tantivy = { path = "../../../third_party/search/tantivy-0.26.2" }
+# Candle 0.11.0 archive moved from yanked zip 8.6.0 to zip 9.0.3 (see PROVENANCE.md).
+candle-core = { path = "../../../third_party/search/candle-core-0.11.0" }

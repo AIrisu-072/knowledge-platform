@@ -486,7 +486,7 @@ fn xlsx_with_package_part(input: &[u8], part_path: &str, replacement: &[u8]) -> 
         let mut entry = archive
             .by_index(index)
             .expect("read qualified package entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)

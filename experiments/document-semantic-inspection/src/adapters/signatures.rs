@@ -198,8 +198,9 @@ impl SignatureInspector {
                 .by_index(index)
                 .ok()
                 .is_some_and(|file| {
-                    file.name().starts_with("_xmlsignatures/")
-                        && file.name().ends_with(".xml")
+                    file.name().is_ok_and(|name| {
+                        name.starts_with("_xmlsignatures/") && name.ends_with(".xml")
+                    })
                 })
         });
 

@@ -34,7 +34,7 @@ const MAX_IMAGES: usize = 4_096;
 const MAX_RESULT_BYTES: usize = 16 * 1024 * 1024;
 const PARSER_LIBRARIES: [(&str, &str); 4] = [
     ("office_oxide", "0.1.11"),
-    ("zip", "8.6.0"),
+    ("zip", "9.0.3"),
     ("quick-xml", "0.42.0"),
     ("png", "0.18.1"),
 ];

@@ -394,7 +394,7 @@ fn read_parts(bytes: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
         let mut entry = archive.by_index(index).expect("valid ZIP part");
         let mut contents = Vec::new();
         entry.read_to_end(&mut contents).expect("read ZIP part");
-        parts.insert(entry.name().to_owned(), contents);
+        parts.insert(entry.name().expect("ZIP entry name decodes").into_owned(), contents);
     }
     parts
 }

@@ -341,7 +341,7 @@ fn read_parts(docx: &[u8]) -> BTreeMap<String, Vec<u8>> {
         let mut file = archive.by_index(index).expect("DOCX entry");
         let mut data = Vec::new();
         file.read_to_end(&mut data).expect("read DOCX entry");
-        assert!(parts.insert(file.name().to_owned(), data).is_none());
+        assert!(parts.insert(file.name().expect("ZIP entry name decodes").into_owned(), data).is_none());
     }
     parts
 }

@@ -30,9 +30,9 @@ fn orphan_local_header_before_central_directory_fails_closed() {
     assert_eq!(archive.len(), baseline_entry_count);
     assert!(
         (0..archive.len()).all(|index| {
-            archive
-                .by_index(index)
-                .is_ok_and(|entry| entry.name() != "unlisted-orphan.xml")
+            archive.by_index(index).is_ok_and(|entry| {
+                entry.name().expect("ZIP entry name decodes") != "unlisted-orphan.xml"
+            })
         }),
         "the inserted local record is not indexed in the central directory"
     );
@@ -73,7 +73,8 @@ fn unicode_path_extra_alias_for_semantic_part_fails_closed() {
                 .by_index(index)
                 .expect("central-directory entry")
                 .name()
-                .to_owned()
+                .expect("ZIP entry name decodes")
+                .into_owned()
         })
         .collect::<Vec<_>>();
     assert!(
@@ -223,7 +224,7 @@ fn append_part(archive: &[u8], part_name: &str, contents: &[u8]) -> Vec<u8> {
 
     for index in 0..zip.len() {
         let mut file = zip.by_index(index).expect("central-directory entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         assert_ne!(name, part_name, "mutant part must not already exist");
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)
@@ -258,7 +259,7 @@ fn assert_archive_contains(archive: &[u8], expected_name: &str) {
     let mut zip = ZipArchive::new(Cursor::new(archive)).expect("mutant remains a readable ZIP");
     assert!((0..zip.len()).any(|index| {
         zip.by_index(index)
-            .is_ok_and(|entry| entry.name() == expected_name)
+            .is_ok_and(|entry| entry.name().expect("ZIP entry name decodes") == expected_name)
     }));
 }
 

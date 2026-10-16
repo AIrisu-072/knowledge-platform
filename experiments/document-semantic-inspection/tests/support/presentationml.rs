@@ -18,7 +18,7 @@ pub fn entry_names(input: &[u8]) -> Vec<String> {
     let mut archive = ZipArchive::new(Cursor::new(input)).expect("PPTX ZIP");
     let mut names = Vec::new();
     for index in 0..archive.len() {
-        names.push(archive.by_index(index).expect("PPTX entry").name().to_owned());
+        names.push(archive.by_index(index).expect("PPTX entry").name().expect("ZIP entry name decodes").into_owned());
     }
     names
 }

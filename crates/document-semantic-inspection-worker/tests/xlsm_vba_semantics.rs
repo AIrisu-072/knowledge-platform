@@ -325,7 +325,7 @@ fn replace_zip_entry(input: &[u8], name: &str, replacement: Option<&[u8]>) -> Ve
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).expect("XLSM package entry");
-        let entry_name = entry.name().to_owned();
+        let entry_name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut bytes = Vec::new();
         entry
             .read_to_end(&mut bytes)

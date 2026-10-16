@@ -131,7 +131,7 @@ fn assert_valid_zip_and_xml(archive: &[u8]) {
     let mut zip = ZipArchive::new(Cursor::new(archive)).expect("valid PPTX ZIP");
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).expect("central-directory entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)
@@ -156,7 +156,7 @@ fn read_parts(archive: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut parts = Vec::with_capacity(zip.len());
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).expect("central-directory entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)

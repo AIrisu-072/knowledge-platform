@@ -273,7 +273,10 @@ impl BodyProfileRegistry {
             let Ok(entry) = archive.by_index_raw(index) else {
                 return Ok(Planned::Failed(PermanentFailureCode::MalformedArchive));
             };
-            let name = entry.name().to_owned();
+            // zip 9: a name that does not decode is a malformed archive.
+            let Ok(name) = entry.name().map(|name| name.into_owned()) else {
+                return Ok(Planned::Failed(PermanentFailureCode::MalformedArchive));
+            };
             // OS archivers write explicit directory entries (`docs/`); they
             // carry no content and are not planned as leaves.
             if let Some(directory) = name.strip_suffix('/') {

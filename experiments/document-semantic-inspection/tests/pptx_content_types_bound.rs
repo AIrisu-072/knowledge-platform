@@ -66,7 +66,7 @@ fn assert_declared_entry(input: &[u8], target: &[u8], expected_size: Option<u32>
     let mut found = false;
     for index in 0..archive.len() {
         let entry = archive.by_index(index).expect("central-directory entry");
-        if entry.name().as_bytes() == target {
+        if entry.name().expect("ZIP entry name decodes").as_bytes() == target {
             if let Some(expected) = expected_size {
                 assert_eq!(entry.size(), u64::from(expected));
                 assert!(

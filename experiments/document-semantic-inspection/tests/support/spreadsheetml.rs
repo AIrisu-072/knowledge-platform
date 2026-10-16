@@ -14,7 +14,7 @@ pub fn replace_entry(input: &[u8], name: &str, replacement: &[u8]) -> Vec<u8> {
     let mut entries = Vec::new();
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).expect("fixture entry");
-        let entry_name = file.name().to_owned();
+        let entry_name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut data = Vec::new(); file.read_to_end(&mut data).expect("read fixture");
         if entry_name == name { data = replacement.to_vec(); }
         entries.push((entry_name, data));

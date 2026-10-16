@@ -1,0 +1,60 @@
+diff -ruN calamine-0.36.1.orig/Cargo.toml calamine-0.36.1/Cargo.toml
+--- calamine-0.36.1.orig/Cargo.toml
++++ calamine-0.36.1/Cargo.toml
+@@ -146,7 +146,7 @@
+ version = "1.0"
+ 
+ [dependencies.zip]
+-version = "8.6"
++version = "=9.0.3"
+ features = ["deflate"]
+ default-features = false
+ 
+diff -ruN calamine-0.36.1.orig/src/ods.rs calamine-0.36.1/src/ods.rs
+--- calamine-0.36.1.orig/src/ods.rs
++++ calamine-0.36.1/src/ods.rs
+@@ -814,7 +814,7 @@
+     let mut pics = Vec::new();
+     for i in 0..zip.len() {
+         let mut zfile = zip.by_index(i)?;
+-        let zname = zfile.name();
++        let zname = zfile.name()?.into_owned();
+         // no Thumbnails
+         if zname.starts_with("Pictures") {
+             if let Some(ext) = zname.split('.').next_back() {
+diff -ruN calamine-0.36.1.orig/src/utils.rs calamine-0.36.1/src/utils.rs
+--- calamine-0.36.1.orig/src/utils.rs
++++ calamine-0.36.1/src/utils.rs
+@@ -166,7 +166,7 @@
+ /// Build a lookup cache mapping lowercased normalized paths to original ZIP entry names.
+ pub fn build_zip_path_cache<RS: Read + Seek>(zip: &ZipArchive<RS>) -> HashMap<String, String> {
+     let mut cache = HashMap::with_capacity(zip.len());
+-    for zip_path in zip.file_names() {
++    for zip_path in zip.file_names().flatten() {
+         let normalized = zip_path.replace('\\', "/").to_ascii_lowercase();
+         cache.insert(normalized, zip_path.to_string());
+     }
+diff -ruN calamine-0.36.1.orig/src/xlsb/mod.rs calamine-0.36.1/src/xlsb/mod.rs
+--- calamine-0.36.1.orig/src/xlsb/mod.rs
++++ calamine-0.36.1/src/xlsb/mod.rs
+@@ -443,7 +443,7 @@
+         let mut pics = Vec::new();
+         for i in 0..self.zip.len() {
+             let mut zfile = self.zip.by_index(i)?;
+-            let zname = zfile.name();
++            let zname = zfile.name()?.into_owned();
+             if zname.starts_with("xl/media") {
+                 if let Some(ext) = zname.split('.').next_back() {
+                     if [
+diff -ruN calamine-0.36.1.orig/src/xlsx/mod.rs calamine-0.36.1/src/xlsx/mod.rs
+--- calamine-0.36.1.orig/src/xlsx/mod.rs
++++ calamine-0.36.1/src/xlsx/mod.rs
+@@ -707,7 +707,7 @@
+         let media_path = format!("{}media", self.xl_path);
+         for i in 0..self.zip.len() {
+             let mut zfile = self.zip.by_index(i)?;
+-            let zname = zfile.name();
++            let zname = zfile.name()?.into_owned();
+             if zname.starts_with(&media_path) {
+                 if let Some(ext) = zname.split('.').next_back() {
+                     if [

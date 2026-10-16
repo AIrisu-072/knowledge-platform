@@ -1,0 +1,91 @@
+diff -ruN office_oxide-0.1.11.orig/Cargo.toml office_oxide-0.1.11/Cargo.toml
+--- office_oxide-0.1.11.orig/Cargo.toml
++++ office_oxide-0.1.11/Cargo.toml
+@@ -139,7 +139,7 @@
+ optional = true
+ 
+ [dependencies.zip]
+-version = "8.6"
++version = "=9.0.3"
+ features = ["deflate"]
+ default-features = false
+ 
+diff -ruN office_oxide-0.1.11.orig/src/core/opc.rs office_oxide-0.1.11/src/core/opc.rs
+--- office_oxide-0.1.11.orig/src/core/opc.rs
++++ office_oxide-0.1.11/src/core/opc.rs
+@@ -392,7 +392,7 @@
+             .file_names()
+             .filter_map(|name| {
+                 // Normalize backslash separators (Windows-created ZIPs)
+-                let name = name.replace('\\', "/");
++                let name = name.ok()?.replace('\\', "/");
+                 // Skip directories
+                 if name.ends_with('/') {
+                     return None;
+@@ -415,6 +415,9 @@
+     pub fn has_part(&self, name: &PartName) -> bool {
+         let zip_path = &name.as_str()[1..];
+         self.archive.file_names().any(|n| {
++            let Ok(n) = n else {
++                return false;
++            };
+             let normalized = n.replace('\\', "/");
+             normalized.eq_ignore_ascii_case(zip_path)
+         })
+@@ -485,7 +488,10 @@
+             let mut found = None;
+             for i in 0..archive.len() {
+                 if let Ok(entry) = archive.by_index_raw(i) {
+-                    let entry_name = entry.name().replace('\\', "/");
++                    let Ok(entry_name) = entry.name() else {
++                        continue;
++                    };
++                    let entry_name = entry_name.replace('\\', "/");
+                     if entry_name.eq_ignore_ascii_case(&normalized) {
+                         found = Some(i);
+                         break;
+diff -ruN office_oxide-0.1.11.orig/src/docx/write.rs office_oxide-0.1.11/src/docx/write.rs
+--- office_oxide-0.1.11.orig/src/docx/write.rs
++++ office_oxide-0.1.11/src/docx/write.rs
+@@ -4080,7 +4080,7 @@
+         let mut out = std::collections::HashMap::new();
+         for i in 0..zip.len() {
+             let mut e = zip.by_index(i).unwrap();
+-            let name = e.name().to_string();
++            let name = e.name().unwrap().into_owned();
+             let mut xml = String::new();
+             if std::io::Read::read_to_string(&mut e, &mut xml).is_ok() {
+                 out.insert(name, xml);
+diff -ruN office_oxide-0.1.11.orig/src/pptx/write.rs office_oxide-0.1.11/src/pptx/write.rs
+--- office_oxide-0.1.11.orig/src/pptx/write.rs
++++ office_oxide-0.1.11/src/pptx/write.rs
+@@ -2009,7 +2009,7 @@
+         buf.set_position(0);
+         let mut zip = zip::ZipArchive::new(buf).unwrap();
+         (0..zip.len())
+-            .map(|i| zip.by_index(i).unwrap().name().to_string())
++            .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
+             .collect()
+     }
+ 
+diff -ruN office_oxide-0.1.11.orig/src/xlsx/mod.rs office_oxide-0.1.11/src/xlsx/mod.rs
+--- office_oxide-0.1.11.orig/src/xlsx/mod.rs
++++ office_oxide-0.1.11/src/xlsx/mod.rs
+@@ -284,7 +284,7 @@
+         // indexes, accessibility readers, our PDF text fallback).
+         let mut chart_text: Vec<String> = Vec::new();
+         let chart_names: Vec<String> = (0..archive.len())
+-            .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
++            .filter_map(|i| archive.by_index(i).ok().and_then(|f| f.name().ok().map(|n| n.into_owned())))
+             .filter(|n| n.starts_with("xl/charts/chart") && n.ends_with(".xml"))
+             .collect();
+         for name in chart_names {
+@@ -300,7 +300,7 @@
+         // DOCX (`word/fonts/`) and PPTX (`ppt/fonts/`) readers.
+         let mut embedded_fonts: Vec<(String, Vec<u8>)> = Vec::new();
+         let font_names: Vec<String> = (0..archive.len())
+-            .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
++            .filter_map(|i| archive.by_index(i).ok().and_then(|f| f.name().ok().map(|n| n.into_owned())))
+             .filter(|n| {
+                 n.starts_with("xl/fonts/")
+                     && (n.to_lowercase().ends_with(".ttf") || n.to_lowercase().ends_with(".otf"))

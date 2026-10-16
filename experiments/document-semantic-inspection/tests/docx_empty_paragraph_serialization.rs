@@ -52,7 +52,7 @@ fn docx_with_empty_paragraph(empty: &str) -> Vec<u8> {
         let mut file = archive.by_index(index).expect("DOCX part");
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).expect("read DOCX part");
-        parts.insert(file.name().to_owned(), contents);
+        parts.insert(file.name().expect("ZIP entry name decodes").into_owned(), contents);
     }
 
     let document = String::from_utf8(parts["word/document.xml"].clone()).expect("document XML");

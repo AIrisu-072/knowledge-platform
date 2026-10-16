@@ -46,7 +46,7 @@ const WORD_MAIN: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
 const PARSER_LIBRARIES: [(&str, &str); 4] = [
     ("office_oxide", "0.1.11"),
-    ("zip", "8.6.0"),
+    ("zip", "9.0.3"),
     ("quick-xml", "0.42.0"),
     ("png", "0.18.1"),
 ];
@@ -692,7 +692,15 @@ fn load_package_parts(input: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, WorkerF
                 format!("invalid DOCX ZIP entry: {error}"),
             )
         })?;
-        let name = entry.name().to_owned();
+        let name = entry
+            .name()
+            .map_err(|error| {
+                failure(
+                    WorkerFailureCode::SemanticExtractionFailed,
+                    format!("invalid DOCX ZIP entry name: {error}"),
+                )
+            })?
+            .into_owned();
         let is_directory = entry.is_dir();
         let normalized_name = name.strip_suffix('/').unwrap_or(&name).to_ascii_lowercase();
         if !seen_names.insert(normalized_name) {

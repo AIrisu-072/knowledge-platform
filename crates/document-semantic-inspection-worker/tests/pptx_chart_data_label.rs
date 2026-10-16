@@ -120,7 +120,7 @@ fn read_entries(input: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut entries = Vec::with_capacity(archive.len());
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).expect("valid ZIP central entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)

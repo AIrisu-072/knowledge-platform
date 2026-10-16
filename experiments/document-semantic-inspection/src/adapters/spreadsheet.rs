@@ -483,7 +483,12 @@ fn inspect_external_package_definitions(
     let mut archive = ZipArchive::new(Cursor::new(input))
         .map_err(|error| PocError::SemanticExtractionFailed(format!("spreadsheet ZIP: {error}")))?;
     let rel_names: Vec<String> = (0..archive.len())
-        .filter_map(|index| archive.by_index(index).ok().map(|file| file.name().to_owned()))
+        .filter_map(|index| {
+            archive
+                .by_index(index)
+                .ok()
+                .and_then(|file| file.name().ok().map(|name| name.into_owned()))
+        })
         .filter(|name| name.ends_with(".rels"))
         .collect();
 
@@ -650,7 +655,10 @@ fn inspect_package_coverage(input: &[u8]) -> Result<(), PocError> {
         let file = archive
             .by_index(index)
             .map_err(|error| PocError::SemanticExtractionFailed(format!("ZIP entry: {error}")))?;
-        let name = file.name().replace('\\', "/");
+        let name = file
+            .name()
+            .map_err(|error| PocError::SemanticExtractionFailed(format!("ZIP entry name: {error}")))?
+            .replace('\\', "/");
         if name.starts_with('/') || name.split('/').any(|part| part == "..") {
             return Err(PocError::UnsupportedSemanticConstruct(
                 "spreadsheet package path traversal".into(),
