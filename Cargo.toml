@@ -109,3 +109,6 @@ calamine = { path = "third_party/document-semantic-inspection/calamine-0.36.1" }
 rxls = { path = "third_party/document-semantic-inspection/rxls-0.1.3" }
 office_oxide = { path = "third_party/document-semantic-inspection/office_oxide-0.1.11" }
 candle-core = { path = "third_party/search/candle-core-0.11.0" }
+# Exact sqlx-postgres 0.9.0 archive; a cancelled begin rolls back what it
+# started (see PROVENANCE.md and BEGIN_CANCEL.diff).
+sqlx-postgres = { path = "third_party/database/sqlx-postgres-0.9.0" }
