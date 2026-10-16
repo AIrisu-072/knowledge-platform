@@ -110,8 +110,10 @@ def titles(profile, token, query):
 
 def discovered(profile, token, query):
     status, result = call(SEARCH[profile], "POST", "/v1/discover",
-                          json.dumps({"purpose": "find the documents", "query": query,
-                                      "coverage": "bodyRequired"}).encode(),
+                          json.dumps({"need": {"purpose": "find the documents",
+                                               "requiredResourceTypes": ["knowledge"],
+                                               "requiredClaimIds": [str(uuid.uuid4())]},
+                                      "query": query, "coverage": "bodyRequired"}).encode(),
                           "application/json", token)
     return status, json.dumps(result or {}, ensure_ascii=False)
 
@@ -171,7 +173,28 @@ def main() -> int:
                                      "pageSize": 1}).encode(), "application/json", token)
         if status != 401:
             raise SystemExit(f"smoke: search without a valid token returned {status}, not 401")
-    print("smoke: ok (search and discover, document ACL, 401 without a valid token)")
+    # The local origin guard: another Host name (DNS rebinding) and a browser
+    # write from another site are refused before any route.
+    guard_cases = [
+        ("Document read with a foreign Host", DOCUMENT, "GET", "/v1/folders/root", {"Host": "evil.example"}),
+        ("Document write from another site", DOCUMENT, "POST", "/v1/folders",
+         {"Origin": "https://evil.example", "Content-Type": "application/json"}),
+        ("Search with a foreign Host", SEARCH["human"], "POST", "/v1/search",
+         {"Host": "evil.example", "Content-Type": "application/json",
+          "Authorization": f"Bearer {tokens['human']}"}),
+    ]
+    for label, base, method, path, extra in guard_cases:
+        request = urllib.request.Request(f"{base}{path}", data=b"{}" if method == "POST" else None, method=method)
+        for name, value in extra.items():
+            request.add_header(name, value)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                status = response.status
+        except urllib.error.HTTPError as error:
+            status = error.code
+        if status != 403:
+            raise SystemExit(f"smoke: {label} returned {status}, not 403")
+    print("smoke: ok (search and discover, document ACL, 401 without a valid token, local origin guard)")
     return 0
 
 
