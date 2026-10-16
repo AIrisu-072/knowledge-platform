@@ -199,6 +199,9 @@ where
             self.config,
         )
         .await?;
+        if shutdown_requested(shutdown.as_deref(), drain, self.config) {
+            return Ok(CycleSummary::default());
+        }
         if self.observation.observer.is_some() {
             match prepare_operation(
                 self.store.queue_snapshot(),
@@ -210,7 +213,14 @@ where
             {
                 Ok(Some(snapshot)) => self.observation.snapshot(snapshot),
                 Ok(None) => {}
+                // A snapshot still pending at the drain deadline stays Unknown.
+                Err(error) if shutdown_requested(shutdown.as_deref(), drain, self.config) => {
+                    return Err(error);
+                }
                 Err(error) => self.observation.error(&error),
+            }
+            if shutdown_requested(shutdown.as_deref(), drain, self.config) {
+                return Ok(CycleSummary::default());
             }
         }
         let reaped = prepare_operation(
@@ -520,16 +530,22 @@ async fn prepare_operation<T>(
         return Err(DeliveryError::StoreUnknown);
     }
     let bounded = bounded_operation(future, dependency_deadline(config));
+    tokio::pin!(bounded);
     if let Some(receiver) = shutdown.as_deref_mut() {
         tokio::select! {
             // Capture an actually returned permit/claim if both become ready.
             biased;
-            result = bounded => result,
-            _ = wait_for_shutdown(receiver) => {
-                start_drain(drain, config);
-                Err(DeliveryError::StoreUnknown)
-            }
+            result = &mut bounded => return result,
+            _ = wait_for_shutdown(receiver) => {}
         }
+        // Shutdown arrived while the operation was in flight. Finish it within
+        // the drain budget so its result stays known; callers start no new
+        // operation after it. Only an operation still pending at the drain
+        // deadline is Unknown.
+        let deadline = start_drain(drain, config);
+        tokio::time::timeout_at(deadline, bounded)
+            .await
+            .map_err(|_| DeliveryError::StoreUnknown)?
     } else {
         bounded.await
     }
