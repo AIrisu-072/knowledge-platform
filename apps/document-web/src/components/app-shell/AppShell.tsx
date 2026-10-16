@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { validateListSearch } from '../../application/search-state';
 import { validateTaskSearch } from '../../application/work-workspace';
 import { useOrganizationContext } from '../../application/organization-context';
+import { useWorkAvailability } from '../../application/work-availability';
 import { RuntimeIndicator } from './RuntimeIndicator';
 import styles from './AppShell.module.css';
 
@@ -29,7 +30,9 @@ export function AppShell({
 }: AppShellProps) {
   const organization = useOrganizationContext();
   const taskSearch = validateTaskSearch(Object.fromEntries(new URLSearchParams(organization.taskHref.split('?')[1] ?? '')));
-  const organizationMode = Boolean(organization.session) || activeNavigation === 'tasks' || activeNavigation === 'search';
+  // The task and search screens read the Work API themselves; elsewhere the shell asks once.
+  const knownOrganization = Boolean(organization.session) || activeNavigation === 'tasks' || activeNavigation === 'search';
+  const organizationMode = useWorkAvailability(!knownOrganization) === 'available' || knownOrganization;
   return (
     <div className={styles.shell} data-context-open={showContextPanel} data-organization={organizationMode}>
       <a className={styles.skipLink} href="#main-content">

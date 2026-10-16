@@ -22,7 +22,7 @@ type Pending = { title: string; lines: string[]; run: () => { operationId: strin
 export function OrganizationResponsibilitiesPage() {
   const organization = useOrganizationContext();
   const client = useQueryClient();
-  const session = useQuery({ queryKey: sessionKey, queryFn: workApi.getSession, staleTime: 0, gcTime: 0, retry: false });
+  const session = useQuery({ queryKey: sessionKey, queryFn: () => workApi.getSession(), staleTime: 0, gcTime: 0, retry: false });
   const data = session.isSuccess ? session.data : undefined;
   const records = useQuery({
     queryKey: data ? policyKey(data) : ['organization-policy-unavailable'],

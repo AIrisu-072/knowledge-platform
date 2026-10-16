@@ -1,5 +1,11 @@
 # 専用 ext4 DB の PG18 起動修正
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR121はmain `408b68d4fa0476aa9d7e078826011efadef8a4c4` に統合済み。未公開という以下の記述は過去の状態。専用ext4 DBの起動修正を、10万件の負荷成功と同一視しない。後続のメモリ改善PR122もmainへ統合済みであり、再開先は[local状況](document-load-local-scale-status.md)。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 Status: ACTIVE / ローカル修正・実機資格確認中、未公開
 
 - 基点 main: 818e8b079b7ddda76462026010424afa589159ad。独立 branch fix/document-load-pg18-ext4-20261009。

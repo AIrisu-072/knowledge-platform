@@ -54,8 +54,17 @@ test('real same-origin GUI folder → list → detail → revisions/history/diff
 
   const apiOrigins = new Set<string>();
   page.on('request', req => { const url = new URL(req.url()); if (url.pathname.startsWith('/v1/')) apiOrigins.add(url.origin); });
-  await page.goto('/documents?view=published');
+  // This document-only server has no Work API (404): "/" still opens the document
+  // list, and the primary navigation keeps the document entries only.
+  const workProbe = page.waitForResponse(response => new URL(response.url()).pathname === '/v1/organization/session');
+  await page.goto('/');
+  expect((await workProbe).status()).toBe(404);
+  await expect(page).toHaveURL(url => url.pathname === '/documents' && url.searchParams.get('view') === 'published');
   await expect(page.getByRole('region', { name: 'フォルダー' })).toBeVisible();
+  const navigation = page.getByRole('navigation', { name: 'メインナビゲーション', exact: true });
+  await expect(navigation.getByRole('link', { name: '文書', exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'タスク', exact: true })).toHaveCount(0);
+  await expect(navigation.getByRole('link', { name: '検索', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '選択したフォルダーのアクセス設定', exact: true })).toBeHidden();
   completed('gui-loaded');
   await assertApplicationJapaneseFonts(page);

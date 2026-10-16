@@ -1,5 +1,13 @@
 # Document 1万・10万件検証の状況
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+[実1万件run 37887357388](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37887357388) はhead `d996f8012ef7ebe57e5fc47b49bd85d26d02441a`、qualify jobとrunがSUCCESS。small→1,000→10,000の3段階が成功した。大量段階の原本・履歴・再起動snapshotの詳細照合は各段階3件の標本で、繰り返した公式PDFによる合成負荷である。全原本の品質・全件hash照合・製品SLO・本番資格を示さない。
+
+PR118はmain `d996f801` に統合済み。Ubuntuの10万件資格は未取得であり、この別runのreceiptをUbuntuのfresh admissionへ流用しない。次の段階は[local状況](document-load-local-scale-status.md)を参照。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 Status: ACTIVE / 1万件の実装中、実1万・10万件は未実行
 
 - 基点main: `5f9f4756f565b46a62b39f5eaea1d857221b0943`（PR117統合、統合後CI `37870372080` 全14成功）

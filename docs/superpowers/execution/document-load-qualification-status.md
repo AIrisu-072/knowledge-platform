@@ -1,5 +1,15 @@
 # Document 段階負荷検証の状況
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR110はmain `4fa12dc4`、PR117は `5f9f4756`、PR118は `d996f801` に統合済み。以下の初期の「実API未取得」「1,000以上NOT RUN」は現在状態ではない。
+
+[実1万件run 37887357388](https://github.com/AIrisu-072/knowledge-platform/actions/runs/37887357388) はhead `d996f8012ef7ebe57e5fc47b49bd85d26d02441a`、qualify jobとrunがSUCCESS。small→1,000→10,000の3段階が成功した。大量段階の原本・履歴・再起動snapshotの詳細照合は各段階3件の標本で、繰り返した公式PDFによる合成負荷である。全原本の品質・全件hash照合・製品SLO・本番資格を示さない。
+
+Ubuntuの10万件は未資格。[local状況](document-load-local-scale-status.md)と[1万件状況](document-load-ten-thousand-status.md)を再開先とする。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 Status: ACTIVE / 実 API 資格は未取得
 
 ## 対象と承認

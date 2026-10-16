@@ -1,5 +1,11 @@
 # 原本構成編集・初回複数原本登録の進捗
 
+## 2026-10-15 — 現在状態（main `ead6830e` を照合）
+
+PR109はmain `b1c5c36d2d491cffc6723607622f6cd1f7a9e933` に統合済み。以下のpush/PR/main調整待ちや途中CI失敗は履歴として保持する。本番配備の完了は示さない。
+
+以下は各作業時点の履歴。未統合・未実行等の記述は、その節の日付時点の状態である。
+
 2026-10-08。承認範囲は[設計](../specs/2026-10-08-document-original-management.md)、[計画](../plans/2026-10-08-document-original-management-implementation.md)。branch `feat/document-originals-20261008`、base `6440e026`、計画commit `defef0d7`。専用worktreeで実装し、rootの作業を変更していない。push/PR/main統合は親の調整待ち。
 
 ## 実装済み
