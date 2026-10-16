@@ -4,7 +4,8 @@
 #
 # The PoC identity is not production authentication: each server process is a
 # fixed profile (poc-human or poc-agent). Every published port is bound to
-# 127.0.0.1. Secrets live outside the repository in ${KP_STACK_DIR}/secrets
+# 127.0.0.1, and KP_ALLOWED_HOSTS turns on the local origin guard (requests
+# with another Host, and browser writes from another site, get 403). Secrets live outside the repository in ${KP_STACK_DIR}/secrets
 # and are created by `mise run stack:secrets`.
 name: knowledge-platform
 
@@ -126,6 +127,7 @@ services:
     environment:
       KP_IDENTITY_PROFILE: poc-human
       KP_BIND: 0.0.0.0:8080
+      KP_ALLOWED_HOSTS: 127.0.0.1:${KP_DOCUMENT_HUMAN_PORT:-8080},localhost:${KP_DOCUMENT_HUMAN_PORT:-8080}
       KP_POC_ALLOW_NON_LOOPBACK: "true"
       KP_STORAGE_ROOT: *storage
     ports: ["127.0.0.1:${KP_DOCUMENT_HUMAN_PORT:-8080}:8080"]
@@ -135,6 +137,7 @@ services:
     environment:
       KP_IDENTITY_PROFILE: poc-agent
       KP_BIND: 0.0.0.0:8081
+      KP_ALLOWED_HOSTS: 127.0.0.1:${KP_DOCUMENT_AGENT_PORT:-8081},localhost:${KP_DOCUMENT_AGENT_PORT:-8081}
       KP_POC_ALLOW_NON_LOOPBACK: "true"
       KP_STORAGE_ROOT: *storage
     ports: ["127.0.0.1:${KP_DOCUMENT_AGENT_PORT:-8081}:8081"]
@@ -166,6 +169,7 @@ services:
     environment:
       KP_IDENTITY_PROFILE: poc-human
       KP_BIND: 0.0.0.0:8090
+      KP_ALLOWED_HOSTS: 127.0.0.1:${KP_SEARCH_HUMAN_PORT:-8090},localhost:${KP_SEARCH_HUMAN_PORT:-8090}
       KP_POC_ALLOW_NON_LOOPBACK: "true"
       KP_SEARCH_TOKEN_FILE: /run/secrets/search_human_token
       SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json
@@ -177,6 +181,7 @@ services:
     environment:
       KP_IDENTITY_PROFILE: poc-agent
       KP_BIND: 0.0.0.0:8091
+      KP_ALLOWED_HOSTS: 127.0.0.1:${KP_SEARCH_AGENT_PORT:-8091},localhost:${KP_SEARCH_AGENT_PORT:-8091}
       KP_POC_ALLOW_NON_LOOPBACK: "true"
       KP_SEARCH_TOKEN_FILE: /run/secrets/search_agent_token
       SEARCH_WORKER_CONFIG: /var/lib/knowledge-platform/search/config/source.json

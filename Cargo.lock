@@ -1795,6 +1795,7 @@ dependencies = [
  "document-storage-fs",
  "html5ever",
  "http-body",
+ "http-local-guard",
  "markup5ever_rcdom",
  "percent-encoding",
  "rustix",
@@ -2735,6 +2736,15 @@ dependencies = [
  "http",
  "http-body",
  "pin-project-lite",
+]
+
+[[package]]
+name = "http-local-guard"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -5211,6 +5221,7 @@ dependencies = [
  "document-domain",
  "document-repository-postgres",
  "document-server",
+ "http-local-guard",
  "search-api-http",
  "search-application",
  "search-graph",

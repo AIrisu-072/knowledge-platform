@@ -5,6 +5,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use http_local_guard::LocalOriginPolicy;
+
 use crate::identity::PocProfile;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +71,8 @@ pub struct ServeConfig {
     /// Requests hold a connection for each access check.
     pub pool_size: u32,
     pub non_loopback_warning: bool,
+    /// `KP_ALLOWED_HOSTS`: when set, the local origin guard wraps every route.
+    pub allowed_hosts: Option<LocalOriginPolicy>,
 }
 
 pub struct ServerConfig {
@@ -157,6 +161,11 @@ fn serve_config(source: &impl ConfigSource) -> Result<ServeConfig, ConfigError> 
         retriever_profile,
         pool_size,
         non_loopback_warning: !bind.ip().is_loopback(),
+        allowed_hosts: source
+            .get("KP_ALLOWED_HOSTS")
+            .map(|list| LocalOriginPolicy::parse(&list))
+            .transpose()
+            .map_err(|_| ConfigError::Invalid("KP_ALLOWED_HOSTS"))?,
     })
 }
 
@@ -205,6 +214,25 @@ mod tests {
         assert_eq!(serve.retriever_profile, RetrieverProfileName::Exploratory);
         assert_eq!(serve.pool_size, 16);
         assert!(!serve.non_loopback_warning);
+        assert!(serve.allowed_hosts.is_none());
+    }
+
+    #[test]
+    fn allowed_hosts_are_parsed_or_rejected() {
+        let env = serve_env(&[("KP_ALLOWED_HOSTS", "127.0.0.1:8091,localhost:8091")]);
+        let serve = ServerConfig::from_env(&env, Command::Serve)
+            .unwrap()
+            .serve
+            .unwrap();
+        assert_eq!(
+            serve.allowed_hosts.unwrap().hosts(),
+            ["127.0.0.1:8091", "localhost:8091"]
+        );
+        let env = serve_env(&[("KP_ALLOWED_HOSTS", "http://evil.example")]);
+        assert_eq!(
+            ServerConfig::from_env(&env, Command::Serve).unwrap_err(),
+            ConfigError::Invalid("KP_ALLOWED_HOSTS")
+        );
     }
 
     #[test]

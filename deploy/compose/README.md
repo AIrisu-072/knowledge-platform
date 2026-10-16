@@ -2,7 +2,17 @@
 
 文書サーバー、検索のworker、検索サーバー、PostgreSQLを、リポジトリ直下の `compose.yaml` でまとめて起動します。MacとLinuxで同じファイル・同じimageを使います。設計は `docs/superpowers/specs/2026-10-16-search-server-stack-design.md`、選定は `spec/selection/library-tool-selection-v0.md` 13.7。
 
-**本番の構成ではありません。** 利用者の確認はPoCの固定プロフィールで、本番の認証・TLSはありません。外に開くportは `127.0.0.1` だけです。
+**本番の構成ではありません。** 利用者の確認はPoCの固定プロフィールで、本番の認証・TLSはありません。外に開くportは `127.0.0.1` だけです。個人が1台の中で使うことを前提にしています（所有者の判断 2026-10-16）。
+
+## 認証なしで使うときの守り
+
+文書サーバーには認証がなく、届いた呼出しはすべてそのプロセスの固定プロフィール（人は管理の権限まで持つ）になります。検索サーバーはトークンを確認します。そのうえで、全サーバーに次の確認（`crates/http-local-guard`、`KP_ALLOWED_HOSTS`）を入れています。
+
+- Hostが `127.0.0.1:<port>` か `localhost:<port>` でない要求は403。別の名前を127.0.0.1へ向ける攻撃（DNS rebinding）を防ぐ。
+- 書込みの要求（POST・PUT・PATCH・DELETE）で、ブラウザが別のサイトからの要求と示すもの（`Origin` が上の名前以外、または `Sec-Fetch-Site` が `cross-site`・`same-site`）は403。開いた別のサイトのページから、文書を登録・変更されるのを防ぐ。
+- curlやAgentのようにこれらのヘッダーを送らない呼出しは通る。
+
+残るリスク：同じマシンで動くほかのプログラム（ブラウザ以外）と、同じcomposeのネットワークにあるコンテナは、文書サーバーを人のプロフィールで呼べます。共有のマシンや、ほかの人がログインするマシンでは使わないでください。複数人で使うときは、`IdentityAdapter`（文書）と `SearchCredentialVerifierPort`・`VerifiedActorResolverPort`（検索）へ認証の実装を差し込みます。
 
 ## 必要なもの
 
@@ -58,4 +68,4 @@ curl -s -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
 - 本番の認証・TLS、Kubernetes、運用操作（版の更新・取下げ・権限変更・backup/restore）の手順は範囲外。
 - 索引に入る形式はテキストだけ（Source設定 `search-source.sh` のprofile）。
 - Vector（意味の検索）は既定で無効。使うときは固定revisionのモデルのディレクトリを `KP_SEARCH_VECTOR_MODEL_DIR` で渡し、コンテナへmountする（今後の作業）。
-- DBのroleはPoC用に1つ（superuser）。本番のrole分離は検証していない。
+- DBのroleはPoC用に1つ（superuser）で、全サービスがこれで接続する。本番のrole分離は検証していない。

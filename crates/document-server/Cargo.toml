@@ -17,6 +17,7 @@ document-diff-runner = { version = "0.0.0", path = "../document-diff-runner" }
 document-semantic-inspection-core = { version = "0.0.0", path = "../document-semantic-inspection-core" }
 document-semantic-inspection-runner = { version = "0.0.0", path = "../document-semantic-inspection-runner" }
 document-storage-fs = { version = "0.0.0", path = "../document-storage-fs" }
+http-local-guard = { version = "0.0.0", path = "../http-local-guard" }
 tower = "=0.5.3"
 tower-http = { version = "=0.7.1", default-features = false, features = ["fs"] }
 percent-encoding = "=2.3.2"

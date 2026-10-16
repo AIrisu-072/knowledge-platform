@@ -57,6 +57,10 @@ async fn run() -> Result<(), String> {
                 .await
                 .map_err(|_| "Search database unavailable".to_string())?;
             let runtime = compose(serve_config, pool).await?;
+            let mut router = runtime.router();
+            if let Some(policy) = &serve_config.allowed_hosts {
+                router = http_local_guard::guard_router(router, policy.clone());
+            }
             let listener = tokio::net::TcpListener::bind(serve_config.bind)
                 .await
                 .map_err(|_| format!("cannot bind {}", serve_config.bind))?;
@@ -67,7 +71,7 @@ async fn run() -> Result<(), String> {
             );
             serve(
                 listener,
-                runtime.router(),
+                router,
                 ServeOptions {
                     send_deadline: Duration::from_secs(60),
                     send_buffer_bytes: None,

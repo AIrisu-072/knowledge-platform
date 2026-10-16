@@ -9,6 +9,7 @@ publish = false
 document-application = { version = "0.0.0", path = "../document-application" }
 document-domain = { version = "0.0.0", path = "../document-domain" }
 document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+http-local-guard = { version = "0.0.0", path = "../http-local-guard" }
 search-api-http = { version = "0.0.0", path = "../search-api-http" }
 search-application = { version = "0.0.0", path = "../search-application" }
 search-graph = { version = "0.0.0", path = "../search-graph" }

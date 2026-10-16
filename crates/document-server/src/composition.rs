@@ -231,7 +231,10 @@ pub async fn compose_runtime_with_identity(
             .map_err(map_identity)?,
     ));
     let web = serve.web_dist().map(web_router).transpose()?;
-    let router = runtime_router(api, health.clone(), web);
+    let mut router = runtime_router(api, health.clone(), web);
+    if let Some(policy) = serve.allowed_hosts() {
+        router = http_local_guard::guard_router(router, policy.clone());
+    }
     Ok(Runtime {
         pool,
         router,

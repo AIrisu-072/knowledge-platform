@@ -6,6 +6,7 @@ use std::{
     str::FromStr,
 };
 
+use http_local_guard::LocalOriginPolicy;
 use sqlx::postgres::PgConnectOptions;
 use thiserror::Error;
 
@@ -60,6 +61,8 @@ pub struct ServeConfig {
     web_dist: Option<PathBuf>,
     pdfium_runtime_dir: Option<PathBuf>,
     non_loopback_warning: bool,
+    /// `KP_ALLOWED_HOSTS`: when set, the local origin guard wraps every route.
+    allowed_hosts: Option<LocalOriginPolicy>,
 }
 
 impl fmt::Debug for RuntimeConfig {
@@ -150,6 +153,11 @@ impl RuntimeConfig {
                     .map(|_| path(source, "KP_DSI_PDFIUM_RUNTIME_DIR"))
                     .transpose()?,
                 non_loopback_warning: !bind.ip().is_loopback(),
+                allowed_hosts: source
+                    .get("KP_ALLOWED_HOSTS")
+                    .map(|list| LocalOriginPolicy::parse(&list))
+                    .transpose()
+                    .map_err(|_| ConfigError::Invalid("KP_ALLOWED_HOSTS"))?,
             })
         } else {
             None
@@ -214,6 +222,9 @@ impl ServeConfig {
     }
     pub fn pdfium_runtime_dir(&self) -> Option<&Path> {
         self.pdfium_runtime_dir.as_deref()
+    }
+    pub fn allowed_hosts(&self) -> Option<&LocalOriginPolicy> {
+        self.allowed_hosts.as_ref()
     }
     pub const fn non_loopback_warning(&self) -> bool {
         self.non_loopback_warning
