@@ -8,3 +8,8 @@ commits = [
   "879ff4524087aa21947795dd30023fc53a9512ca",
   "d840acb9deb963356839496fe8b8ef3523cb9983",
 ]
+
+[[allowlists]]
+description = "sqlx-postgres 0.9.0 archive: the doc comment of PgConnectOptions::ssl_client_key_from_pem names the PEM header and shows a placeholder, no key"
+targetRules = ["private-key"]
+paths = ['''^third_party/database/sqlx-postgres-0\.9\.0/src/options/mod\.rs$''']
