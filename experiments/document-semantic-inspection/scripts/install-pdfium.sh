@@ -17,6 +17,13 @@ case "${os}:${arch}" in
     expected_library_sha256="f728930966f503652b92acc89b9374a2eeca00ce42e26dccd3e4b5c5161b2d64"
     library_name="libpdfium.so"
     ;;
+  Linux:aarch64)
+    platform="linux-arm64"
+    artifact="pdfium-linux-arm64.tgz"
+    expected_archive_sha256="ee7f7b7d5468958336a818c1cd580bdd20972846b7377b13f9a923d92d1d4674"
+    expected_library_sha256="6252fce3da45e7f0dc5b27f4d4e1a1456ca3f7734cdb04f927967df772127478"
+    library_name="libpdfium.so"
+    ;;
   Darwin:x86_64)
     platform="mac-x64"
     artifact="pdfium-mac-x64.tgz"
