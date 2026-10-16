@@ -38,13 +38,13 @@ const XLSX_PARSER_LIBRARIES: [(&str, &str); 4] = [
     ("rxls", "0.1.3"),
     ("calamine", "0.36.1"),
     ("quick-xml", "0.42.0"),
-    ("zip", "8.6.0"),
+    ("zip", "9.0.3"),
 ];
 const XLSM_PARSER_LIBRARIES: [(&str, &str); 8] = [
     ("rxls", "0.1.3"),
     ("calamine", "0.36.1"),
     ("quick-xml", "0.42.0"),
-    ("zip", "8.6.0"),
+    ("zip", "9.0.3"),
     ("ovba", "0.7.1"),
     ("tree-sitter", "0.25.10"),
     ("tree-sitter-language", "0.1.8"),

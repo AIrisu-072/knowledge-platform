@@ -26,7 +26,7 @@ const MAX_ENTRY_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PARAGRAPHS: usize = 100_000;
 const PARSER_PROVENANCE: &str =
-    "document-diff-docx-v0;dsi-docx-v0;office_oxide=0.1.11;quick-xml=0.42.0;zip=8.6.0";
+    "document-diff-docx-v0;dsi-docx-v0;office_oxide=0.1.11;quick-xml=0.42.0;zip=9.0.3";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DocxComparator;

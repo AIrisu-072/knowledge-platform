@@ -46,7 +46,7 @@ const WORD_MAIN: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
 const PARSER_LIBRARIES: [(&str, &str); 4] = [
     ("office_oxide", "0.1.11"),
-    ("zip", "8.6.0"),
+    ("zip", "9.0.3"),
     ("quick-xml", "0.42.0"),
     ("png", "0.18.1"),
 ];
