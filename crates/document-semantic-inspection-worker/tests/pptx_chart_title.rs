@@ -16,7 +16,7 @@ fn with_chart_title_cache_label(input: &[u8], label: &str) -> Vec<u8> {
     let mut entries = Vec::with_capacity(archive.len());
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).expect("qualified PPTX entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)
@@ -107,8 +107,11 @@ fn pptx_cached_chart_title_label_changes_version_identity() {
     for index in 0..baseline_archive.len() {
         let mut baseline_entry = baseline_archive.by_index(index).expect("baseline entry");
         let mut changed_entry = changed_archive.by_index(index).expect("changed entry");
-        assert_eq!(baseline_entry.name(), changed_entry.name());
-        if baseline_entry.name() == CHART_PART {
+        assert_eq!(
+            baseline_entry.name().expect("ZIP entry name decodes"),
+            changed_entry.name().expect("ZIP entry name decodes")
+        );
+        if baseline_entry.name().expect("ZIP entry name decodes") == CHART_PART {
             continue;
         }
         let mut baseline_bytes = Vec::new();

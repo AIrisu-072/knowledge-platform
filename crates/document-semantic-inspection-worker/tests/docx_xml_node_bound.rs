@@ -39,7 +39,7 @@ fn docx_with_non_element_nodes(bytes: &[u8]) -> Vec<u8> {
     for index in 0..archive.len() {
         let (name, mut contents) = {
             let mut entry = archive.by_index(index).expect("read baseline DOCX part");
-            let name = entry.name().to_owned();
+            let name = entry.name().expect("ZIP entry name decodes").into_owned();
             let mut contents = Vec::new();
             entry
                 .read_to_end(&mut contents)
@@ -89,7 +89,7 @@ fn assert_uncompressed_package_limits(bytes: &[u8]) {
         assert!(
             part.size() <= MAX_PART_BYTES,
             "{} exceeds the 8 MiB per-part limit",
-            part.name()
+            part.name().expect("ZIP entry name decodes")
         );
         total_bytes = total_bytes
             .checked_add(part.size())

@@ -126,7 +126,7 @@ fn assert_declared_size(input: &[u8], target: &[u8], expected: u32) {
         let entry = archive
             .by_index(index)
             .expect("mutant central-directory entry");
-        if entry.name().as_bytes() == target {
+        if entry.name().expect("ZIP entry name decodes").as_bytes() == target {
             assert_eq!(entry.size(), u64::from(expected));
             assert!(
                 entry.compressed_size() < u64::from(expected),

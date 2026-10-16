@@ -301,7 +301,10 @@ impl SignatureInspector {
 
         let has_signature_parts = (0..archive.len()).any(|index| {
             archive.by_index(index).ok().is_some_and(|file| {
-                file.name().starts_with("_xmlsignatures/") && file.name().ends_with(".xml")
+                // An unreadable entry, or one whose name does not decode, is not
+                // counted, as before; the package checks reject such archives.
+                file.name()
+                    .is_ok_and(|name| name.starts_with("_xmlsignatures/") && name.ends_with(".xml"))
             })
         });
 
@@ -785,7 +788,8 @@ fn ooxml_manifest_payloads(
             .by_index(index)
             .map_err(|error| error.to_string())?
             .name()
-            .to_owned();
+            .map_err(|error| error.to_string())?
+            .into_owned();
         if !names.insert(name.clone()) || !safe_opc_part_path(name.trim_end_matches('/')) {
             return Err("ambiguous-opc-part-index".into());
         }

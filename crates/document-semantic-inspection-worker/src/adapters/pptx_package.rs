@@ -115,7 +115,10 @@ pub(super) fn is_pptx_package_checked(input: &[u8]) -> Result<bool, WorkerFailur
     let mut entry = archive
         .by_index(content_types_index)
         .map_err(|error| zip_failure(format!("read [Content_Types].xml metadata: {error}")))?;
-    if entry.name() != "[Content_Types].xml" {
+    let content_types_name = entry
+        .name()
+        .map_err(|error| zip_failure(format!("read [Content_Types].xml name: {error}")))?;
+    if content_types_name != "[Content_Types].xml" {
         return Err(zip_failure(
             "PPTX ZIP reader disagrees with raw content-types part name",
         ));
@@ -363,13 +366,16 @@ fn read_package_parts(input: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, WorkerF
         let entry = archive
             .by_index(index)
             .map_err(|error| zip_failure(format!("PPTX ZIP entry {index}: {error}")))?;
-        if entry.name() != raw_name {
+        let name = entry
+            .name()
+            .map_err(|error| zip_failure(format!("PPTX ZIP entry {index} name: {error}")))?
+            .into_owned();
+        if name != *raw_name {
             return Err(zip_failure(format!(
                 "PPTX ZIP reader disagrees with raw entry name {raw_name:?}"
             )));
         }
         let is_directory = entry.is_dir();
-        let name = entry.name().to_owned();
         validate_part_name(&name, is_directory)?;
         let declared_size = entry.size();
         let remaining_total = MAX_TOTAL_UNCOMPRESSED

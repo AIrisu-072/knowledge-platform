@@ -119,7 +119,7 @@ fn oversized_connection_evidence_fails_before_any_stdout_is_written() {
         let mut writer = ZipWriter::new(&mut output);
         for index in 0..source.len() {
             let mut entry = source.by_index(index).expect("qualified entry");
-            let name = entry.name().to_owned();
+            let name = entry.name().expect("ZIP entry name decodes").into_owned();
             let mut bytes = Vec::new();
             entry.read_to_end(&mut bytes).expect("read qualified entry");
             writer

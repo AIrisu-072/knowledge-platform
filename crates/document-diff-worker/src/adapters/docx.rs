@@ -234,7 +234,11 @@ fn read_package(input: &[u8]) -> Result<Package, UnverifiedReason> {
         if entry.size() > MAX_ENTRY_BYTES {
             return Err(UnverifiedReason::ResourceLimit);
         }
-        let name = entry.name().to_owned();
+        // zip 9: a name that does not decode makes the source corrupted.
+        let name = entry
+            .name()
+            .map_err(|_| UnverifiedReason::CorruptedSource)?
+            .into_owned();
         if !name.starts_with("word/") || name.ends_with('/') {
             continue;
         }

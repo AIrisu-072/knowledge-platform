@@ -381,7 +381,7 @@ fn rewrite_package(
     let mut replacements_seen = vec![false; replacements.len()];
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).expect("read package entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)

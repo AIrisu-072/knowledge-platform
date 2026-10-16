@@ -215,7 +215,7 @@ pub(super) fn zip_parts(
     let mut intervals = Vec::with_capacity(zip.len());
     for index in 0..zip.len() {
         let file = zip.by_index_raw(index).map_err(|_| malformed_archive())?;
-        let name = file.name().to_owned();
+        let name = file.name().map_err(|_| malformed_archive())?.into_owned();
         if file.encrypted() {
             return Err(unsupported(CoverageReason::Encrypted));
         }
@@ -261,7 +261,7 @@ pub(super) fn zip_parts(
     let mut parts = BTreeMap::new();
     for index in 0..zip.len() {
         let file = zip.by_index(index).map_err(|_| malformed_archive())?;
-        let name = file.name().to_owned();
+        let name = file.name().map_err(|_| malformed_archive())?.into_owned();
         if name.ends_with('/') {
             continue;
         }

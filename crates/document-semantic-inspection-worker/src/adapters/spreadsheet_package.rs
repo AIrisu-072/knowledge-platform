@@ -1860,7 +1860,10 @@ mod picture_anchor_bound_tests {
                 let mut entry = archive
                     .by_index(index)
                     .expect("qualified XLSX ZIP entry is readable");
-                let name = entry.name().to_owned();
+                let name = entry
+                    .name()
+                    .expect("qualified XLSX ZIP entry name decodes")
+                    .into_owned();
                 let mut bytes = Vec::new();
                 entry
                     .read_to_end(&mut bytes)

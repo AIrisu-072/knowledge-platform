@@ -60,7 +60,8 @@ fn unicode_path_extra_cannot_change_the_name_seen_after_preflight() {
                 .by_index(index)
                 .expect("central-directory entry")
                 .name()
-                .to_owned()
+                .expect("ZIP entry name decodes")
+                .into_owned()
         })
         .collect::<Vec<_>>();
     assert!(

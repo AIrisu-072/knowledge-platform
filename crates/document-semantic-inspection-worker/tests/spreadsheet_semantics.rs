@@ -171,12 +171,14 @@ fn assert_only_package_entry_changed(input: &[u8], changed: &[u8], expected_path
             .by_index(index)
             .expect("read original package entry")
             .name()
-            .to_owned();
+            .expect("ZIP entry name decodes")
+            .into_owned();
         let after_name = after
             .by_index(index)
             .expect("read changed package entry")
             .name()
-            .to_owned();
+            .expect("ZIP entry name decodes")
+            .into_owned();
         assert_eq!(
             before_name, after_name,
             "package entry order must be stable"
@@ -267,7 +269,7 @@ fn replace_package_entries(input: &[u8], replacements: &[(&str, &[u8])]) -> Vec<
     let mut entries = Vec::with_capacity(archive.len());
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).expect("read spreadsheet ZIP entry");
-        let name = entry.name().to_owned();
+        let name = entry.name().expect("ZIP entry name decodes").into_owned();
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)

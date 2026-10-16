@@ -439,7 +439,12 @@ fn enforce_embedded_object_limit(input: &[u8]) -> Result<(), WorkerFailure> {
                 "SpreadsheetML package entry could not be read",
             )
         })?;
-        let path = entry.name();
+        let path = entry.name().map_err(|_| {
+            failure(
+                WorkerFailureCode::SemanticExtractionFailed,
+                "SpreadsheetML package entry could not be read",
+            )
+        })?;
         if path.split('/').any(|segment| segment == "embeddings") {
             embedded_count = embedded_count.checked_add(1).ok_or_else(|| {
                 resource_limit("SpreadsheetML embedded object count exceeds the limit")
@@ -815,7 +820,13 @@ fn inspect_external_package_definitions(
                 "SpreadsheetML package entry could not be read",
             )
         })?;
-        names.push(entry.name().to_owned());
+        let name = entry.name().map_err(|_| {
+            failure(
+                WorkerFailureCode::SemanticExtractionFailed,
+                "SpreadsheetML package entry could not be read",
+            )
+        })?;
+        names.push(name.into_owned());
     }
     names.sort();
 

@@ -159,7 +159,7 @@ pub fn add_ooxml_signature(package: &[u8], signature_xml: &[u8]) -> Vec<u8> {
 
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).expect("OOXML entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         if name.starts_with("_xmlsignatures/") {
             continue;
         }
@@ -390,7 +390,7 @@ pub fn replace_zip_entry(package: &[u8], part_name: &str, replacement: &[u8]) ->
     let mut replaced = false;
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).expect("OOXML entry");
-        let name = file.name().to_owned();
+        let name = file.name().expect("ZIP entry name decodes").into_owned();
         let mut data = Vec::new();
         file.read_to_end(&mut data).expect("read OOXML entry");
         if name == part_name {

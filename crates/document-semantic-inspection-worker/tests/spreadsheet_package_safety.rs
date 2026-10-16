@@ -225,7 +225,13 @@ fn replace_part(parts: &mut [(String, Vec<u8>)], name: &str, contents: Vec<u8>) 
 fn zip_has_entry(bytes: &[u8], name: &str) -> bool {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).expect("synthetic XLSX ZIP");
     for index in 0..archive.len() {
-        if archive.by_index(index).expect("synthetic ZIP entry").name() == name {
+        if archive
+            .by_index(index)
+            .expect("synthetic ZIP entry")
+            .name()
+            .expect("ZIP entry name decodes")
+            == name
+        {
             return true;
         }
     }
