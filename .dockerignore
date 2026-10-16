@@ -1,0 +1,12 @@
+# Build context for the canonical Dockerfile: sources only.
+.git
+**/target
+**/node_modules
+**/dist
+**/coverage
+**/tmp
+**/.env*
+**/*.pem
+**/*.key
+**/test-results
+**/playwright-report

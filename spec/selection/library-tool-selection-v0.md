@@ -670,6 +670,8 @@ The semantic-inspection PoC does **not** close the separate Search Extraction or
 
 PDFium artifacts are pinned to release `chromium/7881` and SHA-256 verified per Linux/macOS platform. Required PDFium/lopdf disagreement fails closed; the adapter never selects a winner heuristically.
 
+The pinned platforms are Linux x86_64, Linux aarch64 (owner decision 2026-10-16, so the compose stack's arm64 images on Apple Silicon run the same PDFium build as the `linux/amd64` production image), macOS x86_64 and macOS arm64 (`experiments/document-semantic-inspection/scripts/install-pdfium.sh`). The Linux aarch64 archive digest matches the release's published asset digest. Production stays `linux/amd64`.
+
 ## 16.2 Digital-signature evidence
 
 | Candidate | Status | Qualified role |
@@ -1314,3 +1316,14 @@ At 10,000 documents the outbox worker's resident memory was set by what glibc ke
 |---|---|---|
 | Worker global allocator | **SELECTED**: `tikv-jemallocator` 0.7.0 (jemalloc 5.3, MIT/Apache-2.0 crate, BSD-2-Clause jemalloc) with `tikv-jemalloc-ctl` 0.7.0 enabling background threads at startup; default features off except `background_threads_runtime_support`; Unix only | Four single-document updates at 10,000 documents: worker peak 5.4–5.6 GB with glibc (`MALLOC_ARENA_MAX=2`), 4.0–4.3 GB with jemalloc; 30 s after the last update 4.9 GB → 2.3 GB; update 29–41 s → 20–21 s. mimalloc (preloaded) measured 4.3–4.4 GB peak and 3.5 GB after 30 s and is not selected. |
 | `malloc_trim` after each build | Not selected | Measured 4.0 GB peak and 2.5 GB between updates, but needs a glibc-only FFI call per process. |
+
+## 13.7 Single-host PoC stack (2026-10-16)
+
+The owner chose to run Search as its own process and to start the Document servers, the Search worker, the Search servers and PostgreSQL together from the repository, with no difference between Mac and Linux (`docs/superpowers/specs/2026-10-16-search-server-stack-design.md`).
+
+| Item | Decision | Evidence boundary |
+|---|---|---|
+| Multi-service start/stop | **SELECTED**: Docker Compose v2 (`compose.yaml` at the root), the same file and images on Mac (OrbStack or Docker Desktop) and Linux | Images come from targets of the canonical root `Dockerfile`; no environment-specific Dockerfile |
+| Kubernetes | Not selected (non-goal v0, `development-container-ci-architecture-v0.md` 59) | Added from the same images when the need is concrete |
+| systemd or plain processes | Not selected | Mac and Linux would need different start-up paths |
+| Search server identity | PoC fixed profile per process with a shared Bearer token | Same level as the Document PoC runtime; not production authentication |

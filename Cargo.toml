@@ -20,6 +20,8 @@ members = [
   "crates/search-source-document",
   "crates/search-source-http",
   "crates/search-api-http",
+  "crates/search-server",
+  "crates/http-local-guard",
   "crates/search-evaluation",
   "crates/document-domain",
   "crates/document-application",

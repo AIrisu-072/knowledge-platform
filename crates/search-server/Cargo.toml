@@ -1,0 +1,27 @@
+[package]
+name = "search-server"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+document-application = { version = "0.0.0", path = "../document-application" }
+document-domain = { version = "0.0.0", path = "../document-domain" }
+document-repository-postgres = { version = "0.0.0", path = "../document-repository-postgres" }
+http-local-guard = { version = "0.0.0", path = "../http-local-guard" }
+search-api-http = { version = "0.0.0", path = "../search-api-http" }
+search-application = { version = "0.0.0", path = "../search-application" }
+search-graph = { version = "0.0.0", path = "../search-graph" }
+search-runtime = { version = "0.0.0", path = "../search-runtime" }
+search-source-document = { version = "0.0.0", path = "../search-source-document" }
+search-vector-adapter = { version = "0.0.0", path = "../search-vector-adapter" }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
+uuid.workspace = true
+
+[dev-dependencies]
+document-server = { version = "0.0.0", path = "../document-server" }

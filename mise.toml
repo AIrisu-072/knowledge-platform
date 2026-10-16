@@ -295,6 +295,30 @@ run = [
   "pnpm api:lint",
 ]
 
+[tasks."stack:secrets"]
+description = "Create the compose stack's secret files outside the repository"
+run = "bash deploy/compose/stack.sh secrets"
+
+[tasks."stack:build"]
+description = "Build the compose stack images (KP_STACK_PLATFORM=linux/amd64 forces amd64)"
+run = "bash deploy/compose/stack.sh build"
+
+[tasks."stack:up"]
+description = "Start the Document, Search and PostgreSQL services"
+run = "bash deploy/compose/stack.sh up"
+
+[tasks."stack:down"]
+description = "Stop the compose stack; data volumes stay"
+run = "bash deploy/compose/stack.sh down"
+
+[tasks."stack:reset"]
+description = "Stop the compose stack and delete its data volumes"
+run = "bash deploy/compose/stack.sh reset"
+
+[tasks."stack:smoke"]
+description = "Acceptance check of the running stack: register, search, ACL, 401, restart"
+run = "bash deploy/compose/stack.sh smoke"
+
 [tasks."container:verify"]
 description = "Build and smoke-test canonical linux/amd64 bootstrap OCI image"
 run = [
