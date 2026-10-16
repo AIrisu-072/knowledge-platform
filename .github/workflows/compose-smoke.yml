@@ -44,6 +44,8 @@ jobs:
           uname -m
           docker version --format '{{.Server.Arch}}'
           time mise run stack:build
+      - name: Pinned Vector model
+        run: time mise run stack:model
       - name: Start the stack
         run: time mise run stack:up
       - name: Acceptance check

@@ -11,7 +11,8 @@
 #   KP_SEARCH_ANALYZER     lexical analyzer (tantivy-0.26.2-cjk-bigram-v1)
 #   KP_SEARCH_LEXICAL_ROOT lexical index directory (/var/lib/knowledge-platform/search/lexical)
 #   KP_STORAGE_ROOT        Document original storage (/var/lib/knowledge-platform/storage)
-#   KP_SEARCH_VECTOR_MODEL_DIR  pinned embedding model directory (unset: Vector disabled)
+#   KP_SEARCH_VECTOR_MODEL_DIR  pinned embedding model directory (unset, or no
+#                          model.safetensors in it: Vector disabled)
 set -eu
 
 output=${1:?usage: search-source.sh OUTPUT}
@@ -37,7 +38,7 @@ bytes=$(printf '%s' "$digest" | sed 's/../& /g' | {
   done
 })
 
-if [ -n "$model_dir" ]; then
+if [ -n "$model_dir" ] && [ -f "$model_dir/model.safetensors" ]; then
   vector_enabled=true
 else
   vector_enabled=false

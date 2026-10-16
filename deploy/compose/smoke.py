@@ -14,6 +14,7 @@ Usage: smoke.py [--stack-dir DIR] [--timeout SECONDS] [--check-only TITLES_FILE]
 """
 
 import argparse
+import http.client
 import json
 import os
 import secrets
@@ -51,12 +52,16 @@ def call(base, method, path, body=None, content_type=None, token=None):
             return response.status, json.loads(response.read() or b"null")
     except urllib.error.HTTPError as error:
         return error.code, None
+    except (urllib.error.URLError, http.client.HTTPException, ConnectionError):
+        # Not answering yet (a server that is still starting): status 0, which
+        # wait_for retries and every other check rejects.
+        return 0, None
 
 
 def document_json(method, path, payload=None):
     body = json.dumps(payload).encode() if payload is not None else None
     status, data = call(DOCUMENT, method, path, body, "application/json" if body else None)
-    if status >= 300:
+    if not 200 <= status < 300:
         raise SystemExit(f"smoke: Document {method} {path} -> {status}")
     return data
 
@@ -91,7 +96,7 @@ def publish_text(folder_id, title, text):
     ])
     status, created = call(DOCUMENT, "POST", "/v1/documents", body,
                            f"multipart/form-data; boundary={boundary}")
-    if status >= 300:
+    if not 200 <= status < 300:
         raise SystemExit(f"smoke: Document registration -> {status}")
     document_id, version_id = created["documentId"], created["documentVersionId"]
     detail = document_json("GET", f"/v1/documents/{document_id}?view=authoring")

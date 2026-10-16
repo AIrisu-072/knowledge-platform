@@ -25,6 +25,7 @@ Apple Siliconでは `linux/arm64` のimageを作ります。本番と同じ `lin
 
 ```sh
 mise run stack:build    # imageを作る（初回はワークスペース全体のreleaseビルド）
+mise run stack:model    # Vector（意味の検索）のモデルを取得する（任意、約470MB）
 mise run stack:up       # 起動（秘密値が無ければ先に作る）
 mise run stack:smoke    # 受入確認（登録→検索、ACL、401、検索サーバーの再起動）
 mise run stack:down     # 停止（データは残る）
@@ -67,7 +68,7 @@ curl -s -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
 
 - 本番の認証・TLS、Kubernetes、運用操作（版の更新・取下げ・権限変更・backup/restore）の手順は範囲外。
 - 索引に入る形式はテキストだけ（Source設定 `search-source.sh` のprofile）。
-- Vector（意味の検索）は既定で無効。使うときは固定revisionのモデルのディレクトリを `KP_SEARCH_VECTOR_MODEL_DIR` で渡し、コンテナへmountする（今後の作業）。
+- Vector（意味の検索）は、モデルがあるときだけ有効。`stack:model` が選定済みのモデル（`intfloat/multilingual-e5-small`、固定revision、`spec/selection/library-tool-selection-v0.md`）を `${KP_STACK_DIR}/models/multilingual-e5-small` へ取得し、SHA-256を照合する。検索のworkerと検索サーバーへ読取り専用でmountし、読み込む前にもう一度照合する。別の場所に置くときは `KP_SEARCH_VECTOR_MODEL_DIR`。モデルを足した・消したあとは `stack:down` → `stack:up`（データは残る。動いているサービスは `stack:up` だけでは設定を読み直さない）。受入確認（`stack:smoke`）は字句の検索で確かめ、Vectorの結果そのものは確かめない。
 - DBの接続：初期化（migration、権限の設定）だけがsuperuserの `kp`。各サービスは自分専用の非superuserのroleで接続する（`deploy/compose/service-roles.sql`）。どのroleもDDLはできない。
   - `kp_document`（文書サーバー）：文書の表の行の読み書きだけ。検索の表には触れない
   - `kp_search_delivery`（検索のworkerの配送）：文書のoutboxの受取りと完了の記録だけ（`crates/outbox-delivery/sql/least_privilege.sql`）
