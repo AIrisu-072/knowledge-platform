@@ -57,6 +57,8 @@ PDFium 151.0.7881.0 の既存 mac-arm64 binary を read-only 再利用し、SHA-
 
 `office_oxide 0.1.11` の [Document::from_reader](https://docs.rs/office_oxide/0.1.11/office_oxide/struct.Document.html)、`calamine 0.36.1` の [Range](https://docs.rs/calamine/0.36.1/calamine/struct.Range.html)、[PdfPageText](https://docs.rs/pdfium-render/0.9.4/pdfium_render/prelude/struct.PdfPageText.html)、[zip-rs](https://docs.rs/zip/8.6.0/zip/) は公式 API と local pinned source を確認した。`office_oxide`、`calamine`、`rxls` は本 PoC で実行していないため Search 本文用途として**未資格**。OOXML の現在の候補は raw ZIP + bounded XML であり、DSI の parser output は使用しない。Linux での実 `cargo-deny` scan は上記 cloud receipt を参照。
 
+2026-10-17: 上の資格判定は `zip 8.6.0` で行った。8.6.0 は yank され、RUSTSEC-2026-0367/0368/0369 が公開されたため、本 PoC の pin を root と同じ `zip 9.0.3` に移した。変更は `ZipFile::name()` が `Result` を返す API への対応だけで、読めない entry 名は既存の `MalformedArchive` になる。
+
 ## 2026-09-30 時点の次 action（履歴）
 
 1. 独立 read-only reviewer が修正後の `qualification-results.jsonl` と固定 corpus の期待/実測を照合し、式 Unit 除外、数式 omission の物理位置、ZIP member chain、`Partial` から否定証明を出さない境界を監査する。
