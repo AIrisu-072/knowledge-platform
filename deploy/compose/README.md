@@ -34,6 +34,8 @@ mise run stack:reset    # 停止してデータも消す
 
 `mise` を使わない場合は `bash deploy/compose/stack.sh <同じ名前>`。
 
+CIの必須job `compose-smoke-amd64`（`.github/workflows/ci.yml`）は、すべてのPRとmainで、GitHub hostedの `linux/amd64` を使って `stack:build` → `stack:model` → `stack:up` → `stack:smoke` を流す。
+
 ## 起動するもの
 
 | サービス | 内容 | ホストのport |
