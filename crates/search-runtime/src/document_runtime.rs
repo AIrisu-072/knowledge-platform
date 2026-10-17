@@ -124,6 +124,12 @@ struct GraphPlan {
     owners: Vec<(ResourceId, DocumentId)>,
 }
 
+/// Keeps a stored bundle's Unit manifest and frees the rest (the projection
+/// and coverage) before READY, instead of at the end of the build.
+fn stored_units(bundle: StoredBundleV1) -> BodyUnitManifest {
+    bundle.unit_manifest
+}
+
 /// READY generations kept behind the current one for in-flight readers.
 const RETAINED_PREVIOUS_GENERATIONS: usize = 1;
 
@@ -296,19 +302,23 @@ impl PgDocumentIndexRuntime {
         lexical: ArtifactReceipt,
         resources: Vec<CompiledResourceProjection>,
         registry: SemanticRegistrySnapshot,
-        graph: &GraphPlan,
+        graph: GraphPlan,
         unit_manifest: BodyUnitManifest,
         coverage: BodyCoverageArtifact,
     ) -> Result<(VerifiedBundle, BodyUnitManifest), SearchError> {
         let key = manifest.key();
+        let GraphPlan {
+            records,
+            relations,
+            owners,
+            ..
+        } = graph;
         PostgresGraphStore::new(self.pool.clone())
-            .stage_segments(
-                &GraphBuildRef::Incremental(handle),
-                &graph.records,
-                &graph.relations,
-            )
+            .stage_segments(&GraphBuildRef::Incremental(handle), &records, &relations)
             .await
             .map_err(|error| failed("graph stage", error))?;
+        // Staged; only the owners are needed from here on.
+        drop((records, relations));
         let artifacts = self.lexical();
         artifacts
             .finalize(
@@ -327,7 +337,7 @@ impl PgDocumentIndexRuntime {
             &unit_manifest,
             &coverage,
             lexical,
-            graph_receipt(key, &resources, &graph.owners)?,
+            graph_receipt(key, &resources, &owners)?,
         )
         .map_err(|error| failed("bundle receipt", error))?;
         let bundle = StoredBundleV1 {
@@ -344,7 +354,7 @@ impl PgDocumentIndexRuntime {
             .store(&bundle)
             .await
             .map_err(|error| failed("payload", error))?;
-        let unit_manifest = bundle.unit_manifest;
+        let unit_manifest = stored_units(bundle);
         let verified =
             ReadyCoordinator::new(self.pool.clone(), &self.lexical_root, self.source.clone())
                 .ready_incremental(&handle)
@@ -361,13 +371,14 @@ impl PgDocumentIndexRuntime {
             self.with(key, |pending| {
                 Ok((
                     pending.manifest.clone(),
-                    pending.registry.clone(),
-                    pending.resources.clone(),
+                    // Moved, not copied: settling runs once per key, and a
+                    // second settle already fails on the missing artifacts.
+                    pending.registry.take(),
+                    std::mem::take(&mut pending.resources),
                     pending.lexical,
-                    pending.graph.clone(),
-                    // Moved, not copied: settling runs once per key.
+                    pending.graph.take(),
                     pending.unit_manifest.take(),
-                    pending.coverage.clone(),
+                    pending.coverage.take(),
                     pending.delivery.clone(),
                 ))
             })?;
@@ -426,7 +437,7 @@ impl PgDocumentIndexRuntime {
                             lexical,
                             resources,
                             registry,
-                            &graph,
+                            graph,
                             unit_manifest,
                             coverage,
                         )
@@ -509,7 +520,7 @@ impl PgDocumentIndexRuntime {
             .store(&bundle)
             .await
             .map_err(|error| failed("payload", error))?;
-        let unit_manifest = bundle.unit_manifest;
+        let unit_manifest = stored_units(bundle);
         let target = handle
             .graph_target()
             .ok_or_else(|| failed("graph target", key))?;
@@ -521,6 +532,7 @@ impl PgDocumentIndexRuntime {
             )
             .await
             .map_err(|error| failed("graph stage", error))?;
+        drop(graph);
         let coordinator =
             ReadyCoordinator::new(self.pool.clone(), &self.lexical_root, self.source.clone());
         let verified = match &handle {
@@ -631,7 +643,7 @@ impl DocumentIndexRuntime for PgDocumentIndexRuntime {
 
     fn stage_resource<'a>(&'a self, resource: PersistableResourceProjection) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let projection = resource.projection().clone();
+            let projection = resource.into_inner();
             self.with(projection.manifest.key(), |pending| {
                 pending.resources.push(projection);
                 Ok(())
