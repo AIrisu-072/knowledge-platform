@@ -488,7 +488,7 @@ fn zip_parts(raw: &[u8], meter: &mut ZipMeter) -> Result<BTreeMap<String, Vec<u8
     // Preflight the whole central directory before decompressing any entry.
     for i in 0..zip.len() {
         let f = zip.by_index_raw(i).map_err(|_| "MalformedArchive")?;
-        let name = f.name().to_owned();
+        let name = f.name().map_err(|_| "MalformedArchive")?.into_owned();
         if f.encrypted() {
             return Err("Encrypted");
         }
@@ -537,7 +537,7 @@ fn zip_parts(raw: &[u8], meter: &mut ZipMeter) -> Result<BTreeMap<String, Vec<u8
     let mut parts = BTreeMap::new();
     for i in 0..zip.len() {
         let f = zip.by_index(i).map_err(|_| "MalformedArchive")?;
-        let name = f.name().to_owned();
+        let name = f.name().map_err(|_| "MalformedArchive")?.into_owned();
         let expected_size = f.size();
         let mut bytes = Vec::new();
         f.take(67_108_865)

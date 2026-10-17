@@ -29,3 +29,5 @@ uuid = { version = "1", features = ["v7"] }
 [patch.crates-io]
 # The baseline path crates use the reviewed Tantivy 0.26.2 source.
 tantivy = { path = "../../third_party/search/tantivy-0.26.2" }
+# zip 9.0.3 port of the exact candle-core archive (see its PROVENANCE.md).
+candle-core = { path = "../../third_party/search/candle-core-0.11.0" }
