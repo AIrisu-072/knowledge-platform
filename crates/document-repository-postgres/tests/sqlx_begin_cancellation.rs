@@ -26,6 +26,15 @@ fn dropped_while_pending<F: Future>(future: F) -> bool {
         .is_pending()
 }
 
+/// Sends a slow statement and drops its future, so the reply to whatever is
+/// sent next cannot arrive within one poll: the connection must first wait
+/// out the sleep. Without it a fast server can answer BEGIN inside the poll.
+fn stall(conn: &mut PgConnection) {
+    assert!(dropped_while_pending(
+        sqlx::raw_sql("SELECT pg_sleep(0.1)").execute(&mut *conn)
+    ));
+}
+
 /// SAVEPOINT succeeds only inside an open transaction block.
 async fn transaction_open(conn: &mut PgConnection) -> bool {
     sqlx::raw_sql("SAVEPOINT kp_probe")
@@ -38,36 +47,33 @@ async fn transaction_open(conn: &mut PgConnection) -> bool {
 async fn dropped_begin_leaves_no_transaction_open() {
     let (_container, pool) = support::postgres().await;
     let mut conn = pool.acquire().await.unwrap();
-    let mut dropped = 0;
-    for _ in 0..20 {
-        if dropped_while_pending(Connection::begin(&mut *conn)) {
-            dropped += 1;
-        }
+    for _ in 0..3 {
+        stall(&mut conn);
+        assert!(dropped_while_pending(Connection::begin(&mut *conn)));
         assert!(!conn.is_in_transaction());
         assert!(
             !transaction_open(&mut conn).await,
             "a dropped BEGIN stayed open"
         );
     }
-    assert!(dropped > 0, "no BEGIN was dropped while waiting");
 }
 
 #[tokio::test]
-async fn dropped_pool_begin_keeps_the_next_snapshot_usable() {
+async fn dropped_begin_keeps_the_next_pooled_snapshot_usable() {
     let (_container, pool) = support::postgres().await;
-    // One connection, so every step reuses it; no acquire ping, so the first
-    // poll of `begin` reaches the BEGIN.
+    // One connection, so every step reuses it; no acquire ping, so the next
+    // checkout gets it exactly as the dropped `begin` left it.
     let single = PgPoolOptions::new()
         .max_connections(1)
         .test_before_acquire(false)
         .connect_with((*pool.connect_options()).clone())
         .await
         .unwrap();
-    let mut dropped = 0;
-    for _ in 0..20 {
-        if dropped_while_pending(single.begin()) {
-            dropped += 1;
-        }
+    for _ in 0..3 {
+        let mut conn = single.acquire().await.unwrap();
+        stall(&mut conn);
+        assert!(dropped_while_pending(Connection::begin(&mut *conn)));
+        drop(conn);
         let one: i32 = sqlx::query_scalar("SELECT 1")
             .fetch_one(&single)
             .await
@@ -81,7 +87,6 @@ async fn dropped_pool_begin_keeps_the_next_snapshot_usable() {
             .expect("the snapshot starts on a reused connection");
         tx.rollback().await.unwrap();
     }
-    assert!(dropped > 0, "no BEGIN was dropped while waiting");
 }
 
 #[tokio::test]
@@ -97,14 +102,8 @@ async fn dropped_savepoint_keeps_the_enclosing_transaction() {
         .execute(&mut *outer)
         .await
         .unwrap();
-    let mut dropped = false;
-    for _ in 0..20 {
-        if dropped_while_pending(Connection::begin(&mut *outer)) {
-            dropped = true;
-            break;
-        }
-    }
-    assert!(dropped, "no SAVEPOINT was dropped while waiting");
+    stall(&mut outer);
+    assert!(dropped_while_pending(Connection::begin(&mut *outer)));
     assert!(
         outer.is_in_transaction(),
         "the enclosing transaction was lost"
