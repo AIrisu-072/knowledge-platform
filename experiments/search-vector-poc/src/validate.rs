@@ -248,8 +248,8 @@ pub fn validate_source_owned_unit(
     };
     let knowledge_unit = KnowledgeUnit {
         unit_id: UnitId::parse(&unit.unit_id).map_err(|e| e.to_string())?,
-        version,
-        part: content_part,
+        version: version.into(),
+        part: content_part.into(),
         parent_unit_id: None,
         ordinal: unit.unit_ordinal,
         kind: UnitKind::PlainText,
@@ -267,7 +267,8 @@ pub fn validate_source_owned_unit(
             archive_inner_format: None,
             profile,
             parser_build_id: unit.parser_build_id.clone(),
-        },
+        }
+        .into(),
     };
     validate_part_units(&binding, std::slice::from_ref(&knowledge_unit))
         .map_err(|e| e.to_string())?;
