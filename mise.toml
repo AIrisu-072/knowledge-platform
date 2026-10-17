@@ -319,6 +319,10 @@ run = "bash deploy/compose/stack.sh reset"
 description = "Acceptance check of the running stack: register, search, ACL, 401, restart"
 run = "bash deploy/compose/stack.sh smoke"
 
+[tasks."stack:model"]
+description = "Download the pinned Vector embedding model for the compose stack (hash-checked)"
+run = "bash deploy/compose/stack.sh model"
+
 [tasks."container:verify"]
 description = "Build and smoke-test canonical linux/amd64 bootstrap OCI image"
 run = [

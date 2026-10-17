@@ -763,6 +763,99 @@ async fn roles_reject_pointer_parent_child_and_reader_writes() {
 }
 
 #[tokio::test]
+async fn vector_roles_follow_capabilities() {
+    let (_container, admin, _options) = postgres().await;
+    search_runtime::migrate(&admin).await.unwrap();
+    let roles =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/sql/roles.sql")).unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(roles.as_str()))
+        .execute(&admin)
+        .await
+        .unwrap();
+    const TABLES: [&str; 6] = [
+        "search_vector_scope_epoch",
+        "search_vector_stage",
+        "search_vector_generation",
+        "search_vector_value",
+        "search_vector_segment",
+        "search_vector_stage_segment",
+    ];
+    // Builders add content-addressed parts, the coordinator publishes and
+    // advances scope epochs, only GC deletes, readers and registration only
+    // read or nothing.
+    let allowed = |group: &str, table: &str, privilege: &str| match (group, privilege) {
+        ("search_registration", _) => false,
+        (_, "SELECT") => true,
+        ("search_builder", "INSERT") => matches!(
+            table,
+            "search_vector_value"
+                | "search_vector_segment"
+                | "search_vector_stage"
+                | "search_vector_stage_segment"
+        ),
+        ("search_coordinator", "INSERT") => {
+            matches!(
+                table,
+                "search_vector_generation" | "search_vector_scope_epoch"
+            )
+        }
+        ("search_coordinator", "DELETE") => table == "search_vector_generation",
+        ("search_coordinator", "UPDATE") => table == "search_vector_scope_epoch",
+        ("search_gc", "DELETE") => table != "search_vector_scope_epoch",
+        _ => false,
+    };
+    for group in [
+        "search_registration",
+        "search_builder",
+        "search_coordinator",
+        "search_reader",
+        "search_gc",
+    ] {
+        for table in TABLES {
+            for privilege in ["SELECT", "INSERT", "UPDATE", "DELETE"] {
+                // UPDATE on any column: the coordinator's epoch grant is
+                // column-level. DELETE has no column form.
+                let granted: bool = sqlx::query_scalar(
+                    "SELECT CASE WHEN $3::text = 'UPDATE' \
+                     THEN has_any_column_privilege($1::name, $2::text, $3::text) \
+                     ELSE has_table_privilege($1::name, $2::text, $3::text) END",
+                )
+                .bind(group)
+                .bind(table)
+                .bind(privilege)
+                .fetch_one(&admin)
+                .await
+                .unwrap();
+                assert_eq!(
+                    granted,
+                    allowed(group, table, privilege),
+                    "{group} {privilege} {table}"
+                );
+            }
+        }
+    }
+    let epoch_only: bool = sqlx::query_scalar(
+        "SELECT has_column_privilege('search_coordinator', 'search_vector_scope_epoch', \
+         'epoch', 'UPDATE') AND NOT has_column_privilege('search_coordinator', \
+         'search_vector_scope_epoch', 'authority_scope_key', 'UPDATE')",
+    )
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert!(epoch_only);
+    let public: bool = sqlx::query_scalar(
+        "SELECT bool_or(CASE WHEN p = 'UPDATE' THEN has_any_column_privilege('public', t, p) \
+         ELSE has_table_privilege('public', t, p) END) \
+         FROM unnest($1::text[]) t, unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) p",
+    )
+    .bind(&TABLES[..])
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert!(!public, "PUBLIC holds a Vector table privilege");
+}
+
+#[tokio::test]
 async fn lease_insert_rejects_invalid_scope_and_digest() {
     let (_container, pool, _) = postgres().await;
     search_runtime::migrate(&pool).await.unwrap();

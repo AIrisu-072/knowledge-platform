@@ -1,0 +1,58 @@
+name: Compose smoke (linux/amd64)
+
+# The single-host PoC stack (compose.yaml) on the production CPU type:
+# build the images, start every service and run the acceptance check
+# (deploy/compose/smoke.py), including after a Search server restart.
+# Runs only when the stack's files change; the required CI gate is unaffected.
+on:
+  pull_request:
+    paths:
+      - compose.yaml
+      - Dockerfile
+      - .dockerignore
+      - deploy/compose/**
+      - crates/search-server/**
+      - crates/http-local-guard/**
+      - crates/document-server/**
+      - .github/workflows/compose-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MISE_AUTO_INSTALL: "0"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4.0.0
+        with:
+          install: false
+      - name: Build the images
+        run: |
+          uname -m
+          docker version --format '{{.Server.Arch}}'
+          time mise run stack:build
+      - name: Pinned Vector model
+        run: time mise run stack:model
+      - name: Start the stack
+        run: time mise run stack:up
+      - name: Acceptance check
+        run: time mise run stack:smoke
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose -f compose.yaml logs --no-color --timestamps --tail 300
+      - name: Remove the stack
+        if: always()
+        run: mise run stack:reset
