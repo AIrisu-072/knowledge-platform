@@ -837,6 +837,7 @@ pub async fn run_arm(
                     body_query: None,
                     graph_plan: graph_plan.as_ref(),
                     vector_query: None,
+                    defer_access_to_caller: false,
                 },
             )
             .await
