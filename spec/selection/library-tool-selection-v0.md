@@ -126,6 +126,8 @@ migrate
 
 DB migrationはSQLx migrationsを第一候補とし、別migration frameworkを初期導入しない。
 
+`sqlx-postgres` は0.9.0のcrates.io archiveの正確な写し（`third_party/database/sqlx-postgres-0.9.0/PROVENANCE.md`、2026-10-17）を使う。変更は、取り消された `begin` が始めたtransactionまたはsavepointを正しく巻き戻す1か所だけ。0.9.0のままでは、要求の取消しでBEGINが開いたままの接続がpoolへ戻り、次のREPEATABLE READの開始が25001で失敗する。取り消されたSAVEPOINTは外側のtransactionを巻き戻す。
+
 ### Search Remote Source HTTP client (P4-15)
 
 選定証拠は [隔離PoCの計測報告](../../experiments/search-http-client-poc/report.md)。
